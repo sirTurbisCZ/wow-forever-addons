@@ -1,9 +1,9 @@
 --[[
   Plateband.Modules.Plates — native DebuffList stays fully visible.
   Solo personal DoTs: leave 100% native (no duplicate paint).
-  Merge: ALL harmful auras Blizzard omits (any other player — party or not),
-  same band as native; aura row stacked ABOVE the name (no horizontal clash).
-  Never park native. No CLEU / no HP recolor.
+  Merge: party/nearby foreign harmful DoTs Blizzard omits — beside native band.
+  Player/friend plates: shift name ABOVE aura row (never SetPoint DebuffList —
+  Forever FORBIDDEN). Enemy: merge LEFT→RIGHT of native. No CLEU / no HP recolor.
 ]]
 
 Plateband = Plateband or {}
@@ -392,6 +392,21 @@ local function NativeDebuffList(plate)
   return list
 end
 
+local function NativeBuffList(plate)
+  local list
+  pcall(function()
+    local uf = plate and plate.UnitFrame
+    local af = uf and uf.AurasFrame
+    if af then
+      list = af.BuffListFrame
+    end
+    if not list and uf then
+      list = uf.BuffListFrame or uf.BuffFrame
+    end
+  end)
+  return list
+end
+
 local function CountShownAuraKids(frame)
   if not frame then
     return 0
@@ -406,26 +421,9 @@ local function CountShownAuraKids(frame)
   for i = 1, #kids do
     local child = kids[i]
     if child and SafeShown(child) then
-      -- Forever AC children vary: icon / Icon / GetAuraInstance / bare shown button.
-      if child.icon or child.Icon or child.GetAuraInstance
-        or (child.GetObjectType and select(1, pcall(child.GetObjectType, child)) == true) then
-        local isBtn = false
-        pcall(function()
-          local t = child:GetObjectType()
-          isBtn = (t == "Button" or t == "Frame")
-        end)
-        if child.icon or child.Icon or child.GetAuraInstance or isBtn then
-          -- Exclude our own cooldown/font helper frames: require size-ish aura button.
-          local w
-          pcall(function()
-            w = child:GetWidth()
-          end)
-          if type(w) == "number" and not IsSecret(w) and w >= 8 then
-            n = n + 1
-          elseif child.icon or child.Icon or child.GetAuraInstance then
-            n = n + 1
-          end
-        end
+      -- Require real aura chrome — bare Frame/Button kids false-trigger friend name shifts.
+      if child.icon or child.Icon or child.GetAuraInstance then
+        n = n + 1
       end
     end
   end
@@ -443,6 +441,47 @@ local function RawChildCount(frame)
     return 0
   end
   return #kids
+end
+
+local function CountNativeAuraRow(plate)
+  return CountShownAuraKids(NativeDebuffList(plate))
+    + CountShownAuraKids(NativeBuffList(plate))
+end
+
+--- Friend / player plates: name must sit above auras (preference).
+local function IsPlayerOrFriendPlate(unit, plate)
+  if not unit then
+    return false
+  end
+  if SameUnit(unit, "player") then
+    return true
+  end
+  local hit = false
+  pcall(function()
+    local okP, isPlayer = pcall(UnitIsPlayer, unit)
+    if okP and not IsSecret(isPlayer) and isPlayer then
+      hit = true
+      return
+    end
+    local okF, isFriend = pcall(UnitIsFriend, "player", unit)
+    if okF and not IsSecret(isFriend) and isFriend then
+      hit = true
+    end
+  end)
+  if hit then
+    return true
+  end
+  for i = 1, 4 do
+    if SameUnit(unit, "party" .. i) then
+      return true
+    end
+  end
+  for i = 1, 40 do
+    if SameUnit(unit, "raid" .. i) then
+      return true
+    end
+  end
+  return false
 end
 
 local function GetTargetAuraContainer()
@@ -463,26 +502,131 @@ local function GetTargetAuraContainer()
   return c
 end
 
-local function CountTargetFrameAuras()
-  local container = GetTargetAuraContainer()
-  if not container then
-    return 0
+--- Forever TF auras live in auraPools — GetChildren() alone often yields tf=0.
+local function HarvestAuraPoolButtons(pools, out, maxN)
+  if type(pools) ~= "table" or not out then
+    return
   end
-  local n = CountShownAuraKids(container)
-  if n > 0 then
-    return n
+  maxN = maxN or MaxIcons()
+  local function take(btn)
+    if not btn or #out >= maxN then
+      return
+    end
+    if SafeShown(btn) or btn.Icon or btn.icon or btn.GetAuraInstance then
+      out[#out + 1] = btn
+    end
   end
   pcall(function()
-    if container.auraPools and container.auraPools.EnumerateActiveAuraButtons then
-      local count = 0
-      for btn in container.auraPools:EnumerateActiveAuraButtons() do
-        if btn and SafeShown(btn) then
-          count = count + 1
+    if pools.EnumerateActiveAuraButtons then
+      for btn in pools:EnumerateActiveAuraButtons() do
+        take(btn)
+        if #out >= maxN then
+          return
         end
       end
-      n = count
     end
   end)
+  pcall(function()
+    if pools.EnumerateActive then
+      for frame in pools:EnumerateActive() do
+        take(frame)
+        if #out >= maxN then
+          return
+        end
+      end
+    end
+  end)
+  for _, pool in pairs(pools) do
+    if type(pool) == "table" and #out < maxN then
+      pcall(function()
+        if pool.EnumerateActiveAuraButtons then
+          for btn in pool:EnumerateActiveAuraButtons() do
+            take(btn)
+            if #out >= maxN then
+              return
+            end
+          end
+        elseif pool.EnumerateActive then
+          for frame in pool:EnumerateActive() do
+            take(frame)
+            if #out >= maxN then
+              return
+            end
+          end
+        end
+      end)
+    end
+  end
+end
+
+local function CollectTargetFrameButtons(out, maxN)
+  maxN = maxN or MaxIcons()
+  local container = GetTargetAuraContainer()
+  if container then
+    pcall(HarvestAuraPoolButtons, container.auraPools, out, maxN)
+    if #out == 0 then
+      -- Fallback: direct children (retail-style).
+      local ok, kids = pcall(function()
+        return { container:GetChildren() }
+      end)
+      if ok and type(kids) == "table" then
+        for i = 1, #kids do
+          if #out >= maxN then
+            break
+          end
+          local child = kids[i]
+          if child and (child.Icon or child.icon or child.GetAuraInstance) then
+            out[#out + 1] = child
+          end
+        end
+      end
+    end
+    if container.debuffAuraGroup and container.debuffAuraGroup.GetFramesByIndex then
+      pcall(function()
+        local frames = container.debuffAuraGroup:GetFramesByIndex()
+        if type(frames) == "table" then
+          for i = 1, #frames do
+            if #out >= maxN then
+              return
+            end
+            local f = frames[i]
+            if f then
+              out[#out + 1] = f
+            end
+          end
+        end
+      end)
+    end
+  end
+  if TargetFrame then
+    pcall(HarvestAuraPoolButtons, TargetFrame.auraPools, out, maxN)
+  end
+  for i = 1, 16 do
+    if #out >= maxN then
+      break
+    end
+    local frame = _G["TargetFrameDebuff" .. i]
+    if frame and SafeShown(frame) then
+      out[#out + 1] = frame
+    end
+  end
+end
+
+local function CountTargetFrameAuras()
+  local buttons = {}
+  CollectTargetFrameButtons(buttons, MaxIcons())
+  local n = 0
+  local seen = {}
+  for i = 1, #buttons do
+    local btn = buttons[i]
+    local id = tostring(btn)
+    if not seen[id] then
+      seen[id] = true
+      if SafeShown(btn) or btn.Icon or btn.icon or btn.GetAuraInstance then
+        n = n + 1
+      end
+    end
+  end
   return n
 end
 
@@ -835,24 +979,35 @@ local function RestoreNameShift(unit, plate)
   st.shifted = false
 end
 
---- Stack: [aura row] above [name] above [health]. No horizontal clash with name text.
-local function LayoutAuraRowAboveName(unit, plate, mergeFb, painted)
-  local nameFS = PlateNameFS(plate)
-  local bar = HealthBar(plate)
-  local native = NativeDebuffList(plate)
-  local nativeN = CountShownAuraKids(native)
-  local rowActive = (nativeN > 0) or (painted and painted > 0)
+-- Forward decl: Layout anchors merge beside native (defined below).
+local NativeBandRightAnchor
 
-  if not rowActive then
+--- Enemy plates only: tuck name under aura band + merge LEFT→RIGHT of native.
+--- Never touch friend/party name or SetPoint DebuffList (Forever FORBIDDEN / Pichy break).
+local function LayoutAuraRowAboveName(unit, plate, mergeFb, painted)
+  painted = tonumber(painted) or 0
+
+  -- Friend/party plates: restore any 0.1.8 shift and leave Blizzard layout alone.
+  if IsPlayerOrFriendPlate(unit, plate) then
     RestoreNameShift(unit, plate)
     return
   end
 
+  -- Only layout when we actually painted merge icons (no nativeN-only name glue).
+  if painted <= 0 or not mergeFb then
+    RestoreNameShift(unit, plate)
+    return
+  end
+
+  local nameFS = PlateNameFS(plate)
+  local bar = HealthBar(plate)
+  local native = NativeDebuffList(plate)
+
   if nameFS and bar then
     SaveNamePoints(unit, nameFS)
-    -- Pin name just above the health bar so the aura row can sit fully above it.
     pcall(function()
       nameFS:ClearAllPoints()
+      -- Enemy: name under the aura band so merge+native sit above readable name.
       nameFS:SetPoint("BOTTOM", bar, "TOP", 0, 2)
     end)
     local st = nameShifts[unit]
@@ -861,41 +1016,16 @@ local function LayoutAuraRowAboveName(unit, plate, mergeFb, painted)
     end
   end
 
-  -- Prefer not SetPoint native (Forever taint risk) — only raise merge above name.
-  -- If native already overlaps name, name-below-bar-top + merge above name clears horizontal clash for merge icons.
-  if mergeFb and painted and painted > 0 then
-    mergeFb:ClearAllPoints()
-    if nameFS then
-      -- Entire merge band above the name (centered on name).
-      mergeFb:SetPoint("BOTTOM", nameFS, "TOP", 0, OVERLAY_GAP_ABOVE)
-    else
-      local anchor = NativeBandRightAnchor(plate)
-      if anchor then
-        mergeFb:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, OVERLAY_GAP_ABOVE)
-      elseif bar then
-        mergeFb:SetPoint("BOTTOM", bar, "TOP", 0, (IconSize() + OVERLAY_GAP_ABOVE + 4))
-      else
-        mergeFb:SetPoint("BOTTOM", plate, "TOP", 0, OVERLAY_GAP_ABOVE)
-      end
-    end
-  end
-
-  -- When native icons exist, also try stacking native above name (pcall — may no-op/taint-safe fail).
-  if native and nameFS and nativeN > 0 then
-    pcall(function()
-      native:ClearAllPoints()
-      native:SetPoint("BOTTOM", nameFS, "TOP", 0, OVERLAY_GAP_ABOVE)
-    end)
-    -- Merge continues the same row to the right of native (still above name).
-    if mergeFb and painted and painted > 0 then
-      local right = NativeBandRightAnchor(plate)
-      mergeFb:ClearAllPoints()
-      if right then
-        mergeFb:SetPoint("LEFT", right, "RIGHT", OVERLAY_PAD, 0)
-      else
-        mergeFb:SetPoint("LEFT", native, "RIGHT", OVERLAY_PAD, 0)
-      end
-    end
+  mergeFb:ClearAllPoints()
+  local right = NativeBandRightAnchor(plate)
+  if right then
+    mergeFb:SetPoint("LEFT", right, "RIGHT", OVERLAY_PAD, 0)
+  elseif native then
+    mergeFb:SetPoint("LEFT", native, "RIGHT", OVERLAY_PAD, 0)
+  elseif bar then
+    mergeFb:SetPoint("BOTTOM", bar, "TOP", 0, OVERLAY_GAP_ABOVE)
+  else
+    mergeFb:SetPoint("BOTTOM", plate, "TOP", 0, OVERLAY_GAP_ABOVE)
   end
 end
 
@@ -1035,7 +1165,7 @@ local function NativeKeySet(plate)
 end
 
 --- Rightmost shown native aura button (or DebuffListFrame) — merge anchors beside it.
-local function NativeBandRightAnchor(plate)
+NativeBandRightAnchor = function(plate)
   local list = NativeDebuffList(plate)
   if not list then
     return nil
@@ -1179,7 +1309,8 @@ local function AuraLooksForeign(data)
 end
 
 --- All harmful Blizzard may omit: other players (party or not). Not party-only.
-local function CollectUnitAuraMissing(unitToken, skipKeys, out, maxN)
+--- allowSecretUnknown: target/enemy path — take secret icons when ownership isn't clearly ours.
+local function CollectUnitAuraMissing(unitToken, skipKeys, out, maxN, allowSecretUnknown)
   if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
     return
   end
@@ -1206,8 +1337,8 @@ local function CollectUnitAuraMissing(unitToken, skipKeys, out, maxN)
       if key and not skipKeys[key] then
         take = true
       elseif not key then
-        -- Secret FileID: still take when publicly not ours / foreign source.
-        if owned == false or AuraLooksForeign(data) then
+        -- Secret FileID: take when not ours, foreign source, or target allow-secret path.
+        if owned == false or AuraLooksForeign(data) or allowSecretUnknown then
           take = true
           key = "sec:" .. tostring(i) .. ":" .. tostring(unitToken)
         end
@@ -1220,20 +1351,76 @@ local function CollectUnitAuraMissing(unitToken, skipKeys, out, maxN)
   end
 end
 
---- TargetFrame scrape for public-key textures not already shown / player-owned.
---- (Secret TF textures skipped — unit-aura foreign path handles secret FileIDs safely.)
+--- Pull icon texture from a TF aura button (secret FileIDs OK for SetTexture).
+--- Returns icon, skippedPersonal, gotIcon — never compare icon to nil (secret throws).
+local function ButtonAuraIcon(btn)
+  if not btn then
+    return nil, false, false
+  end
+  local icon
+  local skippedPersonal = false
+  local got = false
+  pcall(function()
+    if btn.GetAuraInstance then
+      local _, data = btn:GetAuraInstance()
+      if type(data) == "table" then
+        if AuraIsPlayerOwned(data) == true then
+          skippedPersonal = true
+          return
+        end
+        icon = data.icon
+        got = true
+      end
+    end
+  end)
+  if skippedPersonal then
+    return nil, true, false
+  end
+  if got then
+    return icon, false, true
+  end
+  local tex = btn.Icon or btn.icon
+  if tex then
+    local file
+    local gotFile = false
+    pcall(function()
+      if tex.GetTexture then
+        file = tex:GetTexture()
+        gotFile = true
+      end
+    end)
+    if gotFile then
+      return file, false, true
+    end
+    return tex, false, true
+  end
+  return nil, false, false
+end
+
+--- TargetFrame scrape via Forever auraPools (+ public/secret textures not on native).
 local function CollectTargetFrameMissing(skipKeys, out, maxN)
-  local texes = {}
-  CollectAuraTextures(GetTargetAuraContainer(), texes, maxN)
-  for i = 1, #texes do
+  local buttons = {}
+  CollectTargetFrameButtons(buttons, maxN)
+  local seenBtn = {}
+  for i = 1, #buttons do
     if #out >= maxN then
       return
     end
-    local t = texes[i]
-    local key = PublicTexKey(t)
-    if key and not skipKeys[key] then
-      out[#out + 1] = t
-      skipKeys[key] = true
+    local btn = buttons[i]
+    local bid = tostring(btn)
+    if not seenBtn[bid] then
+      seenBtn[bid] = true
+      local icon, skippedPersonal, gotIcon = ButtonAuraIcon(btn)
+      if not skippedPersonal and gotIcon then
+        local key = PublicTexKey(icon)
+        if not key then
+          key = "tf:" .. bid
+        end
+        if key and not skipKeys[key] then
+          out[#out + 1] = icon
+          skipKeys[key] = true
+        end
+      end
     end
   end
 end
@@ -1264,34 +1451,40 @@ local function PaintMergeMissing(unit, plate)
 
   EnsureNativeVisible(plate)
 
+  -- Friend/party plates: no merge paint, no name reanchor (Pichy / blue-bar break).
+  if IsPlayerOrFriendPlate(unit, plate) then
+    ClearFallback(unit)
+    RestoreNameShift(unit, plate)
+    return 0
+  end
+
   -- skipKeys = native DebuffList + known player-owned (never re-paint personal).
   local skipKeys = NativeKeySet(plate)
   local maxN = MaxIcons()
   local missing = {}
+  local isTarget = IsTargetPlate(unit, plate)
 
   -- Target plate: merge TF + unit auras Blizzard omitted from DebuffList.
-  if IsTargetPlate(unit, plate) then
+  if isTarget then
     CollectPlayerOwnedKeys("target", skipKeys)
     if type(unit) == "string" and unit ~= "target" then
       CollectPlayerOwnedKeys(unit, skipKeys)
     end
-    CollectUnitAuraMissing("target", skipKeys, missing, maxN)
+    -- allowSecretUnknown: Forever often secrets ownership+FileID on foreign DoTs.
+    CollectUnitAuraMissing("target", skipKeys, missing, maxN, true)
     if type(unit) == "string" and unit ~= "target" then
-      CollectUnitAuraMissing(unit, skipKeys, missing, maxN)
+      CollectUnitAuraMissing(unit, skipKeys, missing, maxN, true)
     end
     CollectTargetFrameMissing(skipKeys, missing, maxN)
   else
-    -- Non-target: only unit API missing (no TF). Often empty on Forever — OK.
+    -- Non-target enemy: unit API only (allow secret unknowns — TF is target-only).
     CollectPlayerOwnedKeys(unit, skipKeys)
-    CollectUnitAuraMissing(unit, skipKeys, missing, maxN)
+    CollectUnitAuraMissing(unit, skipKeys, missing, maxN, true)
   end
-
-  local nativeN = CountShownAuraKids(NativeDebuffList(plate))
 
   if #missing == 0 then
     ClearFallback(unit)
-    -- Still lift name above bar / under native when native row alone would clash.
-    LayoutAuraRowAboveName(unit, plate, nil, 0)
+    RestoreNameShift(unit, plate)
     return 0
   end
 
@@ -1321,7 +1514,7 @@ local function PaintMergeMissing(unit, plate)
   if painted == 0 then
     fb:Hide()
     fb._painted = 0
-    LayoutAuraRowAboveName(unit, plate, nil, 0)
+    RestoreNameShift(unit, plate)
     return 0
   end
 
@@ -1335,7 +1528,7 @@ local function PaintMergeMissing(unit, plate)
   fb:Show()
   fb._painted = painted
 
-  -- Aura row fully ABOVE name (no left-of-name horizontal collision).
+  -- Merge beside native; tuck enemy name under the band.
   LayoutAuraRowAboveName(unit, plate, fb, painted)
   return painted
 end
@@ -1365,7 +1558,7 @@ local function UpdateOverlay(unit, plate)
   -- paintOverlay=false: do not replace native. mergeMissing: append others' omitted DoTs.
   if p.mergeMissing == false then
     ClearFallback(unit)
-    LayoutAuraRowAboveName(unit, plate, nil, 0)
+    RestoreNameShift(unit, plate)
     return
   end
 

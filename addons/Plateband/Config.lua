@@ -12,7 +12,7 @@ local Config = Plateband.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.1.8"
+Config.VERSION = "0.1.9"
 
 local function ProfileDefaults()
   return {

@@ -3,8 +3,8 @@
 Companion for Forever nameplate auras. Looks and feels like Blizzard’s native DebuffList.
 
 - **Your** personal DoTs stay 100% native (Plateband does not paint them).
-- When you **target** a unit others have DoTed (party **or** any other player), Plateband appends **only** harmful icons Blizzard omitted — same band as native DebuffList.
-- Aura row sits **fully above** the name (no horizontal overlap with name text). Never parks or hides native DebuffList.
+- On **enemy** plates (especially the current target), Plateband appends **only** harmful icons Blizzard omitted — same band, LEFT→RIGHT of native DebuffList (party/nearby foreign DoTs, including Forever-secret FileIDs).
+- **Friend/party** plates are left alone (no name reanchor). On enemies with merge paint, name tucks under the aura band. Never parks or hides native DebuffList.
 
 ## Install
 
@@ -54,7 +54,7 @@ If Forever Error Log is installed, also send:
 ## What it does
 
 - Leaves Blizzard DebuffList fully visible for personal / native auras.
-- On the current **target** plate, diffs TargetFrame + unit harmful auras against native icons and paints **only missing** others’ DoTs to the **right** of the native band.
+- On enemy plates, diffs TargetFrame (target) + unit harmful auras against native icons and paints **only missing** others’ DoTs to the **right** of the native band. Friend plates are never rewritten.
 - Click-through overlays — plate click still selects the unit.
 - Auto-saves throttled diagnose cards into SavedVariables during play.
 - Degrades gracefully when aura APIs are empty (no combat-log core).
