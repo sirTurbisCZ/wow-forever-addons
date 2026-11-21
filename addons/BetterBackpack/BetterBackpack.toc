@@ -2,7 +2,7 @@
 ## Title: BetterBackpack
 ## Notes: Category-lane bags with combat-safe RMB. Parks CombinedBags — never Hide.
 ## Author: tuma
-## Version: 0.3.4
+## Version: 0.3.5
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled

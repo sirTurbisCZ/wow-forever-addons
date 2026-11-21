@@ -1,7 +1,7 @@
-# Playtest brief — BetterBackpack 0.3.4
+# Playtest brief — BetterBackpack 0.3.5
 
-**Bugs:** gear overlapping X; floating red 99s (Count FontStrings leaked onto chrome from MinimizeButton reuse).
+**Bug:** gear/broom still wrong size vs Close.
 
-**Fix:** retire old chrome; create clean SortBtn12/GearBtn12 once; strip all FontStrings; no MinimizeButton textures; 4px gap left of X.
+**Fix:** create once as `UIPanelCloseButtonNoScripts`; after layout `SetSize(close:GetWidth(), close:GetHeight())` on both; chat logs `chrome sizes close=… broom=… gear=…` once; no recreate loops.
 
-**Done when:** `/reload` → `loaded v0.3.4` · no red 99s · gear left of broom left of X, no overlap.
+**Done when:** `/reload` → `loaded v0.3.5` · chat shows equal sizes · gear=broom=X visually.

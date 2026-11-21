@@ -6,7 +6,7 @@ Category-lane bags for **World of Warcraft Forever** (Interface 16001) with comb
 
 1. Put this folder in `Interface/AddOns/BetterBackpack/` (or symlink via `./scripts/link-addon.sh BetterBackpack`).
 2. Enable at character select if needed.
-3. `/reload` in game — chat should show `loaded v0.3.4` (visible gear left of broom, used/total N/M, bag-bar XOR).
+3. `/reload` in game — chat should show `loaded v0.3.5` (visible gear left of broom, used/total N/M, bag-bar XOR).
 
 ## Slash
 

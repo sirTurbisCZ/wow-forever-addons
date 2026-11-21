@@ -1,7 +1,7 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.3.4).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.3.5).
   Forever: never SetToplevel (ADDON_ACTION_BLOCKED).
-  Title chrome: clean gear/broom once (no MinimizeButton, no FontString leaks).
+  Title chrome: create gear/broom once; size = Close GetWidth/Height after layout.
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -1065,28 +1065,59 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local CHROME_VER = 12 -- clean gear/broom once; no MinimizeButton; strip FontStrings
-local CHROME_GAP = 4 -- px between gear|broom|X — never overlap Close
+local CHROME_VER = 13 -- Close-template once; SetSize from Close after layout; log once
+local CHROME_GAP = 2
+local chromeSizeLogged = false
+local legacyChromeRetired = false
 
-local function MeasureClose(close)
-  local w, h = CHROME_BTN, CHROME_BTN
-  if close then
-    pcall(function()
-      close:Show()
-      local cw = close:GetWidth()
-      local ch = close:GetHeight()
-      if type(cw) == "number" and cw > 0 then
-        w = cw
-      end
-      if type(ch) == "number" and ch > 0 then
-        h = ch
-      end
-    end)
+local function StripChromeFontStrings(btn)
+  if not btn then
+    return
   end
+  pcall(function()
+    for _, key in ipairs({ "Count", "Stock", "Text", "_bbLabel", "Label" }) do
+      local fs = btn[key]
+      if fs then
+        if fs.SetText then
+          fs:SetText("")
+        end
+        if fs.Hide then
+          fs:Hide()
+        end
+        btn[key] = nil
+      end
+    end
+    local regions = { btn:GetRegions() }
+    for i = 1, #regions do
+      local r = regions[i]
+      if r and r.GetObjectType and r:GetObjectType() == "FontString" then
+        r:SetText("")
+        r:Hide()
+      end
+    end
+  end)
+end
+
+local function MeasureCloseExact(close)
+  local w, h = CHROME_BTN, CHROME_BTN
+  if not close then
+    return w, h
+  end
+  pcall(function()
+    close:Show()
+    local cw = close:GetWidth()
+    local ch = close:GetHeight()
+    if type(cw) == "number" and cw > 0 then
+      w = cw
+    end
+    if type(ch) == "number" and ch > 0 then
+      h = ch
+    end
+  end)
   return w, h
 end
 
-local function LockButtonSize(btn, w, h)
+local function SetExactSize(btn, w, h)
   if not btn then
     return
   end
@@ -1098,195 +1129,127 @@ local function LockButtonSize(btn, w, h)
   end)
 end
 
--- Kill every FontString / Count leak on chrome (floating red 99s).
-local function StripAllFontStrings(btn)
-  if not btn then
+local function LogChromeSizesOnce(close, tidy, gear)
+  if chromeSizeLogged then
     return
   end
-  pcall(function()
-    for _, key in ipairs({ "Count", "Stock", "Name", "Text", "_bbLabel", "Label" }) do
-      local fs = btn[key]
-      if fs then
-        if fs.SetText then
-          fs:SetText("")
-        end
-        if fs.Hide then
-          fs:Hide()
-        end
-        if fs.ClearAllPoints then
-          fs:ClearAllPoints()
-        end
-        if fs.SetAlpha then
-          fs:SetAlpha(0)
-        end
-        btn[key] = nil
-      end
+  chromeSizeLogged = true
+  local function wh(b)
+    if not b then
+      return "?"
     end
-  end)
-  pcall(function()
-    local regions = { btn:GetRegions() }
-    for i = 1, #regions do
-      local r = regions[i]
-      local ot
-      pcall(function()
-        ot = r.GetObjectType and r:GetObjectType()
-      end)
-      if ot == "FontString" then
-        pcall(function()
-          r:SetText("")
-          r:Hide()
-          r:SetAlpha(0)
-          r:ClearAllPoints()
-          r:SetParent(UIParent)
-        end)
-      end
-    end
-  end)
-  -- Named children (ButtonNameCount etc.).
-  pcall(function()
-    local n = btn.GetName and btn:GetName()
-    if n then
-      for _, suf in ipairs({ "Count", "Stock", "Text", "Label" }) do
-        local child = _G[n .. suf]
-        if child then
-          pcall(function()
-            if child.SetText then
-              child:SetText("")
-            end
-            child:Hide()
-            child:SetAlpha(0)
-          end)
-        end
-      end
-    end
-  end)
+    local w, h = 0, 0
+    pcall(function()
+      w, h = b:GetWidth(), b:GetHeight()
+    end)
+    return string.format("%.1fx%.1f", w or 0, h or 0)
+  end
+  local msg = string.format(
+    "|cff88ff88BetterBackpack|r chrome sizes close=%s broom=%s gear=%s",
+    wh(close),
+    wh(tidy),
+    wh(gear)
+  )
+  if DEFAULT_CHAT_FRAME then
+    DEFAULT_CHAT_FRAME:AddMessage(msg)
+  end
 end
 
--- Retire leaked chrome frames from older versions (MinimizeButton / Count).
-local function RetireChromeButton(btn)
-  if not btn then
+-- Hide old leaked names once (never every EnsureTitleChrome).
+local function RetireLegacyChromeOnce()
+  if legacyChromeRetired then
     return
   end
-  StripAllFontStrings(btn)
-  pcall(function()
-    btn:SetScript("OnClick", nil)
-    btn:SetScript("OnEnter", nil)
-    btn:SetScript("OnLeave", nil)
-    btn:EnableMouse(false)
-    btn:Hide()
-    btn:ClearAllPoints()
-    btn:SetAlpha(0)
-    if btn._bbCloseRing then
-      btn._bbCloseRing:Hide()
-    end
-  end)
-end
-
-local function RetireLegacyChromeNames()
+  legacyChromeRetired = true
   for _, name in ipairs({
     "BetterBackpackSortButton",
     "BetterBackpackSettingsButton",
     "BetterBackpackSortBtn12",
     "BetterBackpackGearBtn12",
   }) do
-    -- Only retire pre-v12 names; v12 names handled by Ensure.
-    if name == "BetterBackpackSortButton" or name == "BetterBackpackSettingsButton" then
-      RetireChromeButton(_G[name])
+    local b = _G[name]
+    if b and not b._bbChromeV13 then
+      pcall(function()
+        StripChromeFontStrings(b)
+        b:Hide()
+        b:EnableMouse(false)
+        b:ClearAllPoints()
+        b:SetAlpha(0)
+      end)
     end
   end
 end
 
--- Create clean plain Button once (versioned name). Never MinimizeButton / ItemButton.
-local function EnsureCleanChromeButton(existing, name, parent)
-  if existing and existing._bbChromeClean == CHROME_VER and existing:GetParent() == parent then
-    StripAllFontStrings(existing)
+--[[
+  Create ONCE as UIPanelCloseButtonNoScripts (same look/size DNA as Close).
+  No recreate on later EnsureTitleChrome calls.
+]]
+local function EnsureCloseLookButton(existing, name, parent)
+  if existing and existing._bbChromeV13 then
     return existing
   end
-  if existing then
-    RetireChromeButton(existing)
+  local btn = existing
+  if not btn then
+    btn = _G[name]
   end
-  local old = _G[name]
-  if old and old._bbChromeClean == CHROME_VER then
+  if btn and btn._bbChromeV13 then
     pcall(function()
-      old:SetParent(parent)
+      btn:SetParent(parent)
     end)
-    StripAllFontStrings(old)
-    return old
+    return btn
   end
-  if old then
-    RetireChromeButton(old)
+  -- Fresh create only when missing — never destroy/recreate a live v13 button.
+  if not btn then
+    pcall(function()
+      btn = CreateFrame("Button", name, parent, "UIPanelCloseButtonNoScripts")
+    end)
   end
-  local btn = CreateFrame("Button", name, parent)
-  btn._bbChromeClean = CHROME_VER
-  StripAllFontStrings(btn)
+  if not btn then
+    pcall(function()
+      btn = CreateFrame("Button", name, parent, "UIPanelCloseButton")
+    end)
+  end
+  if not btn then
+    btn = CreateFrame("Button", name, parent)
+  end
+  btn._bbChromeV13 = true
+  pcall(function()
+    btn:SetParent(parent)
+    btn:SetScript("OnClick", nil) -- never HideParentPanel
+  end)
+  StripChromeFontStrings(btn)
   return btn
 end
 
-local function StyleCleanSortButton(btn, w, h)
-  StripAllFontStrings(btn)
-  LockButtonSize(btn, w, h)
-  pcall(function()
-    btn:SetNormalTexture(nil)
-    btn:SetPushedTexture(nil)
-    btn:SetDisabledTexture(nil)
-    btn:SetHighlightTexture(nil)
-  end)
-  if btn._bbCloseRing then
-    btn._bbCloseRing:Hide()
+-- Face glyph on top of Close-template chrome (keeps Close highlight/disabled look).
+local function ApplySortFace(btn)
+  if btn._bbFaceApplied then
+    return
   end
+  btn._bbFaceApplied = true
   pcall(function()
-    local face = btn._bbSortNormal
-    if not face then
-      face = btn:CreateTexture(nil, "ARTWORK")
-      btn._bbSortNormal = face
-    end
-    face:ClearAllPoints()
+    local face = btn:CreateTexture(nil, "ARTWORK", nil, 1)
     face:SetAllPoints(btn)
     if face.SetAtlas then
       face:SetAtlas("bags-button-autosort-up", false)
     end
-    face:Show()
     btn:SetNormalTexture(face)
-  end)
-  pcall(function()
-    local pt = btn._bbSortPushed
-    if not pt then
-      pt = btn:CreateTexture(nil, "ARTWORK")
-      btn._bbSortPushed = pt
+    btn._bbSortNormal = face
+    local pushed = btn:CreateTexture(nil, "ARTWORK", nil, 1)
+    pushed:SetAllPoints(btn)
+    if pushed.SetAtlas then
+      pushed:SetAtlas("bags-button-autosort-down", false)
     end
-    pt:ClearAllPoints()
-    pt:SetAllPoints(btn)
-    if pt.SetAtlas then
-      pt:SetAtlas("bags-button-autosort-down", false)
-    end
-    btn:SetPushedTexture(pt)
+    btn:SetPushedTexture(pushed)
   end)
-  pcall(function()
-    btn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
-    local ht = btn:GetHighlightTexture()
-    if ht then
-      ht:ClearAllPoints()
-      ht:SetAllPoints(btn)
-    end
-  end)
-  StripAllFontStrings(btn)
-  btn:EnableMouse(true)
-  btn:Show()
-  LockButtonSize(btn, w, h)
+  StripChromeFontStrings(btn)
 end
 
-local function StyleCleanGearButton(btn, w, h)
-  StripAllFontStrings(btn)
-  LockButtonSize(btn, w, h)
-  pcall(function()
-    btn:SetNormalTexture(nil)
-    btn:SetPushedTexture(nil)
-    btn:SetDisabledTexture(nil)
-    btn:SetHighlightTexture(nil)
-  end)
-  if btn._bbCloseRing then
-    btn._bbCloseRing:Hide()
+local function ApplyGearFace(btn)
+  if btn._bbFaceApplied then
+    return
   end
+  btn._bbFaceApplied = true
   pcall(function()
     btn:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
     local nt = btn:GetNormalTexture()
@@ -1296,8 +1259,6 @@ local function StyleCleanGearButton(btn, w, h)
       nt:SetTexCoord(0.08, 0.92, 0.08, 0.92)
       nt:SetVertexColor(1, 0.82, 0.2)
     end
-  end)
-  pcall(function()
     btn:SetPushedTexture("Interface\\Buttons\\UI-OptionsButton")
     local pt = btn:GetPushedTexture()
     if pt then
@@ -1307,28 +1268,38 @@ local function StyleCleanGearButton(btn, w, h)
       pt:SetVertexColor(0.85, 0.7, 0.15)
     end
   end)
-  pcall(function()
-    btn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
-    local ht = btn:GetHighlightTexture()
-    if ht then
-      ht:ClearAllPoints()
-      ht:SetAllPoints(btn)
-    end
-  end)
-  StripAllFontStrings(btn)
-  btn:EnableMouse(true)
-  btn:Show()
-  LockButtonSize(btn, w, h)
+  StripChromeFontStrings(btn)
+end
+
+-- After Close is laid out: clone GetWidth/GetHeight onto gear+broom.
+local function SyncChromeSizesFromClose(frame)
+  if not frame then
+    return
+  end
+  local close = frame.CloseButton
+  local tidy = frame.sortBtn
+  local gear = frame.settingsBtn
+  if not close or not tidy or not gear then
+    return
+  end
+  local w, h = MeasureCloseExact(close)
+  SetExactSize(close, w, h) -- keep Close stable at measured size
+  SetExactSize(tidy, w, h)
+  SetExactSize(gear, w, h)
+  LogChromeSizesOnce(close, tidy, gear)
+  return w, h
 end
 
 --[[
   Assign into forward-declared EnsureTitleChrome (must NOT use `local function` here).
-  Clean gear + broom left of X with gap; size = Close GetWidth/Height; no FontStrings.
+  Create gear/broom once (CloseButton template). Size only via Close GetWidth/Height.
 ]]
 EnsureTitleChrome = function(frame)
   if not frame then
     return
   end
+  RetireLegacyChromeOnce()
+
   local close = frame.CloseButton
   if not close then
     pcall(function()
@@ -1342,9 +1313,9 @@ EnsureTitleChrome = function(frame)
     close:SetFrameLevel((frame:GetFrameLevel() or 1) + 520)
     close:Show()
   end
-  local chromeW, chromeH = MeasureClose(close)
 
-  RetireLegacyChromeNames()
+  -- Measure after Close is anchored+shown (layout pass).
+  local chromeW, chromeH = MeasureCloseExact(close)
 
   pcall(function()
     local title = CombinedBagTitle()
@@ -1366,96 +1337,118 @@ EnsureTitleChrome = function(frame)
     end
   end)
 
-  -- Versioned clean names — leave old BetterBackpackSortButton retired.
-  local tidy = EnsureCleanChromeButton(frame.sortBtn, "BetterBackpackSortBtn12", frame)
+  local tidy = EnsureCloseLookButton(frame.sortBtn, "BetterBackpackSortBtn13", frame)
   frame.sortBtn = tidy
+  ApplySortFace(tidy)
   tidy:ClearAllPoints()
   if close then
     tidy:SetPoint("RIGHT", close, "LEFT", -CHROME_GAP, 0)
   else
     tidy:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -(chromeW + CHROME_GAP), -1)
   end
-  StyleCleanSortButton(tidy, chromeW, chromeH)
+  SetExactSize(tidy, chromeW, chromeH)
   tidy:SetFrameLevel((frame:GetFrameLevel() or 1) + 500)
   tidy:SetAlpha(1)
-  tidy:SetScript("OnEnter", function(self)
-    if not GameTooltip then
-      return
-    end
-    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-    pcall(function()
-      if GameTooltip_SetTitle then
-        GameTooltip_SetTitle(
-          GameTooltip,
-          (type(BAG_CLEANUP_BAGS) == "string" and BAG_CLEANUP_BAGS) or "Clean Up Bags",
-          HIGHLIGHT_FONT_COLOR
-        )
-      else
-        GameTooltip:SetText((type(BAG_CLEANUP_BAGS) == "string" and BAG_CLEANUP_BAGS) or "Clean Up Bags")
+  tidy:EnableMouse(true)
+  if not tidy._bbScripts then
+    tidy._bbScripts = true
+    tidy:SetScript("OnEnter", function(self)
+      if not GameTooltip then
+        return
       end
-      local desc = (type(BAG_CLEANUP_BAGS_DESCRIPTION) == "string" and BAG_CLEANUP_BAGS_DESCRIPTION)
-        or "Sort bags to free space."
-      if GameTooltip_AddNormalLine then
-        GameTooltip_AddNormalLine(GameTooltip, desc)
-      else
-        GameTooltip:AddLine(desc, 1, 1, 1, true)
+      GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+      pcall(function()
+        if GameTooltip_SetTitle then
+          GameTooltip_SetTitle(
+            GameTooltip,
+            (type(BAG_CLEANUP_BAGS) == "string" and BAG_CLEANUP_BAGS) or "Clean Up Bags",
+            HIGHLIGHT_FONT_COLOR
+          )
+        else
+          GameTooltip:SetText((type(BAG_CLEANUP_BAGS) == "string" and BAG_CLEANUP_BAGS) or "Clean Up Bags")
+        end
+        local desc = (type(BAG_CLEANUP_BAGS_DESCRIPTION) == "string" and BAG_CLEANUP_BAGS_DESCRIPTION)
+          or "Sort bags to free space."
+        if GameTooltip_AddNormalLine then
+          GameTooltip_AddNormalLine(GameTooltip, desc)
+        else
+          GameTooltip:AddLine(desc, 1, 1, 1, true)
+        end
+      end)
+      GameTooltip:Show()
+    end)
+    tidy:SetScript("OnLeave", function()
+      if GameTooltip then
+        GameTooltip:Hide()
       end
     end)
-    GameTooltip:Show()
-  end)
-  tidy:SetScript("OnLeave", function()
-    if GameTooltip then
-      GameTooltip:Hide()
-    end
-  end)
-  tidy:SetScript("OnClick", function()
-    pcall(function()
-      if PlaySound and SOUNDKIT and SOUNDKIT.UI_BAG_SORTING_01 then
-        PlaySound(SOUNDKIT.UI_BAG_SORTING_01)
+    tidy:SetScript("OnClick", function()
+      pcall(function()
+        if PlaySound and SOUNDKIT and SOUNDKIT.UI_BAG_SORTING_01 then
+          PlaySound(SOUNDKIT.UI_BAG_SORTING_01)
+        end
+      end)
+      local Tidy = BetterBackpack.Modules.Tidy
+      if Tidy and Tidy.SortBags then
+        Tidy.SortBags()
       end
     end)
-    local Tidy = BetterBackpack.Modules.Tidy
-    if Tidy and Tidy.SortBags then
-      Tidy.SortBags()
-    end
-  end)
-  StripAllFontStrings(tidy)
+  end
   tidy:Show()
-  LockButtonSize(tidy, chromeW, chromeH)
   frame.tidy = tidy
   sortBtn = tidy
 
-  local gear = EnsureCleanChromeButton(frame.settingsBtn, "BetterBackpackGearBtn12", frame)
+  local gear = EnsureCloseLookButton(frame.settingsBtn, "BetterBackpackGearBtn13", frame)
   frame.settingsBtn = gear
+  ApplyGearFace(gear)
   gear:ClearAllPoints()
   gear:SetPoint("RIGHT", tidy, "LEFT", -CHROME_GAP, 0)
-  StyleCleanGearButton(gear, chromeW, chromeH)
+  SetExactSize(gear, chromeW, chromeH)
   gear:SetFrameLevel((frame:GetFrameLevel() or 1) + 510)
   gear:SetAlpha(1)
-  gear:SetScript("OnEnter", function(self)
-    if GameTooltip then
-      GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-      GameTooltip:SetText("Nastavení")
-      GameTooltip:AddLine("Kategorie zapnout / vypnout. Skrytá → Other.", 0.7, 0.7, 0.7, true)
-      GameTooltip:Show()
-    end
-  end)
-  gear:SetScript("OnLeave", function()
-    if GameTooltip then
-      GameTooltip:Hide()
-    end
-  end)
-  gear:SetScript("OnClick", function()
-    local S = BetterBackpack.Modules.Settings
-    if S and S.Toggle then
-      S.Toggle()
-    end
-  end)
-  StripAllFontStrings(gear)
+  gear:EnableMouse(true)
+  if not gear._bbScripts then
+    gear._bbScripts = true
+    gear:SetScript("OnEnter", function(self)
+      if GameTooltip then
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetText("Nastavení")
+        GameTooltip:AddLine("Kategorie zapnout / vypnout. Skrytá → Other.", 0.7, 0.7, 0.7, true)
+        GameTooltip:Show()
+      end
+    end)
+    gear:SetScript("OnLeave", function()
+      if GameTooltip then
+        GameTooltip:Hide()
+      end
+    end)
+    gear:SetScript("OnClick", function()
+      local S = BetterBackpack.Modules.Settings
+      if S and S.Toggle then
+        S.Toggle()
+      end
+    end)
+  end
   gear:Show()
-  LockButtonSize(gear, chromeW, chromeH)
   frame.gear = gear
   settingsBtn = gear
+
+  -- Clone Close size after this layout pass.
+  SyncChromeSizesFromClose(frame)
+  -- One more pass next tick — Close GetWidth can settle after Show/Raise.
+  if not frame._bbChromeSizeDefer then
+    frame._bbChromeSizeDefer = true
+    if C_Timer and C_Timer.After then
+      C_Timer.After(0, function()
+        frame._bbChromeSizeDefer = nil
+        if frame:IsShown() then
+          SyncChromeSizesFromClose(frame)
+        end
+      end)
+    else
+      frame._bbChromeSizeDefer = nil
+    end
+  end
 
   if frame._bbChrome then
     pcall(frame._bbChrome.Hide, frame._bbChrome)
@@ -1719,13 +1712,13 @@ function Layout.Show()
   main:Show()
   PlaceOnScreen()
   ApplyCombinedBagsChrome(main)
+  -- After layout: remount chrome + clone Close GetWidth/Height exactly.
   pcall(EnsureTitleChrome, main)
   UpdateFreeSpace()
   UpdateMoney()
   pcall(function()
     main:Raise()
   end)
-  pcall(EnsureTitleChrome, main)
   UpdateFreeSpace()
   return main:IsShown() and true or false
 end
