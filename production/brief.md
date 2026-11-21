@@ -1,11 +1,13 @@
-# Playtest brief — BetterBackpack 0.5.61 (Forever keyring)
+# Playtest brief — BetterBackpack 0.5.62 (revert 0.5.61)
 
-**0.5.61**
-- **0.5.60 base kept.** Minimal Forever keyring: `OpenBag(bag, true)` then `ToggleBag` orig if needed (Bagnon/Baganator pattern — individual container, not combined).
-- Keyring bar + `ToggleKeyRing` → XOR close/open; `ToggleBag` passthrough except `IsForeverKeyringBag`. Chat: `keyring · toggle/open/done`.
+**0.5.62**
+- **0.5.61 rolled back:** `OpenClose.lua` = exact git `a6367fd` (0.5.60). No keyring ToggleBag/KeyRing replace. **Playtest B XOR first.**
+
+**0.5.61** (broken B — do not ship)
+- Keyring hooks on `ToggleBag`/`ToggleKeyRing` — reverted in 0.5.62.
 
 **0.5.60**
-- **HARD REVERT:** `OpenClose.lua` = git `6879a76` (0.5.50). B → BetterBackpack XOR; bag bar = vanilla except keyring patch above.
+- **HARD REVERT:** `OpenClose.lua` = git `6879a76` (0.5.50). B → BetterBackpack XOR; bag bar = vanilla Blizzard.
 
 **0.5.59**
 - `MainMenuBarBackpackButton` OnClick → **onBagKey** (combined), including `bagBarNative`. Swallow twin `ToggleBag(0)` for 200ms after main-pack click.

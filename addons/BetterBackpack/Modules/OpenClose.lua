@@ -1,8 +1,7 @@
 --[[
-  BetterBackpack.OpenClose — B + /bb (0.5.61)
+  BetterBackpack.OpenClose — B + /bb (0.5.62 — same as 0.5.60)
 
-  ToggleAllBags + ToggleBackpack → onBagKey XOR. Other bags = Blizzard; Forever keyring =
-  OpenBag(KEYRING, true) + keyring-only ToggleBag/ToggleKeyRing route (Baganator pattern).
+  ToggleAllBags + ToggleBackpack → onBagKey XOR (same handler). ToggleBag / ToggleKeyRing = Blizzard.
   Bag-bar native: never park/blackout ContainerFrame*; RestoreNativeBagFrames on close only.
   (not hooksecurefunc). Forever Toggle* bodies call Open*/Close* first; a
   post-hook XOR then closed what we just opened (or reopened after close) —
@@ -306,24 +305,6 @@ local function CallOrigToggle(name, ...)
   return pcall(orig, ...)
 end
 
-local function CallBlizzardToggleBag(bagID, ...)
-  local orig = OpenClose["_orig_ToggleBag"] or OpenClose["_blizzard_ToggleBag"]
-  if type(orig) ~= "function" then
-    return false
-  end
-  OpenClose._keyRingInnerOpen = true
-  local ok, err = pcall(orig, bagID, ...)
-  OpenClose._keyRingInnerOpen = false
-  if not ok and BetterBackpack.RecordError then
-    BetterBackpack.RecordError("ToggleBag", err)
-  end
-  return ok
-end
-
-function OpenClose.ResetKeyRingGate()
-  OpenClose._keyRingInnerOpen = false
-end
-
 local function BlackoutCombinedOnly()
   local f = ContainerFrameCombinedBags
   if not f then
@@ -359,16 +340,6 @@ end
 local function BagKeyChat(branch, detail)
   local extra = detail and (" · " .. tostring(detail)) or ""
   local line = "|cffc9a227BetterBackpack|r onBagKey · " .. tostring(branch) .. extra
-  if BetterBackpack.Print then
-    BetterBackpack.Print(line)
-  elseif DEFAULT_CHAT_FRAME then
-    DEFAULT_CHAT_FRAME:AddMessage(line)
-  end
-end
-
-local function KeyRingChat(branch, detail)
-  local extra = detail and (" · " .. tostring(detail)) or ""
-  local line = "|cff88ccffBetterBackpack|r keyring · " .. tostring(branch) .. extra
   if BetterBackpack.Print then
     BetterBackpack.Print(line)
   elseif DEFAULT_CHAT_FRAME then
@@ -924,162 +895,17 @@ local function onBagKey(src)
   inBagKey = false
 end
 
-local function KeyRingContainerBagID()
-  if KEYRING_CONTAINER ~= nil then
-    return KEYRING_CONTAINER
-  end
-  if Enum and Enum.BagIndex and Enum.BagIndex.Keyring ~= nil then
-    return Enum.BagIndex.Keyring
-  end
-  return BBKeyringBagIndex()
-end
-
-local function IsForeverKeyringBag(bagID)
-  if bagID == nil then
-    return false
-  end
-  local bag = KeyRingContainerBagID()
-  if bag ~= nil and FocusBagsMatch(bagID, bag) then
-    return true
-  end
-  local Slots = BetterBackpack.Modules.Slots
-  return Slots and Slots.IsKeyringBag and Slots.IsKeyringBag(bagID)
-end
-
-local function ForeverKeyringShouldShow()
-  if C_ActionBar and type(C_ActionBar.ShouldShowKeyring) == "function" then
-    local ok, show = pcall(C_ActionBar.ShouldShowKeyring)
-    if ok and not show then
-      return false
-    end
-  end
-  if GetCVarBool and type(GetCVarBool) == "function" then
-    local ok, show = pcall(GetCVarBool, "showKeyring")
-    if ok and show == false then
-      return false
-    end
-  end
-  return true
-end
-
-local function FindKeyringContainerFrame()
-  local bag = KeyRingContainerBagID()
-  if bag == nil then
-    return nil, false
-  end
-  if type(ContainerFrameUtil_GetShownFrameForID) == "function" then
-    local f, shown = ContainerFrameUtil_GetShownFrameForID(bag)
-    if f then
-      local vis = shown
-      if vis == nil and f.IsShown then
-        vis = f:IsShown()
-      end
-      return f, vis and true or false
-    end
-  end
-  if ContainerFrameUtil and type(ContainerFrameUtil.GetShownFrameForID) == "function" then
-    local f = ContainerFrameUtil.GetShownFrameForID(bag)
-    if f then
-      return f, f.IsShown and f:IsShown() and true or false
-    end
-  end
-  if type(IsBagOpen) == "function" then
-    local idx = IsBagOpen(bag)
-    if idx then
-      local f = _G["ContainerFrame" .. tostring(idx)]
-      if f then
-        return f, f.IsShown and f:IsShown() and true or false
-      end
-    end
-  end
-  return KeyRingFrameIsShown()
-end
-
-local function CloseForeverKeyring()
-  local bag = KeyRingContainerBagID()
-  if type(CloseBag) == "function" and bag ~= nil then
-    pcall(CloseBag, bag)
-  end
-  local frame, shown = FindKeyringContainerFrame()
-  if shown and frame and frame.Hide then
-    pcall(function()
-      frame:Hide()
-    end)
-  elseif bag ~= nil then
-    CallBlizzardToggleBag(bag)
-  end
-  EndNativeSession()
-end
-
-local function OpenForeverKeyringIndividual()
-  if not ForeverKeyringShouldShow() then
-    KeyRingChat("skip", "gated off")
-    return false
-  end
-  local bag = KeyRingContainerBagID()
-  KeyRingChat("open", "bag=" .. tostring(bag))
-  BlackoutCombinedOnly()
-  if type(ContainerFrame_AllowedToOpenBags) == "function" then
-    local ok, allowed = pcall(ContainerFrame_AllowedToOpenBags)
-    if ok and not allowed then
-      KeyRingChat("blocked", "ContainerFrame_AllowedToOpenBags")
-      return false
-    end
-  end
-  if type(OpenBag) == "function" and bag ~= nil then
-    pcall(OpenBag, bag, true)
-  end
-  local frame, shown = FindKeyringContainerFrame()
-  if not shown and bag ~= nil then
-    CallBlizzardToggleBag(bag)
-    frame, shown = FindKeyringContainerFrame()
-  end
-  if frame then
-    pcall(function()
-      RestoreFrameInteractive(frame)
-      if frame.Show and not frame:IsShown() then
-        frame:Show()
-      end
-      local left
-      pcall(function()
-        left = frame:GetLeft()
-      end)
-      if left == nil or left < -500 then
-        frame:ClearAllPoints()
-        frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-      end
-    end)
-  end
-  if type(UpdateContainerFrameAnchors) == "function" then
-    pcall(UpdateContainerFrameAnchors)
-  end
-  shown = NativeKeyRingVisible() or KeyRingFrameIsShown()
-  KeyRingChat("done", tostring(shown))
-  return shown and true or false
-end
-
-OpenClose.OpenForeverKeyringIndividual = OpenForeverKeyringIndividual
-
-local function onKeyRingToggle(src)
-  src = src or "keyring"
+local function onKeyRingToggle()
   if not EnabledReplace() then
     CallOrigToggle("ToggleKeyRing")
     return
   end
   if BagBarNativeEnabled() then
-    KeyRingChat("toggle", src)
     if SessionOpen() or OursVisible() then
       OpenClose.CloseOurs({ closeBlizzard = false, suppress = 0.05 })
     end
     BlackoutCombinedOnly()
-    if KeyRingNativeOpen() then
-      KeyRingChat("close", src)
-      CloseForeverKeyring()
-      return
-    end
-    KeyRingChat("open", src)
-    BeginNativeSession(BBKeyringBagIndex())
-    InvokeNativeKeyRing()
+    CallOrigToggle("ToggleKeyRing")
     return
   end
   if SessionOpen() then
@@ -1369,10 +1195,36 @@ local function FinishNativeOpen()
 end
 
 InvokeNativeKeyRing = function()
+  local key = BBKeyringBagIndex()
   ignoringBagShow = true
   OpenClose._nativeOpening = true
-  pcall(OpenForeverKeyringIndividual)
+  BlackoutCombinedOnly()
+
+  local function opened()
+    if NativeKeyRingVisible() or KeyRingFrameIsShown() then
+      return true
+    end
+    return false
+  end
+
+  if not CallOrigToggle("ToggleKeyRing") and key ~= nil then
+    CallOrigToggle("ToggleBag", key)
+  end
+  if not opened() and key ~= nil then
+    if not CallOrigToggle("ToggleBag", key) and type(OpenBag) == "function" then
+      pcall(OpenBag, key)
+    end
+  end
+  if not opened() and type(OpenKeyRing) == "function" then
+    pcall(OpenKeyRing)
+  end
+
+  local _, krFrame = KeyRingFrameIsShown()
+  if krFrame then
+    RestoreFrameInteractive(krFrame)
+  end
   RestoreShownNativeBags()
+
   if C_Timer and C_Timer.After then
     C_Timer.After(0, FinishNativeOpen)
     C_Timer.After(0.05, FinishNativeOpen)
@@ -1716,29 +1568,14 @@ end
 
 local BAG_KEY_TOGGLES = { "ToggleAllBags", "ToggleBackpack" }
 
-local function onToggleBagKeyringRoute(bagID, ...)
-  if not EnabledReplace() or not IsForeverKeyringBag(bagID) then
-    CallOrigToggle("ToggleBag", bagID, ...)
-    return
-  end
-  if OpenClose._keyRingInnerOpen then
-    CallBlizzardToggleBag(bagID, ...)
-    return
-  end
-  onKeyRingToggle("ToggleBag")
-end
-
 local function ApplyBagKeyReplace()
   CaptureBlizzardToggles()
   OpenClose.RestoreBlizzardToggles()
+  -- ToggleBag / ToggleKeyRing stay native — only B paths replaced (0.5.45 path).
   ReplaceToggle("ToggleAllBags", function(...)
     onBagKey("ToggleAllBags")
   end)
   ReplaceToggle("ToggleBackpack", onBackpackToggle)
-  ReplaceToggle("ToggleKeyRing", function(...)
-    onKeyRingToggle("ToggleKeyRing")
-  end)
-  ReplaceToggle("ToggleBag", onToggleBagKeyringRoute)
 end
 
 function OpenClose.EnsureBagKeyReplace()
@@ -1768,13 +1605,10 @@ function OpenClose.InstallHooks()
       n = n + 1
     end
     if n > 0 then
-      local kr = (OpenClose._replaced_ToggleKeyRing and 1 or 0)
-        + (OpenClose._replaced_ToggleBag and 1 or 0)
       LogHooksOnce(string.format(
-        "B → XOR · %d/%d · keyring hooks=%d",
+        "B → BetterBackpack XOR · %d/%d toggles · ToggleBag=native",
         n,
-        #BAG_KEY_TOGGLES,
-        kr
+        #BAG_KEY_TOGGLES
       ))
     else
       LogHooksOnce("bag-key toggles missing · /bb only")
