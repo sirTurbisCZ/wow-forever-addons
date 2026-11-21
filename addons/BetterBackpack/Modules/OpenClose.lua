@@ -878,6 +878,12 @@ function OpenClose.NotifyHidden()
   if BetterBackpack._bbClosing then
     return
   end
+  if BetterBackpack._bbKeepShown and Layout and Layout.IsBagFrameVisible and not Layout.IsBagFrameVisible() then
+    if Layout and Layout.SyncBagUISpecialFrame then
+      pcall(Layout.SyncBagUISpecialFrame)
+    end
+    return
+  end
   if OursVisible() then
     pcall(OpenClose.CloseOurs, { closeBlizzard = true, suppress = 0.25 })
     return

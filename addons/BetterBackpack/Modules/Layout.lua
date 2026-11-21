@@ -2835,15 +2835,13 @@ function Layout.InstallEscGuard()
   Layout._escGuardInstalled = true
   local orig = CloseSpecialWindows
   CloseSpecialWindows = function(...)
-    Layout.StripBagSpecialFrame()
-    local f = main or _G.BetterBackpackFrame
-    if f and f.IsShown and f:IsShown() and (combatVisuallyHidden or FrameAlpha(f) < ALPHA_ESC_MIN) then
-      if not (InCombatLockdown and InCombatLockdown()) then
-        pcall(function()
-          f:Hide()
-        end)
-      end
+    local userVisible = Layout.IsBagFrameVisible and Layout.IsBagFrameVisible()
+    if userVisible then
+      -- Listed in UISpecialFrames — let Blizzard close bags on this ESC (one press = close only).
+      return orig(...)
     end
+    -- Parked keep-shown (alpha 0, Show): never in UISpecialFrames; never Hide (OnHide → spurious open/close).
+    Layout.StripBagSpecialFrame()
     return orig(...)
   end
 end

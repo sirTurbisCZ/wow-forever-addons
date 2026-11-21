@@ -1,5 +1,9 @@
 # BetterBackpack changelog
 
+## 1.1.6
+
+- **ESC:** `CloseSpecialWindows` guard no longer strips `UISpecialFrames` while bags are user-visible (1.1.x bug: first ESC opened game menu + left bags open). Parked keep-shown: strip only, no `Hide()` on ESC. `NotifyHidden` ignores OnHide from parked shell.
+
 ## 1.1.5
 
 - **Combat B (fix):** restore **1.1.2 keep-shown** warm shell (`EnsureCombatShell` → `Show`+alpha 0). 1.1.4 parked with **`Hide()`** so combat could not `Show()` under lockdown → B dead. ESC: still strip `UISpecialFrames` when alpha 0 / `combatVisuallyHidden`; full `Hide()` only when `_bbKeepShown` is off (user had real open). **`CloseOurs`** reparks shell OOC. Removed ineffective `OnCombatEnter`/`OnCombatExit`. Debug: `/bb debug on` → `combat-diag` + `combatBagTrace` SV.
