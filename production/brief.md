@@ -1,4 +1,8 @@
-# Playtest brief — BetterBackpack 0.5.82
+# Playtest brief — BetterBackpack 0.5.83
+
+**0.5.83**
+- Vendor bulk: **sync sell in header click** (C_Timer cannot Pickup/Sell).
+- Chat: DetectContext, ListLaneSlots count, pump start, sold N/M (no silent abort).
 
 **0.5.82**
 - Login: `BulkTransfer ok · …` or ERROR if module missing.

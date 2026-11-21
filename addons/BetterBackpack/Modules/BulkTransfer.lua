@@ -136,7 +136,17 @@ local function SlotChanged(bag, slot, idBefore, countBefore)
   return false
 end
 
+local function DetectContext()
+  if Context and Context.SpecialRmbContext then
+    return Context.SpecialRmbContext()
+  end
+  return nil
+end
+
 local function MerchantFrameOpen()
+  if Context and Context.SpecialRmbContext and Context.SpecialRmbContext() == "merchant" then
+    return true
+  end
   if MerchantFrame then
     if MerchantFrame.IsVisible then
       local ok, v = pcall(MerchantFrame.IsVisible, MerchantFrame)
@@ -151,22 +161,10 @@ local function MerchantFrameOpen()
       end
     end
   end
-  if CanMerchantRepair then
-    local ok, v = pcall(CanMerchantRepair)
-    if ok and v then
-      return true
-    end
-  end
-  if Context and Context.SpecialRmbContext then
-    return Context.SpecialRmbContext() == "merchant"
-  end
   return false
 end
 
 local function MerchantAllowed(bag, slot)
-  if not MerchantFrameOpen() then
-    return false
-  end
   local b, s = ContainerAPI(bag, slot)
   local id = ItemID(b, s)
   if not id then
@@ -315,22 +313,51 @@ function BulkTransfer.HeaderTooltipLine()
   return "Shift+RMB header - " .. verb
 end
 
+local function BulkPrint(msg)
+  if BetterBackpack.Print then
+    BetterBackpack.Print("|cff88ccffBulk|r " .. tostring(msg))
+  end
+end
+
 local function FinishMerchantPump(q)
-  if not q or q.ctx ~= "merchant" or not BetterBackpack.Print then
+  if not q or q.ctx ~= "merchant" then
     return
   end
-  BetterBackpack.Print(string.format(
-    "|cff88ccffBulk|r sold %d / %d%s",
+  BulkPrint(string.format(
+    "sold %d / %d%s",
     q.sold or 0,
     q.total or 0,
     q.label and (" · " .. q.label) or ""
   ))
   if q.diag and q.diag ~= "" then
-    BetterBackpack.Print("|cff88ccffBulk|r " .. q.diag)
+    BulkPrint(q.diag)
   end
 end
 
-local function Pump()
+local function PumpStep(limit)
+  if not pumpQueue or not OOC() then
+    return false
+  end
+  local ctx = pumpQueue.ctx
+  limit = limit or 1
+  local moved = 0
+  while #pumpQueue.slots > 0 and moved < limit do
+    local e = table.remove(pumpQueue.slots, 1)
+    local b, s = e and e.bag, e and e.slot
+    if b ~= nil and s ~= nil then
+      b, s = ContainerAPI(b, s)
+    end
+    if b ~= nil and s ~= nil and Slots.SlotOccupied and Slots.SlotOccupied(b, s) then
+      if TransferOne(b, s, ctx) then
+        moved = moved + 1
+        pumpQueue.sold = (pumpQueue.sold or 0) + 1
+      end
+    end
+  end
+  return moved > 0
+end
+
+local function PumpAsync()
   if not pumpQueue then
     return
   end
@@ -349,31 +376,12 @@ local function Pump()
     end
     return
   end
-  local ctx = pumpQueue.ctx
-  local moved = 0
-  local limit = 12
-  if ctx == "merchant" or ctx == "mail" then
-    limit = 1
-  end
-  while #pumpQueue.slots > 0 and moved < limit do
-    local e = table.remove(pumpQueue.slots, 1)
-    local b, s = e and e.bag, e and e.slot
-    if b ~= nil and s ~= nil then
-      b, s = ContainerAPI(b, s)
-    end
-    if b ~= nil and s ~= nil and Slots.SlotOccupied and Slots.SlotOccupied(b, s) then
-      if TransferOne(b, s, ctx) then
-        moved = moved + 1
-        pumpQueue.sold = (pumpQueue.sold or 0) + 1
-      end
-    end
-  end
+  PumpStep(12)
   if #pumpQueue.slots > 0 then
-    local delay = (ctx == "merchant" or ctx == "mail") and 0.08 or 0.04
     if C_Timer and C_Timer.After then
-      C_Timer.After(delay, Pump)
+      C_Timer.After(0.04, PumpAsync)
     else
-      Pump()
+      PumpAsync()
     end
   else
     local q = pumpQueue
@@ -385,7 +393,7 @@ local function Pump()
   end
 end
 
-local function StartQueue(ctx, slots, label, diag)
+local function StartQueue(ctx, slots, label, diag, syncMax)
   if not slots or #slots == 0 then
     return false, "empty"
   end
@@ -402,10 +410,36 @@ local function StartQueue(ctx, slots, label, diag)
   for i = 1, #slots do
     pumpQueue.slots[i] = { bag = slots[i].bag, slot = slots[i].slot }
   end
+  BulkPrint(string.format(
+    "pump start · ctx=%s queued=%d token=%d sync=%s",
+    tostring(ctx),
+    #pumpQueue.slots,
+    pumpToken,
+    tostring(syncMax or "async")
+  ))
+  if ctx == "merchant" or ctx == "mail" then
+    syncMax = syncMax or 48
+    local steps = 0
+    while pumpQueue and #pumpQueue.slots > 0 and steps < syncMax and OOC() do
+      PumpStep(1)
+      steps = steps + 1
+    end
+    local q = pumpQueue
+    pumpQueue = nil
+    if q and q.ctx == "merchant" then
+      FinishMerchantPump(q)
+    elseif q and BetterBackpack.Print then
+      BulkPrint(string.format("moved %d / %d%s", q.sold or 0, q.total or 0, q.label and (" · " .. q.label) or ""))
+    end
+    if Layout and Layout.Refresh then
+      Layout.Refresh()
+    end
+    return true
+  end
   if C_Timer and C_Timer.After then
-    C_Timer.After(0, Pump)
+    C_Timer.After(0, PumpAsync)
   else
-    Pump()
+    PumpAsync()
   end
   return true
 end
@@ -439,36 +473,38 @@ local function MerchantProbe(first)
 end
 
 function BulkTransfer.TransferLane(laneKey)
-  if BetterBackpack.Print then
-    BetterBackpack.Print("|cff88ccffBulk|r TransferLane enter · " .. tostring(laneKey))
-  end
-  local ctx = Context and Context.SpecialRmbContext and Context.SpecialRmbContext()
-  if not OOC() or not laneKey or laneKey == TRASH then
+  BulkPrint("TransferLane enter · " .. tostring(laneKey))
+  if not OOC() then
+    BulkPrint("abort · in combat lockdown")
     return false
   end
+  if not laneKey or laneKey == TRASH then
+    BulkPrint("abort · invalid lane")
+    return false
+  end
+  local ctx = DetectContext()
+  BulkPrint("DetectContext · ctx=" .. tostring(ctx))
   if not ctx then
-    if BetterBackpack.Print then
-      BetterBackpack.Print("|cff88ccffBulk|r — open vendor, mail, or bank first")
-    end
+    BulkPrint("abort · open vendor, mail, or bank first")
     return false
   end
   if not Layout or not Layout.ListLaneSlots then
+    BulkPrint("abort · Layout.ListLaneSlots missing")
     return false
   end
   local slots = Layout.ListLaneSlots(laneKey, true)
+  BulkPrint(string.format("ListLaneSlots · lane=%s count=%d", tostring(laneKey), #slots))
   local mOpen = MerchantFrameOpen()
   local repair = false
   if CanMerchantRepair then
     local ok, v = pcall(CanMerchantRepair)
     repair = ok and v and true or false
   end
-  if BetterBackpack.Print and ctx == "merchant" then
+  if ctx == "merchant" then
     local first = slots[1]
     local fb, fs = first and ContainerAPI(first.bag, first.slot)
-    BetterBackpack.Print(string.format(
-      "|cff88ccffBulk|r lane=%s slots=%d merchant=%s CanMerchantRepair=%s first=%s:%s",
-      tostring(laneKey),
-      #slots,
+    BulkPrint(string.format(
+      "merchant=%s CanMerchantRepair=%s first=%s:%s",
       tostring(mOpen),
       tostring(repair),
       tostring(fb),
@@ -476,27 +512,18 @@ function BulkTransfer.TransferLane(laneKey)
     ))
   end
   if #slots == 0 then
-    if BetterBackpack.Print then
-      BetterBackpack.Print("|cff88ccffBulk|r " .. tostring(laneKey) .. " — nothing to move")
-    end
+    BulkPrint(tostring(laneKey) .. " — nothing to move")
     return true
   end
   if ctx == "merchant" and not mOpen then
-    if BetterBackpack.Print then
-      BetterBackpack.Print("|cff88ccffBulk|r — merchant frame not open")
-    end
-    return false
+    BulkPrint("warn · merchant UI not detected — trying sell anyway (ctx=merchant)")
   end
   local label = tostring(Layout.GetCategoryLabel and Layout.GetCategoryLabel(laneKey) or laneKey)
   local diag = ctx == "merchant" and MerchantProbe(slots[1]) or nil
+  BulkPrint(string.format("%s · %s · %d stacks · queue…", label, tostring(ActionVerb(ctx) or ctx), #slots))
   local ok = StartQueue(ctx, slots, label, diag)
-  if ok and BetterBackpack.Print then
-    BetterBackpack.Print(string.format(
-      "|cff88ccffBulk|r %s · %s · %d stacks (selling…)",
-      label,
-      tostring(ActionVerb(ctx) or ctx),
-      #slots
-    ))
+  if not ok then
+    BulkPrint("abort · StartQueue failed")
   end
   return ok
 end

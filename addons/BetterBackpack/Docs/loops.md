@@ -146,7 +146,7 @@ flowchart TD
   Shift -->|ano| RMB[TransferLane bulk]
   RMB --> Ctx{Context open?}
   Ctx -->|ne| Noop[ignore]
-  Ctx -->|merchant| Sell[1/stack · UseContainerItem then SellCursor]
+  Ctx -->|merchant| Sell[sync in click · Pickup+SellCursor / UseContainerItem]
   Ctx -->|mail| Mail[queue · Pickup+ClickSendMail]
   Ctx -->|bank| Bank[queue · UseContainerItem each slot]
   Sell --> Pump[throttled C_Timer pump]

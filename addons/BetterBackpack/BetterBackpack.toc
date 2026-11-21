@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 0.5.82 header MouseUp bulk wire; Core BulkTransfer check.
+## Notes: 0.5.83 sync vendor sell in click; bulk diagnostics.
 ## Author: tuma
-## Version: 0.5.82
+## Version: 0.5.83
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled
