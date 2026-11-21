@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.1.13**
+Version: **0.1.14**
 
 See also: [merge-design.md](merge-design.md) (opt-in merge, no name mutation).
 

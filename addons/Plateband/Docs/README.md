@@ -34,6 +34,7 @@ Developers (monorepo): `./scripts/link-addon.sh Plateband` then `/reload`.
 | `/pb safe` | Turn module off and clear overlays |
 | `/pb reset` | Restore default settings (native-only) |
 | `/pb size <n>` | Icon size hint (12–32) |
+| `/pb merge on` / `/pb merge off` | Experimental foreign DoT merge beside native (default off) |
 
 Alias: `/plateband`.
 
@@ -72,6 +73,6 @@ If Forever Error Log is installed, also send:
 |---------|-------------|
 | Addon does not load | Folder name must be exactly `Plateband`; `/reload` |
 | Weird / broken plates after older Plateband | `/reload` on **0.1.12+** (native-only; undoes prior name pins) |
-| Want party DoT merge again | Advanced: set `PlatebandDB.profile.mergeMissing = true` then `/reload` (experimental) |
+| Want party DoT merge again | `/pb merge on`, target enemy with party DoTs; `/pb diagnose` → `merge=1`, `fb>0` when icons painted |
 | Errors / weird plates | `/pb safe`, then `/felog list` if Forever Error Log is installed |
 | Dual aura rows with an old Retinue install | Disable or unlink Retinue; Plateband owns plates only |

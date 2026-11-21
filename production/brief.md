@@ -16,3 +16,7 @@ Release gate — combat, vendor bulk, auto-sell, English UI.
 4. Tooltips: **Tidy** / **Settings** (English).
 
 Prior 0.5.x notes archived in `addons/BetterBackpack/Docs/CHANGELOG.md`.
+
+---
+
+Plateband playtest: see [brief-plateband.md](brief-plateband.md) (0.1.14 merge ship).

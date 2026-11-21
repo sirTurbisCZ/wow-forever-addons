@@ -1817,8 +1817,9 @@ SnapshotDiagnose = function(reason, opts)
     end
   end
 
+  local mergeOn = Profile().mergeMissing == true and "1" or "0"
   local card = string.format(
-    "PLATEBAND_CARD ver=%s reason=%s target=%s plate=%s plates=%s overlays=%s ac=%s fb=%s kids=%s tf=%s native=%s acFail=%s enabled=%s safe=%s watch=%s seen=%s upd=%s blocked=%s",
+    "PLATEBAND_CARD ver=%s reason=%s target=%s plate=%s plates=%s overlays=%s ac=%s fb=%s kids=%s tf=%s native=%s merge=%s acFail=%s enabled=%s safe=%s watch=%s seen=%s upd=%s blocked=%s",
     tostring(ns.Config.VERSION),
     tostring(reason or "manual"),
     targetYes and "yes" or "no",
@@ -1830,6 +1831,7 @@ SnapshotDiagnose = function(reason, opts)
     tostring(kids),
     tostring(tf),
     tostring(native),
+    mergeOn,
     acCreateFailed and "1" or "0",
     tostring(Profile().enabled),
     tostring(Profile().safeMode),
@@ -1852,6 +1854,7 @@ SnapshotDiagnose = function(reason, opts)
     kids = kids,
     tf = tf,
     native = native,
+    merge = mergeOn,
     acFail = acCreateFailed and 1 or 0,
     seen = platesSeen,
     upd = overlayUpdates,
