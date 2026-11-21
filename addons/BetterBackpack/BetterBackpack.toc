@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: Category-lane bags with combat-safe RMB. Parks CombinedBags — never Hide.
+## Notes: stable-062-base (0.5.68). B XOR + lane bulk/vendor from 0.5.63. Parks CombinedBags — never Hide.
 ## Author: tuma
-## Version: 0.5.67
+## Version: 0.5.68-stable-062-base
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled

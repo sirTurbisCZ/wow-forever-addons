@@ -1,7 +1,7 @@
 # BetterBackpack — smyčky a grafy
 
-**Kód:** `Core.lua`, `Modules/{Slots,Layout,Context,OpenClose,Tidy,Settings,Search,Filter,CustomCategories,Trash,StackMerge,Pins,LayoutModes}.lua`  
-**Verze reference:** 0.5.67 (OpenClose = 0.5.62 revert, zero `--[[` in file + CombatShow combat path · 0.5.64 combat B alpha hide + cold preload · 0.5.63 lane bulk · 0.5.21 Trash drop: itemID před pickup · header drop bez collapse · Junk≠Trash · 0.5.20 Trash jen click-only destroy · 0.5.19 Trash lane auto-destroy + ghosts + `/bb trashtest` · Shift/Ctrl+LMB = nativní link / dress-up / split · prázdné custom lanes kreslené jako drop target · drag-teach lanes · custom lanes v Settings · Settings v chrome bagu · broom = stejná plate jako gear/X · sticky velikost okna · broom/gear v chrome Close · bank RMB secure type2=item · SearchBoxTemplate search · gear na nativní broom plate · nativní AutoSort reparent · footer hairline · pevná velikost = plný rozbalený bag · dense grid PAD 2 · NumberFontNormalSmall counts · broom/gear jako CombinedBags · footer N/M = font peněz · fill wells default off)  
+**Kód:** `Core.lua`, `Modules/{Slots,Layout,Context,BulkTransfer,VendorJunk,OpenClose,Tidy,Settings,Search,Filter,CustomCategories,Trash,StackMerge,Pins,LayoutModes}.lua`  
+**Verze reference:** 0.5.68-stable-062-base (git 9277c4f tree; OpenClose lexer-only fix · 0.5.63 lane header bulk · vendor auto-sell grey · 0.5.21 Trash drop: itemID před pickup · header drop bez collapse · Junk≠Trash · 0.5.20 Trash jen click-only destroy · 0.5.19 Trash lane auto-destroy + ghosts + `/bb trashtest` · Shift/Ctrl+LMB = nativní link / dress-up / split · prázdné custom lanes kreslené jako drop target · drag-teach lanes · custom lanes v Settings · Settings v chrome bagu · broom = stejná plate jako gear/X · sticky velikost okna · broom/gear v chrome Close · bank RMB secure type2=item · SearchBoxTemplate search · gear na nativní broom plate · nativní AutoSort reparent · footer hairline · pevná velikost = plný rozbalený bag · dense grid PAD 2 · NumberFontNormalSmall counts · broom/gear jako CombinedBags · footer N/M = font peněz · fill wells default off)  
 **Stabilita:** Project `docs/bag-addon-brief.md` + Scenario Maps `docs/scenarios/BetterBackpack/`  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never path C harvest).
 
@@ -41,7 +41,6 @@ flowchart TD
 - **Open/close (0.5.62):** **Revert** `OpenClose` na přesný **0.5.60** (`a6367fd`) — 0.5.61 keyring hooky pryč; B XOR Combined, `ToggleBag`/`ToggleKeyRing` Blizzard.
 - **Keyring (0.5.33):** `KeyRingFrameNames`; native XOR helpery v souboru, bez Forever replace (0.5.62).
 - HookScript OnClick only on frames with `HasScript("OnClick")` / Button — never throw on BagsBar chrome kids.
-- **0.5.67:** `OpenClose.lua` has **no** `--[[` block comments; `HookBagBarButtons` uses `btn = _G[frameName]` (never `_G[names[i]]` token `]]`).
 - Frame size (**0.5.8 fixed**): počítá se vždy z **plného bagu — nefiltrovaný, všechny lanes rozbalené** (`CollectBuckets(true)`, collapse ignorován). `cols = clamp(nejširší lane, MIN_COLS=6, Columns())` (Columns = profile 10, dense ≥12). Grid = `cols*37 + (cols-1)*2` (PAD 2, dense); outer = `INSET_X + grid + INSET_X` (INSET_X=14); výška = TOP_CHROME 54 + lanesH + BOT_CHROME 30. HEADER_H 18, SECTION_GAP 4.
 - Collapse / Search / Filter / „No matches“ **nikdy nemění velikost okna**; během otevření ho nezmenší ani úbytek itemů (sticky 0.5.15), roste jen při novém lootu. Lanes bez shody se skryjí i s headerem. Uvolněné místo zůstane prázdné (Bg). Opt-in: `profile.fillEmptyWells = true` → prázdné wells `bags-item-slot64` (0.5.9 default **false**, schema 4 vypne i uložené true).
 - Header (0.5.7) = Baganator Forever: atlas `bag-arrow` 14×14 (rozbaleno rotace π/2, sbaleno −π; fallback UI-Minus/PlusButton), label `GameFontNormalMed2`, počet `(n)` `GameFontDisableSmall`, hover = bílý label.
@@ -100,25 +99,23 @@ Title chrome / AutoSort twins remain the 0.4.x path — NTH does not own OpenClo
 
 ---
 
-## 3. Combat RMB + B in lockdown (0.5.64)
+## 3. Combat RMB (CS-RMB)
 
 ```mermaid
 sequenceDiagram
+  participant P as Player
   participant C as Core
-  participant L as Layout
   participant S as Slots
-  participant OC as OpenClose
 
-  Note over C,S: LOGIN/ENTERING_WORLD OOC<br/>ColdPreload: PreCreate + EnsureMain + DoLayout once<br/>end alpha=0 (frame left Shown)
-  C->>L: CombatShow = alpha 1 + Raise
-  OC->>L: CombatHide = alpha 0 (never Hide)
-  Note over L: IsBagFrameVisible = alpha + flag (XOR works in combat)
-  Note over S: SecureActionButton type2=item · no SetAttribute in combat
-  C->>S: PLAYER_REGEN_ENABLED → SyncAllAttrs + Refresh
+  Note over S: LOGIN OOC PreCreate 0–4+reagent ×36<br/>SecureActionButton type2=item
+  P->>C: B / open
+  C->>S: Layout + SyncAttrs
+  P->>C: enter combat
+  Note over C,S: Freeze protected mutates · mouse on secure
+  P->>P: RMB potion → secure use
+  P->>C: leave combat
+  C->>S: Flush attrs + full Layout
 ```
-
-- **Industry pattern (Bagnon/AdiBags):** build bag frames **OOC**; in combat avoid `Hide()`/`CreateFrame` on secure tree — **alpha / visibility** toggles on existing frame.
-- **B XOR:** unchanged Toggle* wiring; combat path calls `Layout.CombatShow` / `Layout.Hide` → `CombatHide`.
 
 ---
 
