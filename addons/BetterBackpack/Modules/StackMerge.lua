@@ -1,6 +1,7 @@
 --[[
-  BetterBackpack.StackMerge — visual merge of same itemID stacks (v1).
-  One icon with summed count; click/RMB still maps to the first real bag:slot.
+  BetterBackpack.StackMerge — visual merge of stacks (v1).
+  Merge key: itemID + isLocked (locked lockboxes never merge with unlocked same ID).
+  One icon with summed count; click/RMB maps to the first real bag:slot.
   Other merged slots stay in inventory but are parked (not shown).
 ]]
 
@@ -83,12 +84,38 @@ local function StackCount(bag, slot, info)
   return 1
 end
 
+--- true / false / nil when isLocked is secret or unknown (do not merge with others).
+local function SlotLockedFlag(info)
+  if type(info) ~= "table" then
+    return false
+  end
+  local raw = info.isLocked
+  if raw == true or raw == 1 then
+    return true
+  end
+  if raw == false or raw == 0 or raw == nil then
+    return false
+  end
+  if Slots.IsSecret and Slots.IsSecret(raw) then
+    return nil
+  end
+  return false
+end
+
+local function MergeGroupKey(id, bag, slot, info)
+  local locked = SlotLockedFlag(info)
+  if locked == nil then
+    return id .. ":?:" .. tostring(bag) .. ":" .. tostring(slot)
+  end
+  return id .. ":" .. (locked and "L" or "U")
+end
+
 --- Collapse list of {bag,slot} into entries with displayCount / mergedFrom.
 function StackMerge.Collapse(list)
   if not StackMerge.IsEnabled() or type(list) ~= "table" or #list == 0 then
     return list
   end
-  local groups = {} -- itemID → entry
+  local groups = {} -- mergeKey → entry
   local order = {}
   local noId = {}
   for i = 1, #list do
@@ -98,7 +125,8 @@ function StackMerge.Collapse(list)
     if not id then
       noId[#noId + 1] = { bag = bag, slot = slot, displayCount = count }
     else
-      local g = groups[id]
+      local key = MergeGroupKey(id, bag, slot, info)
+      local g = groups[key]
       if not g then
         g = {
           bag = bag,
@@ -107,8 +135,8 @@ function StackMerge.Collapse(list)
           displayCount = count,
           mergedFrom = { { bag = bag, slot = slot } },
         }
-        groups[id] = g
-        order[#order + 1] = id
+        groups[key] = g
+        order[#order + 1] = key
       else
         g.displayCount = (g.displayCount or 0) + count
         g.mergedFrom[#g.mergedFrom + 1] = { bag = bag, slot = slot }

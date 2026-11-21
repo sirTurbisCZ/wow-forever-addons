@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 1.2.0 — quest starter bang (!) on slots (questID, not isActive).
+## Notes: 1.2.1 — stack merge splits locked vs unlocked same itemID.
 ## Author: tuma
-## Version: 1.2.0
+## Version: 1.2.1
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled
