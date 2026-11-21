@@ -1,7 +1,7 @@
 # BetterBackpack — smyčky a grafy
 
 **Kód:** `Core.lua`, `Modules/{Slots,Layout,Context,OpenClose,Tidy}.lua`  
-**Verze reference:** 0.2.5  
+**Verze reference:** 0.2.6  
 **Stabilita:** Project `docs/bag-addon-brief.md` + Scenario Maps `docs/scenarios/BetterBackpack/`  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never path C harvest).
 

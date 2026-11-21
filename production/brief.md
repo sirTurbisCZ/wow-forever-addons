@@ -1,7 +1,7 @@
-# Playtest brief — BetterBackpack 0.2.5
+# Playtest brief — BetterBackpack 0.2.6
 
-**Bug:** bag-bar click did not open/close BB (HookScript OnClick crashed hooks install; ToggleBag only parked).
+**Chrome:** match CombinedBags — `bags-button-autosort-*` sort at TOPRIGHT -9,-34; gear left of sort; free slots `NumberFontNormalSmall` `(free) used/total`.
 
-**Fix:** safe OnClick hooks; ToggleBag/bag-bar XOR like B; OpenBag open+focus; CloseBag closes ours; one-shot chat log `hooks ok` / first `bag path`.
+**Keep:** 0.2.5 bag-bar ToggleBag XOR.
 
-**Done when:** `/reload` → `loaded v0.2.5` + `hooks ok` · click bag N opens BB (slots for that bag highlighted) · second bag click closes · B still toggles · no HookScript errors in `/bb errors` or FElog.
+**Done when:** `/reload` → `loaded v0.2.6` · broom + gear icons (no gold Úklid/Nastavení text) · free text like default · bag click still open/close.
