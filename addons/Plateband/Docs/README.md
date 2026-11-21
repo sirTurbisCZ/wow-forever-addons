@@ -4,7 +4,8 @@ Companion for Forever nameplate auras. Looks and feels like Blizzard’s native 
 
 - **Default (0.1.12+):** native DebuffList only — Plateband does not move names or paint merge icons.
 - Personal DoTs stay 100% Blizzard. Never parks or hides native DebuffList.
-- Optional merge (`mergeMissing`) can append omitted party/nearby DoTs beside native — off by default after layout breakage in 0.1.8–0.1.11.
+- **Never** `ClearAllPoints` the plate name (three-addon refactor hard rule).
+- Optional merge design (`Docs/merge-design.md`): beside native only; still off by default (`mergeMissing=false`).
 
 ## Install
 

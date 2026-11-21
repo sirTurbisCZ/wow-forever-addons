@@ -1,6 +1,8 @@
 # Plateband — aura / layout loops
 
-Version: **0.1.12**
+Version: **0.1.13**
+
+See also: [merge-design.md](merge-design.md) (opt-in merge, no name mutation).
 
 ## Safe default (native DebuffList only)
 
@@ -8,16 +10,16 @@ Version: **0.1.12**
 flowchart TD
   ev[NAME_PLATE / TARGET / UNIT_AURA / ticker] --> upd[UpdateOverlay]
   upd --> native[EnsureNativeVisible DebuffList alpha=1]
-  upd --> clear[ClearFallback + RestoreNameShift]
+  upd --> clear[ClearFallback only]
   upd --> mergeFlag{mergeMissing?}
-  mergeFlag -->|false default| stop[Stop — Blizzard layout untouched]
-  mergeFlag -->|true opt-in| paint[PaintMergeMissing beside native]
-  paint --> anchor[LayoutMergeBesideNative — no name SetPoint]
+  mergeFlag -->|false default| stop[Stop — Blizzard name+DebuffList untouched]
+  mergeFlag -->|true opt-in| paint[PaintMergeMissing]
+  paint --> layout[LayoutMergeBesideNative on Plateband frame only]
 ```
 
-## Hard rules
+## Hard rules (three-addon refactor)
 
 - Never park/hide native DebuffList.
 - Never SetPoint DebuffList (Forever FORBIDDEN).
-- Never ClearAllPoints / SetPoint UnitFrame.name (0.1.8–0.1.11 broke plates).
-- No CLEU core · no plate HP recolor.
+- **Never ClearAllPoints / SetPoint UnitFrame.name** (preference + 0.1.8–0.1.11 postmortem).
+- No CLEU · no plate HP recolor · no bags (BetterBackpack owns bags).

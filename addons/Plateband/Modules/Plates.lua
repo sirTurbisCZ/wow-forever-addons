@@ -1,8 +1,9 @@
 --[[
   Plateband.Modules.Plates — native DebuffList stays fully visible.
-  0.1.12 safe default: ZERO name mutation, merge OFF — Blizzard plates only.
-  Opt-in mergeMissing paints beside native (still never SetPoint DebuffList/name).
-  No CLEU / no HP recolor.
+  Safe default (0.1.12+): merge OFF — Blizzard plates only.
+  Hard rule (three-addon refactor): NEVER ClearAllPoints / SetPoint UnitFrame.name.
+  Opt-in mergeMissing: paint textures beside native DebuffList only (Docs/merge-design.md).
+  No CLEU / no HP recolor / no DebuffList SetPoint.
 ]]
 
 Plateband = Plateband or {}
@@ -949,58 +950,24 @@ local function PlateNameFS(plate)
   return name
 end
 
+--- Intentionally no-ops: three-addon refactor forbids any name ClearAllPoints/SetPoint.
+--- Prior versions saved/restored name anchors and broke Forever plates; /reload resets Blizzard layout.
 local function SaveNamePoints(unit, nameFS)
-  if not unit or not nameFS then
-    return
-  end
-  local st = nameShifts[unit]
-  if st and st.saved then
-    return
-  end
-  st = { saved = false, shifted = false }
-  pcall(function()
-    local n = nameFS:GetNumPoints()
-    if type(n) == "number" and not IsSecret(n) and n >= 1 then
-      local point, rel, relPoint, x, y = nameFS:GetPoint(1)
-      st.point, st.rel, st.relPoint = point, rel, relPoint
-      st.x = (type(x) == "number" and not IsSecret(x)) and x or 0
-      st.y = (type(y) == "number" and not IsSecret(y)) and y or 0
-      st.saved = true
-    end
-  end)
-  nameShifts[unit] = st
+  return
 end
 
 local function RestoreNameShift(unit, plate)
-  local st = nameShifts[unit]
-  if not st or not st.shifted or not st.saved then
-    if st then
-      st.shifted = false
-    end
-    return
+  if unit then
+    nameShifts[unit] = nil
   end
-  local nameFS = PlateNameFS(plate or (unit and PlateFor(unit)))
-  if not nameFS then
-    st.shifted = false
-    return
-  end
-  pcall(function()
-    nameFS:ClearAllPoints()
-    nameFS:SetPoint(st.point, st.rel, st.relPoint, st.x or 0, st.y or 0)
-  end)
-  st.shifted = false
 end
 
 -- Forward decl: Layout anchors merge beside native (defined below).
 local NativeBandRightAnchor
 
---- Anchor merge beside native only. NEVER ClearAllPoints/SetPoint the name
---- (0.1.8–0.1.11 name lifts broke Forever plates — Golm/Pichy / “completely broken”).
+--- Opt-in merge layout: only move Plateband fallback frame — never name / DebuffList.
 local function LayoutMergeBesideNative(unit, plate, mergeFb, painted)
   painted = tonumber(painted) or 0
-  -- Always undo any prior Plateband name mutation from older versions.
-  RestoreNameShift(unit, plate)
-
   if IsPlayerOrFriendPlate(unit, plate) then
     return
   end
@@ -1013,19 +980,15 @@ local function LayoutMergeBesideNative(unit, plate, mergeFb, painted)
   mergeFb:ClearAllPoints()
   local right = NativeBandRightAnchor(plate)
   if right then
+    -- Same band as native: continue LEFT→RIGHT of rightmost native icon.
     mergeFb:SetPoint("LEFT", right, "RIGHT", OVERLAY_PAD, 0)
-  elseif native then
+  elseif native and SafeShown(native) then
     mergeFb:SetPoint("LEFT", native, "RIGHT", OVERLAY_PAD, 0)
   elseif bar then
     mergeFb:SetPoint("BOTTOM", bar, "TOP", 0, OVERLAY_GAP_ABOVE)
   else
     mergeFb:SetPoint("BOTTOM", plate, "TOP", 0, OVERLAY_GAP_ABOVE)
   end
-end
-
--- Back-compat alias for any lingering call sites.
-local function LayoutAuraRowAboveName(unit, plate, mergeFb, painted)
-  LayoutMergeBesideNative(unit, plate, mergeFb, painted)
 end
 
 local function ClearOverlay(unit)
@@ -2025,16 +1988,12 @@ function Mod.Start()
     ClearFallback(unit)
     fallbacks[unit] = nil
   end
-  for unit in pairs(nameShifts) do
-    RestoreNameShift(unit, PlateFor(unit))
-    nameShifts[unit] = nil
+  for u in pairs(nameShifts) do
+    nameShifts[u] = nil
   end
-  -- Also restore names on currently live plates (shift table may be empty after reload).
   local live = EnumerateLivePlates()
   for i = 1, #live do
-    local u = live[i].unit
-    if u then
-      RestoreNameShift(u, live[i].plate)
+    if live[i].plate then
       EnsureNativeVisible(live[i].plate)
     end
   end
