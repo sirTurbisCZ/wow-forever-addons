@@ -1,8 +1,8 @@
 --[[
-  BetterBackpack.OpenClose — B + /bb (0.5.44)
+  BetterBackpack.OpenClose — B + /bb (0.5.45)
 
-  Only ToggleAllBags is *replaced* (BetterBackpack combined XOR via onBagKey). ToggleBag/ToggleBackpack/ToggleKeyRing stay Blizzard.
-  No bag-bar OnClick hooks in InstallHooks.
+  ToggleAllBags + ToggleBackpack replaced → onBagKey XOR (Forever B often = ToggleBackpack).
+  ToggleBag / ToggleKeyRing = Blizzard. No bag-bar OnClick hooks.
   (not hooksecurefunc). Forever Toggle* bodies call Open*/Close* first; a
   post-hook XOR then closed what we just opened (or reopened after close) —
   open/close thrash that froze the client on B.
@@ -379,17 +379,34 @@ function OpenClose.ResetCombatTrace()
   combatTraceOnce = {}
 end
 
+--- CombinedBags must not win over our overlay (B often opens it via ToggleBackpack).
+local function CloseNativeCombinedBags()
+  local f = ContainerFrameCombinedBags
+  if not f then
+    return
+  end
+  Blackout(f)
+  if InCombat() then
+    return
+  end
+  if f.IsShown and f:IsShown() then
+    Park(f)
+    pcall(function()
+      f:Hide()
+    end)
+  end
+end
+
 --- Hide Blizzard bag UI for our overlay. In combat: alpha/mouse only (no ClearAllPoints).
 local function ParkBlizzardForOverlay()
-  Blackout(ContainerFrameCombinedBags)
+  local combined = ContainerFrameCombinedBags
+  if combined then
+    Blackout(combined)
+  end
+  if not InCombat() and combined and combined.IsShown and combined:IsShown() then
+    Park(combined)
+  end
   if BagBarNativeEnabled() then
-    if InCombat() then
-      return
-    end
-    local f = ContainerFrameCombinedBags
-    if f and f:IsShown() then
-      Park(f)
-    end
     return
   end
   for i = 1, 13 do
@@ -400,10 +417,6 @@ local function ParkBlizzardForOverlay()
   end
   if InCombat() then
     return
-  end
-  local f = ContainerFrameCombinedBags
-  if f and f:IsShown() then
-    Park(f)
   end
   for i = 1, 13 do
     local cf = _G["ContainerFrame" .. i]
@@ -495,6 +508,7 @@ OpenOurs = function()
   end
   openBusy = true
   OpenClose._openBusy = true
+  pcall(CloseNativeCombinedBags)
   ParkBlizzardForOverlay()
 
   if InCombat() then
@@ -578,6 +592,7 @@ OpenOurs = function()
     end)
     -- Keep Blizzard parked/closed — Unblackout + shown CombinedBags re-entered
     -- OnShow→OpenOurs and amplified the Toggle open/close thrash.
+    pcall(CloseNativeCombinedBags)
     if not InCombat() then
       ForceCloseBlizzard()
     else
@@ -594,6 +609,7 @@ OpenOurs = function()
   toggleLockUntil = Now() + TOGGLE_LOCK
   openBusy = false
   OpenClose._openBusy = false
+  pcall(CloseNativeCombinedBags)
   if not InCombat() then
     PulsePark()
   else
@@ -709,6 +725,7 @@ local function onBagKey()
     inBagKey = false
     return
   end
+  pcall(CloseNativeCombinedBags)
   pcall(ParkBlizzardForOverlay)
   pcall(OpenOurs)
   inBagKey = false
@@ -1383,21 +1400,45 @@ local function HookBagBarButtons()
   return hooked
 end
 
+local BAG_KEY_TOGGLES = { "ToggleAllBags", "ToggleBackpack" }
+
+local function ApplyBagKeyReplace()
+  CaptureBlizzardToggles()
+  OpenClose.RestoreBlizzardToggles()
+  ReplaceToggle("ToggleAllBags", onBagKey)
+  ReplaceToggle("ToggleBackpack", onBackpackToggle)
+end
+
+function OpenClose.EnsureBagKeyReplace()
+  pcall(ApplyBagKeyReplace)
+end
+
 function OpenClose.InstallHooks()
   if hooksInstalled then
     return
   end
-  local ok, err = pcall(function()
-    CaptureBlizzardToggles()
-    OpenClose.RestoreBlizzardToggles()
-    ReplaceToggle("ToggleAllBags", onBagKey)
-  end)
   hooksInstalled = true
+  local ok, err = pcall(ApplyBagKeyReplace)
+  if C_Timer and C_Timer.After then
+    C_Timer.After(0, function()
+      pcall(ApplyBagKeyReplace)
+    end)
+    C_Timer.After(1, function()
+      pcall(ApplyBagKeyReplace)
+    end)
+  end
   if ok then
+    local n = 0
     if OpenClose._replaced_ToggleAllBags then
-      LogHooksOnce("B → BetterBackpack XOR · bag bar = Blizzard")
+      n = n + 1
+    end
+    if OpenClose._replaced_ToggleBackpack then
+      n = n + 1
+    end
+    if n > 0 then
+      LogHooksOnce(string.format("B → BetterBackpack XOR · %d/%d toggles", n, #BAG_KEY_TOGGLES))
     else
-      LogHooksOnce("ToggleAllBags missing · /bb only")
+      LogHooksOnce("bag-key toggles missing · /bb only")
     end
   elseif BetterBackpack and BetterBackpack.RecordError then
     BetterBackpack.RecordError("hooks", err)

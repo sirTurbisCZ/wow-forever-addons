@@ -1,8 +1,11 @@
-# Playtest brief — BetterBackpack 0.5.44 (B = combined)
+# Playtest brief — BetterBackpack 0.5.45 (B beats CombinedBags)
+
+**0.5.45**
+- **B** binds often hit **`ToggleBackpack`** — replace **Both** `ToggleAllBags` + `ToggleBackpack` (re-apply 0s/1s after login). `OpenOurs` / `onBagKey` call **`CloseNativeCombinedBags`** (park + Hide). Chat: `2/2 toggles`.
+- Bag bar = native `ToggleBag` only (no bar OnClick hooks). `/bb` XOR.
 
 **0.5.44**
-- **B** (`ToggleAllBags`) → BetterBackpack combined XOR again (`onBagKey`, `pcall`). Bag bar / per-bag = native Blizzard. No bag-bar hooks. `/bb` still works.
-- Needs `replaceBlizzard` on (default). Chat: `hooks ok · B → BetterBackpack XOR · bag bar = Blizzard`.
+- ToggleAllBags only — insufficient when B = ToggleBackpack.
 
 **0.5.43**
 - WTF top error was `OpenClose.lua:1398 unexpected symbol near 'if'` (0.5.42 trims InstallHooks). Harden: `EnsureMain` / `DoLayout` chrome in pcall; Settings `notes` nil; hooks install pcall.
