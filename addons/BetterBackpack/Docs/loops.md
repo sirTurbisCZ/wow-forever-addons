@@ -1,7 +1,7 @@
 # BetterBackpack — smyčky a grafy
 
 **Kód:** `Core.lua`, `Modules/{Slots,Layout,Context,OpenClose,Tidy}.lua`  
-**Verze reference:** 0.4.1  
+**Verze reference:** 0.4.2  
 **Stabilita:** Project `docs/bag-addon-brief.md` + Scenario Maps `docs/scenarios/BetterBackpack/`  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never path C harvest).
 
@@ -35,7 +35,7 @@ flowchart TD
 - HookScript OnClick only on frames with `HasScript("OnClick")` / Button — never throw on BagsBar chrome kids.
 - Bag focus: `Layout.SetBagFocus(id)` highlights that bag’s slots after open.
 - Frame size: **10 cols** default (CombinedBags/BagShelves); INSET_X=14, TOP_CHROME=58, BOT_CHROME=32; outer = contentW+INSET_X+28.
-- Title chrome: **BagShelves-style** Close-sized tidy+gear (broom | gear | X). No native AutoSort/PortraitButton reparent.
+- Title chrome: AutoSort **twins** (same native size, atlas art, no ADD glow); broom | gear | X. No native reparent.
 - Footer N/M: player bags `0..NUM_BAG_SLOTS` + **reagent bag** (Materials lane). Never keyring invent (102=70+32).
 - Slots: `Normalize` 37×37 on every `Place` and after `SetItemButtonQuality`.
 - CombinedBags/Container OnShow: park now; **defer** open to next tick so Toggle* XOR runs first.

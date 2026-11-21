@@ -12,7 +12,7 @@ local Config = BetterBackpack.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.4.1"
+Config.VERSION = "0.4.2"
 
 local function ProfileDefaults()
   return {
@@ -91,7 +91,7 @@ function Config.EnsureDB()
     from = 1
   end
 
-  -- 0.4.1: match CombinedBags/BagShelves default width (10 cols).
+  -- 0.4.2: match CombinedBags/BagShelves default width (10 cols).
   if from < 2 then
     EnsureProfile(db)
     local p = db.profile

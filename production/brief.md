@@ -1,9 +1,9 @@
-# Playtest brief — BetterBackpack 0.4.1
+# Playtest brief — BetterBackpack 0.4.2
 
-**Keep:** footer ~/70 (player+reagent).
+**Keep:** footer ~/70 · 10-col width.
 
-**Bug:** tall skinny panel — not CombinedBags/BagShelves width.
+**Bug:** glowing pixelated gear ≠ broom.
 
-**Fix:** default **10 cols**; BagShelves padding (INSET 14, TOP 58, BOT 32); outer width = contentW+INSET+28. Schema migrates saved columns 8→10.
+**Fix:** settings = AutoSort twin — same native WxH as broom, atlas `Gear` (not UI-OptionsButton), **no** ADD MouseHilight glow.
 
-**Done when:** `/reload` → wide CombinedBags-like panel + title chrome · footer ~/70.
+**Done when:** `/reload` → gear matches broom size/style, no glow · footer ~/70.
