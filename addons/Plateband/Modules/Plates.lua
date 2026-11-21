@@ -1,8 +1,9 @@
 --[[
-  Plateband.Modules.Plates — above-plate AuraContainer band.
+  Plateband.Modules.Plates — above-plate AuraContainer band (solo personal DoTs).
   Secret-safe plate discovery via GetNamePlates + token fallbacks.
+  AC-first; native DebuffList scrape fallback when AC empty (no SetTexCoord).
   Auto lastDiagnose → SavedVariables (disk flush only on /reload|logout).
-  No CLEU. No SetStatusBarColor on plate HP. Click-through holder.
+  No CLEU. No SetStatusBarColor on plate HP. Click-through. No world tint.
 ]]
 
 Plateband = Plateband or {}
@@ -19,7 +20,8 @@ local TICKER_SEC = 0.25
 local AUTO_DIAG_MIN = 0.5
 local WATCH_DEFAULT_SEC = 2
 
-local overlays = {} -- [nameplateUnit] = container
+local overlays = {} -- [nameplateUnit] = AuraContainer (or nil)
+local fallbacks = {} -- [nameplateUnit] = scrape Frame
 local acCreateFailed = false
 local ticker
 local watchTicker
@@ -403,12 +405,43 @@ local function CountShownAuraKids(frame)
   for i = 1, #kids do
     local child = kids[i]
     if child and SafeShown(child) then
-      if child.icon or child.Icon or child.GetAuraInstance then
-        n = n + 1
+      -- Forever AC children vary: icon / Icon / GetAuraInstance / bare shown button.
+      if child.icon or child.Icon or child.GetAuraInstance
+        or (child.GetObjectType and select(1, pcall(child.GetObjectType, child)) == true) then
+        local isBtn = false
+        pcall(function()
+          local t = child:GetObjectType()
+          isBtn = (t == "Button" or t == "Frame")
+        end)
+        if child.icon or child.Icon or child.GetAuraInstance or isBtn then
+          -- Exclude our own cooldown/font helper frames: require size-ish aura button.
+          local w
+          pcall(function()
+            w = child:GetWidth()
+          end)
+          if type(w) == "number" and not IsSecret(w) and w >= 8 then
+            n = n + 1
+          elseif child.icon or child.Icon or child.GetAuraInstance then
+            n = n + 1
+          end
+        end
       end
     end
   end
   return n
+end
+
+local function RawChildCount(frame)
+  if not frame then
+    return 0
+  end
+  local ok, kids = pcall(function()
+    return { frame:GetChildren() }
+  end)
+  if not ok or type(kids) ~= "table" then
+    return 0
+  end
+  return #kids
 end
 
 local function GetTargetAuraContainer()
@@ -563,9 +596,15 @@ local function CreateBandContainer(parent, size)
   end
   local container
   for _, tpl in ipairs({ "CustomAuraContainerTemplate", "ManagedAuraContainerTemplate" }) do
-    local ok, c = pcall(CreateFrame, "AuraContainer", nil, parent, tpl)
-    if ok and c then
-      container = c
+    -- Try AuraContainer type first, then Frame+template (Forever variance).
+    for _, ftype in ipairs({ "AuraContainer", "Frame" }) do
+      local ok, c = pcall(CreateFrame, ftype, nil, parent, tpl)
+      if ok and c and c.AddAuraGroup then
+        container = c
+        break
+      end
+    end
+    if container then
       break
     end
   end
@@ -589,26 +628,38 @@ local function CreateBandContainer(parent, size)
   end
   pcall(container.SetFlowLayoutPadding, container, 0, 0, 0, 0)
 
-  local groupOpts = {
-    maxFrameCount = maxN,
-    sortMethod = AuraContainerSortMethod and AuraContainerSortMethod.Expiration or nil,
-    sortDirection = AuraContainerSortDirection and AuraContainerSortDirection.Normal or nil,
-    initializeFrame = function(button)
-      pcall(InitAuraButton, button, size)
-    end,
-    layout = {
-      elementWidth = size,
-      elementHeight = size,
-      elementSpacing = OVERLAY_PAD,
-    },
-  }
+  -- Solo personal DoTs first (party-share path later).
+  local function makeOpts(withPlayerFilter)
+    return {
+      maxFrameCount = maxN,
+      candidateFilters = withPlayerFilter and { isFromPlayerOrPlayerPet = true } or nil,
+      sortMethod = AuraContainerSortMethod and AuraContainerSortMethod.Expiration or nil,
+      sortDirection = AuraContainerSortDirection and AuraContainerSortDirection.Normal or nil,
+      initializeFrame = function(button)
+        pcall(InitAuraButton, button, size)
+      end,
+      layout = {
+        elementWidth = size,
+        elementHeight = size,
+        elementSpacing = OVERLAY_PAD,
+      },
+    }
+  end
 
-  -- Prefer player/pet filter; Forever may reject it — fall back to plain HARMFUL.
-  groupOpts.candidateFilters = { isFromPlayerOrPlayerPet = true }
-  local okAdd = pcall(container.AddAuraGroup, container, AC_GROUP, "HARMFUL", groupOpts)
-  if not okAdd then
-    groupOpts.candidateFilters = nil
-    okAdd = pcall(container.AddAuraGroup, container, AC_GROUP, "HARMFUL", groupOpts)
+  local okAdd = false
+  local tries = {
+    { "HARMFUL|PLAYER", true },
+    { "HARMFUL|PLAYER", false },
+    { "HARMFUL", true },
+    { "HARMFUL", false },
+  }
+  for i = 1, #tries do
+    local filter, withPf = tries[i][1], tries[i][2]
+    okAdd = pcall(container.AddAuraGroup, container, AC_GROUP, filter, makeOpts(withPf))
+    if okAdd then
+      container._pbFilter = filter
+      break
+    end
   end
   if not okAdd then
     acCreateFailed = true
@@ -681,13 +732,18 @@ local function BindUnit(container, unit)
   if not container or not container.SetUnit then
     return
   end
+  -- Solo personal DoTs: Forever often only surfaces them on AuraContainer via "target".
   local bind = unit
-  if unit and (SameUnit(unit, "target") or unit == lastTargetPlateUnit) and HasTarget() then
-    bind = "target"
-  elseif HasTarget() then
+  if HasTarget() then
     local tp = NameplateUnitFor("target")
-    if tp and tp == unit then
+    if (tp and tp == unit)
+      or SameUnit(unit, "target")
+      or unit == lastTargetPlateUnit
+      or PlateFor(unit) == PlateFor("target") then
       bind = "target"
+      if type(unit) == "string" then
+        lastTargetPlateUnit = unit
+      end
     end
   end
   local cur
@@ -696,9 +752,8 @@ local function BindUnit(container, unit)
   end)
   if cur ~= bind then
     pcall(container.SetUnit, container, bind)
-  else
-    pcall(container.UpdateAllAuras, container)
   end
+  pcall(container.UpdateAllAuras, container)
 end
 
 local function ModuleActive()
@@ -706,14 +761,28 @@ local function ModuleActive()
   return p.enabled and not p.safeMode and p.showBand and not acCreateFailed
 end
 
-local function ClearOverlay(unit)
-  local holder = overlays[unit]
-  if not holder then
+local function ClearFallback(unit)
+  local fb = fallbacks[unit]
+  if not fb then
     return
   end
-  pcall(holder.SetEnabled, holder, false)
-  holder:Hide()
-  holder:ClearAllPoints()
+  if fb.icons then
+    for i = 1, #fb.icons do
+      fb.icons[i]:Hide()
+    end
+  end
+  fb:Hide()
+  fb:ClearAllPoints()
+end
+
+local function ClearOverlay(unit)
+  local holder = overlays[unit]
+  if holder then
+    pcall(holder.SetEnabled, holder, false)
+    holder:Hide()
+    holder:ClearAllPoints()
+  end
+  ClearFallback(unit)
 end
 
 local function EnsureOverlay(unit)
@@ -723,6 +792,9 @@ local function EnsureOverlay(unit)
   local holder = overlays[unit]
   if holder then
     return holder
+  end
+  if acCreateFailed then
+    return nil
   end
   local sz = IconSize()
   holder = CreateBandContainer(UIParent, sz)
@@ -736,6 +808,170 @@ local function EnsureOverlay(unit)
   return holder
 end
 
+local function EnsureFallback(unit, parent)
+  local fb = fallbacks[unit]
+  if fb then
+    if parent and fb:GetParent() ~= parent then
+      pcall(fb.SetParent, fb, parent)
+    end
+    return fb
+  end
+  fb = CreateFrame("Frame", nil, parent or UIParent)
+  fb:EnableMouse(false)
+  fb:Hide()
+  fb.icons = {}
+  local maxN = MaxIcons()
+  local sz = IconSize()
+  for i = 1, maxN do
+    local tex = fb:CreateTexture(nil, "ARTWORK")
+    tex:SetSize(sz, sz)
+    tex:Hide()
+    -- No SetTexCoord — Forever masks.
+    fb.icons[i] = tex
+  end
+  fb._pbFallback = true
+  fallbacks[unit] = fb
+  return fb
+end
+
+--- Collect aura icon textures from a frame tree (native DebuffList / TF).
+--- Pass textures straight into SetTexture — never compare secret FileIDs.
+local function CollectAuraTextures(root, out, maxN)
+  if not root or #out >= maxN then
+    return
+  end
+  local ok, kids = pcall(function()
+    return { root:GetChildren() }
+  end)
+  if not ok or type(kids) ~= "table" then
+    return
+  end
+  for i = 1, #kids do
+    if #out >= maxN then
+      return
+    end
+    local child = kids[i]
+    if child and SafeShown(child) then
+      local iconTex = child.Icon or child.icon
+      local file
+      pcall(function()
+        if iconTex and iconTex.GetTexture then
+          file = iconTex:GetTexture()
+        end
+      end)
+      -- Secret FileIDs are SetTexture-safe; never truthy-compare them for filtering.
+      if file ~= nil then
+        out[#out + 1] = file
+      elseif iconTex then
+        out[#out + 1] = iconTex
+      end
+      CollectAuraTextures(child, out, maxN)
+    end
+  end
+end
+
+local function PaintFallback(unit, plate)
+  local uf = plate and plate.UnitFrame
+  local parent = uf or plate
+  if not parent then
+    return 0
+  end
+  local fb = EnsureFallback(unit, parent)
+  local sz = IconSize()
+  local maxN = MaxIcons()
+  local texes = {}
+
+  -- Solo: personal icons from native plate DebuffList (party-share scrape later).
+  local native = NativeDebuffList(plate)
+  CollectAuraTextures(native, texes, maxN)
+
+  -- TargetFrame personal harmful when this plate is the current target (solo OK).
+  if #texes == 0 and HasTarget()
+    and (SameUnit(unit, "target") or unit == NameplateUnitFor("target")) then
+    CollectAuraTextures(GetTargetAuraContainer(), texes, maxN)
+  end
+
+  -- Dedupe only public string/number keys; secrets always kept once each by index.
+  local painted = 0
+  local seen = {}
+  for i = 1, #texes do
+    if painted >= maxN then
+      break
+    end
+    local t = texes[i]
+    local key
+    pcall(function()
+      if type(t) == "number" or type(t) == "string" then
+        if not IsSecret(t) then
+          key = tostring(t)
+        end
+      end
+    end)
+    if key and seen[key] then
+      -- skip dup
+    else
+      if key then
+        seen[key] = true
+      end
+      painted = painted + 1
+      local icon = fb.icons[painted]
+      icon:ClearAllPoints()
+      icon:SetSize(sz, sz)
+      icon:SetPoint("LEFT", fb, "LEFT", (painted - 1) * (sz + OVERLAY_PAD), 0)
+      -- SetTexture accepts secret FileIDs and Texture objects.
+      local okSet = false
+      pcall(function()
+        if type(t) == "table" or (type(t) == "userdata") then
+          -- Texture widget — copy its texture.
+          if t.GetTexture then
+            icon:SetTexture(t:GetTexture())
+            okSet = true
+          end
+        else
+          icon:SetTexture(t)
+          okSet = true
+        end
+      end)
+      if okSet then
+        icon:Show()
+      else
+        icon:Hide()
+        painted = painted - 1
+      end
+    end
+  end
+  for i = painted + 1, #fb.icons do
+    fb.icons[i]:Hide()
+  end
+
+  fb:ClearAllPoints()
+  local bar = HealthBar(plate)
+  local nativeList = NativeDebuffList(plate)
+  if nativeList and SafeShown(nativeList) then
+    -- Sit with native debuffs ABOVE the plate (right of native row).
+    fb:SetPoint("LEFT", nativeList, "RIGHT", OVERLAY_PAD, 0)
+  elseif bar then
+    fb:SetPoint("BOTTOM", bar, "TOP", 0, OVERLAY_GAP_ABOVE)
+  else
+    fb:SetPoint("BOTTOM", plate, "TOP", 0, OVERLAY_GAP_ABOVE)
+  end
+  fb:SetSize(math.max(1, painted * (sz + OVERLAY_PAD)), sz)
+  fb:SetFrameStrata("MEDIUM")
+  local lvl = 50
+  pcall(function()
+    lvl = (parent:GetFrameLevel() or 1) + 25
+  end)
+  fb:SetFrameLevel(lvl)
+
+  if painted > 0 then
+    fb:Show()
+  else
+    fb:Hide()
+  end
+  fb._painted = painted
+  return painted
+end
+
 local function UpdateOverlay(unit, plate)
   if not ModuleActive() or not unit then
     return
@@ -746,38 +982,55 @@ local function UpdateOverlay(unit, plate)
     return
   end
 
-  local holder = EnsureOverlay(unit)
-  if not holder then
-    return
-  end
-  holder.plateUnit = unit
   overlayUpdates = overlayUpdates + 1
+  local holder = EnsureOverlay(unit)
+  local acPainted = 0
 
-  if not AnchorBand(holder, unit, plate) then
-    holder:Hide()
-    return
+  if holder then
+    holder.plateUnit = unit
+    if AnchorBand(holder, unit, plate) then
+      local parentOk = false
+      pcall(function()
+        parentOk = holder:GetParent() ~= UIParent
+      end)
+      if parentOk then
+        BindUnit(holder, unit)
+        pcall(holder.SetEnabled, holder, true)
+        pcall(holder.UpdateAllAuras, holder)
+        -- Populate may be deferred one frame on Forever.
+        holder:Show()
+        acPainted = CountShownAuraKids(holder)
+        if acPainted == 0 and C_Timer and C_Timer.After then
+          C_Timer.After(0, function()
+            pcall(function()
+              pcall(holder.UpdateAllAuras, holder)
+              local n = CountShownAuraKids(holder)
+              if n > 0 then
+                holder:Show()
+                ClearFallback(unit)
+              end
+            end)
+          end)
+        end
+      else
+        holder:Hide()
+      end
+    else
+      holder:Hide()
+    end
   end
 
-  local parentOk = false
-  pcall(function()
-    parentOk = holder:GetParent() ~= UIParent
-  end)
-  if not parentOk then
-    holder:Hide()
-    return
-  end
-
-  -- Enable before bind so Forever AuraContainer actually populates.
-  pcall(holder.SetEnabled, holder, true)
-  BindUnit(holder, unit)
-  pcall(holder.UpdateAllAuras, holder)
-
-  local painted = CountShownAuraKids(holder)
-  if painted > 0 then
-    holder:Show()
+  if acPainted > 0 then
+    ClearFallback(unit)
+    if holder then
+      holder:Show()
+    end
   else
-    -- Empty band must not sit on the plate (no phantom chrome / tint risk).
-    holder:Hide()
+    -- AC empty → scrape native/TF textures into a click-through fallback row.
+    if holder then
+      holder:Hide()
+    end
+    PaintFallback(unit, plate)
   end
 end
 
@@ -813,6 +1066,12 @@ local function RefreshAll()
     if not live[unit] then
       ClearOverlay(unit)
       overlays[unit] = nil
+    end
+  end
+  for unit in pairs(fallbacks) do
+    if not live[unit] then
+      ClearFallback(unit)
+      fallbacks[unit] = nil
     end
   end
 end
@@ -944,8 +1203,25 @@ SnapshotDiagnose = function(reason, opts)
     overlayN = overlayN + 1
   end
 
+  local fb = 0
+  local kids = 0
+  if plateUnit and overlays[plateUnit] then
+    kids = RawChildCount(overlays[plateUnit])
+  end
+  if plateUnit and fallbacks[plateUnit] then
+    fb = tonumber(fallbacks[plateUnit]._painted) or 0
+  end
+  if fb == 0 then
+    for _, f in pairs(fallbacks) do
+      local n = tonumber(f._painted) or 0
+      if n > fb then
+        fb = n
+      end
+    end
+  end
+
   local card = string.format(
-    "PLATEBAND_CARD ver=%s reason=%s target=%s plate=%s plates=%s overlays=%s ac=%s tf=%s native=%s acFail=%s enabled=%s safe=%s watch=%s seen=%s upd=%s blocked=%s",
+    "PLATEBAND_CARD ver=%s reason=%s target=%s plate=%s plates=%s overlays=%s ac=%s fb=%s kids=%s tf=%s native=%s acFail=%s enabled=%s safe=%s watch=%s seen=%s upd=%s blocked=%s",
     tostring(ns.Config.VERSION),
     tostring(reason or "manual"),
     targetYes and "yes" or "no",
@@ -953,6 +1229,8 @@ SnapshotDiagnose = function(reason, opts)
     tostring(plateCount),
     tostring(overlayN),
     tostring(ac),
+    tostring(fb),
+    tostring(kids),
     tostring(tf),
     tostring(native),
     acCreateFailed and "1" or "0",
@@ -973,6 +1251,8 @@ SnapshotDiagnose = function(reason, opts)
     plates = plateCount,
     overlays = overlayN,
     ac = ac,
+    fb = fb,
+    kids = kids,
     tf = tf,
     native = native,
     acFail = acCreateFailed and 1 or 0,
@@ -1153,6 +1433,10 @@ function Mod.Stop()
   end
   for unit in pairs(overlays) do
     overlays[unit] = nil
+  end
+  for unit in pairs(fallbacks) do
+    ClearFallback(unit)
+    fallbacks[unit] = nil
   end
 end
 
