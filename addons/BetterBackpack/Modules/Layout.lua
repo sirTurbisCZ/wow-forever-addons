@@ -1,7 +1,7 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.3.9).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.4.0).
   Forever: never SetToplevel (ADDON_ACTION_BLOCKED).
-  Title chrome: native BagItemAutoSortButton + settings twin (AutoSort-sized); footer player+reagent.
+  Title chrome: BagShelves-style Close-sized tidy+gear (no native AutoSort reparent).
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -1073,7 +1073,7 @@ local function DestroyHalfBuilt()
       main:SetParent(nil)
     end)
   end
-  main, content, freeFs, moneyFs, emptyLabel, sortBtn = nil, nil, nil, nil, nil, nil
+  main, content, freeFs, moneyFs, emptyLabel, sortBtn, settingsBtn = nil, nil, nil, nil, nil, nil, nil
   sectionFrames = {}
   pcall(function()
     local old = _G.BetterBackpackFrame
@@ -1084,12 +1084,20 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local CHROME_VER = 15 -- native AutoSort + visible settings twin; align with Close
-local CHROME_GAP = 4
+local CHROME_VER = 16 -- BagShelves-style Close-sized tidy+gear (no native reparent)
 local chromeLogged = false
 local customChromeHidden = false
+local nativeSortReleased = false
 
-local function HideCustomChromeOnce()
+--[[
+  Archive BagShelves title chrome (UI.lua ~2420):
+  - custom tidy + gear, same hit box as Close
+  - icons fill ~90% of the box (koště was tiny when padded)
+  - order: broom | gear | X  (tidy RIGHT-of gear? No: gear RIGHT of close-LEFT, tidy RIGHT of gear-LEFT)
+  Do NOT reparent BagItemAutoSortButton / PortraitButton (taint + invisible in title).
+]]
+
+local function HideLegacyChromeOnce()
   if customChromeHidden then
     return
   end
@@ -1101,6 +1109,7 @@ local function HideCustomChromeOnce()
     "BetterBackpackGearBtn12",
     "BetterBackpackSortBtn13",
     "BetterBackpackGearBtn13",
+    "BetterBackpackSettingsBtn15",
   }) do
     local b = _G[name]
     if b then
@@ -1114,7 +1123,35 @@ local function HideCustomChromeOnce()
   end
 end
 
-local function LogChromeOnce(sortBtn, settingsBtn, close)
+-- If a prior build stole BagItemAutoSortButton onto our frame, give it back once.
+local function ReleaseNativeAutoSortOnce(frame)
+  if nativeSortReleased then
+    return
+  end
+  nativeSortReleased = true
+  local sortNative = _G.BagItemAutoSortButton
+  if not sortNative then
+    return
+  end
+  pcall(function()
+    local parent = sortNative:GetParent()
+    if parent == frame then
+      local combined = ContainerFrameCombinedBags
+      if combined then
+        sortNative:SetParent(combined)
+        sortNative:ClearAllPoints()
+        -- Park off our chrome; CombinedBags owns layout when shown.
+        sortNative:SetPoint("TOPRIGHT", combined, "TOPRIGHT", -40, -4)
+        sortNative:Hide()
+      else
+        sortNative:SetParent(UIParent)
+        sortNative:Hide()
+      end
+    end
+  end)
+end
+
+local function LogChromeOnce(tidy, gear, close)
   if chromeLogged then
     return
   end
@@ -1131,178 +1168,208 @@ local function LogChromeOnce(sortBtn, settingsBtn, close)
     return string.format("%s %.0fx%.0f", tostring(name), w or 0, h or 0)
   end
   local msg = string.format(
-    "|cff88ff88BetterBackpack|r chrome sort=%s settings=%s close=%s",
-    wh(sortBtn),
-    wh(settingsBtn),
-    wh(close)
+    "|cff88ff88BetterBackpack|r chrome tidy=%s gear=%s close=%s ver=%d",
+    wh(tidy),
+    wh(gear),
+    wh(close),
+    CHROME_VER
   )
   if DEFAULT_CHAT_FRAME then
     DEFAULT_CHAT_FRAME:AddMessage(msg)
   end
 end
 
--- Measure BagItemAutoSortButton (native broom) — settings twin uses same pixels.
-local function MeasureNativeSort(sortBtn, close)
-  local w, h = 28, 26
-  if sortBtn then
+local function StyleChromeButton(btn, texturePath, atlasName, cw, ch, iconSize)
+  btn:SetSize(cw, ch)
+  -- Only build textures once — EnsureTitleChrome runs every open.
+  if btn._bbChromeStyled then
     pcall(function()
-      sortBtn:Show()
-      local cw, ch = sortBtn:GetWidth(), sortBtn:GetHeight()
-      if type(cw) == "number" and cw > 0 then
-        w = cw
+      local nt = btn:GetNormalTexture()
+      if nt then
+        nt:ClearAllPoints()
+        nt:SetPoint("CENTER")
+        nt:SetSize(iconSize, iconSize)
       end
-      if type(ch) == "number" and ch > 0 then
-        h = ch
+      local pt = btn:GetPushedTexture()
+      if pt then
+        pt:ClearAllPoints()
+        pt:SetPoint("CENTER", 1, -1)
+        pt:SetSize(iconSize, iconSize)
+      end
+      local hl = btn:GetHighlightTexture()
+      if hl then
+        hl:ClearAllPoints()
+        hl:SetPoint("CENTER")
+        hl:SetSize(iconSize + 4, iconSize + 4)
       end
     end)
+    return
   end
-  if (not sortBtn or w < 8) and close then
-    pcall(function()
-      local cw, ch = close:GetWidth(), close:GetHeight()
-      if type(cw) == "number" and cw > 0 then
-        w = cw
+  local function MakeTex(layer, dx, dy)
+    local tex = btn:CreateTexture(nil, layer)
+    tex:SetSize(iconSize, iconSize)
+    tex:SetPoint("CENTER", dx or 0, dy or 0)
+    local ok = false
+    if atlasName then
+      ok = pcall(tex.SetAtlas, tex, atlasName, false)
+      if ok then
+        tex:SetSize(iconSize, iconSize)
       end
-      if type(ch) == "number" and ch > 0 then
-        h = ch
-      end
-    end)
+    end
+    if not ok and texturePath then
+      pcall(tex.SetTexture, tex, texturePath)
+    end
+    return tex
   end
-  return w, h
+  btn:SetNormalTexture(MakeTex("ARTWORK", 0, 0))
+  btn:SetPushedTexture(MakeTex("ARTWORK", 1, -1))
+  pcall(function()
+    btn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+    local hl = btn:GetHighlightTexture()
+    if hl then
+      hl:ClearAllPoints()
+      hl:SetPoint("CENTER")
+      hl:SetSize(iconSize + 4, iconSize + 4)
+    end
+  end)
+  btn._bbChromeStyled = true
 end
 
---[[
-  Visible settings gear — PortraitButton cannot live in the title row (portrait-only).
-  One durable button, sized exactly to BagItemAutoSortButton, opens BB Settings.
-]]
-local function EnsureSettingsButton(frame, sortBtn, close, w, h)
-  local btn = frame.settingsBtn
-  if btn and btn._bbSettingsChrome then
+local function EnsureChromeButton(existing, globalName, frame)
+  local btn = existing
+  if btn and btn._bbChrome16 then
     pcall(function()
       btn:SetParent(frame)
     end)
-  else
-    btn = _G.BetterBackpackSettingsBtn15
-    if not (btn and btn._bbSettingsChrome) then
-      btn = CreateFrame("Button", "BetterBackpackSettingsBtn15", frame)
-      btn._bbSettingsChrome = true
-      pcall(function()
-        btn:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
-        local nt = btn:GetNormalTexture()
-        if nt then
-          nt:ClearAllPoints()
-          nt:SetAllPoints()
-          nt:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        end
-        btn:SetPushedTexture("Interface\\Buttons\\UI-OptionsButton")
-        local pt = btn:GetPushedTexture()
-        if pt then
-          pt:ClearAllPoints()
-          pt:SetAllPoints()
-          pt:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-          pt:SetVertexColor(0.85, 0.85, 0.85)
-        end
-        btn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
-        local ht = btn:GetHighlightTexture()
-        if ht then
-          ht:ClearAllPoints()
-          ht:SetAllPoints()
-        end
-      end)
-      btn:SetScript("OnEnter", function(self)
-        if GameTooltip then
-          GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-          GameTooltip:SetText("Nastavení")
-          GameTooltip:AddLine("Kategorie zapnout / vypnout.", 0.7, 0.7, 0.7, true)
-          GameTooltip:Show()
-        end
-      end)
-      btn:SetScript("OnLeave", function()
-        if GameTooltip then
-          GameTooltip:Hide()
-        end
-      end)
-      btn:SetScript("OnClick", function()
-        local S = BetterBackpack.Modules.Settings
-        if S and S.Toggle then
-          S.Toggle()
-        end
-      end)
-    else
-      pcall(function()
-        btn:SetParent(frame)
-      end)
-    end
+    return btn
   end
-  frame.settingsBtn = btn
-  pcall(function()
-    btn:ClearAllPoints()
-    if sortBtn then
-      btn:SetPoint("RIGHT", sortBtn, "LEFT", -CHROME_GAP, 0)
-    elseif close then
-      btn:SetPoint("RIGHT", close, "LEFT", -CHROME_GAP, 0)
-    else
-      btn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -40, -4)
-    end
-    btn:SetSize(w, h)
-    btn:SetWidth(w)
-    btn:SetHeight(h)
-    btn:SetFrameLevel((frame:GetFrameLevel() or 1) + 510)
-    btn:SetAlpha(1)
-    btn:EnableMouse(true)
-    btn:Show()
-    local nt = btn:GetNormalTexture()
-    if nt then
-      nt:ClearAllPoints()
-      nt:SetAllPoints()
-    end
-  end)
+  btn = _G[globalName]
+  if not (btn and btn._bbChrome16) then
+    btn = CreateFrame("Button", globalName, frame)
+    btn._bbChrome16 = true
+  else
+    pcall(function()
+      btn:SetParent(frame)
+    end)
+  end
   return btn
 end
 
---[[
-  Native broom + visible settings twin, title-row aligned with Close.
-  Do not reparent PortraitButton (invisible / wrong in title strip).
-]]
-local function BorrowNativeChrome(frame, close)
-  if not frame then
-    return
-  end
-  HideCustomChromeOnce()
+local function EnsureBagShelvesTitleChrome(frame, close)
+  HideLegacyChromeOnce()
+  ReleaseNativeAutoSortOnce(frame)
 
-  local sortBtn = _G.BagItemAutoSortButton
-  if sortBtn then
-    pcall(function()
-      sortBtn:SetParent(frame)
-      sortBtn:ClearAllPoints()
-      if close then
-        -- Title-row: sit left of X, vertically centered on Close.
-        sortBtn:SetPoint("RIGHT", close, "LEFT", -CHROME_GAP, 0)
-      else
-        sortBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -9, -4)
+  local cw, ch = CHROME_BTN, CHROME_BTN
+  pcall(function()
+    if close then
+      cw = math.max(CHROME_BTN, close:GetWidth() or CHROME_BTN)
+      ch = math.max(CHROME_BTN, close:GetHeight() or CHROME_BTN)
+    end
+  end)
+  local iconSize = math.max(28, math.floor(math.min(cw, ch) * 0.9))
+  local level = (close and close:GetFrameLevel()) or ((frame:GetFrameLevel() or 1) + 520)
+
+  -- gear immediately left of Close (BagShelves order: broom | gear | X)
+  local priorGear = frame.settingsBtn
+  if priorGear and not priorGear._bbChrome16 then
+    priorGear = nil
+  end
+  local gear = EnsureChromeButton(priorGear, "BetterBackpackGearBtn16", frame)
+  gear:ClearAllPoints()
+  if close then
+    gear:SetPoint("RIGHT", close, "LEFT", 0, 0)
+  else
+    gear:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -32, -1)
+  end
+  gear:SetFrameLevel(level)
+  StyleChromeButton(gear, "Interface\\Buttons\\UI-OptionsButton", nil, cw, ch, iconSize)
+  if not gear._bbChromeWired then
+    gear._bbChromeWired = true
+    gear:SetScript("OnEnter", function(self)
+      if GameTooltip then
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetText("Nastavení")
+        GameTooltip:AddLine("Kategorie zapnout / vypnout.", 0.7, 0.7, 0.7, true)
+        GameTooltip:Show()
       end
-      sortBtn:SetFrameLevel((frame:GetFrameLevel() or 1) + 500)
-      sortBtn:SetAlpha(1)
-      sortBtn:EnableMouse(true)
-      sortBtn:Show()
+    end)
+    gear:SetScript("OnLeave", function()
+      if GameTooltip then
+        GameTooltip:Hide()
+      end
+    end)
+    gear:SetScript("OnClick", function()
+      local S = BetterBackpack.Modules.Settings
+      if S and S.Toggle then
+        S.Toggle()
+      end
     end)
   end
+  gear:SetAlpha(1)
+  gear:EnableMouse(true)
+  gear:Show()
+  frame.settingsBtn = gear
 
-  -- Measure native broom before/after reparent; keep Blizzard size (do not stretch to Close).
-  local w, h = MeasureNativeSort(sortBtn, close)
-  if sortBtn then
-    pcall(function()
-      sortBtn:SetSize(w, h)
-      sortBtn:SetWidth(w)
-      sortBtn:SetHeight(h)
+  -- broom left of gear (never reuse native AutoSort as our button)
+  local priorTidy = frame.sortBtn
+  if priorTidy and (priorTidy == _G.BagItemAutoSortButton or not priorTidy._bbChrome16) then
+    priorTidy = nil
+  end
+  local tidy = EnsureChromeButton(priorTidy, "BetterBackpackTidyBtn16", frame)
+  tidy:ClearAllPoints()
+  tidy:SetPoint("RIGHT", gear, "LEFT", 0, 0)
+  tidy:SetFrameLevel(level)
+  StyleChromeButton(
+    tidy,
+    "Interface\\Buttons\\UI-RefreshButton",
+    "bags-button-autosort-up",
+    cw,
+    ch,
+    iconSize
+  )
+  pcall(function()
+    local nt = tidy:GetNormalTexture()
+    if nt then
+      nt:ClearAllPoints()
+      nt:SetPoint("CENTER")
+      nt:SetSize(iconSize, iconSize)
+    end
+    local pt = tidy:GetPushedTexture()
+    if pt then
+      pt:ClearAllPoints()
+      pt:SetPoint("CENTER", 1, -1)
+      pt:SetSize(iconSize, iconSize)
+    end
+  end)
+  if not tidy._bbChromeWired then
+    tidy._bbChromeWired = true
+    tidy:SetScript("OnEnter", function(self)
+      if GameTooltip then
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetText("Úklid")
+        GameTooltip:AddLine("SortBags + stack. Mimo boj.", 0.7, 0.7, 0.7, true)
+        GameTooltip:Show()
+      end
+    end)
+    tidy:SetScript("OnLeave", function()
+      if GameTooltip then
+        GameTooltip:Hide()
+      end
+    end)
+    tidy:SetScript("OnClick", function()
+      local T = BetterBackpack.Modules.Tidy
+      if T and T.SortBags then
+        T.SortBags()
+      end
     end)
   end
+  tidy:SetAlpha(1)
+  tidy:EnableMouse(true)
+  tidy:Show()
+  frame.sortBtn = tidy
 
-  local settingsBtn = EnsureSettingsButton(frame, sortBtn, close, w, h)
-
-  frame.sortBtn = sortBtn
-  frame.settingsBtn = settingsBtn
-  LogChromeOnce(sortBtn, settingsBtn, close)
-  return sortBtn, settingsBtn
+  LogChromeOnce(tidy, gear, close)
+  return tidy, gear
 end
 
 --[[
@@ -1321,7 +1388,8 @@ EnsureTitleChrome = function(frame)
   end
   if close then
     close:ClearAllPoints()
-    close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 1, -1)
+    -- BagShelves: TOPRIGHT 2,1
+    close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 2, 1)
     close:SetFrameLevel((frame:GetFrameLevel() or 1) + 520)
     close:Show()
   end
@@ -1338,8 +1406,8 @@ EnsureTitleChrome = function(frame)
       tt:ClearAllPoints()
       local anchor = frame.TitleContainer or frame
       tt:SetPoint("LEFT", anchor, "LEFT", 10, 0)
-      -- Room for settings + broom + Close on the right.
-      tt:SetPoint("RIGHT", frame, "RIGHT", -100, 0)
+      -- Room for broom + gear + Close (~3×32).
+      tt:SetPoint("RIGHT", frame, "RIGHT", -110, 0)
       if tt.SetJustifyH then
         tt:SetJustifyH("LEFT")
       end
@@ -1347,7 +1415,7 @@ EnsureTitleChrome = function(frame)
     end
   end)
 
-  local tidy, gear = BorrowNativeChrome(frame, close)
+  local tidy, gear = EnsureBagShelvesTitleChrome(frame, close)
   sortBtn = tidy
   settingsBtn = gear
 

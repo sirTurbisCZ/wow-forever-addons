@@ -1,9 +1,9 @@
-# Playtest brief — BetterBackpack 0.3.9
+# Playtest brief — BetterBackpack 0.4.0
 
-**Keep:** footer 62/70 (player+reagent) — do not touch count.
+**Keep:** footer 63/70 (player+reagent) — do not touch count.
 
-**Bug:** only broom+X; no settings gear; chrome ugly/misaligned.
+**Bug:** chrome back to square one (missing gear / ugly title buttons).
 
-**Fix:** keep native `BagItemAutoSortButton` left of Close; add visible settings twin sized to AutoSort (opens BB Nastavení). PortraitButton not reparented.
+**Fix:** port ARCHIVE BagShelves title chrome — Close-sized custom broom+gear (atlas autosort + UI-OptionsButton), order broom | gear | X. No native AutoSort reparent (releases stolen button). No BagShelves open/close/taint loops.
 
-**Done when:** `/reload` → gear | broom | X aligned · footer still ~/70.
+**Done when:** `/reload` → CombinedBags-like title buttons visible+aligned · footer still ~/70.
