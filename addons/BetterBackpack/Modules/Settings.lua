@@ -211,6 +211,20 @@ local function CustomRow(i)
   end
   row = CreateFrame("Frame", nil, panel.host)
   row:SetSize(PANEL_W - 2 * PAD_X, ROW_H)
+  -- Drop target too: an item dragged from the bag onto this row is taught to the lane.
+  row:EnableMouse(true)
+  local dropHl = row:CreateTexture(nil, "BACKGROUND")
+  dropHl:SetAllPoints()
+  dropHl:SetColorTexture(1, 0.82, 0, 0.12)
+  dropHl:Hide()
+  row.dropHl = dropHl
+  local function Drop(self)
+    if self.laneId and Layout and Layout.DropOnLane then
+      Layout.DropOnLane(self.laneId)
+    end
+  end
+  row:SetScript("OnReceiveDrag", Drop)
+  row:SetScript("OnMouseUp", Drop)
   local swatch = row:CreateTexture(nil, "ARTWORK")
   swatch:SetSize(14, 14)
   swatch:SetPoint("LEFT", 5, 0)
@@ -241,6 +255,7 @@ local function PaintCustom(y)
     local row = CustomRow(i)
     row:ClearAllPoints()
     row:SetPoint("TOPLEFT", panel.host, "TOPLEFT", 0, -y)
+    row.laneId = c.id
     local n = CC.CountLaneRules and CC.CountLaneRules(c.id) or 0
     row.label:SetText((c.name or c.id) .. (n > 0 and ("  |cff808080" .. n .. "|r") or ""))
     row.ren:SetScript("OnClick", function()
@@ -257,8 +272,13 @@ local function PaintCustom(y)
   end
   if #list == 0 then
     y = Note(1, "No custom lanes yet. Create one here, or drop an item on \"+ Lane\" in the bag.", y)
-  elseif notes[1] then
+  else
+    y = Note(4, "Drop an item from the bag on a lane here or on its header in the bag.", y)
+  end
+  if #list > 0 and notes[1] then
     notes[1]:Hide()
+  elseif #list == 0 and notes[4] then
+    notes[4]:Hide()
   end
   local add = panel.addBtn
   if not add then
@@ -444,6 +464,13 @@ function Settings.Ensure()
   end
   panel:Hide()
   return panel
+end
+
+function Settings.SetDropHints(on)
+  for i = 1, #customRows do
+    local row = customRows[i]
+    row.dropHl:SetShown(on and row:IsShown() and true or false)
+  end
 end
 
 function Settings.Refresh()

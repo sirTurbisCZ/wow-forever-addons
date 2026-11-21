@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.17).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.18).
   Forever: never SetToplevel / SetFrameStrata (ADDON_ACTION_BLOCKED).
   Chrome metrics from Baganator Forever Blizzard skin + ContainerFrameCombinedBags:
     ButtonFrameOffset=6, Bg/TopTile @ (6,-21), NineSlice borders, Inset hidden.
@@ -365,6 +365,10 @@ function Layout.SetDropHints(on)
     if sf.header and sf.header.dropHl then
       sf.header.dropHl:SetShown(on and sf:IsShown() and true or false)
     end
+  end
+  local Settings = Feat("Settings")
+  if Settings and Settings.SetDropHints then
+    pcall(Settings.SetDropHints, on)
   end
   if laneBtn then
     if on then
@@ -1108,7 +1112,13 @@ local function DoLayout()
     -- Size from the unfiltered bag: search / filter / "No matches" keep the same frame.
     -- Frame size = full bag, every lane expanded, no search/filter. Collapse and search
     -- only change what is drawn inside; the window never resizes for them.
-    local sizing = IsFiltering() and MergedLists(CollectBuckets(true)) or lists
+    local filtering = IsFiltering()
+    local sizing = filtering and MergedLists(CollectBuckets(true)) or lists
+    -- Custom lanes are drop targets: drawn even when empty (header + "(0)"), except
+    -- while a search / filter hides lanes without matches.
+    local function IsCustom(key)
+      return type(key) == "string" and key:find("^custom_", 1) ~= nil
+    end
 
     -- Grid width = widest unfiltered lane (capped at maxCols), never narrower than this open's max.
     local widest = 0
@@ -1126,9 +1136,11 @@ local function DoLayout()
     local lanesH = 0
     for i = 1, #order do
       local list = sizing[order[i]]
-      if list and #list > 0 then
+      if list and (#list > 0 or IsCustom(order[i])) then
         lanesH = lanesH + HEADER_H + HEADER_PAD
-        lanesH = lanesH + math.ceil(#list / cols) * (SLOT + PAD) - PAD
+        if #list > 0 then
+          lanesH = lanesH + math.ceil(#list / cols) * (SLOT + PAD) - PAD
+        end
         lanesH = lanesH + SECTION_GAP
       end
     end
@@ -1137,7 +1149,7 @@ local function DoLayout()
       local key = order[i]
       if CategoryEnabled(key) then
         local list = lists[key] or {}
-        if #list > 0 then
+        if #list > 0 or (IsCustom(key) and not filtering) then
           any = true
           local sf = EnsureSection(key)
           sf:ClearAllPoints()
@@ -1147,7 +1159,7 @@ local function DoLayout()
           local collapsed = IsCollapsed(key)
           SetHeaderState(sf.header, Layout.GetCategoryLabel(key), #list, collapsed)
           y = y + HEADER_H + HEADER_PAD
-          if not collapsed then
+          if not collapsed and #list > 0 then
             local col, row = 0, 0
             local rows = math.ceil(#list / cols)
             -- Parent to main (absolute), not content — content sat under Inset.Bg.
@@ -1645,7 +1657,7 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local CHROME_VER = 31 -- 0.5.17: + Lane button, drag-teach drop hints
+local CHROME_VER = 32 -- 0.5.18: empty custom lanes drawn as drop targets
 local chromeLogged = false
 local customChromeHidden = false
 

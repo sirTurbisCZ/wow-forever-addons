@@ -1,7 +1,7 @@
 # BetterBackpack — smyčky a grafy
 
 **Kód:** `Core.lua`, `Modules/{Slots,Layout,Context,OpenClose,Tidy,Settings,Search,Filter,CustomCategories,StackMerge,Pins,LayoutModes}.lua`  
-**Verze reference:** 0.5.17 (drag-teach lanes · custom lanes v Settings · Settings v chrome bagu · broom = stejná plate jako gear/X · sticky velikost okna · broom/gear v chrome Close · bank RMB secure type2=item · SearchBoxTemplate search · gear na nativní broom plate · nativní AutoSort reparent · footer hairline · pevná velikost = plný rozbalený bag · dense grid PAD 2 · NumberFontNormalSmall counts · broom/gear jako CombinedBags · footer N/M = font peněz · fill wells default off)  
+**Verze reference:** 0.5.18 (prázdné custom lanes kreslené jako drop target · drag-teach lanes · custom lanes v Settings · Settings v chrome bagu · broom = stejná plate jako gear/X · sticky velikost okna · broom/gear v chrome Close · bank RMB secure type2=item · SearchBoxTemplate search · gear na nativní broom plate · nativní AutoSort reparent · footer hairline · pevná velikost = plný rozbalený bag · dense grid PAD 2 · NumberFontNormalSmall counts · broom/gear jako CombinedBags · footer N/M = font peněz · fill wells default off)  
 **Stabilita:** Project `docs/bag-addon-brief.md` + Scenario Maps `docs/scenarios/BetterBackpack/`  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never path C harvest).
 
@@ -154,6 +154,7 @@ flowchart TD
   Src --> Where{drop target?}
   Where -->|item in another lane| T[Layout.DropOnLane lane]
   Where -->|lane header click / OnReceiveDrag| T
+  Where -->|custom lane row in Settings| T
   Where -->|+ Lane button| N[Layout.DropNewLane → ClearCursor → StaticPopup name]
   N --> Create[CC.CreateLane name + AssignItem itemID]
   Where -->|item in same lane| Swap[normal PickupContainerItem swap]
@@ -169,6 +170,7 @@ flowchart TD
 
 - `ClassifyBagSlot` pořadí: `CC.Resolve` (itemRules → custom itemIDs) → `itemRules` → `ClassifyNatural` (třída itemu). `Layout.NaturalLane` = jen `ClassifyNatural`, vypnutý built-in → `other`.
 - Pravidlo na vypnutý built-in → položka v Other (CategoryEnabled). Smazání custom lane maže i jeho pravidla.
+- **Custom lane se kreslí vždy** (0.5.18), i prázdná: jen header `(0)`, počítá se do pevné velikosti okna (`HEADER_H + HEADER_PAD + SECTION_GAP`). Výjimka: při search / filter se lanes bez shody skryjí jako ostatní. Řádky custom lanes v Settings jsou také drop target (`OnReceiveDrag` / `OnMouseUp` → `DropOnLane`, zlatý `dropHl` přes `Settings.SetDropHints`).
 - Každé tlačítko v lane nese `btn._bbLane` (DoLayout). Header má `dropHl` (zlatý pruh) během tažení; `+ Lane` `LockHighlight`.
 - V boji pickup z bagu nefunguje (`pickup` bail) → drag-teach jen mimo boj; nic secure se nemění.
 - Settings: `Layout.CreateChromedPanel` (ButtonFrameTemplate + CombinedBags NineSlice jako bag). Sekce Lanes (z `CATEGORY_ORDER`, ne z `ExtendOrder` — skrytý lane musí zůstat v seznamu, jinak nejde znovu zapnout), Custom lanes (Rename / Delete / New lane přes StaticPopup), Learned items (počet + Forget all), Features. Žádné `SetFrameStrata`.
