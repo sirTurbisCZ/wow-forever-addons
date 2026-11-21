@@ -1,4 +1,7 @@
-# Playtest brief — BetterBackpack 0.5.48 (close fix)
+# Playtest brief — BetterBackpack 0.5.49 (session reset)
+
+**0.5.49**
+- Stuck after 1st close: **`SessionOpen` = frame `IsShown` only** (not `bagsOpen`). **`ResetOverlaySessionState`** after every `CloseOurs` / `NotifyHidden`. `Layout.ForceHidden`. Unpark native ContainerFrames if left off-screen. B close suppress 0.1s.
 
 **0.5.48**
 - **Close:** X wired every layout (`WireCloseButton`); **B XOR close** uses `closeBlizzard=true` like `/bb`. `CloseOurs` clears flags, `Layout.Hide`, **`RestoreCombinedBagsUI`** (no stuck alpha-0 Combined). `NotifyHidden` syncs `bagsOpen`.

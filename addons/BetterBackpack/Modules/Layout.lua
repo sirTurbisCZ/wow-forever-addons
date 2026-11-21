@@ -2797,6 +2797,16 @@ function Layout.Hide()
   end
 end
 
+function Layout.ForceHidden()
+  Layout.Hide()
+  local g = _G.BetterBackpackFrame
+  if g and g.Hide and (not main or g ~= main) then
+    pcall(function()
+      g:Hide()
+    end)
+  end
+end
+
 function Layout.Relayout()
   if Layout.IsShown() then
     DoLayout()

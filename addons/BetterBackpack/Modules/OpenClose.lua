@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.OpenClose — B + /bb (0.5.48)
+  BetterBackpack.OpenClose — B + /bb (0.5.49)
 
   ToggleAllBags + ToggleBackpack → onBagKey XOR (same handler). ToggleBag / ToggleKeyRing = Blizzard.
   Bag-bar native: never park/blackout ContainerFrame*; RestoreNativeBagFrames on close only.
@@ -99,7 +99,17 @@ local function RestoreNativeBagFrames()
     return
   end
   for i = 1, 13 do
-    RestoreFrameInteractive(_G["ContainerFrame" .. i])
+    local cf = _G["ContainerFrame" .. i]
+    if cf and not InCombat() and cf.IsShown and cf:IsShown() then
+      pcall(function()
+        local left = cf:GetLeft()
+        if left ~= nil and left < -500 then
+          cf:ClearAllPoints()
+          cf:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+        end
+      end)
+    end
+    RestoreFrameInteractive(cf)
   end
   for _, name in ipairs(KeyRingFrameNames()) do
     RestoreFrameInteractive(_G[name])
@@ -321,10 +331,27 @@ local function OursVisible()
 end
 
 local function SessionOpen()
-  if OursVisible() then
-    return true
-  end
-  return bagsOpen == true
+  -- Single source of truth: frame visible (bagsOpen alone caused stuck XOR after close).
+  return OursVisible()
+end
+
+local function ResetOverlaySessionState()
+  bagsOpen = false
+  openBusy = false
+  inBagKey = false
+  inOpenIntent = false
+  OpenClose._openBusy = false
+  pcall(function()
+    if Layout and Layout.ForceHidden then
+      Layout.ForceHidden()
+    elseif Layout and Layout.Hide then
+      Layout.Hide()
+    end
+    local g = _G.BetterBackpackFrame
+    if g and g.IsShown and g:IsShown() and g.Hide then
+      g:Hide()
+    end
+  end)
 end
 
 local function Blackout(f)
@@ -621,20 +648,22 @@ OpenOurs = function()
     return false
   end
 
-  bagsOpen = true
-  toggleLockUntil = Now() + TOGGLE_LOCK
   openBusy = false
   OpenClose._openBusy = false
+  bagsOpen = OursVisible()
+  toggleLockUntil = bagsOpen and (Now() + TOGGLE_LOCK) or toggleLockUntil
   pcall(CloseNativeCombinedBags)
-  if not InCombat() then
-    PulsePark()
-  else
-    ParkBlizzardForOverlay()
+  if bagsOpen then
+    if not InCombat() then
+      PulsePark()
+    else
+      ParkBlizzardForOverlay()
+    end
+    if Layout and Layout.Raise then
+      pcall(Layout.Raise)
+    end
   end
-  if Layout and Layout.Raise then
-    pcall(Layout.Raise)
-  end
-  return true
+  return bagsOpen == true
 end
 
 local function RestoreCombinedBagsUI()
@@ -697,19 +726,25 @@ function OpenClose.CloseOurs(opts)
     ParkBlizzardForOverlay()
   end
   RestoreNativeBagFrames()
+  ResetOverlaySessionState()
   closeBusy = false
+end
+
+function OpenClose.ResetBagSession()
+  ResetOverlaySessionState()
+  toggleLockUntil = 0
+  OpenClose.ClearReplaceSuppress()
 end
 
 function OpenClose.NotifyHidden()
   if BetterBackpack._bbClosing then
     return
   end
-  bagsOpen = false
-  openBusy = false
-  OpenClose._openBusy = false
   if OursVisible() then
     pcall(OpenClose.CloseOurs, { closeBlizzard = true, suppress = 0.25 })
+    return
   end
+  ResetOverlaySessionState()
 end
 
 function OpenClose.ShutdownToBlizzard()
@@ -770,15 +805,16 @@ local function onBagKey()
     return
   end
   inBagKey = true
-  OpenClose.ClearReplaceSuppress()
-  if SessionOpen() then
-    pcall(OpenClose.CloseOurs, { closeBlizzard = true, suppress = 0.25 })
-    inBagKey = false
-    return
-  end
-  pcall(CloseNativeCombinedBags)
-  pcall(ParkBlizzardForOverlay)
-  pcall(OpenOurs)
+  pcall(function()
+    OpenClose.ClearReplaceSuppress()
+    if SessionOpen() then
+      OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.1 })
+      return
+    end
+    pcall(CloseNativeCombinedBags)
+    pcall(ParkBlizzardForOverlay)
+    OpenOurs()
+  end)
   inBagKey = false
 end
 
