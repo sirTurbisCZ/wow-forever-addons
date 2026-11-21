@@ -1,7 +1,7 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.3.5).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.3.6).
   Forever: never SetToplevel (ADDON_ACTION_BLOCKED).
-  Title chrome: create gear/broom once; size = Close GetWidth/Height after layout.
+  Title chrome: reparent native BagItemAutoSortButton + CombinedBags filter/PortraitButton.
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -1065,112 +1065,27 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local CHROME_VER = 13 -- Close-template once; SetSize from Close after layout; log once
+local CHROME_VER = 14 -- reparent native BagItemAutoSort + CombinedBags filter
 local CHROME_GAP = 2
-local chromeSizeLogged = false
-local legacyChromeRetired = false
+local chromeLogged = false
+local customChromeHidden = false
 
-local function StripChromeFontStrings(btn)
-  if not btn then
+local function HideCustomChromeOnce()
+  if customChromeHidden then
     return
   end
-  pcall(function()
-    for _, key in ipairs({ "Count", "Stock", "Text", "_bbLabel", "Label" }) do
-      local fs = btn[key]
-      if fs then
-        if fs.SetText then
-          fs:SetText("")
-        end
-        if fs.Hide then
-          fs:Hide()
-        end
-        btn[key] = nil
-      end
-    end
-    local regions = { btn:GetRegions() }
-    for i = 1, #regions do
-      local r = regions[i]
-      if r and r.GetObjectType and r:GetObjectType() == "FontString" then
-        r:SetText("")
-        r:Hide()
-      end
-    end
-  end)
-end
-
-local function MeasureCloseExact(close)
-  local w, h = CHROME_BTN, CHROME_BTN
-  if not close then
-    return w, h
-  end
-  pcall(function()
-    close:Show()
-    local cw = close:GetWidth()
-    local ch = close:GetHeight()
-    if type(cw) == "number" and cw > 0 then
-      w = cw
-    end
-    if type(ch) == "number" and ch > 0 then
-      h = ch
-    end
-  end)
-  return w, h
-end
-
-local function SetExactSize(btn, w, h)
-  if not btn then
-    return
-  end
-  pcall(function()
-    btn:SetScale(1)
-    btn:SetSize(w, h)
-    btn:SetWidth(w)
-    btn:SetHeight(h)
-  end)
-end
-
-local function LogChromeSizesOnce(close, tidy, gear)
-  if chromeSizeLogged then
-    return
-  end
-  chromeSizeLogged = true
-  local function wh(b)
-    if not b then
-      return "?"
-    end
-    local w, h = 0, 0
-    pcall(function()
-      w, h = b:GetWidth(), b:GetHeight()
-    end)
-    return string.format("%.1fx%.1f", w or 0, h or 0)
-  end
-  local msg = string.format(
-    "|cff88ff88BetterBackpack|r chrome sizes close=%s broom=%s gear=%s",
-    wh(close),
-    wh(tidy),
-    wh(gear)
-  )
-  if DEFAULT_CHAT_FRAME then
-    DEFAULT_CHAT_FRAME:AddMessage(msg)
-  end
-end
-
--- Hide old leaked names once (never every EnsureTitleChrome).
-local function RetireLegacyChromeOnce()
-  if legacyChromeRetired then
-    return
-  end
-  legacyChromeRetired = true
+  customChromeHidden = true
   for _, name in ipairs({
     "BetterBackpackSortButton",
     "BetterBackpackSettingsButton",
     "BetterBackpackSortBtn12",
     "BetterBackpackGearBtn12",
+    "BetterBackpackSortBtn13",
+    "BetterBackpackGearBtn13",
   }) do
     local b = _G[name]
-    if b and not b._bbChromeV13 then
+    if b then
       pcall(function()
-        StripChromeFontStrings(b)
         b:Hide()
         b:EnableMouse(false)
         b:ClearAllPoints()
@@ -1180,126 +1095,134 @@ local function RetireLegacyChromeOnce()
   end
 end
 
+local function LogNativeChromeOnce(sortBtn, filterBtn, close)
+  if chromeLogged then
+    return
+  end
+  chromeLogged = true
+  local function wh(b)
+    if not b then
+      return "nil"
+    end
+    local w, h = 0, 0
+    pcall(function()
+      w, h = b:GetWidth(), b:GetHeight()
+    end)
+    return string.format("%s %.1fx%.1f", b.GetName and b:GetName() or "?", w or 0, h or 0)
+  end
+  local msg = string.format(
+    "|cff88ff88BetterBackpack|r native chrome sort=%s filter=%s close=%s",
+    wh(sortBtn),
+    wh(filterBtn),
+    wh(close)
+  )
+  if DEFAULT_CHAT_FRAME then
+    DEFAULT_CHAT_FRAME:AddMessage(msg)
+  end
+end
+
+-- Resolve Blizzard CombinedBags filter control (prefer visible Button over DropDown MENU).
+local function ResolveNativeFilterButton()
+  local combined = ContainerFrameCombinedBags
+  local candidates = {
+    _G.BagItemFilterDropdown,
+    _G.BagItemFilterDropDown,
+    _G.BagItemFilterButton,
+    combined and combined.PortraitButton,
+    combined and combined.FilterButton,
+    combined and combined.FilterDropDown,
+    _G.ContainerFrameCombinedBagsFilterDropDown,
+    _G.ContainerFrame1FilterDropDown,
+    _G.ContainerFrameFilterDropDown,
+  }
+  for i = 1, #candidates do
+    local f = candidates[i]
+    if f and f.SetParent and f.ClearAllPoints then
+      local ot
+      pcall(function()
+        ot = f.GetObjectType and f:GetObjectType()
+      end)
+      -- Prefer real Buttons (PortraitButton / filter gear) over invisible MENU frames.
+      if ot == "Button" or ot == "CheckButton" or ot == "DropdownButton" then
+        return f
+      end
+    end
+  end
+  -- Fallback: first frame that can be reparented.
+  for i = 1, #candidates do
+    local f = candidates[i]
+    if f and f.SetParent and f.ClearAllPoints then
+      return f
+    end
+  end
+  return nil
+end
+
 --[[
-  Create ONCE as UIPanelCloseButtonNoScripts (same look/size DNA as Close).
-  No recreate on later EnsureTitleChrome calls.
+  Borrow Blizzard chrome — DO NOT create custom gear/broom.
+  BagItemAutoSortButton = broom (native size/textures).
+  PortraitButton / FilterDropDown = bag filter (native).
+  Reparent while ours is shown; CombinedBags UpdateSearchBox may steal back — re-borrow each Ensure.
 ]]
-local function EnsureCloseLookButton(existing, name, parent)
-  if existing and existing._bbChromeV13 then
-    return existing
-  end
-  local btn = existing
-  if not btn then
-    btn = _G[name]
-  end
-  if btn and btn._bbChromeV13 then
-    pcall(function()
-      btn:SetParent(parent)
-    end)
-    return btn
-  end
-  -- Fresh create only when missing — never destroy/recreate a live v13 button.
-  if not btn then
-    pcall(function()
-      btn = CreateFrame("Button", name, parent, "UIPanelCloseButtonNoScripts")
-    end)
-  end
-  if not btn then
-    pcall(function()
-      btn = CreateFrame("Button", name, parent, "UIPanelCloseButton")
-    end)
-  end
-  if not btn then
-    btn = CreateFrame("Button", name, parent)
-  end
-  btn._bbChromeV13 = true
-  pcall(function()
-    btn:SetParent(parent)
-    btn:SetScript("OnClick", nil) -- never HideParentPanel
-  end)
-  StripChromeFontStrings(btn)
-  return btn
-end
-
--- Face glyph on top of Close-template chrome (keeps Close highlight/disabled look).
-local function ApplySortFace(btn)
-  if btn._bbFaceApplied then
-    return
-  end
-  btn._bbFaceApplied = true
-  pcall(function()
-    local face = btn:CreateTexture(nil, "ARTWORK", nil, 1)
-    face:SetAllPoints(btn)
-    if face.SetAtlas then
-      face:SetAtlas("bags-button-autosort-up", false)
-    end
-    btn:SetNormalTexture(face)
-    btn._bbSortNormal = face
-    local pushed = btn:CreateTexture(nil, "ARTWORK", nil, 1)
-    pushed:SetAllPoints(btn)
-    if pushed.SetAtlas then
-      pushed:SetAtlas("bags-button-autosort-down", false)
-    end
-    btn:SetPushedTexture(pushed)
-  end)
-  StripChromeFontStrings(btn)
-end
-
-local function ApplyGearFace(btn)
-  if btn._bbFaceApplied then
-    return
-  end
-  btn._bbFaceApplied = true
-  pcall(function()
-    btn:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
-    local nt = btn:GetNormalTexture()
-    if nt then
-      nt:ClearAllPoints()
-      nt:SetAllPoints(btn)
-      nt:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-      nt:SetVertexColor(1, 0.82, 0.2)
-    end
-    btn:SetPushedTexture("Interface\\Buttons\\UI-OptionsButton")
-    local pt = btn:GetPushedTexture()
-    if pt then
-      pt:ClearAllPoints()
-      pt:SetAllPoints(btn)
-      pt:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-      pt:SetVertexColor(0.85, 0.7, 0.15)
-    end
-  end)
-  StripChromeFontStrings(btn)
-end
-
--- After Close is laid out: clone GetWidth/GetHeight onto gear+broom.
-local function SyncChromeSizesFromClose(frame)
+local function BorrowNativeChrome(frame, close)
   if not frame then
     return
   end
-  local close = frame.CloseButton
-  local tidy = frame.sortBtn
-  local gear = frame.settingsBtn
-  if not close or not tidy or not gear then
-    return
+  HideCustomChromeOnce()
+
+  local sortBtn = _G.BagItemAutoSortButton
+  if sortBtn then
+    pcall(function()
+      sortBtn:SetParent(frame)
+      sortBtn:ClearAllPoints()
+      if close then
+        sortBtn:SetPoint("RIGHT", close, "LEFT", -CHROME_GAP, 0)
+      else
+        -- Blizzard CombinedBags default when no Close anchor.
+        sortBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -9, -34)
+      end
+      -- Never SetSize — keep Blizzard textures/hitbox.
+      sortBtn:SetFrameLevel((frame:GetFrameLevel() or 1) + 500)
+      sortBtn:SetAlpha(1)
+      sortBtn:EnableMouse(true)
+      sortBtn:Show()
+    end)
   end
-  local w, h = MeasureCloseExact(close)
-  SetExactSize(close, w, h) -- keep Close stable at measured size
-  SetExactSize(tidy, w, h)
-  SetExactSize(gear, w, h)
-  LogChromeSizesOnce(close, tidy, gear)
-  return w, h
+
+  local filterBtn = ResolveNativeFilterButton()
+  if filterBtn then
+    pcall(function()
+      filterBtn:SetParent(frame)
+      filterBtn:ClearAllPoints()
+      if sortBtn then
+        filterBtn:SetPoint("RIGHT", sortBtn, "LEFT", -CHROME_GAP, 0)
+      elseif close then
+        filterBtn:SetPoint("RIGHT", close, "LEFT", -CHROME_GAP, 0)
+      else
+        filterBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -40, -34)
+      end
+      filterBtn:SetFrameLevel((frame:GetFrameLevel() or 1) + 510)
+      filterBtn:SetAlpha(1)
+      filterBtn:EnableMouse(true)
+      filterBtn:Show()
+    end)
+  end
+
+  frame.sortBtn = sortBtn
+  frame.settingsBtn = filterBtn
+
+  LogNativeChromeOnce(sortBtn, filterBtn, close)
+  return sortBtn, filterBtn
 end
 
 --[[
   Assign into forward-declared EnsureTitleChrome (must NOT use `local function` here).
-  Create gear/broom once (CloseButton template). Size only via Close GetWidth/Height.
+  Native CombinedBags buttons only — no custom gear/broom.
 ]]
 EnsureTitleChrome = function(frame)
   if not frame then
     return
   end
-  RetireLegacyChromeOnce()
-
   local close = frame.CloseButton
   if not close then
     pcall(function()
@@ -1314,9 +1237,6 @@ EnsureTitleChrome = function(frame)
     close:Show()
   end
 
-  -- Measure after Close is anchored+shown (layout pass).
-  local chromeW, chromeH = MeasureCloseExact(close)
-
   pcall(function()
     local title = CombinedBagTitle()
     if frame.SetTitle then
@@ -1329,7 +1249,7 @@ EnsureTitleChrome = function(frame)
       tt:ClearAllPoints()
       local anchor = frame.TitleContainer or frame
       tt:SetPoint("LEFT", anchor, "LEFT", 10, 0)
-      tt:SetPoint("RIGHT", frame, "RIGHT", -(chromeW * 3 + CHROME_GAP * 3 + 8), 0)
+      tt:SetPoint("RIGHT", frame, "RIGHT", -96, 0)
       if tt.SetJustifyH then
         tt:SetJustifyH("LEFT")
       end
@@ -1337,118 +1257,10 @@ EnsureTitleChrome = function(frame)
     end
   end)
 
-  local tidy = EnsureCloseLookButton(frame.sortBtn, "BetterBackpackSortBtn13", frame)
-  frame.sortBtn = tidy
-  ApplySortFace(tidy)
-  tidy:ClearAllPoints()
-  if close then
-    tidy:SetPoint("RIGHT", close, "LEFT", -CHROME_GAP, 0)
-  else
-    tidy:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -(chromeW + CHROME_GAP), -1)
-  end
-  SetExactSize(tidy, chromeW, chromeH)
-  tidy:SetFrameLevel((frame:GetFrameLevel() or 1) + 500)
-  tidy:SetAlpha(1)
-  tidy:EnableMouse(true)
-  if not tidy._bbScripts then
-    tidy._bbScripts = true
-    tidy:SetScript("OnEnter", function(self)
-      if not GameTooltip then
-        return
-      end
-      GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-      pcall(function()
-        if GameTooltip_SetTitle then
-          GameTooltip_SetTitle(
-            GameTooltip,
-            (type(BAG_CLEANUP_BAGS) == "string" and BAG_CLEANUP_BAGS) or "Clean Up Bags",
-            HIGHLIGHT_FONT_COLOR
-          )
-        else
-          GameTooltip:SetText((type(BAG_CLEANUP_BAGS) == "string" and BAG_CLEANUP_BAGS) or "Clean Up Bags")
-        end
-        local desc = (type(BAG_CLEANUP_BAGS_DESCRIPTION) == "string" and BAG_CLEANUP_BAGS_DESCRIPTION)
-          or "Sort bags to free space."
-        if GameTooltip_AddNormalLine then
-          GameTooltip_AddNormalLine(GameTooltip, desc)
-        else
-          GameTooltip:AddLine(desc, 1, 1, 1, true)
-        end
-      end)
-      GameTooltip:Show()
-    end)
-    tidy:SetScript("OnLeave", function()
-      if GameTooltip then
-        GameTooltip:Hide()
-      end
-    end)
-    tidy:SetScript("OnClick", function()
-      pcall(function()
-        if PlaySound and SOUNDKIT and SOUNDKIT.UI_BAG_SORTING_01 then
-          PlaySound(SOUNDKIT.UI_BAG_SORTING_01)
-        end
-      end)
-      local Tidy = BetterBackpack.Modules.Tidy
-      if Tidy and Tidy.SortBags then
-        Tidy.SortBags()
-      end
-    end)
-  end
-  tidy:Show()
-  frame.tidy = tidy
+  local tidy, gear = BorrowNativeChrome(frame, close)
+  -- Keep module upvalues in sync for DiagnoseFrame.
   sortBtn = tidy
-
-  local gear = EnsureCloseLookButton(frame.settingsBtn, "BetterBackpackGearBtn13", frame)
-  frame.settingsBtn = gear
-  ApplyGearFace(gear)
-  gear:ClearAllPoints()
-  gear:SetPoint("RIGHT", tidy, "LEFT", -CHROME_GAP, 0)
-  SetExactSize(gear, chromeW, chromeH)
-  gear:SetFrameLevel((frame:GetFrameLevel() or 1) + 510)
-  gear:SetAlpha(1)
-  gear:EnableMouse(true)
-  if not gear._bbScripts then
-    gear._bbScripts = true
-    gear:SetScript("OnEnter", function(self)
-      if GameTooltip then
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("Nastavení")
-        GameTooltip:AddLine("Kategorie zapnout / vypnout. Skrytá → Other.", 0.7, 0.7, 0.7, true)
-        GameTooltip:Show()
-      end
-    end)
-    gear:SetScript("OnLeave", function()
-      if GameTooltip then
-        GameTooltip:Hide()
-      end
-    end)
-    gear:SetScript("OnClick", function()
-      local S = BetterBackpack.Modules.Settings
-      if S and S.Toggle then
-        S.Toggle()
-      end
-    end)
-  end
-  gear:Show()
-  frame.gear = gear
   settingsBtn = gear
-
-  -- Clone Close size after this layout pass.
-  SyncChromeSizesFromClose(frame)
-  -- One more pass next tick — Close GetWidth can settle after Show/Raise.
-  if not frame._bbChromeSizeDefer then
-    frame._bbChromeSizeDefer = true
-    if C_Timer and C_Timer.After then
-      C_Timer.After(0, function()
-        frame._bbChromeSizeDefer = nil
-        if frame:IsShown() then
-          SyncChromeSizesFromClose(frame)
-        end
-      end)
-    else
-      frame._bbChromeSizeDefer = nil
-    end
-  end
 
   if frame._bbChrome then
     pcall(frame._bbChrome.Hide, frame._bbChrome)

@@ -1,7 +1,7 @@
-# Playtest brief — BetterBackpack 0.3.5
+# Playtest brief — BetterBackpack 0.3.6
 
-**Bug:** gear/broom still wrong size vs Close.
+**Bug:** custom gear/broom never matched Close size.
 
-**Fix:** create once as `UIPanelCloseButtonNoScripts`; after layout `SetSize(close:GetWidth(), close:GetHeight())` on both; chat logs `chrome sizes close=… broom=… gear=…` once; no recreate loops.
+**Fix:** STOP custom chrome. Reparent Blizzard `BagItemAutoSortButton` + CombinedBags filter/`PortraitButton` next to Close — native textures/sizes. Chat: `native chrome sort=… filter=… close=…`.
 
-**Done when:** `/reload` → `loaded v0.3.5` · chat shows equal sizes · gear=broom=X visually.
+**Done when:** `/reload` → `loaded v0.3.6` · broom+filter look identical to default CombinedBags · same size as Blizzard.
