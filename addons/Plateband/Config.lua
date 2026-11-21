@@ -1,0 +1,88 @@
+--[[ Plateband — defaults, schemaVersion, migration ]]
+
+Plateband = Plateband or {}
+
+local CURRENT_SCHEMA = 1
+local MAX_ERRORS = 40
+local MAX_MSG = 2000
+
+Plateband.Config = Plateband.Config or {}
+local Config = Plateband.Config
+
+Config.CURRENT_SCHEMA = CURRENT_SCHEMA
+Config.MAX_ERRORS = MAX_ERRORS
+Config.MAX_MSG = MAX_MSG
+Config.VERSION = "0.1.0"
+
+local function ProfileDefaults()
+  return {
+    enabled = true,
+    safeMode = false,
+    iconSize = 18,
+    maxIcons = 12,
+    showBand = true,
+  }
+end
+
+local function Defaults()
+  return {
+    schemaVersion = CURRENT_SCHEMA,
+    profile = ProfileDefaults(),
+    errors = {},
+    lastDiag = nil,
+  }
+end
+
+Config.Defaults = Defaults
+Config.ProfileDefaults = ProfileDefaults
+
+local function EnsureProfile(db)
+  if type(db.profile) ~= "table" then
+    db.profile = ProfileDefaults()
+    return
+  end
+  local p = db.profile
+  local d = ProfileDefaults()
+  for k, v in pairs(d) do
+    if p[k] == nil then
+      p[k] = v
+    end
+  end
+end
+
+--- Ensure PlatebandDB exists, migrate schema, return db.
+function Config.EnsureDB()
+  if type(PlatebandDB) ~= "table" then
+    PlatebandDB = Defaults()
+    return PlatebandDB
+  end
+
+  local db = PlatebandDB
+  local from = tonumber(db.schemaVersion) or 0
+
+  if from < 1 then
+    EnsureProfile(db)
+    if type(db.errors) ~= "table" then
+      db.errors = {}
+    end
+    db.schemaVersion = 1
+  end
+
+  -- Future: if from < 2 then … end
+
+  EnsureProfile(db)
+  if type(db.errors) ~= "table" then
+    db.errors = {}
+  end
+
+  return db
+end
+
+function Config.Reset()
+  PlatebandDB = Defaults()
+  return PlatebandDB
+end
+
+function Config.GetProfile()
+  return Config.EnsureDB().profile
+end

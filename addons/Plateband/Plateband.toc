@@ -1,0 +1,14 @@
+## Interface: 16001
+## Title: Plateband
+## Notes: Shared harmful / DoT icons grouped with native nameplate debuffs above the plate.
+## Author: tuma
+## Version: 0.1.0
+## SavedVariables: PlatebandDB
+## OptionalDeps: ForeverErrorLog
+## DefaultState: enabled
+## Category: Combat
+
+Locale/enUS.lua
+Config.lua
+Modules/Plates.lua
+Core.lua

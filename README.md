@@ -9,6 +9,7 @@ Install from [Releases](https://github.com/sirTurbisCZ/wow-forever-addons/releas
 | Addon | Slash | What it does |
 |-------|-------|----------------|
 | [ForeverErrorLog](addons/ForeverErrorLog/) | `/felog` | Captures Lua errors from all addons into SavedVariables (Blizzard error popup off by default) |
+| [Plateband](addons/Plateband/) | `/pb` | Shared harmful / DoT icons grouped with native nameplate debuffs above the plate |
 
 Player docs live next to each addon (`Docs/README.md`). Development notes and Scenario Maps stay in the Cursor project store, not in this repo.
 
@@ -16,10 +17,12 @@ Player docs live next to each addon (`Docs/README.md`). Development notes and Sc
 
 ```bash
 ./scripts/link-addon.sh ForeverErrorLog   # symlink into Forever Interface/AddOns
+./scripts/link-addon.sh Plateband
 ./scripts/package-addon.sh ForeverErrorLog  # zip → dist/
+./scripts/package-addon.sh Plateband
 ```
 
-Release tags look like `felog-v0.1.0` and produce a zip whose root is the `ForeverErrorLog/` folder.
+Release tags look like `felog-v0.1.0` / `plateband-v0.1.0` and produce a zip whose root is the addon folder.
 
 ## License
 
