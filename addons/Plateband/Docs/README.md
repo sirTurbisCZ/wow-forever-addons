@@ -18,7 +18,7 @@ Optional: keep **Forever Error Log** installed so Lua errors land in `/felog`.
 | `/pb on` / `/pb off` | Enable or disable the aura band |
 | `/pb diagnose` | Compact status card (also auto-saved) |
 | `/pb dump` | Status, recent errors, session log tail |
-| `/pb watch on` / `/pb watch off` | Print one-line card every ~2s while on |
+| `/pb watch on` / `/pb watch off` | Print one-line card every ~2s (off by default; SV still logs) |
 | `/pb safe` | Turn the band off and clear overlays |
 | `/pb reset` | Restore default settings |
 | `/pb size <n>` | Icon size hint (12–32) |
