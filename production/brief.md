@@ -1,4 +1,9 @@
-# Playtest brief — BetterBackpack 0.5.71
+# Playtest brief — BetterBackpack 0.5.72
+
+**0.5.72**
+- Combat visibility: `IsBagFrameVisible` uses alpha+`_bbBuilt` in lockdown (not `IsShown`).
+- Shell `Show` at alpha 0; `ShowCombatMinimal` no longer recurses into `CombatShow`.
+- XOR: `OursVisible` -> `IsBagFrameVisible`; combat open syncs `shown` from visible.
 
 **0.5.71**
 - **Combat shell OOC:** `EnsureCombatShell` = PreCreate + EnsureMain only (no DoLayout). Runs on LOGIN (deferred 0) and PLAYER_REGEN_ENABLED.

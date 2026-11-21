@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 0.5.71 combat shell at login/regen (EnsureMain only). CombatShow + ShowCombatMinimal fallback.
+## Notes: 0.5.72 combat B: alpha visibility + EnsureCombatShell. SessionOpen/IsBagFrameVisible aligned.
 ## Author: tuma
-## Version: 0.5.71
+## Version: 0.5.72
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled

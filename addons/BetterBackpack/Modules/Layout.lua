@@ -2669,16 +2669,22 @@ local function FrameAlpha(f)
   return a
 end
 
--- Open for B XOR: combat alpha-off counts as closed.
+-- Open for B XOR: combat uses alpha + flag (Show may fail in lockdown).
 function Layout.IsBagFrameVisible()
   if combatVisuallyHidden then
     return false
   end
   local f = main or _G.BetterBackpackFrame
-  if not f or not f.IsShown or not f:IsShown() then
+  if not f then
     return false
   end
   if FrameAlpha(f) < 0.05 then
+    return false
+  end
+  if InCombatLockdown and InCombatLockdown() then
+    return f._bbBuilt and true or false
+  end
+  if not f.IsShown or not f:IsShown() then
     return false
   end
   return true
@@ -2727,6 +2733,7 @@ function Layout.EnsureCombatShell()
   end
   combatVisuallyHidden = true
   pcall(function()
+    f:Show()
     f:SetAlpha(0)
     f:EnableMouse(false)
   end)
@@ -2745,9 +2752,9 @@ function Layout.CombatShow()
   end
   combatVisuallyHidden = false
   pcall(function()
+    frame:Show()
     frame:SetAlpha(1)
     frame:EnableMouse(true)
-    frame:Show()
   end)
   pcall(Layout.Raise)
   pcall(RefreshCooldowns)
@@ -2783,14 +2790,29 @@ function Layout.ShowCombatMinimal()
     end
     return false
   end
-  if not _G.BetterBackpackFrame and not main then
+  local frame = Layout.CombatAttachMain() or _G.BetterBackpackFrame
+  if not frame then
     local OC = BetterBackpack.Modules and BetterBackpack.Modules.OpenClose
     if OC and OC.CombatTraceOnce then
       OC.CombatTraceOnce("ShowCombatMinimal", "no BetterBackpackFrame")
     end
     return false
   end
-  return Layout.ForceCombatShow()
+  main = frame
+  if frame._bbContent then
+    content = frame._bbContent
+  end
+  combatVisuallyHidden = false
+  pcall(function()
+    frame:Show()
+    frame:SetAlpha(1)
+    frame:EnableMouse(true)
+  end)
+  pcall(Layout.Raise)
+  pcall(RefreshCooldowns)
+  UpdateFreeSpace()
+  UpdateMoney()
+  return Layout.IsBagFrameVisible()
 end
 
 function Layout.Show()

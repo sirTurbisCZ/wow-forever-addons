@@ -321,6 +321,9 @@ function OpenClose.ClearReplaceSuppress()
 end
 
 local function OursVisible()
+  if Layout and Layout.IsBagFrameVisible then
+    return Layout.IsBagFrameVisible()
+  end
   return Layout and Layout.IsShown and Layout.IsShown()
 end
 
@@ -582,8 +585,11 @@ OpenOurs = function()
     openBusy = false
     OpenClose._openBusy = false
     local visible = OursVisible()
+    if not shown and visible then
+      shown = true
+    end
     if shown or visible then
-      bagsOpen = true
+      bagsOpen = shown or visible
       toggleLockUntil = Now() + TOGGLE_LOCK
       ParkBlizzardForOverlay()
       if Layout and Layout.Raise then
