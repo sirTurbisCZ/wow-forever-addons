@@ -1,7 +1,7 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.3.0).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.3.1).
   Forever: never SetToplevel (ADDON_ACTION_BLOCKED).
-  Uniform SLOT grid (37) on main; park host never Hide.
+  Title row: gear + broom match Close (X) size; uniform SLOT grid (37).
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -19,11 +19,11 @@ local HEADER_H = 18
 local HEADER_PAD = 2
 local SECTION_GAP = 4 -- even gap after every section (incl. last trimmed)
 local INSET_X = 12
-local TOP_CHROME = 56 -- title + CombinedBags-style sort row (AutoSort at y=-34)
+local TOP_CHROME = 40 -- title bar only (gear+broom share Close row)
 local BOT_CHROME = 26 -- free-slots + money strip
 local FOOTER_H = 20
-local SORT_BTN_W, SORT_BTN_H = 28, 26 -- BagItemAutoSortButton
-local GEAR_BTN = 26 -- visible gear, same ballpark as broom
+-- Fallback when CloseButton size is unavailable (UIPanelCloseButton is 32×32).
+local CHROME_BTN = 32
 
 local CATEGORY_ORDER = {
   "junk", "consumable", "reagent", "gem", "gear", "quest", "keys", "container", "other",
@@ -1061,7 +1061,7 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local CHROME_VER = 8
+local CHROME_VER = 9 -- gear+broom = Close size, title-bar row
 
 local function ClearLegacyTextChrome(btn)
   if not btn then
@@ -1076,16 +1076,38 @@ local function ClearLegacyTextChrome(btn)
   end
 end
 
--- BagItemAutoSortButton clone (Forever CombinedBags).
-local function StyleNativeSortButton(btn)
+local function ChromeButtonSize(close)
+  local w, h = CHROME_BTN, CHROME_BTN
+  if close and close.GetSize then
+    local cw, ch = close:GetSize()
+    if type(cw) == "number" and cw > 0 then
+      w = cw
+    end
+    if type(ch) == "number" and ch > 0 then
+      h = ch
+    end
+  end
+  -- Square hit target matching the larger Close axis (X often 32×32).
+  local s = math.max(w, h)
+  if s < 24 then
+    s = CHROME_BTN
+  end
+  return s, s
+end
+
+-- Bag broom — same pixel size as Close (X).
+local function StyleNativeSortButton(btn, size)
   ClearLegacyTextChrome(btn)
-  btn:SetSize(SORT_BTN_W, SORT_BTN_H)
+  size = size or CHROME_BTN
+  btn:SetSize(size, size)
+  btn:SetScale(1)
   if not btn._bbSortStyled then
     pcall(function()
       local nt = btn:CreateTexture(nil, "ARTWORK")
       nt:SetAllPoints()
+      -- Stretch atlas to button size (true = native atlas pixels → tiny vs X).
       if nt.SetAtlas then
-        nt:SetAtlas("bags-button-autosort-up", true)
+        nt:SetAtlas("bags-button-autosort-up", false)
       end
       btn:SetNormalTexture(nt)
       btn._bbSortNormal = nt
@@ -1094,7 +1116,7 @@ local function StyleNativeSortButton(btn)
       local pt = btn:CreateTexture(nil, "ARTWORK")
       pt:SetAllPoints()
       if pt.SetAtlas then
-        pt:SetAtlas("bags-button-autosort-down", true)
+        pt:SetAtlas("bags-button-autosort-down", false)
       end
       btn:SetPushedTexture(pt)
     end)
@@ -1103,29 +1125,33 @@ local function StyleNativeSortButton(btn)
       local ht = btn:GetHighlightTexture()
       if ht then
         ht:ClearAllPoints()
-        ht:SetSize(24, 23)
-        ht:SetPoint("CENTER", 0, 0)
+        ht:SetAllPoints()
       end
     end)
     btn._bbSortStyled = true
+  else
+    if btn._bbSortNormal then
+      btn._bbSortNormal:ClearAllPoints()
+      btn._bbSortNormal:SetAllPoints()
+    end
   end
   btn:EnableMouse(true)
   btn:Show()
 end
 
--- Visible options gear left of broom (file texture — atlases were invisible on Forever).
-local function StyleNativeGearButton(btn)
+-- Options gear — same pixel size as Close, left of broom on title row.
+local function StyleNativeGearButton(btn, size)
   ClearLegacyTextChrome(btn)
-  btn:SetSize(GEAR_BTN, GEAR_BTN)
-  -- Always rebuild icon so CHROME_VER bumps repaint a blank atlas from 0.2.6.
+  size = size or CHROME_BTN
+  btn:SetSize(size, size)
+  btn:SetScale(1)
   local icon = btn._bbGearIcon
   if not icon then
     icon = btn:CreateTexture(nil, "ARTWORK")
     btn._bbGearIcon = icon
   end
   icon:ClearAllPoints()
-  icon:SetPoint("CENTER", 0, 0)
-  icon:SetSize(GEAR_BTN - 2, GEAR_BTN - 2)
+  icon:SetAllPoints()
   icon:SetTexture("Interface\\Buttons\\UI-OptionsButton")
   icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
   icon:SetVertexColor(1, 0.82, 0.2)
@@ -1134,7 +1160,6 @@ local function StyleNativeGearButton(btn)
     btn:SetNormalTexture(nil)
     btn:SetPushedTexture(nil)
   end)
-  -- Keep a hit-tested normal so click/highlight work.
   pcall(function()
     local hit = btn:CreateTexture(nil, "BACKGROUND")
     hit:SetAllPoints()
@@ -1143,6 +1168,11 @@ local function StyleNativeGearButton(btn)
   end)
   pcall(function()
     btn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    local ht = btn:GetHighlightTexture()
+    if ht then
+      ht:ClearAllPoints()
+      ht:SetAllPoints()
+    end
   end)
   btn._bbGearStyled = true
   btn:EnableMouse(true)
@@ -1151,7 +1181,7 @@ end
 
 --[[
   Assign into forward-declared EnsureTitleChrome (must NOT use `local function` here).
-  CombinedBags placement: sort TOPRIGHT -9,-34; gear left of sort; title left.
+  Title-bar row: [title …] [gear] [broom] [X] — gear+broom match Close size.
 ]]
 EnsureTitleChrome = function(frame)
   if not frame then
@@ -1170,6 +1200,7 @@ EnsureTitleChrome = function(frame)
     close:SetFrameLevel((frame:GetFrameLevel() or 1) + 520)
     close:Show()
   end
+  local chromeW = select(1, ChromeButtonSize(close))
 
   pcall(function()
     local title = CombinedBagTitle()
@@ -1183,7 +1214,8 @@ EnsureTitleChrome = function(frame)
       tt:ClearAllPoints()
       local anchor = frame.TitleContainer or frame
       tt:SetPoint("LEFT", anchor, "LEFT", 10, 0)
-      tt:SetPoint("RIGHT", frame, "RIGHT", -40, 0)
+      -- Leave room for gear + broom + Close on the right.
+      tt:SetPoint("RIGHT", frame, "RIGHT", -(chromeW * 3 + 16), 0)
       if tt.SetJustifyH then
         tt:SetJustifyH("LEFT")
       end
@@ -1191,7 +1223,7 @@ EnsureTitleChrome = function(frame)
     end
   end)
 
-  -- Native AutoSort sits on the frame (not title strip), TOPRIGHT -9,-34.
+  -- Broom left of Close on the same title-bar row.
   local tidy = frame.sortBtn or _G.BetterBackpackSortButton
   if not tidy then
     tidy = CreateFrame("Button", "BetterBackpackSortButton", frame)
@@ -1199,8 +1231,12 @@ EnsureTitleChrome = function(frame)
   frame.sortBtn = tidy
   tidy:SetParent(frame)
   tidy:ClearAllPoints()
-  tidy:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -9, -34)
-  StyleNativeSortButton(tidy)
+  if close then
+    tidy:SetPoint("RIGHT", close, "LEFT", -2, 0)
+  else
+    tidy:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -chromeW - 2, -1)
+  end
+  StyleNativeSortButton(tidy, chromeW)
   tidy:SetFrameLevel((frame:GetFrameLevel() or 1) + 500)
   tidy:SetAlpha(1)
   tidy:SetScript("OnEnter", function(self)
@@ -1255,9 +1291,8 @@ EnsureTitleChrome = function(frame)
   frame.settingsBtn = gear
   gear:SetParent(frame)
   gear:ClearAllPoints()
-  -- Explicitly left of broom (CombinedBags filter gear sits near sort).
-  gear:SetPoint("RIGHT", tidy, "LEFT", -6, 0)
-  StyleNativeGearButton(gear)
+  gear:SetPoint("RIGHT", tidy, "LEFT", -2, 0)
+  StyleNativeGearButton(gear, chromeW)
   gear:SetFrameLevel((frame:GetFrameLevel() or 1) + 510)
   gear:SetAlpha(1)
   gear:SetScript("OnEnter", function(self)

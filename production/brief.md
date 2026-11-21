@@ -1,7 +1,7 @@
-# Playtest brief — BetterBackpack 0.3.0
+# Playtest brief — BetterBackpack 0.3.1
 
-**Bug:** Gear icons huge, Consumables tiny (ItemButtonTemplate vs SAB size drift).
+**Bug:** gear+broom tiny vs huge Close (X); sat on lower row (-34).
 
-**Fix:** every slot dual-anchored to exact 37×37; NormalizeSlotVisual locks icon/normal/highlight/count.
+**Fix:** both sized from Close (`GetSize`, fallback 32) and anchored on the title-bar row left of X.
 
-**Done when:** `/reload` → `loaded v0.3.0` · all category icons same size + even grid.
+**Done when:** `/reload` → `loaded v0.3.1` · gear = broom = X size, same title row.
