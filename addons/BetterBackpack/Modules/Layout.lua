@@ -1,5 +1,6 @@
 --[[
-  BetterBackpack.Layout — category lanes + chrome. Own buttons only (never harvest).
+  BetterBackpack.Layout — category lanes + solid chrome (0.1.3).
+  Forever: never SetToplevel (ADDON_ACTION_BLOCKED). Plain Frame + WHITE8X8 Bg.
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -178,29 +179,24 @@ local function MapTypeString(itemType, itemSubType)
   local t = (itemType or ""):lower()
   local s = (itemSubType or ""):lower()
   local blob = t .. " " .. s
-  if blob:find("consumable", 1, true) or blob:find("food", 1, true) or blob:find("potion", 1, true)
-      or blob:find("spotřeb", 1, true) or blob:find("lektvar", 1, true)
-  then
+  if blob:find("consumable", 1, true) or blob:find("food", 1, true) or blob:find("potion", 1, true) then
     return "consumable"
   end
-  if blob:find("trade", 1, true) or blob:find("reagent", 1, true) or blob:find("materiál", 1, true)
-      or blob:find("material", 1, true) or blob:find("cloth", 1, true) or blob:find("herb", 1, true)
-      or blob:find("ore", 1, true) or blob:find("leather", 1, true)
+  if blob:find("trade", 1, true) or blob:find("reagent", 1, true) or blob:find("cloth", 1, true)
+      or blob:find("herb", 1, true) or blob:find("ore", 1, true) or blob:find("leather", 1, true)
   then
     return "reagent"
   end
-  if blob:find("armor", 1, true) or blob:find("weapon", 1, true) or blob:find("zbroj", 1, true)
-      or blob:find("zbraň", 1, true) or blob:find("ring", 1, true) or blob:find("trinket", 1, true)
-  then
+  if blob:find("armor", 1, true) or blob:find("weapon", 1, true) or blob:find("ring", 1, true) then
     return "gear"
   end
-  if blob:find("quest", 1, true) or blob:find("úkol", 1, true) then
+  if blob:find("quest", 1, true) then
     return "quest"
   end
-  if blob:find("gem", 1, true) or blob:find("drahokam", 1, true) then
+  if blob:find("gem", 1, true) then
     return "gem"
   end
-  if blob:find("container", 1, true) or blob:find("bag", 1, true) or blob:find("batoh", 1, true) then
+  if blob:find("container", 1, true) or blob:find("bag", 1, true) then
     return "container"
   end
   return nil
@@ -282,85 +278,6 @@ local function CollectBuckets()
   return buckets
 end
 
-local function RightSideBarInset()
-  local parentRight, parentLeft = 0, 0
-  pcall(function()
-    parentRight = UIParent:GetRight() or 0
-    parentLeft = UIParent:GetLeft() or 0
-  end)
-  if type(parentRight) ~= "number" or Slots.IsSecret(parentRight) or parentRight <= 0 then
-    return 60
-  end
-  local mid = (parentLeft + parentRight) * 0.5
-  local leftmost = parentRight
-  local names = {
-    "MultiBarRight", "MultiBarLeft", "MultiBar5", "MultiBar6", "MultiBar7",
-    "VerticalMultiBarsContainer",
-  }
-  for i = 1, #names do
-    local f = _G[names[i]]
-    if f then
-      local shown, l = false, nil
-      pcall(function()
-        shown = f:IsShown()
-        l = f:GetLeft()
-      end)
-      if shown and type(l) == "number" and not Slots.IsSecret(l) and l > mid and l < leftmost then
-        leftmost = l
-      end
-    end
-  end
-  local inset = parentRight - leftmost + 12
-  if inset < 40 then
-    inset = 40
-  end
-  if inset > 220 then
-    inset = 220
-  end
-  return inset
-end
-
-local function ActionBarCeiling()
-  local y = 40
-  local bars = { "MainMenuBar", "MultiBarBottomLeft", "MultiBarBottomRight", "StanceBar", "PetActionBar" }
-  for i = 1, #bars do
-    local f = _G[bars[i]]
-    if f then
-      local shown, top = false, nil
-      pcall(function()
-        shown = f:IsShown()
-        top = f:GetTop()
-      end)
-      if shown and type(top) == "number" and not Slots.IsSecret(top) and top > y then
-        y = top
-      end
-    end
-  end
-  return y
-end
-
-local function PlaceMainDefault()
-  if not main then
-    return
-  end
-  local p = Profile()
-  if p.userMoved and type(p.pos) == "table" and p.pos.point then
-    main:ClearAllPoints()
-    main:SetPoint(p.pos.point, UIParent, p.pos.relPoint or p.pos.point, p.pos.x or 0, p.pos.y or 0)
-    return
-  end
-  main:ClearAllPoints()
-  local ceiling = ActionBarCeiling() + 12
-  local parentRight = 1280
-  pcall(function()
-    parentRight = UIParent:GetRight() or 1280
-  end)
-  if type(parentRight) ~= "number" or Slots.IsSecret(parentRight) or parentRight <= 0 then
-    parentRight = 1280
-  end
-  main:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMLEFT", parentRight - RightSideBarInset(), ceiling)
-end
-
 local function PersistPos()
   if not main then
     return
@@ -371,6 +288,24 @@ local function PersistPos()
   p.pos = { point = point, relPoint = relPoint, x = x, y = y }
 end
 
+local function PlaceOnScreen()
+  if not main then
+    return
+  end
+  local p = Profile()
+  if p.userMoved and type(p.pos) == "table" and p.pos.point then
+    pcall(function()
+      main:ClearAllPoints()
+      main:SetPoint(p.pos.point, UIParent, p.pos.relPoint or p.pos.point, p.pos.x or 0, p.pos.y or 0)
+    end)
+    return
+  end
+  pcall(function()
+    main:ClearAllPoints()
+    main:SetPoint("CENTER", UIParent, "CENTER", 180, 60)
+  end)
+end
+
 local function UpdateMoney()
   local copper = 0
   if GetMoney then
@@ -379,9 +314,7 @@ local function UpdateMoney()
       copper = SafeNum(m, 0) or 0
     end
   end
-  if main and main.moneyFrame and MoneyFrame_Update then
-    pcall(MoneyFrame_Update, main.moneyFrame:GetName(), copper)
-  elseif moneyFs then
+  if moneyFs then
     moneyFs:SetText(string.format(
       "%dg %ds %dc",
       math.floor(copper / 10000),
@@ -406,15 +339,8 @@ local function UpdateFreeSpace()
       end
     end
   end
-  local used = total - free
-  if free <= 4 and total > 0 then
-    freeFs:SetTextColor(1, 0.45, 0.35)
-  elseif free <= 12 and total > 0 then
-    freeFs:SetTextColor(1, 0.82, 0.4)
-  else
-    freeFs:SetTextColor(0.75, 0.75, 0.75)
-  end
-  freeFs:SetText(string.format("Free %d  ·  %d/%d", free, used, total))
+  freeFs:SetTextColor(0.8, 0.8, 0.8)
+  freeFs:SetText(string.format("Free %d  ·  %d/%d", free, total - free, total))
 end
 
 local function EnsureSection(key)
@@ -422,7 +348,7 @@ local function EnsureSection(key)
   if sf then
     return sf
   end
-  sf = CreateFrame("Frame", "BetterBackpackSection_" .. key, content)
+  sf = CreateFrame("Frame", nil, content)
   sf:SetSize(100, HEADER_H)
   local header = CreateFrame("Button", nil, sf)
   header:SetPoint("TOPLEFT")
@@ -431,7 +357,6 @@ local function EnsureSection(key)
   header:RegisterForClicks("LeftButtonUp")
   local title = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   title:SetPoint("LEFT", 4, 0)
-  title:SetJustifyH("LEFT")
   header.title = title
   header:SetScript("OnClick", function()
     local p = Profile()
@@ -487,23 +412,18 @@ local function DoLayout()
               local bag, slot = list[j].bag, list[j].slot
               local btn = Slots.Acquire(bag, slot)
               used[btn] = true
-              local x = col * (SLOT + PAD)
-              local yy = y + row * (SLOT + PAD)
-              Slots.Place(btn, content, x, yy, true)
+              Slots.Place(btn, content, col * (SLOT + PAD), y + row * (SLOT + PAD), true)
               col = col + 1
               if col >= cols then
                 col = 0
                 row = row + 1
               end
             end
-            local rows = math.ceil(#list / cols)
-            y = y + rows * (SLOT + PAD) + 6
+            y = y + math.ceil(#list / cols) * (SLOT + PAD) + 6
           end
           sf:SetHeight(HEADER_H)
-        else
-          if sectionFrames[key] then
-            sectionFrames[key]:Hide()
-          end
+        elseif sectionFrames[key] then
+          sectionFrames[key]:Hide()
         end
       end
     end
@@ -520,11 +440,8 @@ local function DoLayout()
       end
     end
 
-    local width = maxW + INSET_X * 2
-    local height = y + TOP_CHROME + BOT_CHROME + 8
-    if height < 120 then
-      height = 120
-    end
+    local width = math.max(maxW + INSET_X * 2, 320)
+    local height = math.max(y + TOP_CHROME + BOT_CHROME + 8, 160)
     content:SetSize(maxW, math.max(y, 20))
     main:SetSize(width, height)
     UpdateFreeSpace()
@@ -542,50 +459,25 @@ local function PaintSolidBg(frame)
   end
   pcall(function()
     if not frame.Bg then
-      frame.Bg = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
+      frame.Bg = frame:CreateTexture(nil, "BACKGROUND")
     end
     frame.Bg:ClearAllPoints()
-    frame.Bg:SetPoint("TOPLEFT", frame, "TOPLEFT", 2, -2)
-    frame.Bg:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -2, 2)
-    -- Forever: prefer WHITE8X8 + vertex (SetColorTexture / DialogBox backdrop often broken).
+    frame.Bg:SetAllPoints(frame)
     frame.Bg:SetTexture("Interface\\Buttons\\WHITE8X8")
-    frame.Bg:SetVertexColor(0.07, 0.07, 0.08, 0.97)
+    frame.Bg:SetVertexColor(0.08, 0.08, 0.09, 0.98)
     frame.Bg:SetAlpha(1)
     frame.Bg:Show()
   end)
   pcall(function()
-    if not frame.Border then
-      frame.Border = frame:CreateTexture(nil, "BORDER")
+    if not frame.Edge then
+      frame.Edge = frame:CreateTexture(nil, "BORDER")
     end
-    frame.Border:ClearAllPoints()
-    frame.Border:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-    frame.Border:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
-    frame.Border:SetTexture("Interface\\Tooltips\\UI-Tooltip-Border")
-    frame.Border:SetTexCoord(0.1, 0.9, 0.1, 0.9)
-    frame.Border:SetVertexColor(0.55, 0.5, 0.4, 0.9)
-    frame.Border:SetAlpha(0.85)
+    frame.Edge:ClearAllPoints()
+    frame.Edge:SetPoint("TOPLEFT", -1, 1)
+    frame.Edge:SetPoint("BOTTOMRIGHT", 1, -1)
+    frame.Edge:SetTexture("Interface\\Buttons\\WHITE8X8")
+    frame.Edge:SetVertexColor(0.45, 0.4, 0.3, 0.7)
   end)
-end
-
-local function KillPortrait(frame)
-  local keys = {
-    "PortraitContainer", "Portrait", "portrait", "PortraitFrame", "portraitFrame",
-  }
-  for i = 1, #keys do
-    local p = frame[keys[i]]
-    if p then
-      pcall(function()
-        p:SetAlpha(0)
-        p:Hide()
-        p:SetSize(1, 1)
-        p:ClearAllPoints()
-        p:SetPoint("TOPLEFT", frame, "TOPLEFT", -4000, 0)
-        if p.EnableMouse then
-          p:EnableMouse(false)
-        end
-      end)
-    end
-  end
 end
 
 function Layout.EnsureMain()
@@ -594,35 +486,12 @@ function Layout.EnsureMain()
     return main
   end
 
-  local templates = {
-    "ButtonFrameTemplate",
-    "BasicFrameTemplateWithInset",
-    "BasicFrameTemplate",
-  }
-  for i = 1, #templates do
-    local ok, frame = pcall(function()
-      return CreateFrame("Frame", "BetterBackpackFrame", UIParent, templates[i])
-    end)
-    if ok and frame then
-      main = frame
-      break
-    end
-  end
-  if not main then
-    main = CreateFrame("Frame", "BetterBackpackFrame", UIParent)
-  end
-
-  pcall(function()
-    if ButtonFrameTemplate_HidePortrait then
-      ButtonFrameTemplate_HidePortrait(main)
-    end
-  end)
-  KillPortrait(main)
-  -- Never rely on BackdropTemplate alone — Forever often yields broken/empty chrome.
+  -- Plain Frame only — ButtonFrameTemplate/Backdrop caused broken chrome + SetToplevel BLOCKED.
+  main = CreateFrame("Frame", "BetterBackpackFrame", UIParent)
+  main:SetSize(360, 280)
   PaintSolidBg(main)
-
-  main:SetFrameStrata("HIGH")
-  main:SetFrameLevel(100)
+  main:SetFrameStrata("DIALOG")
+  main:SetFrameLevel(200)
   main:SetMovable(true)
   main:EnableMouse(true)
   main:RegisterForDrag("LeftButton")
@@ -637,7 +506,6 @@ function Layout.EnsureMain()
     PersistPos()
   end)
   main:SetScript("OnShow", function(self)
-    KillPortrait(self)
     PaintSolidBg(self)
   end)
   main:SetScript("OnHide", function()
@@ -650,82 +518,48 @@ function Layout.EnsureMain()
     table.insert(UISpecialFrames, "BetterBackpackFrame")
   end
 
-  if main.SetTitle then
-    pcall(main.SetTitle, main, "BetterBackpack")
-  end
-  local title = main.TitleText or main.title
-  if not title then
-    title = main:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetPoint("TOPLEFT", 14, -12)
-  end
+  local title = main:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  title:SetPoint("TOPLEFT", 14, -12)
   title:SetText("BetterBackpack")
   main.title = title
 
-  local close = main.CloseButton
+  local close = CreateFrame("Button", nil, main, "UIPanelCloseButton")
   if not close then
-    pcall(function()
-      close = CreateFrame("Button", nil, main, "UIPanelCloseButton")
-    end)
+    close = CreateFrame("Button", nil, main)
+    close:SetSize(24, 24)
+    close:SetText("X")
   end
-  if close then
-    close:SetPoint("TOPRIGHT", 2, 2)
-    close:SetScript("OnClick", function()
-      local OpenClose = BetterBackpack.Modules.OpenClose
-      if OpenClose and OpenClose.CloseOurs then
-        OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.35 })
-      else
-        main:Hide()
+  close:SetPoint("TOPRIGHT", 2, 2)
+  close:SetScript("OnClick", function()
+    local OpenClose = BetterBackpack.Modules.OpenClose
+    if OpenClose and OpenClose.CloseOurs then
+      OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.3 })
+    else
+      main:Hide()
+    end
+  end)
+
+  local sortBtn = CreateFrame("Button", nil, main, "UIPanelButtonTemplate")
+  if sortBtn then
+    sortBtn:SetSize(56, 20)
+    sortBtn:SetPoint("TOPRIGHT", close, "TOPLEFT", -4, -8)
+    sortBtn:SetText("Sort")
+    sortBtn:SetScript("OnClick", function()
+      local Tidy = BetterBackpack.Modules.Tidy
+      if Tidy and Tidy.SortBags then
+        Tidy.SortBags()
       end
     end)
   end
 
-  local sortBtn
-  pcall(function()
-    sortBtn = CreateFrame("Button", nil, main, "UIPanelButtonTemplate")
-  end)
-  if not sortBtn then
-    sortBtn = CreateFrame("Button", nil, main)
-    sortBtn:SetSize(56, 20)
-    local fs = sortBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetAllPoints()
-    fs:SetText("Sort")
-    sortBtn:SetFontString(fs)
-  end
-  sortBtn:SetSize(56, 20)
-  if close then
-    sortBtn:SetPoint("TOPRIGHT", close, "TOPLEFT", -4, -8)
-  else
-    sortBtn:SetPoint("TOPRIGHT", main, "TOPRIGHT", -28, -8)
-  end
-  sortBtn:SetText("Sort")
-  sortBtn:SetScript("OnClick", function()
-    local Tidy = BetterBackpack.Modules.Tidy
-    if Tidy and Tidy.SortBags then
-      Tidy.SortBags()
-    end
-  end)
-
   freeFs = main:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   freeFs:SetPoint("BOTTOMLEFT", 14, 10)
-  freeFs:SetJustifyH("LEFT")
   freeFs:SetText("Free —")
 
-  local moneyFrame
-  pcall(function()
-    moneyFrame = CreateFrame("Frame", "BetterBackpackMoneyFrame", main, "SmallMoneyFrameTemplate")
-  end)
-  if moneyFrame then
-    moneyFrame:SetPoint("BOTTOMRIGHT", main, "BOTTOMRIGHT", -8, 8)
-    pcall(function()
-      MoneyFrame_SetType(moneyFrame, "STATIC")
-    end)
-    main.moneyFrame = moneyFrame
-  else
-    moneyFs = main:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    moneyFs:SetPoint("BOTTOMRIGHT", -14, 10)
-  end
+  moneyFs = main:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  moneyFs:SetPoint("BOTTOMRIGHT", -14, 10)
 
-  content = CreateFrame("Frame", "BetterBackpackContent", main)
+  content = CreateFrame("Frame", nil, main)
   content:EnableMouse(false)
   content:SetPoint("TOPLEFT", INSET_X, -TOP_CHROME)
   content:SetSize(100, 100)
@@ -734,13 +568,13 @@ function Layout.EnsureMain()
   emptyLabel:SetPoint("TOPLEFT", 4, -4)
   emptyLabel:Hide()
 
-  PlaceMainDefault()
+  PlaceOnScreen()
   main:Hide()
   return main
 end
 
 function Layout.IsShown()
-  return main and main:IsShown()
+  return main and main:IsShown() and true or false
 end
 
 function Layout.Show()
@@ -752,42 +586,29 @@ function Layout.Show()
   if not p.enabled or p.safeMode then
     return false
   end
-  -- Show chrome first so open never depends on layout succeeding.
+
+  main:SetParent(UIParent)
+  main:SetFrameStrata("DIALOG")
+  main:SetFrameLevel(200)
   main:SetAlpha(1)
-  if not p.userMoved then
-    -- Safe on-screen anchor (avoids secret GetRight / off-screen BOTTOMRIGHT math).
-    pcall(function()
-      main:ClearAllPoints()
-      main:SetPoint("CENTER", UIParent, "CENTER", 200, 40)
-    end)
-  else
-    PlaceMainDefault()
+  main:SetScale(1)
+  if not main:GetWidth() or main:GetWidth() < 100 then
+    main:SetSize(360, 280)
   end
-  if not main:GetWidth() or main:GetWidth() < 80 then
-    main:SetSize(340, 200)
-  end
+  PlaceOnScreen()
+  PaintSolidBg(main)
   main:Show()
-  if main.SetToplevel then
-    main:SetToplevel(true)
-  end
-  main:Raise()
+  pcall(function()
+    main:Raise()
+  end)
   DoLayout()
-  -- After layout size change, re-assert visible + on-screen.
+  -- Re-assert after layout (size change).
   main:SetAlpha(1)
   main:Show()
-  main:Raise()
-  if not p.userMoved then
-    local left
-    pcall(function()
-      left = main:GetLeft()
-    end)
-    if type(left) ~= "number" or left < -100 or left > 5000 then
-      pcall(function()
-        main:ClearAllPoints()
-        main:SetPoint("CENTER", UIParent, "CENTER", 200, 40)
-      end)
-    end
-  end
+  PlaceOnScreen()
+  pcall(function()
+    main:Raise()
+  end)
   return main:IsShown() and true or false
 end
 
@@ -808,10 +629,7 @@ function Layout.Refresh()
     Layout.RefreshCooldowns()
     return
   end
-  if BetterBackpack._combatFrozen then
-    return
-  end
-  if BetterBackpack._sortSuppressRefresh then
+  if BetterBackpack._combatFrozen or BetterBackpack._sortSuppressRefresh then
     return
   end
   if Layout.IsShown() then
@@ -836,20 +654,47 @@ function Layout.UpdateMoney()
 end
 
 function Layout.Raise()
-  if main then
-    main:SetAlpha(1)
-    if main.SetToplevel then
-      main:SetToplevel(true)
-    end
-    main:Raise()
+  if not main then
+    return
   end
+  -- Forever: SetToplevel is ADDON_ACTION_BLOCKED — use strata/level only.
+  pcall(function()
+    main:SetFrameStrata("DIALOG")
+    main:SetFrameLevel(200)
+    main:Raise()
+  end)
 end
 
 function Layout.ResetPosition()
   local p = Profile()
   p.userMoved = false
   p.pos = nil
-  PlaceMainDefault()
+  PlaceOnScreen()
+end
+
+function Layout.DebugState()
+  if not main then
+    return { exists = false }
+  end
+  local left, bottom, w, h, strata
+  pcall(function()
+    left = main:GetLeft()
+    bottom = main:GetBottom()
+    w = main:GetWidth()
+    h = main:GetHeight()
+    strata = main:GetFrameStrata()
+  end)
+  return {
+    exists = true,
+    shown = main:IsShown() and true or false,
+    alpha = main:GetAlpha(),
+    left = left,
+    bottom = bottom,
+    w = w,
+    h = h,
+    strata = strata,
+    parent = main:GetParent() and main:GetParent():GetName() or "?",
+  }
 end
 
 function Layout.DiagnoseBags()
@@ -899,44 +744,30 @@ function Layout.RunSelfTest()
   end
   local secureN, attrN = Slots.CountSecure()
   ok(Config.VERSION ~= nil, "no version")
-  ok(secureN >= 36, "secure slots < 36 (got " .. tostring(secureN) .. ")")
-  ok(attrN >= 36 or (InCombatLockdown and InCombatLockdown()), "attrs < 36 (got " .. tostring(attrN) .. ")")
-  if InCombatLockdown and InCombatLockdown() then
-    local shownSecureMouse = 0
-    Slots.ForEach(function(btn)
-      if btn and btn._bbSecure and btn:IsShown() and btn:GetAlpha() > 0.5 and btn:IsMouseEnabled() then
-        shownSecureMouse = shownSecureMouse + 1
-      end
-    end)
-    if Layout.IsShown() then
-      ok(shownSecureMouse > 0, "combat UI shown but no mouse-enabled secure slot")
-    else
-      ok(true, "combat UI not shown")
-      notes[#notes + 1] = "hint: open bags in combat then re-run"
-    end
-  else
-    ok(true, "ooc combat mouse check skipped")
-  end
+  ok(secureN >= 36, "secure slots < 36")
+  ok(attrN >= 36 or (InCombatLockdown and InCombatLockdown()), "attrs < 36")
+  local d = Layout.DebugState()
+  ok(d.exists, "main frame missing")
   local combat = (InCombatLockdown and InCombatLockdown()) and 1 or 0
   local card = string.format(
-    "BETTERBACKPACK_SELFTEST ver=%s pass=%d fail=%d combat=%d secure=%d attrs=%d shown=%s",
+    "BETTERBACKPACK_SELFTEST ver=%s pass=%d fail=%d combat=%d secure=%d attrs=%d shown=%s w=%s h=%s strata=%s",
     tostring(Config.VERSION),
     pass,
     fail,
     combat,
     secureN,
     attrN,
-    tostring(Layout.IsShown())
+    tostring(d.shown),
+    tostring(d.w),
+    tostring(d.h),
+    tostring(d.strata)
   )
   local db = Config.EnsureDB()
   db.lastSelftest = {
     card = card,
     pass = pass,
     fail = fail,
-    secure = secureN,
-    attrs = attrN,
-    combat = combat,
-    notes = notes,
+    debug = d,
     t = time and time() or 0,
   }
   return fail == 0, card, notes

@@ -13,6 +13,10 @@ local Config = BetterBackpack.Config
 local Slots = BetterBackpack.Modules.Slots
 local Layout = BetterBackpack.Modules.Layout
 local Context = BetterBackpack.Modules.Context
+-- Resolve modules at call time too — load errors must not leave a nil upvalue forever.
+local function OC()
+  return BetterBackpack.Modules and BetterBackpack.Modules.OpenClose
+end
 local OpenClose = BetterBackpack.Modules.OpenClose
 local Tidy = BetterBackpack.Modules.Tidy
 
@@ -212,12 +216,16 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
 
   if event == "PLAYER_LOGIN" then
     EnsureDB()
+    OpenClose = OC() or OpenClose
     if ModuleWanted() then
-      SafeCall("hooks", OpenClose.InstallHooks)
+      if OpenClose and OpenClose.InstallHooks then
+        SafeCall("hooks", OpenClose.InstallHooks)
+      else
+        Print("ERROR: OpenClose failed to load — check FrameXML.log")
+      end
       if C_Timer and C_Timer.After then
         C_Timer.After(0, function()
           SafeCall("precreate", Slots.PreCreate)
-          -- Warm-up 1 frame: open/close path without lasting UI (attrs settle)
           if not (InCombatLockdown and InCombatLockdown()) then
             SafeCall("warmup:ensure", Layout.EnsureMain)
           end
@@ -290,7 +298,10 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
 
   if event == "PLAYER_REGEN_ENABLED" then
     BetterBackpack._combatFrozen = false
-    OpenClose.ClearReplaceSuppress()
+    OpenClose = OC() or OpenClose
+    if OpenClose and OpenClose.ClearReplaceSuppress then
+      OpenClose.ClearReplaceSuppress()
+    end
     SafeCall("regen:precreate", Slots.PreCreate)
     SafeCall("regen:attrs", Slots.SyncAllAttrs)
     if Layout and Layout.IsShown and Layout.IsShown() and Layout.Refresh then
@@ -443,6 +454,28 @@ SlashCmdList.BETTERBACKPACK = function(msg)
         tostring(d.free),
         tostring(d.total)
       ))
+    end
+    return
+  end
+
+  if cmd == "frame" or cmd == "debugopen" then
+    local d = Layout.DebugState and Layout.DebugState() or {}
+    Print(string.format(
+      "frame exists=%s shown=%s alpha=%s w=%s h=%s left=%s strata=%s parent=%s session=%s",
+      tostring(d.exists),
+      tostring(d.shown),
+      tostring(d.alpha),
+      tostring(d.w),
+      tostring(d.h),
+      tostring(d.left),
+      tostring(d.strata),
+      tostring(d.parent),
+      tostring(OpenClose.SessionOpen and OpenClose.SessionOpen())
+    ))
+    if rest == "open" or cmd == "debugopen" then
+      SafeCall("debugopen", OpenClose.OpenOurs)
+      d = Layout.DebugState and Layout.DebugState() or {}
+      Print(string.format("after open shown=%s w=%s h=%s", tostring(d.shown), tostring(d.w), tostring(d.h)))
     end
     return
   end

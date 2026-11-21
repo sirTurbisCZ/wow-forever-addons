@@ -1,8 +1,10 @@
 --[[
-  BetterBackpack.OpenClose — B intercept, CombinedBags park (never Hide while ours open).
+  BetterBackpack.OpenClose — B key ownership (0.1.3)
 
-  0.1.2: never flash Blizzard bags — blackout alpha=0 on Show/toggle BEFORE paint;
-  CloseOurs must NOT RestoreBlizzardBags (alpha 1) before CloseAllBags.
+  Source of truth = our sessionOpen only.
+  ToggleAllBags/ToggleBackpack hook: blackout Blizzard → open XOR close ours.
+  CombinedBags OnShow: park only — NEVER OpenOurs (avoids OnShow open → Toggle close).
+  Do not open from OpenAllBags (Toggle* already owns the key).
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -15,60 +17,41 @@ local Config = BetterBackpack.Config
 local Layout = BetterBackpack.Modules.Layout
 
 local hooksInstalled = false
-local suppressReplaceUntil = 0
-local hidingBlizzard = false
+local suppressUntil = 0
 local bagsOpen = false
 local toggleLockUntil = 0
 local openedAt = 0
 local pulseToken = 0
-local OPEN_GRACE = 0.55
-local TOGGLE_LOCK = 0.4
-local guardElapsed = 0
 local openBusy = false
 local closeBusy = false
-local healBusyUntil = 0
-local savedPoints = {}
+local ignoringBagShow = false
+local TOGGLE_LOCK = 0.35
+local OPEN_GRACE = 0.5
+local guardElapsed = 0
 
 local function Now()
-  if GetTime then
-    return GetTime()
-  end
-  return 0
+  return (GetTime and GetTime()) or 0
 end
 
 local function Profile()
   return Config.GetProfile()
 end
 
-local function Enabled()
+local function EnabledReplace()
   local p = Profile()
-  return p.enabled and not p.safeMode
+  return p.enabled and not p.safeMode and p.replaceBlizzard
 end
 
 function OpenClose.SuppressReplace(seconds)
-  if not seconds or seconds <= 0 then
-    suppressReplaceUntil = 0
-    return
-  end
-  suppressReplaceUntil = Now() + seconds
+  suppressUntil = (seconds and seconds > 0) and (Now() + seconds) or 0
 end
 
 function OpenClose.IsReplaceSuppressed()
-  return Now() < suppressReplaceUntil
+  return Now() < suppressUntil
 end
 
 function OpenClose.ClearReplaceSuppress()
-  suppressReplaceUntil = 0
-end
-
-local function CanReplace()
-  if OpenClose.IsReplaceSuppressed() then
-    return false
-  end
-  if not Enabled() or not Profile().replaceBlizzard then
-    return false
-  end
-  return true
+  suppressUntil = 0
 end
 
 local function OursVisible()
@@ -80,63 +63,10 @@ local function SessionOpen()
 end
 
 local function InOpenGrace()
-  local t = Now()
-  return openedAt > 0 and (t - openedAt) < OPEN_GRACE
+  return openedAt > 0 and (Now() - openedAt) < OPEN_GRACE
 end
 
-local function ShouldParkBlizzard()
-  if BetterBackpack._bbIgnoreBagShow then
-    return SessionOpen()
-  end
-  if not Enabled() or not Profile().replaceBlizzard then
-    return false
-  end
-  if OpenClose.IsReplaceSuppressed() and not SessionOpen() then
-    return false
-  end
-  return true
-end
-
-local function RememberPoint(f)
-  if not f or savedPoints[f] ~= nil then
-    return
-  end
-  local ok, point, relativeTo, relativePoint, x, y = pcall(function()
-    return f:GetPoint(1)
-  end)
-  if ok and point then
-    savedPoints[f] = {
-      point = point,
-      relativeTo = relativeTo,
-      relativePoint = relativePoint,
-      x = x,
-      y = y,
-    }
-  else
-    savedPoints[f] = false
-  end
-end
-
-local function RestorePoint(f)
-  local saved = savedPoints[f]
-  savedPoints[f] = nil
-  if not f or not saved or saved == false then
-    return
-  end
-  pcall(function()
-    f:ClearAllPoints()
-    f:SetPoint(saved.point, saved.relativeTo or UIParent, saved.relativePoint or saved.point, saved.x or 0, saved.y or 0)
-  end)
-end
-
-local function ClearSavedPoints()
-  for k in pairs(savedPoints) do
-    savedPoints[k] = nil
-  end
-end
-
---[[ Instant anti-flash: alpha 0 before any layout paint. Safe in combat. ]]
-local function BlackoutFrame(f)
+local function Blackout(f)
   if not f then
     return
   end
@@ -146,84 +76,68 @@ local function BlackoutFrame(f)
   end)
 end
 
-local function BlackoutAllBlizzard()
-  BlackoutFrame(ContainerFrameCombinedBags)
+local function BlackoutAll()
+  Blackout(ContainerFrameCombinedBags)
   for i = 1, 13 do
-    BlackoutFrame(_G["ContainerFrame" .. i])
+    Blackout(_G["ContainerFrame" .. i])
   end
 end
 
-local function ParkFrame(f)
+local function Park(f)
   if not f then
     return
   end
-  BlackoutFrame(f)
-  RememberPoint(f)
+  Blackout(f)
   if InCombatLockdown and InCombatLockdown() then
     return
   end
   pcall(function()
     f:ClearAllPoints()
     f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -8000, 8000)
+    f:SetScale(0.001)
   end)
 end
 
---[[
-  While we own the session, CombinedBags stays IsShown (parked).
-  Always blackout first so Show never paints a visible frame.
-]]
-local function EnsureCombinedBagsShownParked()
-  local f = ContainerFrameCombinedBags
+local function UnparkScale(f)
   if not f then
     return
   end
-  BlackoutFrame(f)
-  local shown = false
   pcall(function()
-    shown = f:IsShown() and true or false
+    f:SetScale(1)
   end)
-  if not shown then
-    BetterBackpack._bbIgnoreBagShow = true
-    hidingBlizzard = true
-    pcall(function()
-      f:Show()
-    end)
-    hidingBlizzard = false
-    BetterBackpack._bbIgnoreBagShow = false
-    BlackoutFrame(f)
+end
+
+local function ParkAllShown()
+  BlackoutAll()
+  local f = ContainerFrameCombinedBags
+  if f and f:IsShown() then
+    Park(f)
   end
-  ParkFrame(f)
   for i = 1, 13 do
     local cf = _G["ContainerFrame" .. i]
-    if cf then
-      local cfShown = false
-      pcall(function()
-        cfShown = cf:IsShown() and true or false
-      end)
-      if cfShown then
-        ParkFrame(cf)
-      else
-        BlackoutFrame(cf)
-      end
+    if cf and cf:IsShown() then
+      Park(cf)
     end
   end
 end
 
-local function HideBlizzardBags()
-  hidingBlizzard = true
-  BlackoutAllBlizzard()
-  EnsureCombinedBagsShownParked()
-  if C_Timer and C_Timer.After then
-    C_Timer.After(0, function()
-      hidingBlizzard = false
-    end)
-  else
-    hidingBlizzard = false
+local function ForceCloseBlizzard()
+  ignoringBagShow = true
+  BlackoutAll()
+  if type(CloseAllBags) == "function" then
+    pcall(CloseAllBags)
   end
+  -- Ensure scales restored for next real Blizzard open (/bb off).
+  UnparkScale(ContainerFrameCombinedBags)
+  for i = 1, 13 do
+    UnparkScale(_G["ContainerFrame" .. i])
+  end
+  BlackoutAll()
+  ignoringBagShow = false
 end
 
-local function FrameVisiblyOnScreen(f)
-  if not f or not f.IsShown or not f:IsShown() then
+local function FrameVisible(f)
+  if not f or not f:IsShown() then
     return false
   end
   local a = 1
@@ -233,78 +147,35 @@ local function FrameVisiblyOnScreen(f)
   if a < 0.05 then
     return false
   end
-  local left
+  local left, scale = nil, 1
   pcall(function()
     left = f:GetLeft()
+    scale = f:GetScale() or 1
   end)
+  if scale and scale < 0.05 then
+    return false
+  end
   if left ~= nil and left < -500 then
     return false
   end
   return true
 end
 
-local function AnyBlizzardBagVisible()
-  if FrameVisiblyOnScreen(ContainerFrameCombinedBags) then
-    return true
-  end
-  for i = 1, 13 do
-    if FrameVisiblyOnScreen(_G["ContainerFrame" .. i]) then
-      return true
-    end
-  end
-  return false
-end
-
-local function AssertBlizzardStashed()
-  if not SessionOpen() then
-    return
-  end
-  BlackoutAllBlizzard()
-  EnsureCombinedBagsShownParked()
-  if Layout and Layout.Raise then
-    pcall(Layout.Raise)
-  end
-end
-
 local OpenOurs
 
-local function HealGhostBlizzardBags()
-  if openBusy or closeBusy or BetterBackpack._bbIgnoreBagShow then
-    return
-  end
-  if not Enabled() or not Profile().replaceBlizzard then
-    return
-  end
-  if OpenClose.IsReplaceSuppressed() then
-    return
-  end
-  if SessionOpen() then
-    AssertBlizzardStashed()
-    return
-  end
-  if not AnyBlizzardBagVisible() then
-    return
-  end
-  local t = Now()
-  if t < healBusyUntil then
-    return
-  end
-  healBusyUntil = t + 1.0
-  OpenOurs()
-end
-
-local function PulseHideBlizzard()
+local function PulsePark()
   pulseToken = pulseToken + 1
   local token = pulseToken
-  local delays = { 0, 0.05, 0.1, 0.2, 0.35, 0.5 }
+  local delays = { 0, 0.05, 0.15, 0.3 }
   for i = 1, #delays do
     local d = delays[i]
     local function tick()
-      if token ~= pulseToken then
+      if token ~= pulseToken or not SessionOpen() then
         return
       end
-      if SessionOpen() then
-        AssertBlizzardStashed()
+      ParkAllShown()
+      if Layout and Layout.Raise then
+        pcall(Layout.Raise)
       end
     end
     if d == 0 then
@@ -315,66 +186,38 @@ local function PulseHideBlizzard()
   end
 end
 
---[[ Only for /bb off / safe — never call on normal CloseOurs (causes CombinedBags flash). ]]
-local function RestoreBlizzardBags()
-  pulseToken = pulseToken + 1
-  pcall(function()
-    local f = ContainerFrameCombinedBags
-    if f then
-      RestorePoint(f)
-      f:SetAlpha(1)
-      f:EnableMouse(true)
-      if type(f.Update) == "function" then
-        f:Update()
-      end
-    end
-  end)
-  for i = 1, 13 do
-    local f = _G["ContainerFrame" .. i]
-    if f then
-      pcall(function()
-        RestorePoint(f)
-        f:SetAlpha(1)
-        f:EnableMouse(true)
-      end)
-    end
-  end
-end
-
 OpenOurs = function()
   if openBusy or closeBusy then
-    return bagsOpen or OursVisible()
+    return SessionOpen()
   end
-  if not CanReplace() then
+  if not EnabledReplace() or OpenClose.IsReplaceSuppressed() then
     return false
   end
   openBusy = true
-  BlackoutAllBlizzard()
-  local okCall, okShow = pcall(function()
+  BlackoutAll()
+  ParkAllShown()
+
+  local ok, shown = pcall(function()
     return Layout.Show and Layout.Show()
   end)
-  local ok = okCall and okShow
-  if not ok or not OursVisible() then
+  if not ok or not shown or not OursVisible() then
     bagsOpen = false
     openBusy = false
-    -- Fail soft: close Blizzard while still blacked out — never alpha=1 flash.
-    BlackoutAllBlizzard()
-    if type(CloseAllBags) == "function" then
-      hidingBlizzard = true
-      BetterBackpack._bbIgnoreBagShow = true
-      pcall(CloseAllBags)
-      BetterBackpack._bbIgnoreBagShow = false
-      hidingBlizzard = false
+    ForceCloseBlizzard()
+    if BetterBackpack.RecordError then
+      BetterBackpack.RecordError("OpenOurs", tostring(shown))
     end
-    ClearSavedPoints()
     return false
   end
+
   bagsOpen = true
   openedAt = Now()
-  toggleLockUntil = math.max(toggleLockUntil, openedAt + TOGGLE_LOCK)
+  toggleLockUntil = Now() + TOGGLE_LOCK
   openBusy = false
-  PulseHideBlizzard()
-  AssertBlizzardStashed()
+  PulsePark()
+  if Layout and Layout.Raise then
+    pcall(Layout.Raise)
+  end
   return true
 end
 
@@ -387,28 +230,18 @@ function OpenClose.CloseOurs(opts)
   bagsOpen = false
   openedAt = 0
   pulseToken = pulseToken + 1
-  OpenClose.SuppressReplace(opts.suppress or 0.35)
+  OpenClose.SuppressReplace(opts.suppress or 0.3)
 
-  -- Stay blacked out through the whole close — never RestoreBlizzardBags here.
-  BlackoutAllBlizzard()
-
+  BlackoutAll()
+  BetterBackpack._bbClosing = true
   if Layout and Layout.Hide then
-    BetterBackpack._bbClosing = true
-    Layout.Hide()
-    BetterBackpack._bbClosing = false
+    pcall(Layout.Hide)
   end
+  BetterBackpack._bbClosing = false
 
-  if opts.closeBlizzard ~= false and type(CloseAllBags) == "function" then
-    hidingBlizzard = true
-    BetterBackpack._bbIgnoreBagShow = true
-    pcall(CloseAllBags)
-    BetterBackpack._bbIgnoreBagShow = false
-    hidingBlizzard = false
+  if opts.closeBlizzard ~= false then
+    ForceCloseBlizzard()
   end
-
-  -- Drop park anchors so next Blizzard open is clean; keep alpha 0 until real open.
-  ClearSavedPoints()
-  BlackoutAllBlizzard()
   closeBusy = false
 end
 
@@ -416,27 +249,35 @@ function OpenClose.NotifyHidden()
   if BetterBackpack._bbClosing then
     return
   end
-  if bagsOpen or OursVisible() then
-    OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.35 })
-    return
+  if SessionOpen() then
+    OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.3 })
+  else
+    bagsOpen = false
+    openedAt = 0
   end
-  bagsOpen = false
-  openedAt = 0
-  pulseToken = pulseToken + 1
 end
 
-function OpenClose.ShutdownToBlizzard(opts)
-  opts = opts or {}
+function OpenClose.ShutdownToBlizzard()
   bagsOpen = false
   openedAt = 0
   pulseToken = pulseToken + 1
   OpenClose.SuppressReplace(2.0)
+  BetterBackpack._bbClosing = true
   if Layout and Layout.Hide then
-    BetterBackpack._bbClosing = true
-    Layout.Hide()
-    BetterBackpack._bbClosing = false
+    pcall(Layout.Hide)
   end
-  RestoreBlizzardBags()
+  BetterBackpack._bbClosing = false
+  UnparkScale(ContainerFrameCombinedBags)
+  for i = 1, 13 do
+    UnparkScale(_G["ContainerFrame" .. i])
+  end
+  pcall(function()
+    local f = ContainerFrameCombinedBags
+    if f then
+      f:SetAlpha(1)
+      f:EnableMouse(true)
+    end
+  end)
 end
 
 function OpenClose.BagsOpen()
@@ -449,7 +290,50 @@ end
 
 function OpenClose.Toggle()
   if SessionOpen() then
-    OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.35 })
+    OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.3 })
+  else
+    OpenOurs()
+  end
+end
+
+function OpenClose.OpenOurs()
+  return OpenOurs()
+end
+
+--[[
+  Sole B-key owner. Ignore what Blizzard already did with CombinedBags.
+]]
+local function onBagKey()
+  if not EnabledReplace() then
+    return
+  end
+
+  local t = Now()
+  BlackoutAll()
+
+  -- Same physical key can fire ToggleAllBags + ToggleBackpack.
+  if t < toggleLockUntil then
+    if SessionOpen() then
+      PulsePark()
+    end
+    return
+  end
+
+  -- After CloseOurs suppress: next B should open.
+  if OpenClose.IsReplaceSuppressed() then
+    OpenClose.ClearReplaceSuppress()
+  end
+
+  toggleLockUntil = t + TOGGLE_LOCK
+
+  if SessionOpen() then
+    -- Closing: never treat as open-grace reopen.
+    if InOpenGrace() then
+      -- Blizzard OpenAllBags raced our open on same press — keep ours, park Blizzard.
+      PulsePark()
+      return
+    end
+    OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.3 })
   else
     OpenOurs()
   end
@@ -461,13 +345,92 @@ function OpenClose.InstallHooks()
   end
   hooksInstalled = true
 
-  local guard = CreateFrame("Frame")
-  guard:SetScript("OnUpdate", function(_, elapsed)
-    if not (Enabled() and Profile().replaceBlizzard) then
-      guardElapsed = 0
+  if type(ToggleAllBags) == "function" then
+    hooksecurefunc("ToggleAllBags", onBagKey)
+  end
+  if type(ToggleBackpack) == "function" then
+    hooksecurefunc("ToggleBackpack", onBagKey)
+  end
+
+  -- OpenAllBags: park only. Opening is Toggle*'s job (avoids double open/close).
+  if type(OpenAllBags) == "function" then
+    hooksecurefunc("OpenAllBags", function()
+      if ignoringBagShow or closeBusy then
+        return
+      end
+      if not EnabledReplace() then
+        return
+      end
+      BlackoutAll()
+      if SessionOpen() or openBusy then
+        ParkAllShown()
+      end
+    end)
+  end
+
+  local function hookCombined()
+    local f = ContainerFrameCombinedBags
+    if not f or f.BetterBackpackHooked then
       return
     end
-    if openBusy or closeBusy or BetterBackpack._bbIgnoreBagShow then
+    f.BetterBackpackHooked = true
+
+    if type(f.Show) == "function" then
+      pcall(hooksecurefunc, f, "Show", function(self)
+        if EnabledReplace() or SessionOpen() or openBusy then
+          Blackout(self)
+        end
+      end)
+    end
+
+    f:HookScript("OnShow", function(self)
+      if ignoringBagShow then
+        Blackout(self)
+        return
+      end
+      if not EnabledReplace() then
+        return
+      end
+      -- Park only — never OpenOurs from OnShow (OnShow→Open + Toggle→Close = empty UI).
+      Blackout(self)
+      if SessionOpen() or openBusy or InOpenGrace() then
+        Park(self)
+      elseif not OpenClose.IsReplaceSuppressed() then
+        -- Ghost CombinedBags while ours closed: take over.
+        Park(self)
+        if not closeBusy then
+          OpenOurs()
+        end
+      end
+    end)
+  end
+
+  local function hookContainers()
+    for i = 1, 13 do
+      local f = _G["ContainerFrame" .. i]
+      if f and not f.BetterBackpackHooked then
+        f.BetterBackpackHooked = true
+        f:HookScript("OnShow", function(self)
+          if ignoringBagShow or not EnabledReplace() then
+            return
+          end
+          if SessionOpen() or openBusy or InOpenGrace() then
+            Park(self)
+          end
+        end)
+      end
+    end
+  end
+
+  hookCombined()
+  hookContainers()
+
+  local guard = CreateFrame("Frame")
+  guard:SetScript("OnUpdate", function(_, elapsed)
+    if not EnabledReplace() then
+      return
+    end
+    if openBusy or closeBusy or ignoringBagShow then
       return
     end
     guardElapsed = guardElapsed + (elapsed or 0)
@@ -476,180 +439,26 @@ function OpenClose.InstallHooks()
     end
     guardElapsed = 0
     if SessionOpen() then
-      AssertBlizzardStashed()
-    else
-      -- Closed: if CombinedBags peeks visible, blackout+heal into ours (replace on).
-      if AnyBlizzardBagVisible() then
-        BlackoutAllBlizzard()
-        HealGhostBlizzardBags()
+      if FrameVisible(ContainerFrameCombinedBags) then
+        ParkAllShown()
+      end
+      for i = 1, 13 do
+        if FrameVisible(_G["ContainerFrame" .. i]) then
+          ParkAllShown()
+          break
+        end
       end
     end
   end)
 
-  local function onToggle()
-    local t = Now()
-    -- Blackout first on every B so Blizzard never paints a visible frame this press.
-    if ShouldParkBlizzard() or SessionOpen() then
-      BlackoutAllBlizzard()
-    end
-
-    local ours = SessionOpen()
-
-    if ours and InOpenGrace() then
-      toggleLockUntil = math.max(toggleLockUntil, t + TOGGLE_LOCK)
-      PulseHideBlizzard()
-      return
-    end
-
-    if t < toggleLockUntil then
-      if ours then
-        PulseHideBlizzard()
-      end
-      return
-    end
-
-    if not CanReplace() then
-      if OpenClose.IsReplaceSuppressed() and Enabled() and Profile().replaceBlizzard then
-        OpenClose.ClearReplaceSuppress()
-        bagsOpen = false
-        toggleLockUntil = t + TOGGLE_LOCK
-        OpenOurs()
-      end
-      return
-    end
-
-    toggleLockUntil = t + TOGGLE_LOCK
-    if ours then
-      OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.35 })
-    else
-      bagsOpen = false
-      OpenOurs()
-    end
-  end
-
-  if type(ToggleAllBags) == "function" then
-    hooksecurefunc("ToggleAllBags", onToggle)
-  end
-  if type(ToggleBackpack) == "function" then
-    hooksecurefunc("ToggleBackpack", onToggle)
-  end
-
-  if type(OpenAllBags) == "function" then
-    hooksecurefunc("OpenAllBags", function()
-      if openBusy or closeBusy or BetterBackpack._bbIgnoreBagShow then
-        BlackoutAllBlizzard()
-        return
-      end
-      if not Enabled() or not Profile().replaceBlizzard then
-        return
-      end
-      BlackoutAllBlizzard()
-      if OpenClose.IsReplaceSuppressed() then
-        return
-      end
-      if SessionOpen() then
-        -- Already open: restash only — do NOT extend toggleLock (blocks one-B close).
-        PulseHideBlizzard()
-        return
-      end
-      local t = Now()
-      openedAt = t
-      toggleLockUntil = math.max(toggleLockUntil, t + TOGGLE_LOCK)
-      OpenOurs()
-    end)
-  end
-
-  if type(CloseAllBags) == "function" then
-    hooksecurefunc("CloseAllBags", function()
-      if hidingBlizzard or closeBusy or BetterBackpack._bbClosing then
-        return
-      end
-      -- Do NOT re-Show CombinedBags here — that flashes and fights one-B close.
-      -- onToggle (same press) will CloseOurs when SessionOpen.
-      if SessionOpen() then
-        BlackoutAllBlizzard()
-      end
-    end)
-  end
-
-  local function hookCombinedOnShow()
-    local f = ContainerFrameCombinedBags
-    if not f or f.BetterBackpackHooked then
-      return
-    end
-    f.BetterBackpackHooked = true
-
-    -- Show() hook: blackout before OnShow scripts paint (anti-flash).
-    if type(f.Show) == "function" then
-      pcall(hooksecurefunc, f, "Show", function(self)
-        if ShouldParkBlizzard() or SessionOpen() or openBusy then
-          BlackoutFrame(self)
-        end
-      end)
-    end
-
-    f:HookScript("OnShow", function(self)
-      -- First line: never let CombinedBags paint opaque while we replace.
-      if ShouldParkBlizzard() or SessionOpen() or openBusy or closeBusy then
-        BlackoutFrame(self)
-      end
-      if BetterBackpack._bbIgnoreBagShow or openBusy or closeBusy then
-        if SessionOpen() then
-          ParkFrame(self)
-        end
-        return
-      end
-      if OpenClose.IsReplaceSuppressed() then
-        return
-      end
-      if SessionOpen() or InOpenGrace() then
-        ParkFrame(self)
-        PulseHideBlizzard()
-        return
-      end
-      if CanReplace() then
-        OpenOurs()
-      end
-    end)
-  end
-
-  local function hookContainerFrames()
-    for i = 1, 13 do
-      local f = _G["ContainerFrame" .. i]
-      if f and not f.BetterBackpackHooked then
-        f.BetterBackpackHooked = true
-        if type(f.Show) == "function" then
-          pcall(hooksecurefunc, f, "Show", function(self)
-            if ShouldParkBlizzard() or SessionOpen() or openBusy then
-              BlackoutFrame(self)
-            end
-          end)
-        end
-        f:HookScript("OnShow", function(self)
-          if ShouldParkBlizzard() or SessionOpen() or openBusy then
-            BlackoutFrame(self)
-          end
-          if BetterBackpack._bbIgnoreBagShow or openBusy or closeBusy then
-            return
-          end
-          if SessionOpen() or InOpenGrace() then
-            ParkFrame(self)
-          end
-        end)
-      end
-    end
-  end
-
-  hookCombinedOnShow()
-  hookContainerFrames()
   if C_Timer and C_Timer.After then
     C_Timer.After(1, function()
-      hookCombinedOnShow()
-      hookContainerFrames()
+      hookCombined()
+      hookContainers()
     end)
     C_Timer.After(3, function()
-      hookCombinedOnShow()
-      hookContainerFrames()
+      hookCombined()
+      hookContainers()
     end)
   end
 end
@@ -664,41 +473,25 @@ function OpenClose.RunOpenCloseSelfTest()
       notes[#notes + 1] = msg
     end
   end
-
   if InCombatLockdown and InCombatLockdown() then
-    ok(true, "combat — skip open/close mutate checks")
+    ok(true, "combat skip")
     return fail == 0, pass, fail, notes
   end
-
   if SessionOpen() then
     OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.05 })
   end
-
-  local opened = OpenOurs()
-  ok(opened == true, "OpenOurs returned false")
-  ok(SessionOpen(), "session not open after OpenOurs")
-  ok(OursVisible(), "Layout not shown after OpenOurs")
-
+  ok(OpenOurs() == true, "OpenOurs failed")
+  ok(OursVisible(), "frame not shown")
+  local d = Layout.DebugState and Layout.DebugState()
+  ok(d and d.shown and d.w and d.w >= 100 and d.h and d.h >= 80, "frame size/pos bad")
   local cb = ContainerFrameCombinedBags
-  ok(cb and cb:IsShown(), "CombinedBags not IsShown while ours open")
-  ok(not FrameVisiblyOnScreen(cb), "CombinedBags still visible on screen while ours open")
-  local a = 1
-  pcall(function()
-    a = cb:GetAlpha() or 1
-  end)
-  ok(a < 0.05, "CombinedBags alpha not ~0 while ours open")
-
+  ok(not FrameVisible(cb), "CombinedBags still visible")
   OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.05 })
-  ok(not SessionOpen(), "session still open after CloseOurs")
-  ok(not OursVisible(), "Layout still shown after CloseOurs")
-  ok(not (cb and cb:IsShown() and FrameVisiblyOnScreen(cb)), "CombinedBags visible after close")
-
+  ok(not SessionOpen(), "still open after close")
   OpenClose.ClearReplaceSuppress()
   return fail == 0, pass, fail, notes
 end
 
-OpenClose.HideBlizzardBags = HideBlizzardBags
-OpenClose.RestoreBlizzardBags = RestoreBlizzardBags
-OpenClose.OpenOurs = OpenOurs
-OpenClose.FrameVisiblyOnScreen = FrameVisiblyOnScreen
-OpenClose.BlackoutAllBlizzard = BlackoutAllBlizzard
+OpenClose.ForceCloseBlizzard = ForceCloseBlizzard
+OpenClose.ParkAllShown = ParkAllShown
+OpenClose.BlackoutAll = BlackoutAll

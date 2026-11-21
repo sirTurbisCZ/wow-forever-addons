@@ -1,11 +1,9 @@
-# Playtest brief — BetterBackpack 0.1.2
+# Playtest brief — BetterBackpack 0.1.3
 
-**Goal:** Category-lane bags; CS-RMB path B; CombinedBags park never flash; solid chrome; one-B close.
+**Goal:** B reliably opens/closes BetterBackpack only (session = source of truth).
 
-**Keep:** Plateband/FElog patterns; bags-only; OOC sort; vendor/mail/bank context.
+**Evidence fixed:** `SetToplevel` ADDON_ACTION_BLOCKED; OnShow→Open + Toggle→Close empty UI.
 
-**Avoid:** Harvest CombinedBags.Items; Hide CombinedBags mid-session; RestoreBlizzard alpha=1 on close; UseContainerItem from click; SetOverrideBindingClick; BagShelves fork.
+**Avoid:** SetToplevel; OpenOurs from CombinedBags OnShow; OpenAllBags as open owner.
 
-**Out of scope:** Release zip; guild/warband/alts; Syndicator.
-
-**Done when:** Linked; pushed main; Ondřej `/reload` → v0.1.2; B opens solid UI without CombinedBags flash; one B closes.
+**Done when:** `/reload` → v0.1.3; B opens solid CENTER panel; one B closes; `/bb frame` shows shown=true.

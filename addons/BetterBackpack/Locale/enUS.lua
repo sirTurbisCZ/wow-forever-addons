@@ -18,6 +18,7 @@ L.HELP_LINES = {
   "/bb reset — restore defaults",
   "/bb selftest — CS-RMB wiring card (still need 1× manual combat RMB)",
   "/bb bags — reagent/free-space probe (no secret print)",
+  "/bb frame [open] — print frame shown/size/strata (debug)",
 }
 L.STATUS_LINE = "enabled=%s · safe=%s · replace=%s · schema=%s · ver=%s · open=%s"
 L.ENABLED = "on — B opens BetterBackpack"
