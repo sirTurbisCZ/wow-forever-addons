@@ -2725,7 +2725,9 @@ function Layout.CombatShow()
     frame:Show()
   end)
   pcall(Layout.Raise)
-  pcall(RefreshCooldowns)
+  if Layout.RefreshCooldowns then
+    pcall(Layout.RefreshCooldowns)
+  end
   UpdateFreeSpace()
   UpdateMoney()
   return Layout.IsBagFrameVisible()
@@ -2891,7 +2893,6 @@ function Layout.ColdPreload()
     main:Show()
   end)
   pcall(DoLayout)
-  pcall(RefreshCooldowns)
   combatVisuallyHidden = true
   pcall(function()
     main:SetAlpha(0)

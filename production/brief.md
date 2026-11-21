@@ -1,4 +1,8 @@
-# Playtest brief — BetterBackpack 0.5.64 (combat B)
+# Playtest brief — BetterBackpack 0.5.65 (load hotfix)
+
+**0.5.65**
+- **Hotfix:** OpenClose load (FrameXML parse / UTF-8 in combat trace); login hooks before deferred ColdPreload; precreate+EnsureMain restored on LOGIN.
+- Expect chat `loaded v0.5.65` and B opens BetterBackpack after `/reload`.
 
 **0.5.64**
 - **Cold preload** at login/world enter OOC: `Layout.ColdPreload` (slots + frame + one DoLayout, alpha 0).

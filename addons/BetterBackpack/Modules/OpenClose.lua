@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.OpenClose — B + /bb (0.5.64 — combat via Layout.CombatShow/Hide)
+  BetterBackpack.OpenClose — B + /bb (0.5.65)
 
   ToggleAllBags + ToggleBackpack → onBagKey XOR (same handler). ToggleBag / ToggleKeyRing = Blizzard.
   Bag-bar native: never park/blackout ContainerFrame*; RestoreNativeBagFrames on close only.
@@ -593,8 +593,11 @@ OpenOurs = function()
     else
       CombatTraceOnce("OpenOurs", "no CombatShow")
     end
-    if not shown and (not Layout or not Layout.IsColdPreloaded or not Layout.IsColdPreloaded()) then
-      CombatTraceOnce("OpenOurs", "cold preload missing — /reload OOC")
+    if not shown then
+      local pre = Layout and Layout.IsColdPreloaded and Layout.IsColdPreloaded()
+      if not pre then
+        CombatTraceOnce("OpenOurs", "cold preload missing - reload OOC")
+      end
     end
     openBusy = false
     OpenClose._openBusy = false

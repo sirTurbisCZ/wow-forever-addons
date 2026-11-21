@@ -260,9 +260,21 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
       if OpenClose and OpenClose.InstallHooks then
         SafeCall("hooks", OpenClose.InstallHooks)
       else
-        Print("ERROR: OpenClose failed to load — check FrameXML.log")
+        Print("ERROR: OpenClose failed to load - check FrameXML.log")
       end
-      QueueColdWarmup("login")
+      if C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+          SafeCall("precreate", Slots.PreCreate)
+          SafeCall("warmup:ensure", Layout.EnsureMain)
+        end)
+        C_Timer.After(1.5, function()
+          QueueColdWarmup("login")
+        end)
+      else
+        SafeCall("precreate", Slots.PreCreate)
+        SafeCall("warmup:ensure", Layout.EnsureMain)
+        QueueColdWarmup("login")
+      end
     end
     Print(string.format(L.LOADED or "loaded v%s · /bb", tostring(Config.VERSION)))
     return
