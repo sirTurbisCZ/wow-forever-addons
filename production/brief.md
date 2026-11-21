@@ -1,4 +1,7 @@
-# Playtest brief — BetterBackpack 0.5.40 (soft hooks)
+# Playtest brief — BetterBackpack 0.5.41 (/bb only)
+
+**0.5.41**
+- No global Toggle* replace. All Blizzard bag keys native. **`/bb`** (or bare `/bb`) toggles BetterBackpack. Login should not crash.
 
 **0.5.40**
 - Crash stop: **only ToggleAllBags** hooked; all frame/Open/Close/bag-bar hooks off (`SOFT_BAG_HOOKS`). pcall on replace handler + onBagKey path.

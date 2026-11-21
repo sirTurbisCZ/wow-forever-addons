@@ -2312,22 +2312,22 @@ EnsureTitleChrome = function(frame)
   if not frame then
     return
   end
-  local close = frame.CloseButton
-  if not close then
-    pcall(function()
+  if InCombatLockdown and InCombatLockdown() then
+    return
+  end
+  local ok, err = pcall(function()
+    local close = frame.CloseButton
+    if not close then
       close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
       frame.CloseButton = close
-    end)
-  end
-  if close then
-    close:ClearAllPoints()
-    -- BagShelves: TOPRIGHT 2,1
-    close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 2, 1)
-    close:SetFrameLevel((frame:GetFrameLevel() or 1) + 520)
-    close:Show()
-  end
+    end
+    if close then
+      close:ClearAllPoints()
+      close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 2, 1)
+      close:SetFrameLevel((frame:GetFrameLevel() or 1) + 520)
+      close:Show()
+    end
 
-  pcall(function()
     local title = CombinedBagTitle()
     if frame.SetTitle then
       frame:SetTitle(title)
@@ -2338,7 +2338,6 @@ EnsureTitleChrome = function(frame)
     if tt then
       tt:ClearAllPoints()
       local anchor = frame.TitleContainer or frame
-      -- Forever ButtonFrameOffsetTop≈2; leave room for broom|gear|X.
       tt:SetPoint("LEFT", anchor, "LEFT", BF_OFFSET + 4, BF_OFFSET_TOP > 0 and 0 or 0)
       tt:SetPoint("RIGHT", frame, "RIGHT", -110, 0)
       if tt.SetJustifyH then
@@ -2350,18 +2349,16 @@ EnsureTitleChrome = function(frame)
       tt:SetText(title)
       tt:Show()
     end
-  end)
 
-  local tidy, gear = EnsureBagShelvesTitleChrome(frame, close)
-  sortBtn = tidy
-  settingsBtn = gear
+    local tidy, gear = EnsureBagShelvesTitleChrome(frame, close)
+    sortBtn = tidy
+    settingsBtn = gear
 
-  if frame._bbChrome then
-    pcall(frame._bbChrome.Hide, frame._bbChrome)
-  end
-  frame._bbChromeVer = CHROME_VER
+    if frame._bbChrome then
+      pcall(frame._bbChrome.Hide, frame._bbChrome)
+    end
+    frame._bbChromeVer = CHROME_VER
 
-  pcall(function()
     if frame.TitleContainer then
       local need = (frame:GetFrameLevel() or 1) + 50
       if (frame.TitleContainer:GetFrameLevel() or 1) >= need then
@@ -2369,6 +2366,9 @@ EnsureTitleChrome = function(frame)
       end
     end
   end)
+  if not ok and BetterBackpack and BetterBackpack.RecordError then
+    BetterBackpack.RecordError("EnsureTitleChrome", err)
+  end
 end
 
 function Layout.EnsureMain()

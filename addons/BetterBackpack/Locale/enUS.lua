@@ -31,7 +31,7 @@ L.HELP_LINES = {
   "/bb frame [open] — print frame shown/size/strata (debug)",
 }
 L.STATUS_LINE = "enabled=%s · safe=%s · replace=%s · schema=%s · ver=%s · open=%s"
-L.ENABLED = "on — B opens BetterBackpack"
+L.ENABLED = "on — /bb opens BetterBackpack (B = Blizzard bags)"
 L.DISABLED = "off — Blizzard bags restored"
 L.SAFE_ON = "safe mode — Blizzard bags; /bb on to resume"
 L.CONFIG_RESET = "config reset to defaults"

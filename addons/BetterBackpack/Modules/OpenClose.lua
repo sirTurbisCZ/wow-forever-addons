@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.OpenClose — only ToggleAllBags replaced (0.5.40 soft hooks)
+  BetterBackpack.OpenClose — /bb only; Blizzard toggles untouched (0.5.41)
 
   Only ToggleAllBags is *replaced* (BetterBackpack combined). ToggleBag/ToggleBackpack/ToggleKeyRing stay Blizzard.
   (not hooksecurefunc). Forever Toggle* bodies call Open*/Close* first; a
@@ -58,6 +58,11 @@ end
 local function EnabledReplace()
   local p = Profile()
   return p.enabled and not p.safeMode and p.replaceBlizzard
+end
+
+local function OverlayAllowed()
+  local p = Profile()
+  return p.enabled and not p.safeMode
 end
 
 local function BagBarNativeEnabled()
@@ -742,7 +747,7 @@ end
   Replace Toggle* instead of hooksecurefunc. Post-hooks run AFTER Blizzard
   Open*/Close* (and our Open*/Close* hooks), so XOR always fought the body.
 ]]
-local BLIZZARD_TOGGLES = { "ToggleBag", "ToggleBackpack", "ToggleKeyRing" }
+local BLIZZARD_TOGGLES = { "ToggleBag", "ToggleBackpack", "ToggleKeyRing", "ToggleAllBags" }
 
 local function CaptureBlizzardToggles()
   for i = 1, #BLIZZARD_TOGGLES do
@@ -773,6 +778,8 @@ function OpenClose.RestoreBlizzardToggles()
     RestoreBlizzardToggle(BLIZZARD_TOGGLES[i])
   end
 end
+
+OpenClose.RestoreAllBlizzardBagToggles = OpenClose.RestoreBlizzardToggles
 
 local function ReplaceToggle(globalName, handler)
   local orig = _G[globalName]
@@ -1381,14 +1388,16 @@ function OpenClose.InstallHooks()
     return
   end
 
+  -- 0.5.41: never replace globals — restore Blizzard, open via /bb only.
   CaptureBlizzardToggles()
   OpenClose.RestoreBlizzardToggles()
-  ReplaceToggle("ToggleAllBags", onBagKey)
+  hooksInstalled = true
+  LogHooksOnce("Blizzard bag API · open /bb")
+  return
 
-  if SOFT_BAG_HOOKS then
-    hooksInstalled = true
-    LogHooksOnce("ToggleAllBags only (soft hooks)")
-    return
+  -- Legacy full hooks (disabled):
+  if not SOFT_BAG_HOOKS then
+    ReplaceToggle("ToggleAllBags", onBagKey)
   end
 
   local function hookCombined()
