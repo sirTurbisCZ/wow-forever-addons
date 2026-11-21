@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.OpenClose — only ToggleAllBags replaced (0.5.39)
+  BetterBackpack.OpenClose — only ToggleAllBags replaced (0.5.40 soft hooks)
 
   Only ToggleAllBags is *replaced* (BetterBackpack combined). ToggleBag/ToggleBackpack/ToggleKeyRing stay Blizzard.
   (not hooksecurefunc). Forever Toggle* bodies call Open*/Close* first; a
@@ -23,6 +23,8 @@ local Layout = BetterBackpack.Modules.Layout
 local hooksInstalled = false
 local inBagKey = false
 local inOpenIntent = false
+-- 0.5.40: no frame/Open/Close/bag-bar hooks — ToggleAllBags replace only.
+local SOFT_BAG_HOOKS = true
 local suppressUntil = 0
 local bagsOpen = false
 local toggleLockUntil = 0
@@ -698,11 +700,11 @@ local function onBagKey()
   inBagKey = true
   OpenClose.ClearReplaceSuppress()
   if SessionOpen() then
-    OpenClose.CloseOurs({ closeBlizzard = false, suppress = 0.25 })
+    pcall(OpenClose.CloseOurs, { closeBlizzard = false, suppress = 0.25 })
     inBagKey = false
     return
   end
-  ParkBlizzardForOverlay()
+  pcall(ParkBlizzardForOverlay)
   pcall(OpenOurs)
   inBagKey = false
 end
@@ -786,7 +788,14 @@ local function ReplaceToggle(globalName, handler)
     if not EnabledReplace() then
       return orig(...)
     end
-    handler(...)
+    local ok, err = pcall(handler, ...)
+    if not ok then
+      if BetterBackpack and BetterBackpack.RecordError then
+        BetterBackpack.RecordError(globalName, err)
+      elseif DEFAULT_CHAT_FRAME then
+        DEFAULT_CHAT_FRAME:AddMessage("|cffff5050BetterBackpack|r " .. tostring(globalName) .. ": " .. tostring(err))
+      end
+    end
   end
   return true
 end
@@ -1372,63 +1381,14 @@ function OpenClose.InstallHooks()
     return
   end
 
-  -- 0.5.39: Blizzard bar toggles captured/restored; combined only via ToggleAllBags.
   CaptureBlizzardToggles()
   OpenClose.RestoreBlizzardToggles()
-  local replacedAll = ReplaceToggle("ToggleAllBags", onBagKey)
-  if not replacedAll and type(_G.ToggleBackpack) == "function" then
-    ReplaceToggle("ToggleBackpack", onBagKey)
-  end
+  ReplaceToggle("ToggleAllBags", onBagKey)
 
-  if not BagBarNativeEnabled() then
-    if type(OpenAllBags) == "function" then
-      hooksecurefunc("OpenAllBags", function()
-        if ignoringBagShow or OpenClose._nativeOpening or OpenClose.IsReplaceSuppressed() then
-          return
-        end
-        onOpenIntent(nil)
-      end)
-    end
-    if type(OpenBackpack) == "function" then
-      hooksecurefunc("OpenBackpack", function()
-        if ignoringBagShow or OpenClose._nativeOpening or OpenClose.IsReplaceSuppressed() then
-          return
-        end
-        onOpenIntent(0)
-      end)
-    end
-    if type(OpenBag) == "function" then
-      hooksecurefunc("OpenBag", function(id)
-        if ignoringBagShow or OpenClose._nativeOpening or OpenClose.IsReplaceSuppressed() then
-          return
-        end
-        onOpenIntent(id)
-      end)
-    end
-  end
-  if type(CloseBag) == "function" then
-    hooksecurefunc("CloseBag", function()
-      if BagBarNativeEnabled() and not SessionOpen() then
-        return
-      end
-      onCloseIntent()
-    end)
-  end
-  if type(CloseAllBags) == "function" then
-    hooksecurefunc("CloseAllBags", function()
-      if BagBarNativeEnabled() and not SessionOpen() then
-        return
-      end
-      onCloseIntent()
-    end)
-  end
-  if type(CloseBackpack) == "function" then
-    hooksecurefunc("CloseBackpack", function()
-      if BagBarNativeEnabled() and not SessionOpen() then
-        return
-      end
-      onCloseIntent()
-    end)
+  if SOFT_BAG_HOOKS then
+    hooksInstalled = true
+    LogHooksOnce("ToggleAllBags only (soft hooks)")
+    return
   end
 
   local function hookCombined()
@@ -1631,22 +1591,7 @@ function OpenClose.InstallHooks()
   end)
 
   hooksInstalled = true
-  LogHooksOnce(string.format("ToggleAllBags only · bagBtns=%d", nBag or 0))
-
-  if C_Timer and C_Timer.After then
-    C_Timer.After(1, function()
-      hookCombined()
-      hookContainers()
-      hookKeyRingFrames()
-      HookBagBarButtons()
-    end)
-    C_Timer.After(3, function()
-      hookCombined()
-      hookContainers()
-      hookKeyRingFrames()
-      HookBagBarButtons()
-    end)
-  end
+  LogHooksOnce(string.format("full hooks · bagBtns=%d", nBag or 0))
 end
 
 function OpenClose.RunOpenCloseSelfTest()

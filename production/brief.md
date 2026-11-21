@@ -1,4 +1,7 @@
-# Playtest brief — BetterBackpack 0.5.39 (0.5.38 crash fix)
+# Playtest brief — BetterBackpack 0.5.40 (soft hooks)
+
+**0.5.40**
+- Crash stop: **only ToggleAllBags** hooked; all frame/Open/Close/bag-bar hooks off (`SOFT_BAG_HOOKS`). pcall on replace handler + onBagKey path.
 
 **0.5.39**
 - 0.5.38 crash/loop: snapshot Blizzard toggles at install; no CombinedBags→onOpenIntent; reentrancy guards on B path.
