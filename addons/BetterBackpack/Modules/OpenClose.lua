@@ -874,8 +874,42 @@ function OpenClose.ResetBagSession()
   OpenClose.ClearReplaceSuppress()
 end
 
+function OpenClose.CloseFromEsc()
+  BetterBackpack._bbClosing = true
+  bagsOpen = false
+  openBusy = false
+  OpenClose._openBusy = false
+  pcall(function()
+    if Layout and Layout.CombatHide then
+      Layout.CombatHide()
+    elseif Layout and Layout.Hide then
+      Layout.Hide()
+    end
+    if not InCombat() and Layout and Layout.EnsureCombatShell then
+      Layout.EnsureCombatShell()
+    end
+    if Layout and Layout.SyncBagUISpecialFrame then
+      Layout.SyncBagUISpecialFrame()
+    end
+  end)
+  BetterBackpack._bbClosing = false
+  return not OursVisible()
+end
+
 function OpenClose.NotifyHidden()
   if BetterBackpack._bbClosing then
+    return
+  end
+  if BetterBackpack._bbEscPass then
+    bagsOpen = false
+    openBusy = false
+    OpenClose._openBusy = false
+    if Layout and Layout.SyncBagUISpecialFrame then
+      pcall(Layout.SyncBagUISpecialFrame)
+    end
+    if not InCombat() and Layout and Layout.EnsureCombatShell then
+      pcall(Layout.EnsureCombatShell)
+    end
     return
   end
   if BetterBackpack._bbKeepShown and Layout and Layout.IsBagFrameVisible and not Layout.IsBagFrameVisible() then

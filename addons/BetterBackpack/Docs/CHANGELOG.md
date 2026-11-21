@@ -1,5 +1,9 @@
 # BetterBackpack changelog
 
+## 1.1.7
+
+- **ESC:** sync `UISpecialFrames` immediately before every `CloseSpecialWindows` (visible = listed, parked = not). Fallback `CloseFromEsc` if visible after orig. `NotifyHidden` ESC path + `OnHide` repark keep-shown shell after Blizzard `Hide`. `/bb debug on` → `bagEscTrace` + chat `esc ·` lines.
+
 ## 1.1.6
 
 - **ESC:** `CloseSpecialWindows` guard no longer strips `UISpecialFrames` while bags are user-visible (1.1.x bug: first ESC opened game menu + left bags open). Parked keep-shown: strip only, no `Hide()` on ESC. `NotifyHidden` ignores OnHide from parked shell.

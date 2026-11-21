@@ -2584,7 +2584,7 @@ function Layout.EnsureMain()
       self.title:SetText(title)
     end
   end)
-  built:SetScript("OnHide", function()
+  built:SetScript("OnHide", function(self)
     if BetterBackpack._bbBuilding or BetterBackpack._bbClosing then
       return
     end
@@ -2597,6 +2597,21 @@ function Layout.EnsureMain()
     end
     if Layout.SyncBagUISpecialFrame then
       Layout.SyncBagUISpecialFrame()
+    end
+    if BetterBackpack._bbKeepShown and self and self.IsShown and not self:IsShown() then
+      local repark = function()
+        if InCombatLockdown and InCombatLockdown() then
+          return
+        end
+        if Layout.EnsureCombatShell then
+          pcall(Layout.EnsureCombatShell)
+        end
+      end
+      if C_Timer and C_Timer.After then
+        C_Timer.After(0, repark)
+      else
+        repark()
+      end
     end
   end)
 
@@ -2791,6 +2806,48 @@ function Layout.StripBagSpecialFrame()
   end
 end
 
+function Layout.EscDebugTrace(phase, detail)
+  local p = Profile()
+  if not (p and p.debug) then
+    return
+  end
+  local f = main or _G.BetterBackpackFrame
+  local alpha = f and FrameAlpha(f) or 0
+  local line = string.format(
+    "esc · %s · vis=%s listed=%s a=%.2f fh=%s keep=%s %s",
+    tostring(phase or "?"),
+    tostring(Layout.IsBagFrameVisible() and true or false),
+    tostring(BagFrameListedInUISpecial()),
+    alpha,
+    tostring(combatVisuallyHidden),
+    tostring(BetterBackpack._bbKeepShown),
+    detail and tostring(detail) or ""
+  )
+  if BetterBackpack.Print then
+    BetterBackpack.Print(line)
+  elseif DEFAULT_CHAT_FRAME then
+    DEFAULT_CHAT_FRAME:AddMessage("|cffc9a227BetterBackpack|r " .. line)
+  end
+  local db = Config and Config.EnsureDB and Config.EnsureDB()
+  if db then
+    db.bagEscTrace = db.bagEscTrace or {}
+    db.bagEscTrace[#db.bagEscTrace + 1] = {
+      t = (time and time()) or 0,
+      phase = tostring(phase),
+      detail = detail and tostring(detail) or "",
+      userVisible = Layout.IsBagFrameVisible() and true or false,
+      listed = BagFrameListedInUISpecial(),
+      alpha = alpha,
+      combatHide = combatVisuallyHidden,
+      keepShown = BetterBackpack._bbKeepShown and true or false,
+      frameShown = f and f.IsShown and f:IsShown() and true or false,
+    }
+    while #db.bagEscTrace > 20 do
+      table.remove(db.bagEscTrace, 1)
+    end
+  end
+end
+
 function Layout.SyncBagUISpecialFrame()
   if not UISpecialFrames then
     return
@@ -2798,11 +2855,9 @@ function Layout.SyncBagUISpecialFrame()
   local f = main or _G.BetterBackpackFrame
   local alpha = f and FrameAlpha(f) or 0
   Layout.StripBagSpecialFrame()
-  local want = false
-  if alpha >= ALPHA_ESC_MIN and not combatVisuallyHidden then
-    want = Layout.IsBagFrameVisible()
-  end
-  if want and f and FrameAlpha(f) >= ALPHA_ESC_MIN and not combatVisuallyHidden then
+  local userVisible = Layout.IsBagFrameVisible()
+  local want = userVisible and alpha >= ALPHA_ESC_MIN and not combatVisuallyHidden
+  if want then
     table.insert(UISpecialFrames, BAG_SPECIAL_FRAME)
   end
   local db = Config and Config.EnsureDB and Config.EnsureDB()
@@ -2815,7 +2870,8 @@ function Layout.SyncBagUISpecialFrame()
       keepShown = BetterBackpack._bbKeepShown and true or false,
       frameShown = f and f.IsShown and f:IsShown() and true or false,
       inUISpecialFrames = BagFrameListedInUISpecial(),
-      wantEscClose = want,
+      wantEscClose = want and true or false,
+      userVisible = userVisible and true or false,
       keepShownPark = BetterBackpack._bbKeepShown and true or false,
     }
   end
@@ -2835,14 +2891,23 @@ function Layout.InstallEscGuard()
   Layout._escGuardInstalled = true
   local orig = CloseSpecialWindows
   CloseSpecialWindows = function(...)
-    local userVisible = Layout.IsBagFrameVisible and Layout.IsBagFrameVisible()
-    if userVisible then
-      -- Listed in UISpecialFrames — let Blizzard close bags on this ESC (one press = close only).
-      return orig(...)
+    Layout.SyncBagUISpecialFrame()
+    local userVisible = Layout.IsBagFrameVisible()
+    local listed = BagFrameListedInUISpecial()
+    Layout.EscDebugTrace("pre-close", string.format("listed=%s", tostring(listed)))
+    BetterBackpack._bbEscPass = userVisible and true or false
+    local ret = orig(...)
+    Layout.EscDebugTrace("post-close", string.format("origRet=%s", tostring(ret)))
+    BetterBackpack._bbEscPass = nil
+    if userVisible and Layout.IsBagFrameVisible() then
+      local OC = BetterBackpack.Modules and BetterBackpack.Modules.OpenClose
+      if OC and OC.CloseFromEsc then
+        if OC.CloseFromEsc() then
+          return true
+        end
+      end
     end
-    -- Parked keep-shown (alpha 0, Show): never in UISpecialFrames; never Hide (OnHide → spurious open/close).
-    Layout.StripBagSpecialFrame()
-    return orig(...)
+    return ret
   end
 end
 
