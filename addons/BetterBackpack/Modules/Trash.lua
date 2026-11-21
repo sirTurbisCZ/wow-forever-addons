@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.Trash — auto-destroy lane (0.5.22).
+  BetterBackpack.Trash — auto-destroy lane (0.5.23).
   Drop a stack on the Trash lane → destroyed now (first time per item asks), itemID taught
   to "trash" (profile.itemRules). Its grey ghost stays in the lane (0 bag slots); drag the
   ghost to another lane, or click it → Keep / Move to, to stop destroying it.
@@ -55,7 +55,7 @@ local function TrashDB()
   end
   local t = p.trash
   if t.confirm == nil then
-    t.confirm = true
+    t.confirm = false
   end
   for _, k in ipairs({ "confirmed", "destroyed", "log" }) do
     if type(t[k]) ~= "table" then

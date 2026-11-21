@@ -6,7 +6,7 @@ Category-lane bags for **World of Warcraft Forever** (Interface 16001) with comb
 
 1. Put this folder in `Interface/AddOns/BetterBackpack/` (or symlink via `./scripts/link-addon.sh BetterBackpack`).
 2. Enable at character select if needed.
-3. `/reload` in game — chat should show `loaded v0.5.22` (Toggle* stable; CombinedBags/Baganator chrome; NTH).
+3. `/reload` in game — chat should show `loaded v0.5.23` (Toggle* stable; CombinedBags/Baganator chrome; NTH).
 
 Categories open expanded with item icons; click a category header (arrow) to collapse or expand it. The window is sized for the whole bag with every category expanded (as wide as the largest category, never narrower than 6 slots), so collapsing, searching or filtering never resizes it. Categories with no matches are hidden; the freed space stays plain (set `fillEmptyWells` in the profile to show empty slot wells there instead).
 
@@ -22,7 +22,7 @@ Categories open expanded with item icons; click a category header (arrow) to col
 ## Trash lane — auto-destroy (0.5.19)
 
 - Off by default: Settings → Lanes → check **Trash**. Unchecked = nothing is ever destroyed, Trash rules wait.
-- Drop a grey or white stack on the Trash header (or on an item / ghost in Trash): it is destroyed right away. The **first time per item** a popup asks; after Accept you won't be asked again for that item (even after `/reload`). Settings → Trash → **Don't ask again** skips every confirm.
+- Drop a grey or white stack on the Trash header (or on an item / ghost in Trash): it is destroyed **immediately** (no confirm by default). To get first-time-per-item popups back: Settings → Trash and **uncheck** \"Don't ask again (skip all destroy confirms)\".
 - From then on every stack of that item you loot is destroyed too. A grey **ghost** icon of it stays in the Trash lane (no bag slot) with how many were destroyed.
 - **To keep it again:** drag the ghost onto another lane (header, an item in it, + Lane, or a lane row in Settings), or click the ghost → *Keep* / *Keep in …*. Settings → Trash lists every Trash item with **Keep**.
 - Never destroyed: quest items, green or better, locked items, the hearthstone. Nothing happens in combat.

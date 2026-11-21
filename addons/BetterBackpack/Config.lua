@@ -2,7 +2,7 @@
 
 BetterBackpack = BetterBackpack or {}
 
-local CURRENT_SCHEMA = 4
+local CURRENT_SCHEMA = 5
 local MAX_ERRORS = 40
 local MAX_MSG = 2000
 
@@ -12,7 +12,7 @@ local Config = BetterBackpack.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.5.22"
+Config.VERSION = "0.5.23"
 
 local function ProfileDefaults()
   return {
@@ -36,7 +36,7 @@ local function ProfileDefaults()
       other = true,
     },
     itemRules = {},
-    trash = { confirm = true, confirmed = {}, destroyed = {}, log = {} },
+    trash = { confirm = false, confirmed = {}, destroyed = {}, log = {} },
     -- Nice-to-have (from betterbackpack/features-nth): optional Feat() modules.
     searchQuery = "",
     filterCategory = nil, -- nil / "all" = no filter; else category key
@@ -132,6 +132,16 @@ function Config.EnsureDB()
     end
     db.schemaVersion = 4
     from = 4
+  end
+
+  -- 0.5.23: Trash destroys on drop without confirm unless user re-enables in Settings.
+  if from < 5 then
+    EnsureProfile(db)
+    if type(db.profile) == "table" and type(db.profile.trash) == "table" then
+      db.profile.trash.confirm = false
+    end
+    db.schemaVersion = 5
+    from = 5
   end
 
   EnsureProfile(db)
