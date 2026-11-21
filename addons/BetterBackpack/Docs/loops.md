@@ -1,7 +1,7 @@
 # BetterBackpack — workflows and diagrams
 
 **Code:** `Core.lua`, `Modules/{Slots,Layout,Context,BulkTransfer,VendorJunk,OpenClose,Tidy,Settings,Search,Filter,CustomCategories,Trash,StackMerge,Pins,LayoutModes}.lua`  
-**Version reference:** 1.0.0 (combat keep-shown shell · sync vendor lane bulk · auto-sell grey · OpenAllBags→OpenOurs)  
+**Version reference:** 1.1.9 (combat keep-shown warm shell · ESC re-arm + CloseBackpack close-only · vendor bulk · auto-sell)  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never harvest CombinedBags items).
 
 ---
@@ -31,7 +31,7 @@ flowchart TD
 
 - Never `SetOverrideBindingClick` or `SetFrameStrata` / `SetToplevel` on our frame.
 - Toggle globals are **replaced**, not post-hooked.
-- Combat: OOC **`EnsureCombatShell`** parks **Show+alpha0** (`_bbKeepShown`); B in combat = alpha 1/0. **`SyncBagUISpecialFrame`:** user-visible ⇔ `UISpecialFrames`. **`CloseSpecialWindows`:** open → Blizzard close; parked keep-shown → transient `Hide` + orig + **re-arm** (`_bbEscRearm`).
+- Combat: OOC **`EnsureCombatShell`** parks **Show+alpha0** (`_bbKeepShown`); B in combat = alpha 1/0. **ESC:** `SyncBagUISpecialFrame` — user-visible ⇔ `UISpecialFrames`. Parked → `CloseSpecialWindows` transient `Hide` + **re-arm**; **`CloseBackpack`** close-only (no toggle open when parked).
 - `OpenAllBags` / `OpenBag` → `OpenOurs` when replace is on (vendor keeps BB, not native CombinedBags).
 - Window size is computed from the full unfiltered bag with all lanes expanded (sticky while open).
 

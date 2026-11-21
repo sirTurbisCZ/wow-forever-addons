@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 1.1.0 — category lanes, combat B, vendor bulk, auto-sell.
+## Notes: 1.1.9 — combat B keep-shown + ESC (re-arm, CloseBackpack fix).
 ## Author: tuma
 ## Version: 1.1.9
 ## SavedVariables: BetterBackpackDB

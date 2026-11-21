@@ -1,8 +1,12 @@
 # BetterBackpack changelog
 
-## 1.1.9
+## 1.1.9 — ship (combat B + ESC)
 
-- **ESC:** `CloseBackpack` from `CloseSpecialWindows` hit replaced API → `onBagKey` **open** branch when `vis=false` (opened bags on ESC). Close-only when not user-visible; skip during `_bbEscRearm`/`_bbEscPass`. Fix `BagKeyTrace` forward order (nil call in `BagCombatDiag`).
+- **Combat B:** OOC **`EnsureCombatShell`** keeps **`Show`+alpha0** warm shell (`_bbKeepShown`); in combat toggle = alpha 1/0 on prebuilt frame (no `Hide` in lockdown). **`CloseOurs`** reparks shell OOC after close.
+- **ESC (parked closed):** user-visible ⇔ `UISpecialFrames` via **`SyncBagUISpecialFrame`**. Parked keep-shown still counted as shown by Forever → **transient `Hide` only inside `CloseSpecialWindows`**, then **re-arm** (`_bbEscRearm`); no permanent `Hide` on warm shell.
+- **ESC (user open):** listed in `UISpecialFrames`; one ESC closes bags; second ESC → game menu. **`CloseFromEsc`** fallback if needed.
+- **ESC bugfix:** Blizzard **`CloseBackpack`** during close stack must not call **`onBagKey` open path** when `vis=false` — close-only no-op + skip during `_bbEscRearm`/`_bbEscPass`. **`BagKeyTrace`** order fix (nil in `BagCombatDiag`).
+- **Debug:** `/bb debug on` → `bagEscTrace`, `combatBagTrace`, chat `esc ·` / `combat-diag`.
 
 ## 1.1.8
 
