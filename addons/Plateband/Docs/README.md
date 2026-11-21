@@ -3,8 +3,8 @@
 Companion for Forever nameplate auras. Looks and feels like Blizzard’s native DebuffList.
 
 - **Your** personal DoTs stay 100% native (Plateband does not paint them).
-- On **enemy** plates (especially the current target), Plateband appends **only** harmful icons Blizzard omitted — same band, LEFT→RIGHT of native DebuffList (party/nearby foreign DoTs, including Forever-secret FileIDs).
-- **Friend/party** plates are left alone (no name reanchor). On enemies with merge paint, name tucks under the aura band. Never parks or hides native DebuffList.
+- On **enemy** plates (especially the current target), Plateband appends **only** harmful icons Blizzard omitted — same band, LEFT→RIGHT of native DebuffList (party/nearby foreign DoTs). TF harvest uses `auraPools` + brute Contextual walk.
+- **Name sits above auras** on friend and enemy plates (lift by icon height). Never pin the name under DoTs. Never `ClearAllPoints` on native DebuffList.
 
 ## Install
 
