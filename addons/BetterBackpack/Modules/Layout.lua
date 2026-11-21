@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.0).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.1).
   Forever: never SetToplevel (ADDON_ACTION_BLOCKED).
   Width/padding match BagShelves; title buttons = AutoSort twins (no glow).
   NTH hooks via optional Feat("Search|Filter|…") — do not rewrite OpenClose chrome here.
@@ -1178,9 +1178,11 @@ local function DestroyHalfBuilt()
   sectionFrames = {}
   pcall(function()
     local old = _G.BetterBackpackFrame
-    if old and old ~= main then
+    if old then
+      old._bbBuilt = nil
+      old._bbContent = nil
       old:Hide()
-      old:SetParent(nil)
+      -- Keep named frame for reuse; CreateBagPanel will finish chrome.
     end
   end)
 end
@@ -1563,6 +1565,14 @@ function Layout.EnsureMain()
   if main and not content then
     DestroyHalfBuilt()
   end
+  if not main then
+    local orphan = _G.BetterBackpackFrame
+    if orphan and not orphan._bbBuilt then
+      -- Prior SetFrameStrata BLOCKED aborted build — reuse shell, finish below.
+      main = nil
+      content = nil
+    end
+  end
   if main then
     KillPortrait(main)
     ApplyCombinedBagsChrome(main)
@@ -1584,8 +1594,14 @@ function Layout.EnsureMain()
     return main
   end
   built:SetSize(456, 360)
-  built:SetFrameStrata("DIALOG")
-  built:SetFrameLevel(200)
+  -- Forever: SetFrameStrata on our frame can ADDON_ACTION_BLOCKED and *error*
+  -- mid-EnsureMain → half-built BetterBackpackFrame → OpenOurs false forever.
+  pcall(function()
+    built:SetFrameStrata("DIALOG")
+  end)
+  pcall(function()
+    built:SetFrameLevel(200)
+  end)
   built:SetMovable(true)
   built:EnableMouse(true)
   built:RegisterForDrag("LeftButton")

@@ -225,7 +225,9 @@ OpenOurs = function()
     end)
     -- Do not leave bags blacked-out with nothing shown (B feels like a crash).
     UnblackoutBlizzard()
-    if BetterBackpack.RecordError then
+    -- Throttle: OpenOurs false spam filled the ring (×16) when EnsureMain aborted.
+    if BetterBackpack.RecordError and (not OpenClose._lastOpenFailAt or (Now() - OpenClose._lastOpenFailAt) > 5) then
+      OpenClose._lastOpenFailAt = Now()
       BetterBackpack.RecordError("OpenOurs", ok and tostring(shown) or tostring(shown))
     end
     return false
@@ -495,20 +497,12 @@ local function FrameSupportsOnClick(btn)
   if not btn or type(btn.HookScript) ~= "function" then
     return false
   end
+  -- Forever: only trust HasScript("OnClick"). ObjectType fallback hooked Frames
+  -- that throw "script type not supported" (taint + SafeCall noise).
   local ok, supported = pcall(function()
-    if btn.HasScript then
-      return btn:HasScript("OnClick")
-    end
-    return false
+    return btn.HasScript and btn:HasScript("OnClick")
   end)
-  if ok and supported then
-    return true
-  end
-  local ot
-  pcall(function()
-    ot = btn.GetObjectType and btn:GetObjectType()
-  end)
-  return ot == "Button" or ot == "CheckButton"
+  return ok and supported and true or false
 end
 
 local function SafeHookOnClick(btn, handler)

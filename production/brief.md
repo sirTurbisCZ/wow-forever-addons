@@ -1,9 +1,9 @@
-# Playtest brief — BetterBackpack 0.4.2
+# Playtest brief — BetterBackpack 0.5.1
 
-**Keep:** footer ~/70 · 10-col width.
+**Bug:** OpenOurs false ×16 + `lastBlocked SetFrameStrata` — bags won’t open (feels like crash).
 
-**Bug:** glowing pixelated gear ≠ broom.
+**Fix:** `pcall` all EnsureMain `SetFrameStrata`; recover half-built named frame; stricter OnClick HasScript; throttle OpenOurs false spam.
 
-**Fix:** settings = AutoSort twin — same native WxH as broom, atlas `Gear` (not UI-OptionsButton), **no** ADD MouseHilight glow.
+**Keep:** chrome+/70 · NTH modules.
 
-**Done when:** `/reload` → gear matches broom size/style, no glow · footer ~/70.
+**Done when:** `/reload` → `loaded v0.5.1` → B opens bags.
