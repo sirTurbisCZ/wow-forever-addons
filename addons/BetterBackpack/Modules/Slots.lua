@@ -777,7 +777,10 @@ function Slots.SyncAttrs(btn, bag, slot)
     btn:SetAttribute("macrotext1", nil)
     btn:SetAttribute("*type1", nil)
     btn:SetAttribute("*macrotext1", nil)
-    if special then
+    -- Merchant/mail: clear type2 (Pickup RMB). Bank + normal: keep type2=item
+    -- so secure UseContainerItem deposits at bank (native CombinedBags path).
+    local insecure = special == "merchant" or special == "mail"
+    if insecure then
       btn:SetAttribute("type2", nil)
       btn:SetAttribute("*type2", nil)
       btn:SetAttribute("item2", nil)
@@ -908,7 +911,8 @@ local function WireScripts(btn)
   if btn.HookScript then
     btn:HookScript("OnMouseDown", function(self, button)
       local Context = BetterBackpack.Modules.Context
-      if button == "RightButton" and Context and Context.SpecialRmbContext and Context.SpecialRmbContext() then
+      -- Only merchant/mail clear type2. Bank keeps secure UseContainerItem.
+      if button == "RightButton" and Context and Context.NeedsInsecureSpecialRmb and Context.NeedsInsecureSpecialRmb() then
         Slots.ClearRmbUse(self)
         self._bbSpecialRmb = true
         return
@@ -925,7 +929,7 @@ local function WireScripts(btn)
     btn:HookScript("OnMouseUp", function(self, button)
       local Context = BetterBackpack.Modules.Context
       if button == "RightButton" then
-        if self._bbSpecialRmb or (Context and Context.SpecialRmbContext and Context.SpecialRmbContext()) then
+        if self._bbSpecialRmb or (Context and Context.NeedsInsecureSpecialRmb and Context.NeedsInsecureSpecialRmb()) then
           if Context and Context.TrySpecialRmb then
             Context.TrySpecialRmb(self)
           end

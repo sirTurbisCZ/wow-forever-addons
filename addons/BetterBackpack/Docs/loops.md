@@ -118,12 +118,16 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-  Show[MERCHANT/MAIL/BANK SHOW] --> Clear[Clear type2 use attrs]
-  Clear --> RMB[RMB Pickup + Sell / ClickSendMail / PutItemInBag]
+  Show[MERCHANT/MAIL SHOW] --> Clear[Clear type2 use attrs]
+  Clear --> RMB[RMB Pickup + Sell / ClickSendMail]
+  BankShow[BANKFRAME_OPENED] --> Keep[Keep type2=item]
+  Keep --> Deposit[Secure UseContainerItem deposits]
   Close[CLOSED] --> Restore[ForceRestore type2=item]
 ```
 
-Mail: `MailFrame:IsVisible()` — ne stuck SendMailFrame alone.
+- **Bank:** never clear `type2` / never Pickup+`PutItemInBag` from OnClick — secure SAB `type2=item` = native CombinedBags deposit (OOC). Detect `BankFrame` / `BankPanel`.
+- **Merchant/mail:** `NeedsInsecureSpecialRmb` → clear type2 + Pickup path.
+- Mail: `MailFrame:IsVisible()` — ne stuck SendMailFrame alone.
 
 ---
 

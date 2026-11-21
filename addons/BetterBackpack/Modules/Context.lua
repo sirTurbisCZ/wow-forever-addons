@@ -1,6 +1,9 @@
 --[[
   BetterBackpack.Context — vendor / mail / bank RMB meaning.
-  Never UseContainerItem from OnClick. Mail detect = MailFrame:IsVisible().
+  Never UseContainerItem from insecure OnClick.
+  Bank: keep SecureActionButton type2=item (Blizzard UseContainerItem deposits).
+  Merchant/mail: clear type2 + Pickup + Sell / ClickSendMail (OOC only).
+  Mail detect = MailFrame:IsVisible().
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -11,8 +14,27 @@ BetterBackpack.Modules.Context = Context
 
 local Slots = BetterBackpack.Modules.Slots
 
+local function FrameShown(f)
+  if not f then
+    return false
+  end
+  if f.IsShown then
+    local ok, v = pcall(f.IsShown, f)
+    if ok and v then
+      return true
+    end
+  end
+  if f.IsVisible then
+    local ok, v = pcall(f.IsVisible, f)
+    if ok and v then
+      return true
+    end
+  end
+  return false
+end
+
 local function MerchantIsOpen()
-  return MerchantFrame and MerchantFrame.IsShown and MerchantFrame:IsShown()
+  return FrameShown(MerchantFrame)
 end
 
 local function MailSendIsOpen()
@@ -37,7 +59,17 @@ local function MailSendIsOpen()
 end
 
 local function BankIsOpen()
-  return BankFrame and BankFrame.IsShown and BankFrame:IsShown()
+  -- Forever / retail: BankFrame, BankPanel, or nested BankFrame.BankPanel.
+  if FrameShown(BankFrame) then
+    return true
+  end
+  if FrameShown(BankPanel) then
+    return true
+  end
+  if BankFrame and FrameShown(BankFrame.BankPanel) then
+    return true
+  end
+  return false
 end
 
 function Context.SpecialRmbContext()
@@ -51,6 +83,15 @@ function Context.SpecialRmbContext()
     return "bank"
   end
   return nil
+end
+
+--[[
+  Merchant/mail need insecure Pickup RMB. Bank must NOT — keep type2=item so
+  secure UseContainerItem deposits (native CombinedBags behavior).
+]]
+function Context.NeedsInsecureSpecialRmb()
+  local ctx = Context.SpecialRmbContext()
+  return ctx == "merchant" or ctx == "mail"
 end
 
 local function PickupSlotToCursor(b, s)
@@ -77,10 +118,11 @@ function Context.TrySpecialRmb(self)
   if not self or (InCombatLockdown and InCombatLockdown()) then
     return false
   end
-  local ctx = Context.SpecialRmbContext()
-  if not ctx then
+  -- Bank deposits via secure type2=item — never Pickup/PutItemInBag here.
+  if not Context.NeedsInsecureSpecialRmb() then
     return false
   end
+  local ctx = Context.SpecialRmbContext()
   local b, s = self._bbBag, self._bbSlot
   if not b or not s then
     return false
@@ -95,16 +137,6 @@ function Context.TrySpecialRmb(self)
   if ctx == "mail" and ClickSendMailItemButton then
     pcall(ClickSendMailItemButton)
     return true
-  end
-  if ctx == "bank" then
-    if PutItemInBag then
-      pcall(PutItemInBag, BANK_CONTAINER or -1)
-      return true
-    end
-    if C_Container and C_Container.PutItemInBag then
-      pcall(C_Container.PutItemInBag, BANK_CONTAINER or -1)
-      return true
-    end
   end
   if ClearCursor then
     pcall(ClearCursor)
