@@ -1,7 +1,7 @@
 # BetterBackpack — smyčky a grafy
 
 **Kód:** `Core.lua`, `Modules/{Slots,Layout,Context,OpenClose,Tidy}.lua`  
-**Verze reference:** 0.2.4  
+**Verze reference:** 0.2.5  
 **Stabilita:** Project `docs/bag-addon-brief.md` + Scenario Maps `docs/scenarios/BetterBackpack/`  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never path C harvest).
 
@@ -11,18 +11,18 @@
 
 ```mermaid
 flowchart TD
-  B[ToggleAllBags / ToggleBackpack]
+  B[ToggleAllBags / ToggleBackpack / ToggleBag / bag-bar OnClick]
   B --> Black[BlackoutAllBlizzard alpha=0 first]
-  Black --> Lock{t < toggleLockUntil?}
-  Lock -->|ano| Pulse[PulseHide only]
+  Black --> Lock{t < toggleLockUntil or debounce?}
+  Lock -->|ano| Pulse[Park only]
   Lock -->|ne| Vis{SessionOpen?}
-  Vis -->|ne| Open[OpenOurs + park IsShown]
-  Vis -->|ano| Grace{openedAt grace?}
-  Grace -->|ano same press| Pulse
-  Grace -->|ne| Close[CloseOurs]
+  Vis -->|ne| Open[OpenOurs + SetBagFocus + park]
+  Vis -->|ano| Close[CloseOurs + ClearBagFocus]
   Close --> Keep0[Keep alpha=0 + CloseAllBags<br/>NEVER RestoreBlizzard alpha=1]
+  OpenOnly[OpenAllBags / OpenBag] --> OpenOrPark[Open if closed else park+focus]
+  CloseAPI[CloseBag / CloseAllBags] --> Close
   OnShow[CombinedBags Show/OnShow] --> BO[Blackout first line]
-  BO --> Park[Park if session/replace]
+  BO --> Park[Park; OpenOurs only if still closed]
 ```
 
 **Pravidla**
@@ -31,8 +31,9 @@ flowchart TD
 - Anti-flash: `Show`/`OnShow`/`onToggle` → **Blackout alpha=0 first**; CloseOurs never `RestoreBlizzardBags`.
 - CombinedBags stays `IsShown`+parked while ours open — **ne** `:Hide()` mid-session.
 - `SuppressReplace`; OnShow nesmí ClearSuppress→OpenOurs.
-- Grace ≠ `toggleLockUntil`; OpenAllBags while open must not extend lock.
-- Open: Toggle* XOR; **OpenAllBags/OpenBag/ToggleBag/bag-bar** open intent. Keys/keyring lane. N/M centered. Hug-content height.
+- **ToggleBag + bag-bar OnClick = XOR** (same as B). OpenBag/OpenAllBags = open-only. CloseBag/CloseAllBags close ours.
+- HookScript OnClick only on frames with `HasScript("OnClick")` / Button — never throw on BagsBar chrome kids.
+- Bag focus: `Layout.SetBagFocus(id)` highlights that bag’s slots after open.
 
 ---
 

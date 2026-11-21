@@ -1,7 +1,8 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.2.4).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.2.5).
   Forever: never SetToplevel (ADDON_ACTION_BLOCKED).
   Hug-content height; even section gaps; title LEFT + chrome LEFT of X.
+  Bag-bar focus highlight via SetBagFocus.
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -53,8 +54,11 @@ local sectionFrames = {}
 local layoutBusy = false
 local bagHoverHooked = false
 local bagBarHoverHooked = {}
+local focusBagID = nil
 -- Forward decl: DoLayout runs before the definition body below (Lua 5.1 upvalue).
 local EnsureTitleChrome
+local SetBagMatchHighlight
+local ClearBagMatchGlows
 
 local function SafeNum(v, fallback)
   return Slots.SafeNum(v, fallback)
@@ -450,7 +454,7 @@ local function ShowBagIndicator(ind, show)
   end)
 end
 
-local function SetBagMatchHighlight(bagID, highlight)
+SetBagMatchHighlight = function(bagID, highlight)
   pcall(function()
     Slots.ForEach(function(btn)
       if not btn or (btn:GetAlpha() or 0) < 0.5 then
@@ -464,7 +468,7 @@ local function SetBagMatchHighlight(bagID, highlight)
   end)
 end
 
-local function ClearBagMatchGlows()
+ClearBagMatchGlows = function()
   pcall(function()
     Slots.ForEach(function(btn)
       if btn and btn.BagIndicator then
@@ -472,6 +476,31 @@ local function ClearBagMatchGlows()
       end
     end)
   end)
+end
+
+function Layout.SetBagFocus(bagID)
+  if type(bagID) == "number" then
+    focusBagID = bagID
+  else
+    focusBagID = nil
+  end
+  if not Layout.IsShown() then
+    return
+  end
+  if focusBagID ~= nil then
+    SetBagMatchHighlight(focusBagID, true)
+  else
+    ClearBagMatchGlows()
+  end
+end
+
+function Layout.ClearBagFocus()
+  focusBagID = nil
+  ClearBagMatchGlows()
+end
+
+function Layout.GetBagFocus()
+  return focusBagID
 end
 
 local function ResolveBagBarBagID(btn, forcedBag)
@@ -498,18 +527,39 @@ local function HookOneBagBarButton(btn, forcedBag)
   if not btn or bagBarHoverHooked[btn] then
     return
   end
-  bagBarHoverHooked[btn] = true
-  btn:HookScript("OnEnter", function(self)
-    if not Layout.IsShown() then
+  local canEnter = false
+  pcall(function()
+    canEnter = btn.HasScript and btn:HasScript("OnEnter")
+  end)
+  if not canEnter then
+    local ot
+    pcall(function()
+      ot = btn.GetObjectType and btn:GetObjectType()
+    end)
+    if ot ~= "Button" and ot ~= "CheckButton" and ot ~= "Frame" then
       return
     end
-    local bagID = ResolveBagBarBagID(self, forcedBag)
-    if bagID ~= nil then
-      SetBagMatchHighlight(bagID, true)
-    end
+  end
+  bagBarHoverHooked[btn] = true
+  pcall(function()
+    btn:HookScript("OnEnter", function(self)
+      if not Layout.IsShown() then
+        return
+      end
+      local bagID = ResolveBagBarBagID(self, forcedBag)
+      if bagID ~= nil then
+        SetBagMatchHighlight(bagID, true)
+      end
+    end)
   end)
-  btn:HookScript("OnLeave", function()
-    ClearBagMatchGlows()
+  pcall(function()
+    btn:HookScript("OnLeave", function()
+      if focusBagID ~= nil and Layout.IsShown() then
+        SetBagMatchHighlight(focusBagID, true)
+      else
+        ClearBagMatchGlows()
+      end
+    end)
   end)
 end
 
@@ -746,6 +796,9 @@ local function DoLayout()
     EnsureTitleChrome(main)
     UpdateFreeSpace()
     UpdateMoney()
+    if focusBagID ~= nil then
+      SetBagMatchHighlight(focusBagID, true)
+    end
   end)
   layoutBusy = false
   if not ok and BetterBackpack.RecordError then
@@ -1409,6 +1462,7 @@ function Layout.Show()
 end
 
 function Layout.Hide()
+  focusBagID = nil
   ClearBagMatchGlows()
   local S = BetterBackpack.Modules.Settings
   if S and S.Hide then

@@ -1,8 +1,10 @@
 --[[
-  BetterBackpack.OpenClose — B + bag-bar ownership (0.2.4)
+  BetterBackpack.OpenClose — B + bag-bar ownership (0.2.5)
 
-  Toggle* = XOR open/close. OpenAllBags/OpenBackpack/OpenBag/ToggleBag =
-  open intent (bag-bar click). CombinedBags OnShow: park only (never OpenOurs).
+  B / ToggleAllBags / ToggleBackpack / ToggleBag / bag-bar OnClick = XOR.
+  OpenAllBags / OpenBackpack / OpenBag = open (+ bag focus). CloseBag /
+  CloseAllBags = close ours when session open. CombinedBags OnShow: park;
+  open ours only if still closed after Toggle*.
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -135,6 +137,8 @@ local function FrameVisible(f)
 end
 
 local OpenOurs
+local SetFocusBag
+local ClearFocusBag
 
 local function PulsePark()
   pulseToken = pulseToken + 1
@@ -206,6 +210,7 @@ function OpenClose.CloseOurs(opts)
   bagsOpen = false
   pulseToken = pulseToken + 1
   OpenClose.SuppressReplace(opts.suppress or 0.25)
+  ClearFocusBag()
 
   BlackoutAll()
   BetterBackpack._bbClosing = true
@@ -302,20 +307,83 @@ local function onBagKey()
   end
 end
 
+local hooksLogged = false
+local bagPathLogged = false
+
+local function LogHooksOnce(detail)
+  if hooksLogged then
+    return
+  end
+  hooksLogged = true
+  if DEFAULT_CHAT_FRAME then
+    DEFAULT_CHAT_FRAME:AddMessage(
+      "|cff88ff88BetterBackpack|r hooks ok · " .. tostring(detail or "bag-bar")
+    )
+  end
+end
+
+local function LogBagPathOnce(which, bagID)
+  if bagPathLogged then
+    return
+  end
+  bagPathLogged = true
+  if DEFAULT_CHAT_FRAME then
+    DEFAULT_CHAT_FRAME:AddMessage(
+      string.format(
+        "|cff88ff88BetterBackpack|r bag path · %s bag=%s",
+        tostring(which or "?"),
+        tostring(bagID)
+      )
+    )
+  end
+end
+
+SetFocusBag = function(bagID)
+  if Layout and Layout.SetBagFocus then
+    pcall(Layout.SetBagFocus, bagID)
+  end
+end
+
+ClearFocusBag = function()
+  if Layout and Layout.ClearBagFocus then
+    pcall(Layout.ClearBagFocus)
+  end
+end
+
+local function NormalizeBagID(bagID)
+  if type(bagID) == "number" then
+    return bagID
+  end
+  if type(bagID) == "string" then
+    local n = tonumber(bagID)
+    if n then
+      return n
+    end
+  end
+  return nil
+end
+
 --[[
-  Open intent (bag-bar click, OpenBag, OpenAllBags): open ours if closed;
-  if already open, just park Blizzard frames.
+  Open-only (OpenAllBags / OpenBag / CombinedBags fallback): open if closed;
+  if open, park Blizzard + refresh focus.
 ]]
-local function onOpenIntent()
+local function onOpenIntent(bagID)
   if ignoringBagShow or closeBusy then
     return
   end
   if not EnabledReplace() then
     return
   end
+  bagID = NormalizeBagID(bagID)
   BlackoutAll()
+  if bagID ~= nil then
+    SetFocusBag(bagID)
+  end
   if SessionOpen() or openBusy then
     ParkAllShown()
+    if Layout and Layout.Raise then
+      pcall(Layout.Raise)
+    end
     return
   end
   if OpenClose.IsReplaceSuppressed() then
@@ -330,7 +398,124 @@ local function onOpenIntent()
   OpenOurs()
 end
 
+-- ToggleBag + bag-bar OnClick often fire together — debounce to one XOR.
+local lastBagToggleAt = 0
+
+--[[
+  XOR for bag-bar / ToggleBag (same contract as B).
+]]
+local function onBagToggle(bagID, src)
+  if ignoringBagShow or closeBusy then
+    return
+  end
+  if not EnabledReplace() then
+    return
+  end
+  local t = Now()
+  if (t - lastBagToggleAt) < 0.08 then
+    return
+  end
+  lastBagToggleAt = t
+
+  bagID = NormalizeBagID(bagID)
+  LogBagPathOnce(src or "ToggleBag", bagID)
+  BlackoutAll()
+
+  if t < toggleLockUntil then
+    ParkAllShown()
+    return
+  end
+  toggleLockUntil = t + TOGGLE_LOCK
+
+  if SessionOpen() then
+    ClearFocusBag()
+    OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
+  else
+    if bagID ~= nil then
+      SetFocusBag(bagID)
+    end
+    OpenOurs()
+  end
+end
+
+local function onCloseIntent()
+  if ignoringBagShow or closeBusy then
+    return
+  end
+  if not EnabledReplace() then
+    return
+  end
+  if SessionOpen() then
+    ClearFocusBag()
+    OpenClose.CloseOurs({ closeBlizzard = false, suppress = 0.25 })
+  end
+end
+
+local function FrameSupportsOnClick(btn)
+  if not btn or type(btn.HookScript) ~= "function" then
+    return false
+  end
+  local ok, supported = pcall(function()
+    if btn.HasScript then
+      return btn:HasScript("OnClick")
+    end
+    return false
+  end)
+  if ok and supported then
+    return true
+  end
+  local ot
+  pcall(function()
+    ot = btn.GetObjectType and btn:GetObjectType()
+  end)
+  return ot == "Button" or ot == "CheckButton"
+end
+
+local function SafeHookOnClick(btn, handler)
+  if not btn or btn.BetterBackpackClickHooked then
+    return false
+  end
+  if not FrameSupportsOnClick(btn) then
+    return false
+  end
+  local ok = pcall(function()
+    btn:HookScript("OnClick", handler)
+  end)
+  if ok then
+    btn.BetterBackpackClickHooked = true
+  end
+  return ok
+end
+
+local function BagIdFromButton(btn)
+  if not btn then
+    return nil
+  end
+  local bagID
+  pcall(function()
+    if btn.GetBagID then
+      bagID = btn:GetBagID()
+    elseif btn.bagID ~= nil then
+      bagID = btn.bagID
+    elseif btn.id ~= nil then
+      bagID = btn.id
+    end
+  end)
+  return NormalizeBagID(bagID)
+end
+
+local function onBagBarClick(btn)
+  return function(self)
+    if not EnabledReplace() then
+      return
+    end
+    -- Blizzard ToggleBag already ran; XOR our session.
+    onBagToggle(BagIdFromButton(self or btn), "bag-bar")
+  end
+end
+
 local function HookBagBarButtons()
+  local hooked = 0
   local names = {
     "MainMenuBarBackpackButton",
     "MainMenuBarBagButton1",
@@ -346,22 +531,21 @@ local function HookBagBarButtons()
     "ReagentBagSlot",
     "KeyRingButton",
     "KeyringButton",
+    "MultiBag1",
+    "MultiBag2",
+    "MultiBag3",
+    "MultiBag4",
+    "MultiBag5",
   }
   for i = 1, #names do
-    local btn = _G[names[i]]
-    if btn and not btn.BetterBackpackClickHooked then
-      btn.BetterBackpackClickHooked = true
-      btn:HookScript("OnClick", function()
-        if not EnabledReplace() then
-          return
-        end
-        -- After Blizzard's handler: ensure our UI is the one shown.
-        if SessionOpen() then
-          ParkAllShown()
-        else
-          onOpenIntent()
-        end
-      end)
+    if SafeHookOnClick(_G[names[i]], onBagBarClick(_G[names[i]])) then
+      hooked = hooked + 1
+    end
+  end
+  for i = 0, 12 do
+    local n = "MultiBag" .. i
+    if SafeHookOnClick(_G[n], onBagBarClick(_G[n])) then
+      hooked = hooked + 1
     end
   end
   for _, rootName in ipairs({ "BagsBar", "MainMenuBarBagButtons", "MicroButtonAndBagsBar" }) do
@@ -369,30 +553,19 @@ local function HookBagBarButtons()
     if root and root.GetChildren then
       local kids = { root:GetChildren() }
       for i = 1, #kids do
-        local btn = kids[i]
-        if btn and btn.HookScript and not btn.BetterBackpackClickHooked then
-          btn.BetterBackpackClickHooked = true
-          btn:HookScript("OnClick", function()
-            if not EnabledReplace() then
-              return
-            end
-            if SessionOpen() then
-              ParkAllShown()
-            else
-              onOpenIntent()
-            end
-          end)
+        if SafeHookOnClick(kids[i], onBagBarClick(kids[i])) then
+          hooked = hooked + 1
         end
       end
     end
   end
+  return hooked
 end
 
 function OpenClose.InstallHooks()
   if hooksInstalled then
     return
   end
-  hooksInstalled = true
 
   if type(ToggleAllBags) == "function" then
     hooksecurefunc("ToggleAllBags", onBagKey)
@@ -404,27 +577,40 @@ function OpenClose.InstallHooks()
     hooksecurefunc("ToggleKeyRing", onBagKey)
   end
 
-  -- Bag-bar / open paths (mouse) — must OpenOurs when closed.
   if type(OpenAllBags) == "function" then
-    hooksecurefunc("OpenAllBags", onOpenIntent)
+    hooksecurefunc("OpenAllBags", function()
+      onOpenIntent(nil)
+    end)
   end
   if type(OpenBackpack) == "function" then
-    hooksecurefunc("OpenBackpack", onOpenIntent)
+    hooksecurefunc("OpenBackpack", function()
+      onOpenIntent(0)
+    end)
   end
   if type(OpenBag) == "function" then
-    hooksecurefunc("OpenBag", onOpenIntent)
+    hooksecurefunc("OpenBag", function(id)
+      LogBagPathOnce("OpenBag", id)
+      onOpenIntent(id)
+    end)
   end
   if type(ToggleBag) == "function" then
-    hooksecurefunc("ToggleBag", function()
-      if not EnabledReplace() or ignoringBagShow or closeBusy then
-        return
-      end
-      BlackoutAll()
-      if SessionOpen() or openBusy then
-        ParkAllShown()
-      else
-        onOpenIntent()
-      end
+    hooksecurefunc("ToggleBag", function(id)
+      onBagToggle(id, "ToggleBag")
+    end)
+  end
+  if type(CloseBag) == "function" then
+    hooksecurefunc("CloseBag", function()
+      onCloseIntent()
+    end)
+  end
+  if type(CloseAllBags) == "function" then
+    hooksecurefunc("CloseAllBags", function()
+      onCloseIntent()
+    end)
+  end
+  if type(CloseBackpack) == "function" then
+    hooksecurefunc("CloseBackpack", function()
+      onCloseIntent()
     end)
   end
 
@@ -443,22 +629,24 @@ function OpenClose.InstallHooks()
       end)
     end
 
-    f:HookScript("OnShow", function(self)
-      if ignoringBagShow then
+    pcall(function()
+      f:HookScript("OnShow", function(self)
+        if ignoringBagShow then
+          Blackout(self)
+          return
+        end
+        if not EnabledReplace() then
+          return
+        end
         Blackout(self)
-        return
-      end
-      if not EnabledReplace() then
-        return
-      end
-      Blackout(self)
-      Park(self)
-      if SessionOpen() or openBusy then
-        PulsePark()
-      else
-        -- Bag-bar may Show CombinedBags without Toggle* — open ours.
-        onOpenIntent()
-      end
+        Park(self)
+        if SessionOpen() or openBusy then
+          PulsePark()
+        else
+          -- Fallback when bag-bar Shows CombinedBags without ToggleBag.
+          onOpenIntent(nil)
+        end
+      end)
     end)
   end
 
@@ -467,17 +655,19 @@ function OpenClose.InstallHooks()
       local f = _G["ContainerFrame" .. i]
       if f and not f.BetterBackpackHooked then
         f.BetterBackpackHooked = true
-        f:HookScript("OnShow", function(self)
-          if ignoringBagShow or not EnabledReplace() then
-            return
-          end
-          Blackout(self)
-          Park(self)
-          if SessionOpen() or openBusy then
-            PulsePark()
-          else
-            onOpenIntent()
-          end
+        pcall(function()
+          f:HookScript("OnShow", function(self)
+            if ignoringBagShow or not EnabledReplace() then
+              return
+            end
+            Blackout(self)
+            Park(self)
+            if SessionOpen() or openBusy then
+              PulsePark()
+            else
+              onOpenIntent(nil)
+            end
+          end)
         end)
       end
     end
@@ -485,7 +675,7 @@ function OpenClose.InstallHooks()
 
   hookCombined()
   hookContainers()
-  HookBagBarButtons()
+  local nBag = HookBagBarButtons()
 
   local guard = CreateFrame("Frame")
   guard:SetScript("OnUpdate", function(_, elapsed)
@@ -511,6 +701,9 @@ function OpenClose.InstallHooks()
       end
     end
   end)
+
+  hooksInstalled = true
+  LogHooksOnce(string.format("ToggleBag/OpenBag/CloseBag · bagBtns=%d", nBag or 0))
 
   if C_Timer and C_Timer.After then
     C_Timer.After(1, function()
