@@ -1,7 +1,7 @@
 # BetterBackpack — smyčky a grafy
 
 **Kód:** `Core.lua`, `Modules/{Slots,Layout,Context,OpenClose,Tidy,Settings,Search,Filter,CustomCategories,StackMerge,Pins,LayoutModes}.lua`  
-**Verze reference:** 0.5.16 (broom = stejná plate jako gear/X · sticky velikost okna · broom/gear v chrome Close · bank RMB secure type2=item · SearchBoxTemplate search · gear na nativní broom plate · nativní AutoSort reparent · footer hairline · pevná velikost = plný rozbalený bag · dense grid PAD 2 · NumberFontNormalSmall counts · broom/gear jako CombinedBags · footer N/M = font peněz · fill wells default off)  
+**Verze reference:** 0.5.17 (drag-teach lanes · custom lanes v Settings · Settings v chrome bagu · broom = stejná plate jako gear/X · sticky velikost okna · broom/gear v chrome Close · bank RMB secure type2=item · SearchBoxTemplate search · gear na nativní broom plate · nativní AutoSort reparent · footer hairline · pevná velikost = plný rozbalený bag · dense grid PAD 2 · NumberFontNormalSmall counts · broom/gear jako CombinedBags · footer N/M = font peněz · fill wells default off)  
 **Stabilita:** Project `docs/bag-addon-brief.md` + Scenario Maps `docs/scenarios/BetterBackpack/`  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never path C harvest).
 
@@ -142,3 +142,34 @@ flowchart TD
   Combat -->|ne| Native[C_Container.SortBags]
   Native --> Settle[suppress refresh · one Layout ~0.55s]
 ```
+
+---
+
+## 6. Lanes: drag-teach + custom lanes (0.5.17)
+
+```mermaid
+flowchart TD
+  Pick[LMB / drag item in bag OOC] --> P[Slots pickup: PickupContainerItem]
+  P --> Src[dragSrc = bag, slot, lane, itemID · SetDropHints on]
+  Src --> Where{drop target?}
+  Where -->|item in another lane| T[Layout.DropOnLane lane]
+  Where -->|lane header click / OnReceiveDrag| T
+  Where -->|+ Lane button| N[Layout.DropNewLane → ClearCursor → StaticPopup name]
+  N --> Create[CC.CreateLane name + AssignItem itemID]
+  Where -->|item in same lane| Swap[normal PickupContainerItem swap]
+  Where -->|elsewhere / cursor cleared| Clear[CURSOR_CHANGED/UPDATE → dragSrc nil · hints off]
+  T --> End[ClearCursor · item stays in slot · hints off]
+  End --> Nat{lane == NaturalLane?}
+  Nat -->|ano| Forget[itemRules id = nil]
+  Nat -->|ne| Rule[itemRules id = lane]
+  Forget --> Re[Relayout + Settings.Refresh]
+  Rule --> Re
+  Create --> Re
+```
+
+- `ClassifyBagSlot` pořadí: `CC.Resolve` (itemRules → custom itemIDs) → `itemRules` → `ClassifyNatural` (třída itemu). `Layout.NaturalLane` = jen `ClassifyNatural`, vypnutý built-in → `other`.
+- Pravidlo na vypnutý built-in → položka v Other (CategoryEnabled). Smazání custom lane maže i jeho pravidla.
+- Každé tlačítko v lane nese `btn._bbLane` (DoLayout). Header má `dropHl` (zlatý pruh) během tažení; `+ Lane` `LockHighlight`.
+- V boji pickup z bagu nefunguje (`pickup` bail) → drag-teach jen mimo boj; nic secure se nemění.
+- Settings: `Layout.CreateChromedPanel` (ButtonFrameTemplate + CombinedBags NineSlice jako bag). Sekce Lanes (z `CATEGORY_ORDER`, ne z `ExtendOrder` — skrytý lane musí zůstat v seznamu, jinak nejde znovu zapnout), Custom lanes (Rename / Delete / New lane přes StaticPopup), Learned items (počet + Forget all), Features. Žádné `SetFrameStrata`.
+

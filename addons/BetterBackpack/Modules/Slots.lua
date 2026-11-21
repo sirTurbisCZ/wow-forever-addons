@@ -879,6 +879,28 @@ local function ClearLmbUse(self)
   end)
 end
 
+-- Drag-teach: which bag slot / lane the item on the cursor was picked up from.
+local dragSrc
+
+local function CursorItemID()
+  if not GetCursorInfo then
+    return nil
+  end
+  local ok, kind, id = pcall(GetCursorInfo)
+  if ok and kind == "item" then
+    return Slots.SafeNum(id) or true
+  end
+  return nil
+end
+
+function Slots.GetDragSource()
+  return dragSrc
+end
+
+function Slots.ClearDragSource()
+  dragSrc = nil
+end
+
 local function WireScripts(btn)
   if btn._bbWired then
     if not (InCombatLockdown and InCombatLockdown()) then
@@ -898,10 +920,28 @@ local function WireScripts(btn)
     if not b or not s then
       return
     end
+    local Layout = BetterBackpack.Modules.Layout
+    local held = CursorItemID()
+    -- Our item dropped on an item in another lane = teach that lane, no swap.
+    if held and dragSrc and self._bbLane and dragSrc.lane ~= self._bbLane
+        and (held == true or held == dragSrc.itemID)
+        and Layout and Layout.DropOnLane and Layout.DropOnLane(self._bbLane)
+    then
+      return
+    end
     if C_Container and C_Container.PickupContainerItem then
       pcall(C_Container.PickupContainerItem, b, s)
     elseif PickupContainerItem then
       pcall(PickupContainerItem, b, s)
+    end
+    local now = CursorItemID()
+    if now then
+      dragSrc = { bag = b, slot = s, lane = self._bbLane, itemID = now ~= true and now or nil }
+    else
+      dragSrc = nil
+    end
+    if Layout and Layout.SetDropHints then
+      Layout.SetDropHints(dragSrc ~= nil)
     end
   end
   btn:RegisterForClicks("AnyUp", "AnyDown")

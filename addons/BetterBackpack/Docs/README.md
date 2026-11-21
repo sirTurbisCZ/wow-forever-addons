@@ -6,9 +6,16 @@ Category-lane bags for **World of Warcraft Forever** (Interface 16001) with comb
 
 1. Put this folder in `Interface/AddOns/BetterBackpack/` (or symlink via `./scripts/link-addon.sh BetterBackpack`).
 2. Enable at character select if needed.
-3. `/reload` in game — chat should show `loaded v0.5.16` (Toggle* stable; CombinedBags/Baganator chrome; NTH).
+3. `/reload` in game — chat should show `loaded v0.5.17` (Toggle* stable; CombinedBags/Baganator chrome; NTH).
 
 Categories open expanded with item icons; click a category header (arrow) to collapse or expand it. The window is sized for the whole bag with every category expanded (as wide as the largest category, never narrower than 6 slots), so collapsing, searching or filtering never resizes it. Categories with no matches are hidden; the freed space stays plain (set `fillEmptyWells` in the profile to show empty slot wells there instead).
+
+## Lanes, custom lanes and drag-to-teach (0.5.17)
+
+- **Drag to teach:** pick an item up in the bag and drop it on another lane — on the lane header or on any item in that lane. The item stays in its bag slot; its itemID is remembered and every stack of it shows in that lane from now on. Dropping it back on the lane it would land in anyway forgets the rule. Works for built-in, custom and Other lanes.
+- **+ Lane** (right of the search box): click to name a new empty lane, or drop an item on it to create a lane with that item in it.
+- **Settings (gear):** same chrome as the bag. *Lanes* — built-in lanes on/off (unchecked lanes spill into Other, never hidden), with each lane's taught-item count. *Custom lanes* — Rename / Delete per lane, New lane. *Learned items* — count + Forget all. *Features* — visual stack merge, dense layout.
+- Rules live in SavedVariables (`profile.itemRules`, `profile.customCategories`). Deleting a lane sends its items back to their default lanes. Drag-teach is out of combat only (bag pickup is disabled in combat).
 
 ## Slash
 
@@ -17,7 +24,7 @@ Categories open expanded with item icons; click a category header (arrow) to col
 | `/bb` | Toggle bags |
 | `/bb on\|off` | Enable or restore Blizzard bags |
 | `/bb sort` / `/bb uklid` | OOC tidy (`SortBags`) |
-| `/bb settings` | Categories + feature toggles (Nastavení) |
+| `/bb settings` | Lanes, custom lanes, learned items, features (Nastavení) |
 | `/bb search <text>` | Filter icons by name / itemID |
 | `/bb filter <cat\|all>` | Show one category lane |
 | `/bb pin <itemID>` | Toggle red ghost pin (missing items) |
@@ -40,7 +47,8 @@ Also `/betterbackpack`. Úklid / Nastavení stay Czech on chrome.
 |------|-----|
 | `Modules/Search.lua` | Search box + match |
 | `Modules/Filter.lua` | Category filter |
-| `Modules/CustomCategories.lua` | Custom lanes + hide defaults |
+| `Modules/CustomCategories.lua` | Custom lanes, hide defaults, drag-teach rules, name / rename / delete popups |
+| `Modules/Settings.lua` | Settings panel (CombinedBags chrome) |
 | `Modules/StackMerge.lua` | Visual same-itemID merge |
 | `Modules/Pins.lua` | Red ghost for unowned pins |
 | `Modules/LayoutModes.lua` | lanes vs dense columns |
@@ -55,6 +63,8 @@ Layout talks to them only through optional `Feat("Name")` lookups. OpenClose / A
 4. Spam B 5× in combat → leave combat OK without `/reload`.
 
 NTH smoke (OOC): search box → filter → merge toggle → pin a missing itemID → layout dense.
+
+Lanes smoke (OOC): drag a potion onto the Materials header → it moves to Materials and stays there after `/reload` · drop it back on Consumables → rule gone · drop an item on **+ Lane** → name it → new lane with that item · Settings → Rename / Delete the lane.
 
 ## Notes
 

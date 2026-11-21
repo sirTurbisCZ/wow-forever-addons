@@ -1,18 +1,13 @@
-# Playtest brief — BetterBackpack 0.5.16 (search chrome + bank RMB)
+# Playtest brief — BetterBackpack 0.5.17 (lanes: drag-teach + custom lanes + settings)
 
-One build with both lines (UI branch `cursor/bb-056-layout-expand-hug-9374`, includes `cursor/bb-bank-rmb-secure-c19a`).
+Branch `cursor/bb-056-layout-expand-hug-9374` (includes bank RMB 0.5.12, search 0.5.11, Close-chrome title buttons 0.5.16, sticky size 0.5.15).
 
-**UI chrome (0.5.10–0.5.11)**
-- Search = `SearchBoxTemplate` (same as CombinedBags `BagItemSearchBox`: rounded border, magnifier, clear X, "Search")
-- 0.5.15: broom | gear | X all exactly Close size, 2px gap. Both built from Close's own art (plate, press, highlight), X covered by its own plate, gold broom / gear glyph. No BagItemAutoSortButton reparent
-- 0.5.16: broom glyph cropped inside its bevel + gold tint like gear → no orange plate / silver frame; broom = gear = X plate
-- 0.5.15: window size sticky while open (only grows); collapse / search / using items never shrink it; refits on reopen
-- Search box OK (0.5.11)
-- 1px hairline above footer (OK)
+**0.5.17**
+- Drag an item onto another lane (header or any item in it) → item stays in its slot, its itemID is taught to that lane (SavedVariables `itemRules`). Drop back on its natural lane = forget.
+- **+ Lane** next to search: click = name a new lane; drop an item = new lane with that item.
+- Settings (gear) rebuilt in bag chrome: Lanes on/off (unchecked → Other) with taught counts · Custom lanes Rename / Delete / New lane · Learned items count + Forget all · Features (stack merge, dense).
+- Fix: unchecking a built-in lane no longer removes its row from settings.
 
-**Bank RMB (0.5.12, sibling)**
-- At bank keep secure `type2=item` (UseContainerItem deposits). Do not clear attrs / Pickup+PutItemInBag. Merchant/mail still insecure Pickup.
+**Keep:** Toggle* replace (B stable) · bank RMB deposit · fixed window size.
 
-**Keep:** Toggle* replace (B stable) — OpenClose untouched.
-
-**Done when:** `/reload` → `v0.5.16` → B · broom/gear look like the X (red-gold plate), same size, even gaps · collapse a lane / type a search / eat food → window does not change size · open bank → RMB bag item deposits · B ×5 stable.
+**Done when:** `/reload` → `v0.5.17` → B · drag a potion onto Materials header → moves, survives `/reload` · drop back on Consumables → back to default · drop item on + Lane → name → new lane · gear → Rename / Delete it · uncheck Junk → items in Other, row still there to re-check · B ×5 stable.

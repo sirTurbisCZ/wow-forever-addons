@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.16).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.17).
   Forever: never SetToplevel / SetFrameStrata (ADDON_ACTION_BLOCKED).
   Chrome metrics from Baganator Forever Blizzard skin + ContainerFrameCombinedBags:
     ButtonFrameOffset=6, Bg/TopTile @ (6,-21), NineSlice borders, Inset hidden.
@@ -264,6 +264,41 @@ local function MapTypeString(itemType, itemSubType)
   return nil
 end
 
+-- Category from item class alone (no learned / custom rules).
+local function ClassifyNatural(bag, slot, info, itemID)
+  local quality = SafeNum(info.quality)
+  local classID, subClassID, itemType, itemSubType, equipLoc = InstantClass(itemID)
+  local mapped = MapClassID(classID, subClassID, quality)
+  if mapped then
+    return mapped
+  end
+  mapped = MapTypeString(itemType, itemSubType)
+  if mapped then
+    return mapped
+  end
+  if type(equipLoc) == "string" and equipLoc ~= "" then
+    local el = equipLoc:upper()
+    if el == "INVTYPE_FINGER" or el == "INVTYPE_NECK" or el == "INVTYPE_TRINKET"
+        or el == "INVTYPE_CLOAK" or el:find("WEAPON", 1, true)
+    then
+      return "gear"
+    end
+  end
+  if Slots.IsKeyringBag and Slots.IsKeyringBag(bag) then
+    return "keys"
+  end
+  if classID == CLASS.Key then
+    return "keys"
+  end
+  if quality == 0 and not Slots.IsReagentBag(bag) and not (Slots.IsKeyringBag and Slots.IsKeyringBag(bag)) then
+    return "junk"
+  end
+  if Slots.IsReagentBag(bag) then
+    return "reagent"
+  end
+  return "other"
+end
+
 function Layout.ClassifyBagSlot(bag, slot)
   if not C_Container or not C_Container.GetContainerItemInfo then
     return "other", nil
@@ -296,37 +331,161 @@ function Layout.ClassifyBagSlot(bag, slot)
       return rule, info
     end
   end
-  local quality = SafeNum(info.quality)
-  local classID, subClassID, itemType, itemSubType, equipLoc = InstantClass(itemID)
-  local mapped = MapClassID(classID, subClassID, quality)
-  if mapped then
-    return mapped, info
+  return ClassifyNatural(bag, slot, info, itemID), info
+end
+
+--- Lane an item lands in with no learned rule (disabled built-in → Other).
+function Layout.NaturalLane(bag, slot)
+  if not C_Container or not C_Container.GetContainerItemInfo then
+    return "other"
   end
-  mapped = MapTypeString(itemType, itemSubType)
-  if mapped then
-    return mapped, info
+  local ok, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
+  if not ok or type(info) ~= "table" then
+    return "other"
   end
-  if type(equipLoc) == "string" and equipLoc ~= "" then
-    local el = equipLoc:upper()
-    if el == "INVTYPE_FINGER" or el == "INVTYPE_NECK" or el == "INVTYPE_TRINKET"
-        or el == "INVTYPE_CLOAK" or el:find("WEAPON", 1, true)
-    then
-      return "gear", info
+  local cat = ClassifyNatural(bag, slot, info, ResolveItemID(bag, slot, info)) or "other"
+  if cat == "weapon" or cat == "armor" then
+    cat = "gear"
+  end
+  if not CategoryEnabled(cat) then
+    cat = "other"
+  end
+  return cat
+end
+
+--[[
+  Drag-teach (0.5.17): an item picked up from our bag and dropped on a lane header, on an
+  item in another lane, or on "+ Lane" is not moved — its itemID is taught to that lane
+  (profile.itemRules) and the cursor is cleared, so the item stays in its bag slot.
+]]
+local laneBtn
+
+function Layout.SetDropHints(on)
+  for _, sf in pairs(sectionFrames) do
+    if sf.header and sf.header.dropHl then
+      sf.header.dropHl:SetShown(on and sf:IsShown() and true or false)
     end
   end
-  if Slots.IsKeyringBag and Slots.IsKeyringBag(bag) then
-    return "keys", info
+  if laneBtn then
+    if on then
+      laneBtn:LockHighlight()
+    else
+      laneBtn:UnlockHighlight()
+    end
   end
-  if classID == CLASS.Key then
-    return "keys", info
+end
+
+local function HeldDragSource()
+  local src = Slots.GetDragSource and Slots.GetDragSource()
+  if not src or not src.itemID or not GetCursorInfo then
+    return nil
   end
-  if quality == 0 and not Slots.IsReagentBag(bag) and not (Slots.IsKeyringBag and Slots.IsKeyringBag(bag)) then
-    return "junk", info
+  local ok, kind, id = pcall(GetCursorInfo)
+  if not ok or kind ~= "item" then
+    return nil
   end
-  if Slots.IsReagentBag(bag) then
-    return "reagent", info
+  local held = SafeNum(id)
+  if held and held ~= src.itemID then
+    return nil
   end
-  return "other", info
+  return src
+end
+
+local function EndDrag()
+  pcall(ClearCursor)
+  if Slots.ClearDragSource then
+    Slots.ClearDragSource()
+  end
+  Layout.SetDropHints(false)
+end
+
+function Layout.DropOnLane(key)
+  local src = HeldDragSource()
+  local CC = Feat("CustomCategories")
+  if not src or type(key) ~= "string" or not (CC and CC.Teach) then
+    return false
+  end
+  EndDrag()
+  CC.Teach(src.itemID, key, Layout.NaturalLane(src.bag, src.slot))
+  return true
+end
+
+function Layout.DropNewLane()
+  local src = HeldDragSource()
+  if not src then
+    return false
+  end
+  EndDrag()
+  local CC = Feat("CustomCategories")
+  if CC and CC.PromptNew then
+    CC.PromptNew(src.itemID)
+  end
+  return true
+end
+
+local cursorWatch = CreateFrame("Frame")
+pcall(cursorWatch.RegisterEvent, cursorWatch, "CURSOR_CHANGED")
+pcall(cursorWatch.RegisterEvent, cursorWatch, "CURSOR_UPDATE")
+cursorWatch:SetScript("OnEvent", function()
+  local ok, kind = pcall(GetCursorInfo)
+  if not ok or kind ~= "item" then
+    if Slots.ClearDragSource then
+      Slots.ClearDragSource()
+    end
+    Layout.SetDropHints(false)
+  end
+end)
+
+local function EnsureLaneButton(frame)
+  if not frame then
+    return
+  end
+  if not laneBtn then
+    local ok, b = pcall(CreateFrame, "Button", "BetterBackpackNewLaneBtn", frame, "UIPanelButtonTemplate")
+    laneBtn = ok and b or CreateFrame("Button", "BetterBackpackNewLaneBtn", frame)
+    laneBtn:SetSize(58, 22)
+    laneBtn:SetText("+ Lane")
+    pcall(laneBtn.SetNormalFontObject, laneBtn, GameFontNormalSmall)
+    pcall(laneBtn.SetHighlightFontObject, laneBtn, GameFontHighlightSmall)
+    laneBtn:SetScript("OnClick", function()
+      if Layout.DropNewLane() then
+        return
+      end
+      local CC = Feat("CustomCategories")
+      if CC and CC.PromptNew then
+        CC.PromptNew(nil)
+      end
+    end)
+    laneBtn:SetScript("OnReceiveDrag", function()
+      Layout.DropNewLane()
+    end)
+    laneBtn:SetScript("OnEnter", function(self)
+      if GameTooltip then
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:SetText("New lane")
+        GameTooltip:AddLine("Click to name a new lane, or drop an item here to start one with it.", 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine("Drop an item on another lane to send it there from now on.", 0.6, 0.8, 1, true)
+        GameTooltip:Show()
+      end
+    end)
+    laneBtn:SetScript("OnLeave", function()
+      if GameTooltip then
+        GameTooltip:Hide()
+      end
+    end)
+  end
+  if laneBtn:GetParent() ~= frame then
+    laneBtn:SetParent(frame)
+  end
+  laneBtn:SetFrameLevel((frame:GetFrameLevel() or 1) + 80)
+  laneBtn:ClearAllPoints()
+  local search = _G.BetterBackpackSearchBox or _G.BetterBackpackSearchBoxFlat
+  if search and search:GetParent() == frame then
+    laneBtn:SetPoint("LEFT", search, "RIGHT", 6, 0)
+  else
+    laneBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", 182, -28)
+  end
+  laneBtn:Show()
 end
 
 -- While open the frame only grows (new loot); collapse / search / using items never shrink it.
@@ -843,7 +1002,18 @@ local function EnsureSection(key)
       self.title:SetTextColor(1, 0.82, 0)
     end
   end)
+  local dropHl = header:CreateTexture(nil, "BACKGROUND")
+  dropHl:SetAllPoints()
+  dropHl:SetColorTexture(1, 0.82, 0, 0.12)
+  dropHl:Hide()
+  header.dropHl = dropHl
+  header:SetScript("OnReceiveDrag", function()
+    Layout.DropOnLane(key)
+  end)
   header:SetScript("OnClick", function()
+    if Layout.DropOnLane(key) then
+      return
+    end
     local p = Profile()
     if type(p.collapsed) ~= "table" then
       p.collapsed = {}
@@ -988,6 +1158,7 @@ local function DoLayout()
               local btn = Slots.Acquire(bag, slot)
               if btn then
                 used[btn] = true
+                btn._bbLane = key
                 local px = INSET_X + col * (SLOT + PAD)
                 local py = TOP_CHROME + y + row * (SLOT + PAD)
                 Slots.Place(btn, parentFrame, px, py, true)
@@ -1125,6 +1296,7 @@ local function DoLayout()
     if SearchChrome and SearchChrome.EnsureChrome then
       pcall(SearchChrome.EnsureChrome, main)
     end
+    pcall(EnsureLaneButton, main)
     UpdateFreeSpace()
     UpdateMoney()
     if focusBagID ~= nil then
@@ -1376,12 +1548,12 @@ ApplyCombinedBagsChrome = function(frame)
   end)
 end
 
-local function CreateBagPanel()
+local function CreateChromedFrame(globalName)
   -- Named frame persists across failed EnsureMain — always reuse, never double-create.
   -- Prefer ButtonFrameTemplate (CombinedBags-class chrome: TitleContainer, Close, Inset, Bg).
   -- Forever may fire ADDON_ACTION_BLOCKED on template SetFrameStrata — that is an *event*,
   -- not a hard abort when CreateFrame is pcall'd. Never call SetFrameStrata ourselves.
-  local frame = _G.BetterBackpackFrame
+  local frame = _G[globalName]
   if not frame then
     local templates = {
       "ButtonFrameTemplate",
@@ -1391,9 +1563,9 @@ local function CreateBagPanel()
     for i = 1, #templates do
       local tmpl = templates[i]
       local ok, f = pcall(function()
-        return CreateFrame("Frame", "BetterBackpackFrame", UIParent, tmpl)
+        return CreateFrame("Frame", globalName, UIParent, tmpl)
       end)
-      frame = _G.BetterBackpackFrame
+      frame = _G[globalName]
       if not frame and ok and f then
         frame = f
       end
@@ -1404,7 +1576,7 @@ local function CreateBagPanel()
     end
   end
   if not frame then
-    frame = CreateFrame("Frame", "BetterBackpackFrame", UIParent)
+    frame = CreateFrame("Frame", globalName, UIParent)
     frame._bbTemplate = "plain"
   end
   pcall(function()
@@ -1435,6 +1607,20 @@ local function CreateBagPanel()
   return frame
 end
 
+local function CreateBagPanel()
+  return CreateChromedFrame("BetterBackpackFrame")
+end
+
+--- Same CombinedBags chrome as the bag (Settings panel).
+function Layout.CreateChromedPanel(globalName)
+  return CreateChromedFrame(globalName)
+end
+
+function Layout.ApplyChrome(frame)
+  KillPortrait(frame)
+  ApplyCombinedBagsChrome(frame)
+end
+
 local function DestroyHalfBuilt()
   -- Keep parent UIParent — SetParent(nil) left a shell that Show() could not revive.
   if main then
@@ -1459,7 +1645,7 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local CHROME_VER = 30 -- 0.5.16: broom glyph tight crop + gold tint (no orange plate)
+local CHROME_VER = 31 -- 0.5.17: + Lane button, drag-teach drop hints
 local chromeLogged = false
 local customChromeHidden = false
 
@@ -1919,7 +2105,7 @@ local function EnsureBagShelvesTitleChrome(frame, close)
       if GameTooltip then
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:SetText("Nastavení")
-        GameTooltip:AddLine("Kategorie zapnout / vypnout.", 0.7, 0.7, 0.7, true)
+        GameTooltip:AddLine("Lanes on/off, custom lanes, learned items.", 0.7, 0.7, 0.7, true)
         GameTooltip:Show()
       end
     end)
@@ -2336,6 +2522,7 @@ function Layout.Show()
   if SearchChrome and SearchChrome.EnsureChrome then
     pcall(SearchChrome.EnsureChrome, main)
   end
+  pcall(EnsureLaneButton, main)
   UpdateFreeSpace()
   UpdateMoney()
   pcall(Layout.Raise)
@@ -2350,6 +2537,7 @@ end
 function Layout.Hide()
   focusBagID = nil
   stickyCols, stickyH = nil, nil
+  Layout.SetDropHints(false)
   ClearBagMatchGlows()
   local S = BetterBackpack.Modules.Settings
   if S and S.Hide then
