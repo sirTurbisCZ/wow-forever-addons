@@ -1,8 +1,12 @@
 # BetterBackpack changelog
 
+## 1.0.5
+
+- **B / CloseOurs:** hoist `NormalizeBagID` + `BBKeyringBagIndex` before `KeyRingFrameNames` (main 1.0.0 scope bug; live FELog `ToggleBackpack` → nil @ ~153). No bag-bar hook changes.
+
 ## 1.0.4
 
-- **Revert** 1.0.1–1.0.3 bag-bar work: restore `OpenClose.lua` from **1.0.0** (working **B**; `ToggleBag` / bag-bar hooks unchanged). Bag-bar fix deferred.
+- **Revert** 1.0.1–1.0.3 bag-bar work: restore `OpenClose.lua` from **1.0.0** (`ToggleBag` untouched). Bag-bar fix deferred.
 
 ## 1.0.0 (release)
 

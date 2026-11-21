@@ -88,6 +88,51 @@ local function RestoreFrameInteractive(f)
   end)
 end
 
+NormalizeBagID = function(bagID)
+  local Slots = BetterBackpack.Modules.Slots
+  if Slots and Slots.SafeNum then
+    local plain = Slots.SafeNum(bagID, nil)
+    if plain ~= nil then
+      return plain
+    end
+  end
+  if type(bagID) == "number" then
+    if Slots and Slots.SafeNum and Slots.SafeNum(bagID, nil) == nil then
+      return bagID
+    end
+    return bagID
+  end
+  if type(bagID) == "string" then
+    local n = tonumber(bagID)
+    if n then
+      return n
+    end
+  end
+  return nil
+end
+
+local function BBKeyringBagIndex()
+  local Slots = BetterBackpack.Modules.Slots
+  if Slots and type(Slots.KeyringBagIndex) == "function" then
+    local raw = Slots.KeyringBagIndex()
+    if type(NormalizeBagID) == "function" then
+      local k = NormalizeBagID(raw)
+      if k ~= nil then
+        return k
+      end
+    elseif raw ~= nil then
+      return raw
+    end
+  end
+  if KEYRING_CONTAINER ~= nil then
+    if type(NormalizeBagID) == "function" then
+      return NormalizeBagID(KEYRING_CONTAINER)
+    end
+    return KEYRING_CONTAINER
+  end
+  return -2
+end
+
 local function RestoreNativeBagFrames()
   if not BagBarNativeEnabled() then
     return
@@ -219,28 +264,6 @@ local function NativeKeyRingVisible()
     end
   end
   return false
-end
-
-local function BBKeyringBagIndex()
-  local Slots = BetterBackpack.Modules.Slots
-  if Slots and type(Slots.KeyringBagIndex) == "function" then
-    local raw = Slots.KeyringBagIndex()
-    if type(NormalizeBagID) == "function" then
-      local k = NormalizeBagID(raw)
-      if k ~= nil then
-        return k
-      end
-    elseif raw ~= nil then
-      return raw
-    end
-  end
-  if KEYRING_CONTAINER ~= nil then
-    if type(NormalizeBagID) == "function" then
-      return NormalizeBagID(KEYRING_CONTAINER)
-    end
-    return KEYRING_CONTAINER
-  end
-  return -2
 end
 
 local function RestoreShownNativeBags()
@@ -1044,30 +1067,6 @@ ClearCategoryFilter = function()
   if Filter and Filter.SetCategory then
     pcall(Filter.SetCategory, "all")
   end
-end
-
-NormalizeBagID = function(bagID)
-  local Slots = BetterBackpack.Modules.Slots
-  if Slots and Slots.SafeNum then
-    local plain = Slots.SafeNum(bagID, nil)
-    if plain ~= nil then
-      return plain
-    end
-  end
-  if type(bagID) == "number" then
-    if Slots and Slots.SafeNum and Slots.SafeNum(bagID, nil) == nil then
-      -- Forever secret bag index — keep opaque value for Blizzard ToggleBag/OpenBag.
-      return bagID
-    end
-    return bagID
-  end
-  if type(bagID) == "string" then
-    local n = tonumber(bagID)
-    if n then
-      return n
-    end
-  end
-  return nil
 end
 
 --- Plain number when possible; otherwise raw bag token (incl. secret Enum indices).
