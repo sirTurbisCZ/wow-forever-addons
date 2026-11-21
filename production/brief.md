@@ -1,14 +1,13 @@
-# Playtest brief — BetterBackpack 0.5.8
+# Playtest brief — BetterBackpack 0.5.9
 
-**History:** 0.5.6 fixed empty lanes (helpers called before `local` decl). 0.5.7 added bag-arrow headers, ItemButtonTemplate slot art, white counts. Ondřej rejected the 0.5.7 result (little visible change; window resized on collapse/search).
+**History:** 0.5.6 fixed empty lanes (helpers called before `local` decl). 0.5.7 bag-arrow headers + ItemButtonTemplate slot art. 0.5.8 fixed full-bag window size (collapse/search never resize), dense grid, small counts.
 
-**0.5.8**
-- Window size fixed = full bag, unfiltered, every lane expanded → collapse / search / filter / "No matches" never resize
-- Space freed by collapse / search → empty `bags-item-slot64` wells (`profile.fillEmptyWells`, default on)
-- Lanes with no matches hide with their header
-- Dense grid: PAD 2, HEADER_H 18, SECTION_GAP 4 (Pins grid PAD 2 to match)
-- Stack counts `NumberFontNormalSmall` white, BOTTOMRIGHT −3,2
+**0.5.9**
+- No empty fill wells: `fillEmptyWells` default false; schema 4 turns off the `true` saved by 0.5.8
+- Broom = 1:1 copy of the live `BagItemAutoSortButton` art (normal/pushed/highlight) + size
+- Gear = same size, flat gear icon from a verified atlas (`C_Texture.GetAtlasInfo`), same square highlight, 1px press offset. Old code never fell back because `SetNormalAtlas` doesn't error on unknown atlases
+- Footer N/M uses the money text's font (copper button) and sits on its baseline
 
 **Keep:** Toggle* replace (B stable) — OpenClose untouched.
 
-**Done when:** `/reload` → `v0.5.8` → B · collapse a lane → size unchanged, wells fill gap · search no-match → size unchanged, wells · clear → same layout · B closes.
+**Done when:** `/reload` → `v0.5.9` → B · no wells after collapse/search · broom/gear/X look like CombinedBags · "43/70" matches money font/size · B closes.

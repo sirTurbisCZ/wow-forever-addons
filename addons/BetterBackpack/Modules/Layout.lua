@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.8).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.9).
   Forever: never SetToplevel / SetFrameStrata (ADDON_ACTION_BLOCKED).
   Chrome metrics from Baganator Forever Blizzard skin + ContainerFrameCombinedBags:
     ButtonFrameOffset=6, Bg/TopTile @ (6,-21), NineSlice borders, Inset hidden.
@@ -484,11 +484,46 @@ local function UpdateFreeSpace()
     freeFs:Show()
     freeFs:ClearAllPoints()
     local footer = main.footer or freeFs:GetParent()
-    freeFs:SetPoint("LEFT", footer, "LEFT", 4, 0)
-    freeFs:SetPoint("TOP", footer, "TOP", 0, 0)
-    freeFs:SetPoint("BOTTOM", footer, "BOTTOM", 0, 0)
-    if freeFs.SetFontObject and NumberFontNormalSmall then
-      freeFs:SetFontObject(NumberFontNormalSmall)
+    -- Same font + baseline as the money text (copper button is always shown).
+    local moneyText
+    pcall(function()
+      local mname = main.moneyFrame and main.moneyFrame:GetName()
+      local gold = mname and _G[mname .. "CopperButton"]
+      moneyText = gold and gold.GetFontString and gold:GetFontString()
+    end)
+    local fontSet = false
+    if moneyText then
+      pcall(function()
+        local fo = moneyText:GetFontObject()
+        if fo then
+          freeFs:SetFontObject(fo)
+          fontSet = true
+        else
+          local f, sz, fl = moneyText:GetFont()
+          if f and sz then
+            freeFs:SetFont(f, sz, fl)
+            fontSet = true
+          end
+        end
+      end)
+    end
+    if not fontSet then
+      freeFs:SetFontObject(NumberFontNormalRight or NumberFontNormal)
+    end
+    local placed = false
+    if moneyText then
+      pcall(function()
+        local mb, fb = moneyText:GetBottom(), main:GetBottom()
+        if type(mb) == "number" and type(fb) == "number" and mb - fb >= 0 and mb - fb < 40 then
+          freeFs:SetPoint("BOTTOMLEFT", main, "BOTTOMLEFT", BF_OFFSET + 8, mb - fb)
+          placed = true
+        end
+      end)
+    end
+    if not placed then
+      freeFs:SetPoint("LEFT", footer, "LEFT", 4, 0)
+      freeFs:SetPoint("TOP", footer, "TOP", 0, 0)
+      freeFs:SetPoint("BOTTOM", footer, "BOTTOM", 0, 0)
     end
     freeFs:SetJustifyH("LEFT")
     freeFs:SetJustifyV("MIDDLE")
@@ -1029,7 +1064,7 @@ local function DoLayout()
     content:SetSize(contentW, contentH)
     content:Show()
     -- Space freed by collapse / search (frame stays full size) → empty wells.
-    FillEmptyWells(Profile().fillEmptyWells ~= false, y + SECTION_GAP, contentH, cols)
+    FillEmptyWells(Profile().fillEmptyWells == true, y + SECTION_GAP, contentH, cols)
     -- Content above Bg; Inset stays hidden (Baganator). NineSlice draws borders.
     local mainLvl = main:GetFrameLevel() or 200
     pcall(function()
@@ -1396,7 +1431,7 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local CHROME_VER = 24 -- 0.5.8: fixed full-bag size; dense grid; small counts; fill wells
+local CHROME_VER = 25 -- 0.5.9: native AutoSort twin art, verified gear atlas, money-font footer
 local chromeLogged = false
 local customChromeHidden = false
 local nativeSortReleased = false
@@ -1508,93 +1543,135 @@ local function LogChromeOnce(tidy, gear, close)
   end
 end
 
--- AutoSort twin: SetNormalAtlas / SetPushedAtlas, exact AutoSort size, NO glow highlight.
+local function AtlasExists(atlas)
+  if type(atlas) ~= "string" or not (C_Texture and C_Texture.GetAtlasInfo) then
+    return false
+  end
+  local ok, info = pcall(C_Texture.GetAtlasInfo, atlas)
+  return ok and info ~= nil
+end
+
+-- Read a native button state texture (atlas preferred) so twins match 1:1.
+local function NativeArt(tex)
+  if not tex then
+    return nil
+  end
+  local atlas = SafeAtlas(tex)
+  if atlas then
+    return { atlas = atlas }
+  end
+  local file = SafeTexture(tex)
+  if not file then
+    return nil
+  end
+  local d = { file = file }
+  pcall(function()
+    local c = { tex:GetTexCoord() }
+    if #c == 8 and not IsSecret(c[1]) then
+      d.coords = c
+    end
+    local b = tex:GetBlendMode()
+    if type(b) == "string" and not IsSecret(b) then
+      d.blend = b
+    end
+  end)
+  return d
+end
+
+local function SetStateArt(btn, which, d)
+  pcall(function()
+    if not d then
+      btn["Set" .. which .. "Texture"](btn, nil)
+      return
+    end
+    local setAtlas = btn["Set" .. which .. "Atlas"]
+    if d.atlas and setAtlas then
+      if which == "Highlight" then
+        setAtlas(btn, d.atlas, d.blend or "ADD")
+      else
+        setAtlas(btn, d.atlas)
+      end
+    elseif which == "Highlight" then
+      btn:SetHighlightTexture(d.file, d.blend or "ADD")
+    else
+      btn["Set" .. which .. "Texture"](btn, d.file)
+    end
+    local t = btn["Get" .. which .. "Texture"](btn)
+    if t then
+      if d.file and d.coords then
+        t:SetTexCoord(unpack(d.coords))
+      end
+      t:ClearAllPoints()
+      t:SetAllPoints(btn)
+    end
+  end)
+end
+
+local SQUARE_HILIGHT = { file = "Interface\\Buttons\\ButtonHilight-Square", blend = "ADD" }
+local GEAR_ATLASES = { "questlog-icon-setting", "GM-icon-settings", "OptionsIcon-Brown", "Gear" }
+
+--[[
+  Title buttons like CombinedBags: broom = 1:1 copy of the live BagItemAutoSortButton
+  state art + size; gear = same size, flat gear icon (verified atlas), same square
+  highlight, 1px press offset. Atlases are checked with C_Texture.GetAtlasInfo —
+  SetNormalAtlas does not error on unknown names, so pcall alone never fell back.
+]]
 local function StyleAutoSortTwin(btn, kind, w, h)
   btn:SetSize(w, h)
-  btn:SetWidth(w)
-  btn:SetHeight(h)
-  -- Clear any leftover CreateTexture / ADD hilight from older chrome.
   pcall(function()
-    btn:SetNormalTexture(nil)
-    btn:SetPushedTexture(nil)
-    btn:SetHighlightTexture(nil)
     btn:SetDisabledTexture(nil)
   end)
+  local native = _G.BagItemAutoSortButton
+  local nativeHl = native and NativeArt(native.GetHighlightTexture and native:GetHighlightTexture())
   if kind == "tidy" then
-    local ok = pcall(function()
-      btn:SetNormalAtlas("bags-button-autosort-up")
-      btn:SetPushedAtlas("bags-button-autosort-down")
-    end)
-    if not ok then
-      pcall(function()
-        btn:SetNormalTexture("Interface\\Buttons\\UI-RefreshButton")
-      end)
+    local n = native and NativeArt(native:GetNormalTexture())
+    local p = native and NativeArt(native:GetPushedTexture())
+    if not n and AtlasExists("bags-button-autosort-up") then
+      n = { atlas = "bags-button-autosort-up" }
     end
-    pcall(function()
-      local nt = btn:GetNormalTexture()
-      if nt then
-        nt:ClearAllPoints()
-        nt:SetAllPoints()
-      end
-      local pt = btn:GetPushedTexture()
-      if pt then
-        pt:ClearAllPoints()
-        pt:SetAllPoints()
-      end
-    end)
+    if not p and AtlasExists("bags-button-autosort-down") then
+      p = { atlas = "bags-button-autosort-down" }
+    end
+    n = n or { file = "Interface\\Buttons\\UI-RefreshButton" }
+    SetStateArt(btn, "Normal", n)
+    SetStateArt(btn, "Pushed", p or n)
+    SetStateArt(btn, "Highlight", nativeHl or SQUARE_HILIGHT)
   else
-    -- Settings twin: same Set*Atlas path + size as broom. Prefer flat Gear atlas.
-    local ok = false
-    for _, atlas in ipairs({ "Gear", "OptionsIcon-Brown", "bags-icon-equipment" }) do
-      if not ok then
-        ok = pcall(function()
-          btn:SetNormalAtlas(atlas)
-          btn:SetPushedAtlas(atlas)
-        end)
+    SetStateArt(btn, "Normal", nil)
+    SetStateArt(btn, "Pushed", nil)
+    SetStateArt(btn, "Highlight", nativeHl or SQUARE_HILIGHT)
+    local icon = btn._bbIcon
+    if not icon then
+      icon = btn:CreateTexture(nil, "ARTWORK")
+      btn._bbIcon = icon
+      btn:HookScript("OnMouseDown", function(self)
+        if self._bbIcon then
+          self._bbIcon:SetPoint("CENTER", self, "CENTER", 1, -1)
+        end
+      end)
+      btn:HookScript("OnMouseUp", function(self)
+        if self._bbIcon then
+          self._bbIcon:SetPoint("CENTER", self, "CENTER", 0, 0)
+        end
+      end)
+    end
+    local size = math.floor(math.min(w, h) - 5)
+    icon:ClearAllPoints()
+    icon:SetPoint("CENTER", btn, "CENTER", 0, 0)
+    icon:SetSize(size, size)
+    local done = false
+    for _, atlas in ipairs(GEAR_ATLASES) do
+      if not done and AtlasExists(atlas) then
+        done = pcall(icon.SetAtlas, icon, atlas)
       end
     end
-    if not ok then
-      -- Last resort: OptionsButton cropped flat, never ADD-blended.
-      pcall(function()
-        btn:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
-        local nt = btn:GetNormalTexture()
-        if nt then
-          nt:ClearAllPoints()
-          nt:SetAllPoints()
-          nt:SetTexCoord(0.15, 0.85, 0.15, 0.85)
-          nt:SetVertexColor(0.9, 0.9, 0.9)
-        end
-        btn:SetPushedTexture("Interface\\Buttons\\UI-OptionsButton")
-        local pt = btn:GetPushedTexture()
-        if pt then
-          pt:ClearAllPoints()
-          pt:SetPoint("CENTER", 1, -1)
-          pt:SetSize(w - 2, h - 2)
-          pt:SetTexCoord(0.15, 0.85, 0.15, 0.85)
-          pt:SetVertexColor(0.7, 0.7, 0.7)
-        end
-      end)
-    else
-      pcall(function()
-        local nt = btn:GetNormalTexture()
-        if nt then
-          nt:ClearAllPoints()
-          nt:SetAllPoints()
-        end
-        local pt = btn:GetPushedTexture()
-        if pt then
-          pt:ClearAllPoints()
-          pt:SetPoint("CENTER", 1, -1)
-          pt:SetSize(w, h)
-          pt:SetVertexColor(0.8, 0.8, 0.8)
-        end
-      end)
+    if not done then
+      icon:SetTexture("Interface\\Buttons\\UI-OptionsButton")
+      icon:SetTexCoord(0.15, 0.85, 0.15, 0.85)
     end
+    icon:SetVertexColor(1, 1, 1)
+    icon:Show()
   end
-  -- No glow (UI-Common-MouseHilight ADD was the shiny ring).
-  pcall(function()
-    btn:SetHighlightTexture(nil)
-  end)
   btn._bbChromeStyled = true
 end
 

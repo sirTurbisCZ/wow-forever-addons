@@ -2,7 +2,7 @@
 
 BetterBackpack = BetterBackpack or {}
 
-local CURRENT_SCHEMA = 3
+local CURRENT_SCHEMA = 4
 local MAX_ERRORS = 40
 local MAX_MSG = 2000
 
@@ -12,7 +12,7 @@ local Config = BetterBackpack.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.5.8"
+Config.VERSION = "0.5.9"
 
 local function ProfileDefaults()
   return {
@@ -41,7 +41,7 @@ local function ProfileDefaults()
     customCategories = {}, -- { { id, name, itemIDs = {} } }
     hiddenDefaults = {}, -- { junk = true } → hide default lane (items → Other)
     stackMerge = true, -- visual merge same itemID
-    fillEmptyWells = true, -- empty slot wells in space freed by collapse / search
+    fillEmptyWells = false, -- opt-in: empty slot wells in space freed by collapse / search
     pins = {}, -- { [itemID] = true } red ghost when not owned
     layoutMode = "lanes", -- "lanes" | "dense"
     pos = nil, -- { point, relPoint, x, y } when user-moved
@@ -120,6 +120,16 @@ function Config.EnsureDB()
     end
     db.schemaVersion = 3
     from = 3
+  end
+
+  -- 0.5.9: empty fill wells off by default (0.5.8 shipped them on).
+  if from < 4 then
+    EnsureProfile(db)
+    if type(db.profile) == "table" then
+      db.profile.fillEmptyWells = false
+    end
+    db.schemaVersion = 4
+    from = 4
   end
 
   EnsureProfile(db)
