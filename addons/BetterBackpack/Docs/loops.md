@@ -1,7 +1,7 @@
 # BetterBackpack — smyčky a grafy
 
 **Kód:** `Core.lua`, `Modules/{Slots,Layout,Context,OpenClose,Tidy}.lua`  
-**Verze reference:** 0.1.1  
+**Verze reference:** 0.1.2  
 **Stabilita:** Project `docs/bag-addon-brief.md` + Scenario Maps `docs/scenarios/BetterBackpack/`  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never path C harvest).
 
@@ -12,27 +12,27 @@
 ```mermaid
 flowchart TD
   B[ToggleAllBags / ToggleBackpack]
-  B --> Lock{t < toggleLockUntil?}
+  B --> Black[BlackoutAllBlizzard alpha=0 first]
+  Black --> Lock{t < toggleLockUntil?}
   Lock -->|ano| Pulse[PulseHide only]
-  Lock -->|ne| Vis{OursVisible?}
-  Vis -->|ne| Open[OpenOurs]
-  Vis -->|ano| Grace{openedAt < 0.6s?<br/>InOpenGrace = jen openedAt}
+  Lock -->|ne| Vis{SessionOpen?}
+  Vis -->|ne| Open[OpenOurs + park IsShown]
+  Vis -->|ano| Grace{openedAt grace?}
   Grace -->|ano same press| Pulse
-  Grace -->|ne| Close[CloseOurs + SuppressReplace]
-  Close --> Rest[RestoreBlizzardBags + CloseAllBags]
-  OnShow[CombinedBags OnShow] --> Supp{IsReplaceSuppressed?}
-  Supp -->|ano| Skip[return — ne OpenOurs]
-  Supp -->|ne + own| Stash[StashFrame alpha/park]
-  Supp -->|ne + free| Open
+  Grace -->|ne| Close[CloseOurs]
+  Close --> Keep0[Keep alpha=0 + CloseAllBags<br/>NEVER RestoreBlizzard alpha=1]
+  OnShow[CombinedBags Show/OnShow] --> BO[Blackout first line]
+  BO --> Park[Park if session/replace]
 ```
 
 **Pravidla**
 
 - Nikdy `SetOverrideBindingClick`.
-- CombinedBags `:Show()` + `SetAlpha(0)` + park — **ne** `:Hide()`.
+- Anti-flash: `Show`/`OnShow`/`onToggle` → **Blackout alpha=0 first**; CloseOurs never `RestoreBlizzardBags`.
+- CombinedBags stays `IsShown`+parked while ours open — **ne** `:Hide()` mid-session.
 - `SuppressReplace`; OnShow nesmí ClearSuppress→OpenOurs.
-- Grace ≠ `toggleLockUntil`.
-- Watchdog restash; heal ≤1×/s.
+- Grace ≠ `toggleLockUntil`; OpenAllBags while open must not extend lock.
+- Chrome: solid `WHITE8X8` Bg — ne broken BackdropTemplate alone.
 
 ---
 

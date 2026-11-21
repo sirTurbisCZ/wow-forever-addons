@@ -536,38 +536,91 @@ local function DoLayout()
   end
 end
 
-function Layout.EnsureMain()
-  if main then
-    return main
+local function PaintSolidBg(frame)
+  if not frame then
+    return
   end
   pcall(function()
-    main = CreateFrame("Frame", "BetterBackpackFrame", UIParent, "BackdropTemplate")
+    if not frame.Bg then
+      frame.Bg = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
+    end
+    frame.Bg:ClearAllPoints()
+    frame.Bg:SetPoint("TOPLEFT", frame, "TOPLEFT", 2, -2)
+    frame.Bg:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -2, 2)
+    -- Forever: prefer WHITE8X8 + vertex (SetColorTexture / DialogBox backdrop often broken).
+    frame.Bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+    frame.Bg:SetVertexColor(0.07, 0.07, 0.08, 0.97)
+    frame.Bg:SetAlpha(1)
+    frame.Bg:Show()
   end)
+  pcall(function()
+    if not frame.Border then
+      frame.Border = frame:CreateTexture(nil, "BORDER")
+    end
+    frame.Border:ClearAllPoints()
+    frame.Border:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+    frame.Border:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    frame.Border:SetTexture("Interface\\Tooltips\\UI-Tooltip-Border")
+    frame.Border:SetTexCoord(0.1, 0.9, 0.1, 0.9)
+    frame.Border:SetVertexColor(0.55, 0.5, 0.4, 0.9)
+    frame.Border:SetAlpha(0.85)
+  end)
+end
+
+local function KillPortrait(frame)
+  local keys = {
+    "PortraitContainer", "Portrait", "portrait", "PortraitFrame", "portraitFrame",
+  }
+  for i = 1, #keys do
+    local p = frame[keys[i]]
+    if p then
+      pcall(function()
+        p:SetAlpha(0)
+        p:Hide()
+        p:SetSize(1, 1)
+        p:ClearAllPoints()
+        p:SetPoint("TOPLEFT", frame, "TOPLEFT", -4000, 0)
+        if p.EnableMouse then
+          p:EnableMouse(false)
+        end
+      end)
+    end
+  end
+end
+
+function Layout.EnsureMain()
+  if main then
+    PaintSolidBg(main)
+    return main
+  end
+
+  local templates = {
+    "ButtonFrameTemplate",
+    "BasicFrameTemplateWithInset",
+    "BasicFrameTemplate",
+  }
+  for i = 1, #templates do
+    local ok, frame = pcall(function()
+      return CreateFrame("Frame", "BetterBackpackFrame", UIParent, templates[i])
+    end)
+    if ok and frame then
+      main = frame
+      break
+    end
+  end
   if not main then
     main = CreateFrame("Frame", "BetterBackpackFrame", UIParent)
   end
+
   pcall(function()
-    if main.SetBackdrop then
-      main:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true,
-        tileSize = 16,
-        edgeSize = 12,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 },
-      })
-      main:SetBackdropColor(0.06, 0.06, 0.06, 0.94)
-    else
-      local bg = main:CreateTexture(nil, "BACKGROUND")
-      bg:SetAllPoints()
-      if bg.SetColorTexture then
-        bg:SetColorTexture(0.06, 0.06, 0.06, 0.94)
-      else
-        bg:SetTexture("Interface\\Buttons\\WHITE8X8")
-        bg:SetVertexColor(0.06, 0.06, 0.06, 0.94)
-      end
+    if ButtonFrameTemplate_HidePortrait then
+      ButtonFrameTemplate_HidePortrait(main)
     end
   end)
+  KillPortrait(main)
+  -- Never rely on BackdropTemplate alone — Forever often yields broken/empty chrome.
+  PaintSolidBg(main)
+
   main:SetFrameStrata("HIGH")
   main:SetFrameLevel(100)
   main:SetMovable(true)
@@ -583,6 +636,10 @@ function Layout.EnsureMain()
     self:StopMovingOrSizing()
     PersistPos()
   end)
+  main:SetScript("OnShow", function(self)
+    KillPortrait(self)
+    PaintSolidBg(self)
+  end)
   main:SetScript("OnHide", function()
     local OpenClose = BetterBackpack.Modules.OpenClose
     if OpenClose and OpenClose.NotifyHidden then
@@ -593,25 +650,53 @@ function Layout.EnsureMain()
     table.insert(UISpecialFrames, "BetterBackpackFrame")
   end
 
-  local title = main:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-  title:SetPoint("TOPLEFT", 14, -12)
+  if main.SetTitle then
+    pcall(main.SetTitle, main, "BetterBackpack")
+  end
+  local title = main.TitleText or main.title
+  if not title then
+    title = main:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOPLEFT", 14, -12)
+  end
   title:SetText("BetterBackpack")
   main.title = title
 
-  local close = CreateFrame("Button", nil, main, "UIPanelCloseButton")
-  close:SetPoint("TOPRIGHT", 2, 2)
-  close:SetScript("OnClick", function()
-    local OpenClose = BetterBackpack.Modules.OpenClose
-    if OpenClose and OpenClose.CloseOurs then
-      OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.35 })
-    else
-      main:Hide()
-    end
-  end)
+  local close = main.CloseButton
+  if not close then
+    pcall(function()
+      close = CreateFrame("Button", nil, main, "UIPanelCloseButton")
+    end)
+  end
+  if close then
+    close:SetPoint("TOPRIGHT", 2, 2)
+    close:SetScript("OnClick", function()
+      local OpenClose = BetterBackpack.Modules.OpenClose
+      if OpenClose and OpenClose.CloseOurs then
+        OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.35 })
+      else
+        main:Hide()
+      end
+    end)
+  end
 
-  local sortBtn = CreateFrame("Button", nil, main, "UIPanelButtonTemplate")
+  local sortBtn
+  pcall(function()
+    sortBtn = CreateFrame("Button", nil, main, "UIPanelButtonTemplate")
+  end)
+  if not sortBtn then
+    sortBtn = CreateFrame("Button", nil, main)
+    sortBtn:SetSize(56, 20)
+    local fs = sortBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    fs:SetAllPoints()
+    fs:SetText("Sort")
+    sortBtn:SetFontString(fs)
+  end
   sortBtn:SetSize(56, 20)
-  sortBtn:SetPoint("TOPRIGHT", close, "TOPLEFT", -4, -8)
+  if close then
+    sortBtn:SetPoint("TOPRIGHT", close, "TOPLEFT", -4, -8)
+  else
+    sortBtn:SetPoint("TOPRIGHT", main, "TOPRIGHT", -28, -8)
+  end
   sortBtn:SetText("Sort")
   sortBtn:SetScript("OnClick", function()
     local Tidy = BetterBackpack.Modules.Tidy
