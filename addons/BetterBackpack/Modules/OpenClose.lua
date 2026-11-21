@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.OpenClose — B overlay + bag-bar native (0.5.33)
+  BetterBackpack.OpenClose — B overlay + bag-bar native (0.5.34)
 
   ToggleAllBags / ToggleBackpack / ToggleBag / ToggleKeyRing are *replaced*
   (not hooksecurefunc). Forever Toggle* bodies call Open*/Close* first; a
@@ -307,6 +307,36 @@ local function InCombat()
   return InCombatLockdown and InCombatLockdown() and true or false
 end
 
+local combatTraceOnce = {}
+
+local function CombatTraceOnce(tag, detail)
+  if not InCombat() then
+    return
+  end
+  local key = tostring(tag or "?") .. "|" .. tostring(detail or "")
+  if combatTraceOnce[key] then
+    return
+  end
+  combatTraceOnce[key] = true
+  local line = "combat B · " .. tostring(tag or "?")
+  if detail and detail ~= "" then
+    line = line .. " — " .. tostring(detail)
+  end
+  if BetterBackpack.Print then
+    BetterBackpack.Print(line)
+  elseif DEFAULT_CHAT_FRAME then
+    DEFAULT_CHAT_FRAME:AddMessage("|cffc9a227BetterBackpack|r " .. line)
+  end
+end
+
+function OpenClose.CombatTraceOnce(tag, detail)
+  CombatTraceOnce(tag, detail)
+end
+
+function OpenClose.ResetCombatTrace()
+  combatTraceOnce = {}
+end
+
 --- Hide Blizzard bag UI for our overlay. In combat: alpha/mouse only (no ClearAllPoints).
 local function ParkBlizzardForOverlay()
   Blackout(ContainerFrameCombinedBags)
@@ -398,9 +428,21 @@ end
 
 OpenOurs = function()
   if openBusy or closeBusy then
+    if InCombat() then
+      CombatTraceOnce("OpenOurs", "busy open=" .. tostring(openBusy) .. " close=" .. tostring(closeBusy))
+    end
     return SessionOpen()
   end
   if not EnabledReplace() then
+    if InCombat() then
+      local p = Profile()
+      CombatTraceOnce("OpenOurs", string.format(
+        "replace off enabled=%s safe=%s replace=%s",
+        tostring(p.enabled),
+        tostring(p.safeMode),
+        tostring(p.replaceBlizzard)
+      ))
+    end
     return false
   end
   -- Allow open after suppress (next B after close).
@@ -412,11 +454,28 @@ OpenOurs = function()
   ParkBlizzardForOverlay()
 
   if InCombat() then
-    local shown = Layout and Layout.ShowCombatMinimal and Layout.ShowCombatMinimal()
-      or (Layout and Layout.Show and Layout.Show())
+    local global = _G.BetterBackpackFrame
+    local shown = false
+    if global then
+      if Layout and Layout.ForceCombatShow then
+        shown = Layout.ForceCombatShow() and true or false
+      elseif Layout and Layout.ShowCombatMinimal then
+        shown = Layout.ShowCombatMinimal() and true or false
+      else
+        pcall(function()
+          global:SetAlpha(1)
+          global:EnableMouse(true)
+          global:Show()
+        end)
+        shown = global:IsShown() and true or false
+      end
+    else
+      CombatTraceOnce("OpenOurs", "no BetterBackpackFrame global")
+    end
     openBusy = false
     OpenClose._openBusy = false
-    if shown and OursVisible() then
+    local visible = OursVisible()
+    if shown or visible then
       bagsOpen = true
       toggleLockUntil = Now() + TOGGLE_LOCK
       ParkBlizzardForOverlay()
@@ -427,6 +486,9 @@ OpenOurs = function()
     end
     bagsOpen = false
     ParkBlizzardForOverlay()
+    local built = global and tostring(global._bbBuilt) or "nil"
+    local alpha = global and tostring(global:GetAlpha()) or "nil"
+    CombatTraceOnce("OpenOurs", string.format("show failed shown=%s visible=%s built=%s alpha=%s", tostring(shown), tostring(visible), built, alpha))
     local t = Now()
     if not OpenClose._combatNoFrameMsgAt or (t - OpenClose._combatNoFrameMsgAt) > 4 then
       OpenClose._combatNoFrameMsgAt = t
@@ -502,6 +564,9 @@ end
 function OpenClose.CloseOurs(opts)
   opts = opts or {}
   if closeBusy then
+    if InCombat() then
+      CombatTraceOnce("CloseOurs", "closeBusy")
+    end
     return
   end
   closeBusy = true
@@ -517,8 +582,10 @@ function OpenClose.CloseOurs(opts)
   end
   BetterBackpack._bbClosing = false
 
-  if opts.closeBlizzard ~= false then
+  if opts.closeBlizzard ~= false and not InCombat() then
     ForceCloseBlizzard()
+  elseif InCombat() then
+    ParkBlizzardForOverlay()
   end
   closeBusy = false
 end
@@ -587,6 +654,7 @@ end
 ]]
 local function onBagKey()
   if not EnabledReplace() then
+    CombatTraceOnce("onBagKey", "EnabledReplace=false")
     return
   end
 
@@ -596,11 +664,12 @@ local function onBagKey()
   local nativeOpen = nativeSession or NativeContainersVisible()
 
   if overlayOpen then
+    CombatTraceOnce("onBagKey", "xor close (session open)")
     ClearFocusBag()
     ClearCategoryFilter()
     CloseNativeBags()
     toggleLockUntil = Now() + TOGGLE_LOCK
-    OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
+    OpenClose.CloseOurs({ closeBlizzard = false, suppress = 0.25 })
     return
   end
 
@@ -609,10 +678,14 @@ local function onBagKey()
   OpenClose.ClearReplaceSuppress()
   ignoringBagShow = true
   if nativeOpen then
+    CombatTraceOnce("onBagKey", "close native before combined")
     CloseNativeBags()
   end
   ignoringBagShow = false
-  OpenOurs()
+  local ok = OpenOurs()
+  if InCombat() and not ok then
+    CombatTraceOnce("onBagKey", "OpenOurs=false after B")
+  end
 end
 
 local function onKeyRingToggle()
@@ -962,9 +1035,11 @@ end
 
 local function onBackpackToggle()
   if not EnabledReplace() then
+    CombatTraceOnce("ToggleBackpack", "EnabledReplace=false")
     return
   end
   if BagBarNativeEnabled() and Now() < backpackBarArmUntil then
+    CombatTraceOnce("ToggleBackpack", "bar arm → native bag 0")
     onBagToggle(0, "ToggleBackpack-bar")
     return
   end

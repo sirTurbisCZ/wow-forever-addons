@@ -1,4 +1,7 @@
-# Playtest brief — BetterBackpack 0.5.33 (combat B + keyring)
+# Playtest brief — BetterBackpack 0.5.34 (combat B trace)
+
+**0.5.34**
+- Combat **B**: `ForceCombatShow` when `BetterBackpackFrame` exists; chat lines `combat B · …` once per branch (busy/replace/xor/no frame/show fail). Paste traces if still dead.
 
 **0.5.33**
 - **B in combat:** `ShowCombatMinimal` — only if `BetterBackpackFrame` was built OOC; else one chat line. No DoLayout/create/SetAttribute in lockdown.

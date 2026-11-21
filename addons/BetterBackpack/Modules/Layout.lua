@@ -2628,37 +2628,46 @@ function Layout.EnsureMain()
 end
 
 function Layout.IsShown()
-  return main and main:IsShown() and true or false
+  if main and main.IsShown and main:IsShown() then
+    return true
+  end
+  local g = _G.BetterBackpackFrame
+  return g and g.IsShown and g:IsShown() and true or false
 end
 
 --- Reuse prebuilt UI for lockdown — no CreateFrame / EnsureTitleChrome / DoLayout.
 function Layout.CombatAttachMain()
-  if main and content and main._bbBuilt then
+  if main and (main._bbBuilt or main._bbContent) then
+    if not content and main._bbContent then
+      content = main._bbContent
+    end
     return main
   end
   local orphan = _G.BetterBackpackFrame
-  if orphan and orphan._bbBuilt and orphan._bbContent then
+  if orphan then
     main = orphan
-    content = orphan._bbContent
+    content = orphan._bbContent or content
     freeFs = orphan.freeFs or freeFs
     moneyFs = orphan._bbMoneyFs or moneyFs
     emptyLabel = orphan._bbEmpty or emptyLabel
     return main
   end
-  return nil
+  return main
 end
 
-function Layout.ShowCombatMinimal()
-  local p = Profile()
-  if not p.enabled or p.safeMode then
-    return false
-  end
-  local frame = Layout.CombatAttachMain()
+--- Show existing BetterBackpackFrame in lockdown (no layout build).
+function Layout.ForceCombatShow()
+  local frame = Layout.CombatAttachMain() or _G.BetterBackpackFrame
   if not frame then
     return false
   end
+  main = frame
+  if frame._bbContent then
+    content = frame._bbContent
+  end
   pcall(function()
     frame:SetAlpha(1)
+    frame:EnableMouse(true)
     frame:Show()
   end)
   pcall(Layout.Raise)
@@ -2666,6 +2675,25 @@ function Layout.ShowCombatMinimal()
   UpdateFreeSpace()
   UpdateMoney()
   return frame:IsShown() and true or false
+end
+
+function Layout.ShowCombatMinimal()
+  local p = Profile()
+  if not p.enabled or p.safeMode then
+    local OC = BetterBackpack.Modules and BetterBackpack.Modules.OpenClose
+    if OC and OC.CombatTraceOnce then
+      OC.CombatTraceOnce("ShowCombatMinimal", string.format("disabled enabled=%s safe=%s", tostring(p.enabled), tostring(p.safeMode)))
+    end
+    return false
+  end
+  if not _G.BetterBackpackFrame and not main then
+    local OC = BetterBackpack.Modules and BetterBackpack.Modules.OpenClose
+    if OC and OC.CombatTraceOnce then
+      OC.CombatTraceOnce("ShowCombatMinimal", "no BetterBackpackFrame")
+    end
+    return false
+  end
+  return Layout.ForceCombatShow()
 end
 
 function Layout.Show()
