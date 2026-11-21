@@ -105,6 +105,21 @@ local function ModuleWanted()
   return p.enabled and not p.safeMode
 end
 
+local function WarmCombatShell(tag)
+  if not ModuleWanted() then
+    return
+  end
+  if InCombatLockdown and InCombatLockdown() then
+    return
+  end
+  if Layout and Layout.EnsureCombatShell then
+    SafeCall("shell:" .. tostring(tag or "?"), Layout.EnsureCombatShell)
+    return
+  end
+  SafeCall("precreate:" .. tostring(tag or "?"), Slots.PreCreate)
+  SafeCall("ensure:" .. tostring(tag or "?"), Layout.EnsureMain)
+end
+
 local bagRefreshToken = 0
 local function QueueBagRefresh()
   if InCombatLockdown and InCombatLockdown() then
@@ -228,11 +243,10 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
       end
       if C_Timer and C_Timer.After then
         C_Timer.After(0, function()
-          SafeCall("precreate", Slots.PreCreate)
-          SafeCall("warmup:ensure", Layout.EnsureMain)
+          WarmCombatShell("login")
         end)
       else
-        SafeCall("precreate", Slots.PreCreate)
+        WarmCombatShell("login")
       end
     end
     Print(string.format(L.LOADED or "loaded v%s · /bb", tostring(Config.VERSION)))
@@ -315,6 +329,7 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
     end
     SafeCall("regen:precreate", Slots.PreCreate)
     SafeCall("regen:attrs", Slots.SyncAllAttrs)
+    WarmCombatShell("regen")
     if Layout and Layout.IsShown and Layout.IsShown() and Layout.Refresh then
       SafeCall("regen:layout", Layout.Refresh)
     end

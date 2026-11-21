@@ -2708,11 +2708,36 @@ function Layout.CombatAttachMain()
   return main
 end
 
--- Combat open: frame built on prior OOC B only; alpha 1 (no DoLayout in lockdown).
+-- OOC only: PreCreate + EnsureMain shell (_bbBuilt). No DoLayout (safe load).
+function Layout.EnsureCombatShell()
+  if InCombatLockdown and InCombatLockdown() then
+    return false
+  end
+  local f = main or _G.BetterBackpackFrame
+  if f and f._bbBuilt then
+    return true
+  end
+  if Slots and Slots.PreCreate then
+    pcall(Slots.PreCreate)
+  end
+  pcall(Layout.EnsureMain)
+  f = main or _G.BetterBackpackFrame
+  if not f or not f._bbBuilt then
+    return false
+  end
+  combatVisuallyHidden = true
+  pcall(function()
+    f:SetAlpha(0)
+    f:EnableMouse(false)
+  end)
+  return true
+end
+
+-- Combat open: alpha 1 (no DoLayout in lockdown).
 function Layout.CombatShow()
   local frame = Layout.CombatAttachMain() or _G.BetterBackpackFrame
   if not frame or not frame._bbBuilt then
-    return false
+    return Layout.ShowCombatMinimal()
   end
   main = frame
   if frame._bbContent then

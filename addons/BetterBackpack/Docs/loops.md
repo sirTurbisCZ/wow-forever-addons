@@ -1,7 +1,7 @@
 # BetterBackpack — smyčky a grafy
 
 **Kód:** `Core.lua`, `Modules/{Slots,Layout,Context,BulkTransfer,VendorJunk,OpenClose,Tidy,Settings,Search,Filter,CustomCategories,Trash,StackMerge,Pins,LayoutModes}.lua`  
-**Verze reference:** 0.5.70 (combat alpha after OOC B build; no ColdPreload/ENTERING_WORLD · 0.5.68-stable base · 0.5.63 lane bulk · vendor auto-sell grey · 0.5.21 Trash drop: itemID před pickup · header drop bez collapse · Junk≠Trash · 0.5.20 Trash jen click-only destroy · 0.5.19 Trash lane auto-destroy + ghosts + `/bb trashtest` · Shift/Ctrl+LMB = nativní link / dress-up / split · prázdné custom lanes kreslené jako drop target · drag-teach lanes · custom lanes v Settings · Settings v chrome bagu · broom = stejná plate jako gear/X · sticky velikost okna · broom/gear v chrome Close · bank RMB secure type2=item · SearchBoxTemplate search · gear na nativní broom plate · nativní AutoSort reparent · footer hairline · pevná velikost = plný rozbalený bag · dense grid PAD 2 · NumberFontNormalSmall counts · broom/gear jako CombinedBags · footer N/M = font peněz · fill wells default off)  
+**Verze reference:** 0.5.71 (EnsureCombatShell login/regen; CombatShow + ShowCombatMinimal · 0.5.68-stable base · 0.5.63 lane bulk · vendor auto-sell grey · 0.5.21 Trash drop: itemID před pickup · header drop bez collapse · Junk≠Trash · 0.5.20 Trash jen click-only destroy · 0.5.19 Trash lane auto-destroy + ghosts + `/bb trashtest` · Shift/Ctrl+LMB = nativní link / dress-up / split · prázdné custom lanes kreslené jako drop target · drag-teach lanes · custom lanes v Settings · Settings v chrome bagu · broom = stejná plate jako gear/X · sticky velikost okna · broom/gear v chrome Close · bank RMB secure type2=item · SearchBoxTemplate search · gear na nativní broom plate · nativní AutoSort reparent · footer hairline · pevná velikost = plný rozbalený bag · dense grid PAD 2 · NumberFontNormalSmall counts · broom/gear jako CombinedBags · footer N/M = font peněz · fill wells default off)  
 **Stabilita:** Project `docs/bag-addon-brief.md` + Scenario Maps `docs/scenarios/BetterBackpack/`  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never path C harvest).
 
@@ -36,7 +36,7 @@ flowchart TD
 - Forever: never call `SetFrameStrata` / `SetToplevel` in Lua. **0.5.5+:** `ButtonFrameTemplate` + CombinedBags NineSlice/TopTile/Bg at Baganator Forever offsets (6,-21); **Inset:Hide**; empty `SlotBackground` on slots; footer inside bottom border.
 - **0.5.3+:** `Toggle*` are **replaced**, not `hooksecurefunc`. Post-hooks ran after Blizzard `Open*`/`Close*` → open/close thrash that froze on B.
 - Anti-flash: `Show`/`OnShow`/`onToggle` → **Blackout alpha=0 first**; CloseOurs never `RestoreBlizzardBags`. OpenOurs fail OOC → `ForceCloseBlizzard`; v combatu jen `ParkBlizzardForOverlay` (not Unblackout).
-- **0.5.70 combat:** no login preload. First **OOC B** builds frame (`_bbBuilt`). Lockdown open `Layout.CombatShow` (alpha 1); `Layout.Hide` -> `CombatHide` (alpha 0). `IsBagFrameVisible` drives XOR.
+- **0.5.71 combat:** OOC `EnsureCombatShell` (EnsureMain, no DoLayout) on login + regen. Lockdown `CombatShow` (fallback `ShowCombatMinimal`). Close `CombatHide`. No ColdPreload.
 - CombinedBags stays `IsShown`+parked while ours open — **ne** `:Hide()` mid-session.
 - `SuppressReplace`; OnShow nesmí ClearSuppress→OpenOurs.
 - **Open/close (0.5.62):** **Revert** `OpenClose` na přesný **0.5.60** (`a6367fd`) — 0.5.61 keyring hooky pryč; B XOR Combined, `ToggleBag`/`ToggleKeyRing` Blizzard.

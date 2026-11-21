@@ -1,4 +1,9 @@
-# Playtest brief — BetterBackpack 0.5.70
+# Playtest brief — BetterBackpack 0.5.71
+
+**0.5.71**
+- **Combat shell OOC:** `EnsureCombatShell` = PreCreate + EnsureMain only (no DoLayout). Runs on LOGIN (deferred 0) and PLAYER_REGEN_ENABLED.
+- **Combat B:** `CombatShow` alpha; missing `_bbBuilt` falls back `ShowCombatMinimal`. No "open OOC first" chat.
+- No ENTERING_WORLD, no ColdPreload.
 
 **0.5.70** (0.5.68-stable base + combat alpha, no ColdPreload)
 - **Load:** same as 0.5.68. No `ENTERING_WORLD`. No login `DoLayout` preload.

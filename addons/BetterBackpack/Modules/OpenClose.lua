@@ -576,6 +576,8 @@ OpenOurs = function()
     local shown = false
     if Layout and Layout.CombatShow then
       shown = Layout.CombatShow() and true or false
+    elseif Layout and Layout.ShowCombatMinimal then
+      shown = Layout.ShowCombatMinimal() and true or false
     end
     openBusy = false
     OpenClose._openBusy = false
@@ -592,23 +594,9 @@ OpenOurs = function()
     bagsOpen = false
     ParkBlizzardForOverlay()
     local global = _G.BetterBackpackFrame
-    if not shown then
-      CombatTraceOnce("OpenOurs", "need one OOC B open first (_bbBuilt)")
-    end
     local built = global and tostring(global._bbBuilt) or "nil"
     local alpha = global and tostring(global:GetAlpha()) or "nil"
-    CombatTraceOnce("OpenOurs", string.format("show failed shown=%s visible=%s built=%s alpha=%s", tostring(shown), tostring(visible), built, alpha))
-    local t = Now()
-    if not OpenClose._combatNoFrameMsgAt or (t - OpenClose._combatNoFrameMsgAt) > 4 then
-      OpenClose._combatNoFrameMsgAt = t
-      local L = BetterBackpack.L or {}
-      local msg = L.COMBAT_NO_FRAME or "combat: open bags once out of combat first"
-      if BetterBackpack.Print then
-        BetterBackpack.Print(msg)
-      elseif DEFAULT_CHAT_FRAME then
-        DEFAULT_CHAT_FRAME:AddMessage("|cffc9a227BetterBackpack|r " .. msg)
-      end
-    end
+    CombatTraceOnce("OpenOurs", string.format("combat show failed shown=%s visible=%s built=%s alpha=%s", tostring(shown), tostring(visible), built, alpha))
     return false
   end
 

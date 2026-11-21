@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 0.5.70 load-stable 062-base. Combat B: alpha CombatShow/Hide after one OOC open. No login preload.
+## Notes: 0.5.71 combat shell at login/regen (EnsureMain only). CombatShow + ShowCombatMinimal fallback.
 ## Author: tuma
-## Version: 0.5.70
+## Version: 0.5.71
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled
