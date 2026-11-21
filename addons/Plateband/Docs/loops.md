@@ -2,7 +2,7 @@
 
 Version: **0.1.15**
 
-See also: [merge-design.md](merge-design.md) (opt-in merge, no name mutation).
+See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 
 ## Safe default (native DebuffList only)
 
