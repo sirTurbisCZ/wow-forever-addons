@@ -95,6 +95,7 @@ local layoutBusy = false
 local bagHoverHooked = false
 local bagBarHoverHooked = {}
 local focusBagID = nil
+local combatVisuallyHidden = false
 -- Forward decl: DoLayout runs before the definition body below (Lua 5.1 upvalue).
 local EnsureTitleChrome
 local ApplyCombinedBagsChrome
@@ -2657,12 +2658,34 @@ function Layout.EnsureMain()
   return main
 end
 
-function Layout.IsShown()
-  if main and main.IsShown and main:IsShown() then
-    return true
+local function FrameAlpha(f)
+  if not f or not f.GetAlpha then
+    return 0
   end
-  local g = _G.BetterBackpackFrame
-  return g and g.IsShown and g:IsShown() and true or false
+  local a = 1
+  pcall(function()
+    a = f:GetAlpha() or 1
+  end)
+  return a
+end
+
+-- User-visible open (combat alpha-off = closed for B XOR).
+function Layout.IsBagFrameVisible()
+  if combatVisuallyHidden then
+    return false
+  end
+  local f = main or _G.BetterBackpackFrame
+  if not f or not f.IsShown or not f:IsShown() then
+    return false
+  end
+  if FrameAlpha(f) < 0.05 then
+    return false
+  end
+  return true
+end
+
+function Layout.IsShown()
+  return Layout.IsBagFrameVisible()
 end
 
 --- Reuse prebuilt UI for lockdown — no CreateFrame / EnsureTitleChrome / DoLayout.
@@ -2685,16 +2708,17 @@ function Layout.CombatAttachMain()
   return main
 end
 
---- Show existing BetterBackpackFrame in lockdown (no layout build).
-function Layout.ForceCombatShow()
+-- Combat open: alpha 1 + Show (no EnsureMain / DoLayout in lockdown).
+function Layout.CombatShow()
   local frame = Layout.CombatAttachMain() or _G.BetterBackpackFrame
-  if not frame then
+  if not frame or not frame._bbBuilt then
     return false
   end
   main = frame
   if frame._bbContent then
     content = frame._bbContent
   end
+  combatVisuallyHidden = false
   pcall(function()
     frame:SetAlpha(1)
     frame:EnableMouse(true)
@@ -2704,7 +2728,25 @@ function Layout.ForceCombatShow()
   pcall(RefreshCooldowns)
   UpdateFreeSpace()
   UpdateMoney()
-  return frame:IsShown() and true or false
+  return Layout.IsBagFrameVisible()
+end
+
+-- Combat close: alpha 0 (never Hide in lockdown).
+function Layout.CombatHide()
+  combatVisuallyHidden = true
+  local frame = main or _G.BetterBackpackFrame
+  if not frame then
+    return true
+  end
+  pcall(function()
+    frame:SetAlpha(0)
+    frame:EnableMouse(false)
+  end)
+  return not Layout.IsBagFrameVisible()
+end
+
+function Layout.ForceCombatShow()
+  return Layout.CombatShow()
 end
 
 function Layout.ShowCombatMinimal()
@@ -2744,6 +2786,7 @@ function Layout.Show()
     return false
   end
 
+  combatVisuallyHidden = false
   pcall(function()
     if main:GetParent() ~= UIParent then
       main:SetParent(UIParent)
@@ -2806,9 +2849,59 @@ function Layout.Hide()
   if S and S.Hide then
     S.Hide()
   end
-  if main then
-    main:Hide()
+  if InCombatLockdown and InCombatLockdown() then
+    Layout.CombatHide()
+    return
   end
+  combatVisuallyHidden = false
+  if main then
+    pcall(function()
+      main:Hide()
+    end)
+  end
+end
+
+-- OOC login: build frame + slots + one layout; park alpha 0 for combat B.
+function Layout.ColdPreload()
+  if BetterBackpack._coldPreloaded then
+    return true
+  end
+  if InCombatLockdown and InCombatLockdown() then
+    return false
+  end
+  local p = Profile()
+  if not p.enabled or p.safeMode then
+    return false
+  end
+  if Slots and Slots.PreCreate then
+    pcall(Slots.PreCreate)
+  end
+  local okEns = pcall(Layout.EnsureMain)
+  if not okEns or not main or not main._bbBuilt then
+    return false
+  end
+  pcall(function()
+    if main:GetParent() ~= UIParent then
+      main:SetParent(UIParent)
+    end
+    main:SetFrameLevel(500)
+    main:SetAlpha(0)
+    main:EnableMouse(false)
+    main:Show()
+  end)
+  pcall(DoLayout)
+  pcall(RefreshCooldowns)
+  combatVisuallyHidden = true
+  pcall(function()
+    main:SetAlpha(0)
+    main:EnableMouse(false)
+  end)
+  BetterBackpack._coldPreloaded = true
+  return true
+end
+
+function Layout.IsColdPreloaded()
+  return BetterBackpack._coldPreloaded and true or false
 end
 
 function Layout.ForceHidden()

@@ -1,4 +1,9 @@
-# Playtest brief — BetterBackpack 0.5.68-stable-062-base
+# Playtest brief — BetterBackpack 0.5.69
+
+**0.5.69** (on 0.5.68-stable-062-base)
+- **Combat B:** `Layout.ColdPreload` OOC (Core `QueueColdWarmup`). In combat: `OpenOurs` -> `Layout.CombatShow` (alpha 1); `Layout.Hide` -> `CombatHide` (alpha 0, no `Hide()`).
+- OpenClose: combat routing only; no Toggle* edits; OpenClose has no `--[[`.
+- Playtest: `/reload` OOC ~1s -> pull -> B open/close x3; `loaded v0.5.69`.
 
 **0.5.68-stable-062-base**
 - **Full tree** = git **9277c4f** (0.5.63) = **56da553** (0.5.62) OpenClose/Layout/Core + **BulkTransfer + VendorJunk** only.

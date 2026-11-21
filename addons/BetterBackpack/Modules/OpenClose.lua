@@ -573,23 +573,15 @@ OpenOurs = function()
   ParkBlizzardForOverlay()
 
   if InCombat() then
-    local global = _G.BetterBackpackFrame
     local shown = false
-    if global then
-      if Layout and Layout.ForceCombatShow then
-        shown = Layout.ForceCombatShow() and true or false
-      elseif Layout and Layout.ShowCombatMinimal then
-        shown = Layout.ShowCombatMinimal() and true or false
-      else
-        pcall(function()
-          global:SetAlpha(1)
-          global:EnableMouse(true)
-          global:Show()
-        end)
-        shown = global:IsShown() and true or false
+    if Layout and Layout.CombatShow then
+      shown = Layout.CombatShow() and true or false
+    end
+    if not shown then
+      local pre = Layout and Layout.IsColdPreloaded and Layout.IsColdPreloaded()
+      if not pre then
+        CombatTraceOnce("OpenOurs", "cold preload missing - open OOC once")
       end
-    else
-      CombatTraceOnce("OpenOurs", "no BetterBackpackFrame global")
     end
     openBusy = false
     OpenClose._openBusy = false
@@ -605,6 +597,7 @@ OpenOurs = function()
     end
     bagsOpen = false
     ParkBlizzardForOverlay()
+    local global = _G.BetterBackpackFrame
     local built = global and tostring(global._bbBuilt) or "nil"
     local alpha = global and tostring(global:GetAlpha()) or "nil"
     CombatTraceOnce("OpenOurs", string.format("show failed shown=%s visible=%s built=%s alpha=%s", tostring(shown), tostring(visible), built, alpha))

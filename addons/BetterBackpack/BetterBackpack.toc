@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: stable-062-base (0.5.68). B XOR + lane bulk/vendor from 0.5.63. Parks CombinedBags — never Hide.
+## Notes: 0.5.69 combat B via Layout CombatShow/Hide alpha; cold preload OOC. stable-062 base.
 ## Author: tuma
-## Version: 0.5.68-stable-062-base
+## Version: 0.5.69
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled
