@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.OpenClose — B + /bb (0.5.47)
+  BetterBackpack.OpenClose — B + /bb (0.5.48)
 
   ToggleAllBags + ToggleBackpack → onBagKey XOR (same handler). ToggleBag / ToggleKeyRing = Blizzard.
   Bag-bar native: never park/blackout ContainerFrame*; RestoreNativeBagFrames on close only.
@@ -321,7 +321,10 @@ local function OursVisible()
 end
 
 local function SessionOpen()
-  return bagsOpen or OursVisible()
+  if OursVisible() then
+    return true
+  end
+  return bagsOpen == true
 end
 
 local function Blackout(f)
@@ -634,6 +637,23 @@ OpenOurs = function()
   return true
 end
 
+local function RestoreCombinedBagsUI()
+  local f = ContainerFrameCombinedBags
+  if not f then
+    return
+  end
+  RestoreFrameInteractive(f)
+  if InCombat() then
+    return
+  end
+  pcall(function()
+    if f.IsShown and f:IsShown() then
+      f:ClearAllPoints()
+      f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    end
+  end)
+end
+
 function OpenClose.CloseOurs(opts)
   opts = opts or {}
   if closeBusy then
@@ -644,27 +664,34 @@ function OpenClose.CloseOurs(opts)
   end
   closeBusy = true
   bagsOpen = false
+  openBusy = false
+  OpenClose._openBusy = false
   pulseToken = pulseToken + 1
   OpenClose.SuppressReplace(opts.suppress or 0.25)
   ClearFocusBag()
 
-  if BagBarNativeEnabled() then
-    BlackoutCombinedOnly()
-    RestoreNativeBagFrames()
-  else
-    BlackoutAll()
-  end
   BetterBackpack._bbClosing = true
   if Layout and Layout.Hide then
     pcall(Layout.Hide)
+  else
+    pcall(function()
+      local f = _G.BetterBackpackFrame
+      if f and f.Hide then
+        f:Hide()
+      end
+    end)
   end
   BetterBackpack._bbClosing = false
 
-  if opts.closeBlizzard ~= false and not InCombat() then
-    if BagBarNativeEnabled() then
-      pcall(CloseNativeCombinedBags)
+  if not OursVisible() and not InCombat() then
+    if opts.closeBlizzard ~= false then
+      if BagBarNativeEnabled() then
+        RestoreCombinedBagsUI()
+      else
+        ForceCloseBlizzard()
+      end
     else
-      ForceCloseBlizzard()
+      RestoreCombinedBagsUI()
     end
   elseif InCombat() then
     ParkBlizzardForOverlay()
@@ -677,10 +704,11 @@ function OpenClose.NotifyHidden()
   if BetterBackpack._bbClosing then
     return
   end
-  if SessionOpen() then
-    OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
-  else
-    bagsOpen = false
+  bagsOpen = false
+  openBusy = false
+  OpenClose._openBusy = false
+  if OursVisible() then
+    pcall(OpenClose.CloseOurs, { closeBlizzard = true, suppress = 0.25 })
   end
 end
 
@@ -744,7 +772,7 @@ local function onBagKey()
   inBagKey = true
   OpenClose.ClearReplaceSuppress()
   if SessionOpen() then
-    pcall(OpenClose.CloseOurs, { closeBlizzard = false, suppress = 0.25 })
+    pcall(OpenClose.CloseOurs, { closeBlizzard = true, suppress = 0.25 })
     inBagKey = false
     return
   end

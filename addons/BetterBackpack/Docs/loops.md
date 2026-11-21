@@ -38,7 +38,7 @@ flowchart TD
 - Anti-flash: `Show`/`OnShow`/`onToggle` → **Blackout alpha=0 first**; CloseOurs never `RestoreBlizzardBags`. OpenOurs fail OOC → `ForceCloseBlizzard`; v combatu jen `ParkBlizzardForOverlay` (not Unblackout).
 - CombinedBags stays `IsShown`+parked while ours open — **ne** `:Hide()` mid-session.
 - `SuppressReplace`; OnShow nesmí ClearSuppress→OpenOurs.
-- **Open (0.5.47):** **`ToggleAllBags` + `ToggleBackpack` → `onBagKey`** (0.5.45 B). `ToggleBag` native. `bagBarNativeBag`: ContainerFrame 1–13 nikdy park; **`RestoreNativeBagFrames` jen CloseOurs** (ne během ParkBlizzard — jinak Combined znovu vidět).
+- **Open/close (0.5.48):** B XOR close = `CloseOurs(closeBlizzard=true)`; X → `WireCloseButton` v `EnsureTitleChrome`. Close → `RestoreCombinedBagsUI` + `RestoreNativeBagFrames`. B open beze změny (0.5.47).
 - **Keyring (0.5.33):** `KeyRingFrameNames` (KeyRingFrame / ContainerFrameKeyRing / `ContainerFrame-{KEYRING}`); `InvokeNativeKeyRing` jeden API krok; container OnShow restore pro `IsKeyringBag`; XOR přes `KeyRingNativeOpen`.
 - HookScript OnClick only on frames with `HasScript("OnClick")` / Button — never throw on BagsBar chrome kids.
 - Frame size (**0.5.8 fixed**): počítá se vždy z **plného bagu — nefiltrovaný, všechny lanes rozbalené** (`CollectBuckets(true)`, collapse ignorován). `cols = clamp(nejširší lane, MIN_COLS=6, Columns())` (Columns = profile 10, dense ≥12). Grid = `cols*37 + (cols-1)*2` (PAD 2, dense); outer = `INSET_X + grid + INSET_X` (INSET_X=14); výška = TOP_CHROME 54 + lanesH + BOT_CHROME 30. HEADER_H 18, SECTION_GAP 4.

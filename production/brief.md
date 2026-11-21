@@ -1,4 +1,7 @@
-# Playtest brief — BetterBackpack 0.5.47 (B restore + native bar)
+# Playtest brief — BetterBackpack 0.5.48 (close fix)
+
+**0.5.48**
+- **Close:** X wired every layout (`WireCloseButton`); **B XOR close** uses `closeBlizzard=true` like `/bb`. `CloseOurs` clears flags, `Layout.Hide`, **`RestoreCombinedBagsUI`** (no stuck alpha-0 Combined). `NotifyHidden` syncs `bagsOpen`.
 
 **0.5.47**
 - **B** back to **0.5.45**: both `ToggleAllBags` + `ToggleBackpack` → **`onBagKey`**. Fix 0.5.46 regression: no `RestoreNativeBagFrames` during park (un-blackout Combined). Keep unpark ContainerFrames on **CloseOurs**.

@@ -2305,6 +2305,28 @@ local function EnsureBagShelvesTitleChrome(frame, close)
   return tidy, gear
 end
 
+local function WireCloseButton(frame)
+  if not frame then
+    return
+  end
+  local close = frame.CloseButton
+  if not close then
+    return
+  end
+  if close._bbCloseWired then
+    return
+  end
+  close._bbCloseWired = true
+  close:SetScript("OnClick", function()
+    local OC = BetterBackpack.Modules.OpenClose
+    if OC and OC.CloseOurs then
+      OC.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
+    elseif frame.Hide then
+      frame:Hide()
+    end
+  end)
+end
+
 --[[
   Assign into forward-declared EnsureTitleChrome (must NOT use `local function` here).
 ]]
@@ -2326,6 +2348,7 @@ EnsureTitleChrome = function(frame)
       close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 2, 1)
       close:SetFrameLevel((frame:GetFrameLevel() or 1) + 520)
       close:Show()
+      WireCloseButton(frame)
     end
 
     local title = CombinedBagTitle()
@@ -2513,14 +2536,7 @@ function Layout.EnsureMain()
     end)
   end
   if close then
-    close:SetScript("OnClick", function()
-      local OpenClose = BetterBackpack.Modules.OpenClose
-      if OpenClose and OpenClose.CloseOurs then
-        OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
-      else
-        built:Hide()
-      end
-    end)
+    WireCloseButton(built)
   end
 
   -- Native CombinedBags chrome (AutoSort + gear).
