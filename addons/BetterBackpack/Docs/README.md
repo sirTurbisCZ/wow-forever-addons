@@ -36,7 +36,7 @@ Off by default (Settings → Lanes → Trash). Click-only destroy on Forever —
 |---------|--------|
 | `/bb` | Toggle bags |
 | `/bb on\|off` | Enable or restore Blizzard bags |
-| `/bb sort` / `/bb tidy` | OOC tidy (`SortBags` + stack merge). Alias: `/bb uklid` |
+| `/bb sort` / `/bb tidy` | OOC tidy (`SortBags` + stack merge) |
 | `/bb settings` | Categories, custom lanes, features |
 | `/bb search <text>` | Filter by name / itemID |
 | `/bb filter <cat\|all>` | Show one category lane |

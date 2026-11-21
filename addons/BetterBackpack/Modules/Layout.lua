@@ -3209,8 +3209,8 @@ function Layout.DebugState()
     h = h,
     strata = strata,
     parent = main:GetParent() and main:GetParent():GetName() or "?",
-    uklid = tidyOn and true or false,
-    nastaveni = gearOn and true or false,
+    tidy = tidyOn and true or false,
+    settings = gearOn and true or false,
     chromeVer = chromeVer,
     ver = Config.VERSION,
   }

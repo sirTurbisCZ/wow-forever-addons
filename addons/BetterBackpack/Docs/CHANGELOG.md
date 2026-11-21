@@ -6,7 +6,7 @@
 - **Vendor:** `OpenAllBags` routes to BetterBackpack; CombinedBags parked while ours is open.
 - **Bulk sell:** Shift+RMB lane header at merchant — sync sell in click (`BulkTransfer` + `ContainerAPI` bag indices).
 - **Auto-sell:** grey junk at vendor (`VendorJunk`) — settings toggles.
-- **English-only** UI strings and documentation cleanup.
+- **English-only** UI strings and documentation cleanup; dropped legacy `/bb uklid` alias and Czech debug field names.
 
 ### 0.5.84 → 0.5.82 (bulk path)
 

@@ -13,6 +13,6 @@ Release gate — combat, vendor bulk, auto-sell, English UI.
 1. `/reload` → v1.0.0 + BulkTransfer ok.
 2. Combat B open/close.
 3. Vendor + Shift+RMB lane → sells + chat summary.
-4. Tooltips: **Tidy** / **Settings** (not localized Czech).
+4. Tooltips: **Tidy** / **Settings** (English).
 
 Prior 0.5.x notes archived in `addons/BetterBackpack/Docs/CHANGELOG.md`.

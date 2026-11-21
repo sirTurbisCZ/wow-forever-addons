@@ -602,7 +602,7 @@ SlashCmdList.BETTERBACKPACK = function(msg)
     return
   end
 
-  if cmd == "sort" or cmd == "tidy" or cmd == "uklid" then
+  if cmd == "sort" or cmd == "tidy" then
     SafeCall("sort", Tidy.SortBags)
     return
   end
@@ -661,14 +661,14 @@ SlashCmdList.BETTERBACKPACK = function(msg)
   if cmd == "frame" or cmd == "debugopen" then
     local d = Layout.DebugState and Layout.DebugState() or {}
     Print(string.format(
-      "frame ver=%s exists=%s shown=%s w=%s h=%s uklid=%s nastav=%s chrome=%s session=%s",
+      "frame ver=%s exists=%s shown=%s w=%s h=%s tidy=%s settings=%s chrome=%s session=%s",
       tostring(d.ver or Config.VERSION),
       tostring(d.exists),
       tostring(d.shown),
       tostring(d.w),
       tostring(d.h),
-      tostring(d.uklid),
-      tostring(d.nastaveni),
+      tostring(d.tidy),
+      tostring(d.settings),
       tostring(d.chromeVer),
       tostring(OpenClose.SessionOpen and OpenClose.SessionOpen())
     ))
