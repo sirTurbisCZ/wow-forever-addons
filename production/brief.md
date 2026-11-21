@@ -1,6 +1,10 @@
-# Playtest brief — BetterBackpack 1.1.0
+# Playtest brief — BetterBackpack 1.1.9
 
-Release gate — combat, vendor bulk, auto-sell, English UI.
+Release gate — combat B, ESC, vendor bulk, auto-sell, English UI.
+
+**1.1.9**
+- Combat **B** in lockdown (keep-shown warm shell).
+- **ESC:** closed → game menu only; open bags → one ESC close, next ESC menu.
 
 **1.0.0**
 - Version **1.0.0**; docs and UI English-only.
