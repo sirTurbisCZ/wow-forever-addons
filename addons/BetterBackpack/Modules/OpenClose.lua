@@ -29,12 +29,7 @@ local BAG_KEY_DEBOUNCE = 0.14
 local lastBagKeyHandledAt = 0
 local guardElapsed = 0
 
--- Forward decls (frame helpers assigned after RestoreNativeBagFrames).
-local KeyRingFrameNames
-local FocusBagsMatch
-local SetFocusBag
-local ClearFocusBag
-local ClearCategoryFilter
+-- Forward decls (assigned later in file).
 local OpenOurs
 local InvokeNativeKeyRing
 
@@ -133,6 +128,55 @@ local function BBKeyringBagIndex()
   return -2
 end
 
+local function KeyRingFrameNames()
+  local names = {
+    "KeyRingFrame",
+    "ContainerFrameKeyRing",
+    "ContainerFrame-2",
+  }
+  local key = BBKeyringBagIndex()
+  if KEYRING_CONTAINER ~= nil then
+    names[#names + 1] = "ContainerFrame-" .. tostring(KEYRING_CONTAINER)
+  end
+  if key ~= nil then
+    names[#names + 1] = "ContainerFrame-" .. tostring(key)
+  end
+  if Enum and Enum.BagIndex and Enum.BagIndex.Keyring ~= nil then
+    names[#names + 1] = "ContainerFrame-" .. tostring(Enum.BagIndex.Keyring)
+  end
+  return names
+end
+
+local function SetFocusBag(bagID)
+  if Layout and Layout.SetBagFocus then
+    pcall(Layout.SetBagFocus, bagID)
+  end
+end
+
+local function ClearFocusBag()
+  if Layout and Layout.ClearBagFocus then
+    pcall(Layout.ClearBagFocus)
+  end
+end
+
+local function FocusBagsMatch(a, b)
+  if a == nil or b == nil then
+    return false
+  end
+  local Slots = BetterBackpack.Modules.Slots
+  if Slots and Slots.IsReagentBag and Slots.IsReagentBag(a) and Slots.IsReagentBag(b) then
+    return true
+  end
+  return a == b
+end
+
+local function ClearCategoryFilter()
+  local Filter = BetterBackpack.Modules.Filter
+  if Filter and Filter.SetCategory then
+    pcall(Filter.SetCategory, "all")
+  end
+end
+
 local function RestoreNativeBagFrames()
   if not BagBarNativeEnabled() then
     return
@@ -200,25 +244,6 @@ local function NativeContainersVisible()
     end
   end
   return false
-end
-
-KeyRingFrameNames = function()
-  local names = {
-    "KeyRingFrame",
-    "ContainerFrameKeyRing",
-    "ContainerFrame-2",
-  }
-  local key = BBKeyringBagIndex()
-  if KEYRING_CONTAINER ~= nil then
-    names[#names + 1] = "ContainerFrame-" .. tostring(KEYRING_CONTAINER)
-  end
-  if key ~= nil then
-    names[#names + 1] = "ContainerFrame-" .. tostring(key)
-  end
-  if Enum and Enum.BagIndex and Enum.BagIndex.Keyring ~= nil then
-    names[#names + 1] = "ContainerFrame-" .. tostring(Enum.BagIndex.Keyring)
-  end
-  return names
 end
 
 local function KeyRingFrameIsShown()
@@ -730,7 +755,7 @@ function OpenClose.CloseOurs(opts)
   OpenClose._openBusy = false
   pulseToken = pulseToken + 1
   OpenClose.SuppressReplace(opts.suppress or 0.25)
-  ClearFocusBag()
+  pcall(ClearFocusBag)
 
   local ok, err = pcall(function()
     BetterBackpack._bbClosing = true
@@ -759,7 +784,7 @@ function OpenClose.CloseOurs(opts)
     elseif InCombat() then
       ParkBlizzardForOverlay()
     end
-    RestoreNativeBagFrames()
+    pcall(RestoreNativeBagFrames)
     ResetOverlaySessionState()
   end)
   closeBusy = false
@@ -1042,36 +1067,6 @@ local function LogBagPathOnce(which, bagID)
         tostring(bagID)
       )
     )
-  end
-end
-
-SetFocusBag = function(bagID)
-  if Layout and Layout.SetBagFocus then
-    pcall(Layout.SetBagFocus, bagID)
-  end
-end
-
-ClearFocusBag = function()
-  if Layout and Layout.ClearBagFocus then
-    pcall(Layout.ClearBagFocus)
-  end
-end
-
-FocusBagsMatch = function(a, b)
-  if a == nil or b == nil then
-    return false
-  end
-  local Slots = BetterBackpack.Modules.Slots
-  if Slots and Slots.IsReagentBag and Slots.IsReagentBag(a) and Slots.IsReagentBag(b) then
-    return true
-  end
-  return a == b
-end
-
-ClearCategoryFilter = function()
-  local Filter = BetterBackpack.Modules.Filter
-  if Filter and Filter.SetCategory then
-    pcall(Filter.SetCategory, "all")
   end
 end
 
