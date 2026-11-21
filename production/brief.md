@@ -1,4 +1,8 @@
-# Playtest brief — BetterBackpack 0.5.54 (keyring frame)
+# Playtest brief — BetterBackpack 0.5.55 (KEYRING container)
+
+**0.5.55**
+- Keyring: chat trace `keyring · OnClick` on KeyRingButton; `ForceKeyRingContainerFrame` opens `ContainerFrame-{KEYRING_CONTAINER}` + `OpenBag(KEYRING_CONTAINER)`.
+- Paste keyring chat lines if frame still missing.
 
 **0.5.54**
 - Empty keyring: after `ToggleKeyRing`, **`ForceKeyRingFrameShow`** — `KeyRingFrame` / container `Show`, on-screen, interactive.
