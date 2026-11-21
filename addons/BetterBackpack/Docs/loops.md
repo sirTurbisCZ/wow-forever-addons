@@ -1,7 +1,7 @@
 # BetterBackpack — smyčky a grafy
 
 **Kód:** `Core.lua`, `Modules/{Slots,Layout,Context,OpenClose,Tidy,Settings,Search,Filter,CustomCategories,StackMerge,Pins,LayoutModes}.lua`  
-**Verze reference:** 0.5.3 (Toggle* replace — no open/close thrash)  
+**Verze reference:** 0.5.4 (Toggle* replace + ButtonFrameTemplate CombinedBags chrome)  
 **Stabilita:** Project `docs/bag-addon-brief.md` + Scenario Maps `docs/scenarios/BetterBackpack/`  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never path C harvest).
 
@@ -29,8 +29,8 @@ flowchart TD
 **Pravidla**
 
 - Nikdy `SetOverrideBindingClick`.
-- Forever: never `SetFrameStrata` / ButtonFrameTemplate on BetterBackpackFrame (BLOCKED → OpenOurs false). Plain `CreateFrame` + painted chrome.
-- **0.5.3:** `Toggle*` are **replaced**, not `hooksecurefunc`. Post-hooks ran after Blizzard `Open*`/`Close*` (and our Open*/Close* hooks) → open-then-close / close-then-reopen thrash that froze on B.
+- Forever: never call `SetFrameStrata` / `SetToplevel` in Lua. **0.5.4:** create with `ButtonFrameTemplate` (CombinedBags-class TitleContainer/Close/Inset) + CombinedBags NineSlice kit; template OnLoad may *report* BLOCKED — ignore event, do not abort EnsureMain.
+- **0.5.3+:** `Toggle*` are **replaced**, not `hooksecurefunc`. Post-hooks ran after Blizzard `Open*`/`Close*` → open/close thrash that froze on B.
 - Anti-flash: `Show`/`OnShow`/`onToggle` → **Blackout alpha=0 first**; CloseOurs never `RestoreBlizzardBags`. OpenOurs fail → `ForceCloseBlizzard` (not Unblackout).
 - CombinedBags stays `IsShown`+parked while ours open — **ne** `:Hide()` mid-session.
 - `SuppressReplace`; OnShow nesmí ClearSuppress→OpenOurs.

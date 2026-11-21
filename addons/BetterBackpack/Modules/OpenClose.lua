@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.OpenClose — B + bag-bar + keyring (0.5.3)
+  BetterBackpack.OpenClose — B + bag-bar + keyring (0.5.4)
 
   ToggleAllBags / ToggleBackpack / ToggleBag / ToggleKeyRing are *replaced*
   (not hooksecurefunc). Forever Toggle* bodies call Open*/Close* first; a
@@ -28,7 +28,7 @@ local pulseToken = 0
 local openBusy = false
 local closeBusy = false
 local ignoringBagShow = false
-local TOGGLE_LOCK = 0.22
+local TOGGLE_LOCK = 0.28
 local guardElapsed = 0
 
 local function Now()

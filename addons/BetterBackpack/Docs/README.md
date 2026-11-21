@@ -6,7 +6,7 @@ Category-lane bags for **World of Warcraft Forever** (Interface 16001) with comb
 
 1. Put this folder in `Interface/AddOns/BetterBackpack/` (or symlink via `./scripts/link-addon.sh BetterBackpack`).
 2. Enable at character select if needed.
-3. `/reload` in game — chat should show `loaded v0.5.3` (Toggle* replace; plain frame; NTH search/filter/merge/pins).
+3. `/reload` in game — chat should show `loaded v0.5.4` (Toggle* replace; ButtonFrame CombinedBags chrome; NTH).
 
 ## Slash
 

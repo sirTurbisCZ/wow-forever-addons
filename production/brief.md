@@ -1,11 +1,12 @@
-# Playtest brief — BetterBackpack 0.5.3
+# Playtest brief — BetterBackpack 0.5.4 (WFA-17)
 
-**Freeze fix**
-- B froze: `hooksecurefunc(Toggle*)` ran *after* Blizzard `Open*`/`Close*` (and our Open*/Close* hooks) → open-then-close / close-then-reopen thrash.
-- Fix: **replace** `ToggleAllBags` / `ToggleBackpack` / `ToggleBag` / `ToggleKeyRing`; skip Blizzard body when replace enabled.
-- Plain `BetterBackpackFrame` (no ButtonFrameTemplate `SetFrameStrata` BLOCKED).
-- OpenOurs fail → `ForceCloseBlizzard` (no Unblackout re-entry).
+**Plan:** store `docs/refactor-three-addons.md`
 
-**Keep:** footer ~/70 · AutoSort-twin gear/broom · bag-bar XOR · keyring→Keys · search left.
+**This slice (BB first)**
+1. Keep Toggle* replace (B stable — no open/close thrash).
+2. Native CombinedBags-class chrome: `ButtonFrameTemplate` + HidePortrait + CombinedBags NineSlice. No Lua `SetFrameStrata`.
+3. TOGGLE_LOCK 0.28; OpenOurs fail → ForceCloseBlizzard.
 
-**Done when:** `/reload` → `v0.5.3` → B opens and stays open · B closes · no freeze · bag-bar XOR.
+**Later (not this ship):** Plateband merge without name ClearAllPoints; FELog release smoke.
+
+**Done when:** `/reload` → `v0.5.4` → B opens & stays · B closes · NineSlice/title chrome · no freeze.

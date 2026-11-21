@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.2).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.4).
   Forever: never SetToplevel (ADDON_ACTION_BLOCKED).
   Width/padding match BagShelves; title buttons = AutoSort twins (no glow).
   NTH hooks via optional Feat("Search|Filter|…") — do not rewrite OpenClose chrome here.
@@ -1132,16 +1132,57 @@ end
 
 local function CreateBagPanel()
   -- Named frame persists across failed EnsureMain — always reuse, never double-create.
-  -- Forever: ButtonFrameTemplate / BasicFrame* call SetFrameStrata → ADDON_ACTION_BLOCKED
-  -- on BetterBackpackFrame (OpenOurs false ×N). Plain Frame + painted chrome only.
+  -- Prefer ButtonFrameTemplate (CombinedBags-class chrome: TitleContainer, Close, Inset, Bg).
+  -- Forever may fire ADDON_ACTION_BLOCKED on template SetFrameStrata — that is an *event*,
+  -- not a hard abort when CreateFrame is pcall'd. Never call SetFrameStrata ourselves.
   local frame = _G.BetterBackpackFrame
   if not frame then
+    local templates = {
+      "ButtonFrameTemplate",
+      "BasicFrameTemplateWithInset",
+      "BasicFrameTemplate",
+    }
+    for i = 1, #templates do
+      local tmpl = templates[i]
+      local ok, f = pcall(function()
+        return CreateFrame("Frame", "BetterBackpackFrame", UIParent, tmpl)
+      end)
+      frame = _G.BetterBackpackFrame
+      if not frame and ok and f then
+        frame = f
+      end
+      if frame then
+        frame._bbTemplate = tmpl
+        break
+      end
+    end
+  end
+  if not frame then
     frame = CreateFrame("Frame", "BetterBackpackFrame", UIParent)
+    frame._bbTemplate = "plain"
   end
   pcall(function()
     if frame:GetParent() ~= UIParent then
       frame:SetParent(UIParent)
     end
+  end)
+  -- Never SetFrameStrata / SetToplevel — level only (OpenClose / Raise).
+  pcall(function()
+    frame:SetFrameLevel(500)
+  end)
+  pcall(function()
+    if ButtonFrameTemplate_HidePortrait then
+      ButtonFrameTemplate_HidePortrait(frame)
+    end
+  end)
+  pcall(function()
+    if ButtonFrameTemplate_HideButtonBar then
+      ButtonFrameTemplate_HideButtonBar(frame)
+    end
+  end)
+  pcall(function()
+    -- Baganator Forever path: no-portrait layout type when supported.
+    frame.layoutType = "ButtonFrameTemplateNoPortrait"
   end)
   KillPortrait(frame)
   ApplyCombinedBagsChrome(frame)
@@ -1172,7 +1213,7 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local CHROME_VER = 19 -- plain Frame (no template SetFrameStrata); search+twins
+local CHROME_VER = 20 -- ButtonFrameTemplate + CombinedBags NineSlice; no Lua SetFrameStrata
 local chromeLogged = false
 local customChromeHidden = false
 local nativeSortReleased = false
