@@ -1,4 +1,7 @@
-# Playtest brief — BetterBackpack 0.5.30 (native all bags + keyring)
+# Playtest brief — BetterBackpack 0.5.31 (keyring native)
+
+**0.5.31**
+- Keyring: `ToggleKeyRing` + `ToggleBag(KEYRING_CONTAINER)` + `OpenKeyRing`; bar/mixin routes to `onKeyRingToggle`; KEYRING frame restore.
 
 **0.5.30**
 - Native bag-bar: orig `ToggleBag` / `ToggleKeyRing`, no toggleLock on bar, OnShow restore while opening. B unchanged (combined).
