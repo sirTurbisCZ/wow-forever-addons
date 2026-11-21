@@ -499,6 +499,36 @@ local FEATURES = {
     end,
   },
   {
+    label = "Auto-sell grey items at vendor",
+    get = function()
+      local VJ = Feat("VendorJunk")
+      return VJ and VJ.IsEnabled()
+    end,
+    set = function(on)
+      local VJ = Feat("VendorJunk")
+      if VJ and VJ.SetEnabled then
+        VJ.SetEnabled(on)
+      else
+        Profile().autoSellJunk = on
+      end
+    end,
+  },
+  {
+    label = "Auto-sell: include Junk lane (non-grey)",
+    get = function()
+      local VJ = Feat("VendorJunk")
+      return VJ and VJ.LaneOptIn()
+    end,
+    set = function(on)
+      local VJ = Feat("VendorJunk")
+      if VJ and VJ.SetLaneOptIn then
+        VJ.SetLaneOptIn(on)
+      else
+        Profile().autoSellJunkLane = on
+      end
+    end,
+  },
+  {
     label = "Dense layout (more columns)",
     get = function()
       local LM = Feat("LayoutModes")
@@ -517,7 +547,7 @@ local FEATURES = {
 }
 
 local function PaintFeatures(y)
-  y = Note(8, "Optional bag behaviour.", y)
+  y = Note(8, "Optional bag behaviour. Bulk RMB on lane headers needs vendor, mail, or bank open (OOC).", y)
   for i = 1, #FEATURES do
     local d = FEATURES[i]
     local row = CheckRow(featureRows, i)

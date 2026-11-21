@@ -1,7 +1,7 @@
 # BetterBackpack — smyčky a grafy
 
 **Kód:** `Core.lua`, `Modules/{Slots,Layout,Context,OpenClose,Tidy,Settings,Search,Filter,CustomCategories,Trash,StackMerge,Pins,LayoutModes}.lua`  
-**Verze reference:** 0.5.21 (Trash drop: itemID před pickup · header drop bez collapse · Junk≠Trash · 0.5.20 Trash jen click-only destroy · 0.5.19 Trash lane auto-destroy + ghosts + `/bb trashtest` · Shift/Ctrl+LMB = nativní link / dress-up / split · prázdné custom lanes kreslené jako drop target · drag-teach lanes · custom lanes v Settings · Settings v chrome bagu · broom = stejná plate jako gear/X · sticky velikost okna · broom/gear v chrome Close · bank RMB secure type2=item · SearchBoxTemplate search · gear na nativní broom plate · nativní AutoSort reparent · footer hairline · pevná velikost = plný rozbalený bag · dense grid PAD 2 · NumberFontNormalSmall counts · broom/gear jako CombinedBags · footer N/M = font peněz · fill wells default off)  
+**Verze reference:** 0.5.63 (lane header bulk transfer · vendor auto-sell grey · 0.5.21 Trash drop: itemID před pickup · header drop bez collapse · Junk≠Trash · 0.5.20 Trash jen click-only destroy · 0.5.19 Trash lane auto-destroy + ghosts + `/bb trashtest` · Shift/Ctrl+LMB = nativní link / dress-up / split · prázdné custom lanes kreslené jako drop target · drag-teach lanes · custom lanes v Settings · Settings v chrome bagu · broom = stejná plate jako gear/X · sticky velikost okna · broom/gear v chrome Close · bank RMB secure type2=item · SearchBoxTemplate search · gear na nativní broom plate · nativní AutoSort reparent · footer hairline · pevná velikost = plný rozbalený bag · dense grid PAD 2 · NumberFontNormalSmall counts · broom/gear jako CombinedBags · footer N/M = font peněz · fill wells default off)  
 **Stabilita:** Project `docs/bag-addon-brief.md` + Scenario Maps `docs/scenarios/BetterBackpack/`  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never path C harvest).
 
@@ -124,7 +124,7 @@ sequenceDiagram
 ```mermaid
 flowchart LR
   Show[MERCHANT/MAIL SHOW] --> Clear[Clear type2 use attrs]
-  Clear --> RMB[RMB Pickup + Sell / ClickSendMail]
+  Clear --> RMB[RMB slot Pickup + Sell / ClickSendMail]
   BankShow[BANKFRAME_OPENED] --> Keep[Keep type2=item]
   Keep --> Deposit[Secure UseContainerItem deposits]
   Close[CLOSED] --> Restore[ForceRestore type2=item]
@@ -133,6 +133,23 @@ flowchart LR
 - **Bank:** never clear `type2` / never Pickup+`PutItemInBag` from OnClick — secure SAB `type2=item` = native CombinedBags deposit (OOC). Detect `BankFrame` / `BankPanel`.
 - **Merchant/mail:** `NeedsInsecureSpecialRmb` → clear type2 + Pickup path.
 - Mail: `MailFrame:IsVisible()` — ne stuck SendMailFrame alone.
+
+### 4b. Lane header bulk (0.5.63, OOC)
+
+```mermaid
+flowchart TD
+  RMB[RMB category header] --> Ctx{Context open?}
+  Ctx -->|ne| Noop[ignore]
+  Ctx -->|merchant| Sell[BulkTransfer queue · Pickup+SellCursor]
+  Ctx -->|mail| Mail[queue · Pickup+ClickSendMail]
+  Ctx -->|bank| Bank[queue · UseContainerItem each slot]
+  Sell --> Pump[throttled C_Timer pump]
+  Mail --> Pump
+  Bank --> Pump
+```
+
+- Full lane (`ListLaneSlots` unfiltered). Trash header excluded. Combat / no vendor = no-op.
+- **Auto-sell (≠ Trash):** `MERCHANT_SHOW` + Settings · greys only; opt-in `autoSellJunkLane` = Junk lane non-grey (still `Trash.Refuse` filters).
 
 ---
 

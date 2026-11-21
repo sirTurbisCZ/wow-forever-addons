@@ -1047,9 +1047,17 @@ local function EnsureSection(key)
       Layout.DropOnLane(key)
     end
   end)
+  header._bbLane = key
   header:SetScript("OnEnter", function(self)
     self.title:SetTextColor(1, 1, 1)
-    if key == TRASH and GameTooltip then
+    local BT = Feat("BulkTransfer")
+    local bulkLine = BT and BT.HeaderTooltipLine and BT.HeaderTooltipLine()
+    if bulkLine and GameTooltip then
+      GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+      GameTooltip:SetText(Layout.GetCategoryLabel(key))
+      GameTooltip:AddLine(bulkLine, 0.2, 1, 0.4, true)
+      GameTooltip:Show()
+    elseif key == TRASH and GameTooltip then
       GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
       GameTooltip:SetText("Trash — destroys items")
       GameTooltip:AddLine("Not the Junk lane (grey loot only sorts there).", 1, 0.82, 0, true)
@@ -1064,11 +1072,17 @@ local function EnsureSection(key)
     else
       self.title:SetTextColor(1, 0.82, 0)
     end
-    if key == TRASH and GameTooltip then
+    if GameTooltip then
       GameTooltip:Hide()
     end
   end)
-  header:SetScript("OnClick", function()
+  header:SetScript("OnClick", function(_, button)
+    if button == "RightButton" and not Layout.DropOnLane(key) and not CursorHoldingItem() then
+      local BT = Feat("BulkTransfer")
+      if BT and BT.LaneHeaderRmb and BT.LaneHeaderRmb(key) then
+        return
+      end
+    end
     if Layout.DropOnLane(key) then
       return
     end
@@ -2805,6 +2819,18 @@ function Layout.ForceHidden()
       g:Hide()
     end)
   end
+end
+
+function Layout.ListLaneSlots(laneKey, unfiltered)
+  if not laneKey then
+    return {}
+  end
+  local buckets = CollectBuckets(unfiltered == false)
+  local list = buckets[laneKey]
+  if not list then
+    return {}
+  end
+  return list
 end
 
 function Layout.Relayout()

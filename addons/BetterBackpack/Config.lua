@@ -2,7 +2,7 @@
 
 BetterBackpack = BetterBackpack or {}
 
-local CURRENT_SCHEMA = 5
+local CURRENT_SCHEMA = 6
 local MAX_ERRORS = 40
 local MAX_MSG = 2000
 
@@ -12,7 +12,7 @@ local Config = BetterBackpack.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.5.62"
+Config.VERSION = "0.5.63"
 
 local function ProfileDefaults()
   return {
@@ -47,6 +47,8 @@ local function ProfileDefaults()
     pins = {}, -- { [itemID] = true } red ghost when not owned
     layoutMode = "lanes", -- "lanes" | "dense"
     bagBarNativeBag = true, -- bar slots → native single bag; main backpack + B → BB combined
+    autoSellJunk = false, -- vendor: auto-sell poor (grey) quality items
+    autoSellJunkLane = false, -- vendor: also sell non-grey items in Junk lane (opt-in)
     pos = nil, -- { point, relPoint, x, y } when user-moved
     userMoved = false,
   }
@@ -143,6 +145,21 @@ function Config.EnsureDB()
     end
     db.schemaVersion = 5
     from = 5
+  end
+
+  -- 0.5.63: vendor auto-sell defaults (off).
+  if from < 6 then
+    EnsureProfile(db)
+    if type(db.profile) == "table" then
+      if db.profile.autoSellJunk == nil then
+        db.profile.autoSellJunk = false
+      end
+      if db.profile.autoSellJunkLane == nil then
+        db.profile.autoSellJunkLane = false
+      end
+    end
+    db.schemaVersion = 6
+    from = 6
   end
 
   EnsureProfile(db)

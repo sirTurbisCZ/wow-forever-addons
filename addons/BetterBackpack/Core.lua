@@ -275,12 +275,22 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
     if Layout and Layout.IsShown and Layout.IsShown() and Layout.UpdateMoney then
       Layout.UpdateMoney()
     end
+    local VJ = BetterBackpack.Modules.VendorJunk
+    if VJ and VJ.OnMerchantShow then
+      SafeCall("vendorJunk", VJ.OnMerchantShow)
+    end
     return
   end
 
   if event == "MERCHANT_CLOSED" or event == "MAIL_CLOSED" or event == "BANKFRAME_CLOSED" then
     if Context and Context.ForceRestoreDeferred then
       Context.ForceRestoreDeferred()
+    end
+    if event == "MERCHANT_CLOSED" then
+      local VJ = BetterBackpack.Modules.VendorJunk
+      if VJ and VJ.OnMerchantClosed then
+        VJ.OnMerchantClosed()
+      end
     end
     return
   end
