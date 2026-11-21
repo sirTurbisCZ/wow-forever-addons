@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 0.5.77 header Shift capture + TransferLane. 0.5.76 Shift+RMB bulk; RMB collapse.
+## Notes: 0.5.78 MERCHANT OpenAllBags to OpenOurs. 0.5.77 TransferLane.
 ## Author: tuma
-## Version: 0.5.77
+## Version: 0.5.78
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled

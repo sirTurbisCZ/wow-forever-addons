@@ -1,4 +1,9 @@
-# Playtest brief — BetterBackpack 0.5.77
+# Playtest brief — BetterBackpack 0.5.78
+
+**0.5.78**
+- Vendor **MERCHANT_SHOW**: park CombinedBags; keep BB if open.
+- **OpenAllBags** / **OpenBag** → `OpenOurs` (not native Spojený batoh after first B).
+- Shift+RMB lane bulk unchanged.
 
 **0.5.77**
 - Shift captured on header **MouseDown**; bulk on **MouseUp** + OnClick via `TransferLane`.

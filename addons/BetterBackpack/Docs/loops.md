@@ -1,7 +1,7 @@
 # BetterBackpack — smyčky a grafy
 
 **Kód:** `Core.lua`, `Modules/{Slots,Layout,Context,BulkTransfer,VendorJunk,OpenClose,Tidy,Settings,Search,Filter,CustomCategories,Trash,StackMerge,Pins,LayoutModes}.lua`  
-**Verze reference:** 0.5.77 (header Shift on MouseDown · TransferLane · 0.5.76 bulk UX · 0.5.63 lane bulk · vendor auto-sell grey · 0.5.21 Trash drop: itemID před pickup · header drop bez collapse · Junk≠Trash · 0.5.20 Trash jen click-only destroy · 0.5.19 Trash lane auto-destroy + ghosts + `/bb trashtest` · Shift/Ctrl+LMB = nativní link / dress-up / split · prázdné custom lanes kreslené jako drop target · drag-teach lanes · custom lanes v Settings · Settings v chrome bagu · broom = stejná plate jako gear/X · sticky velikost okna · broom/gear v chrome Close · bank RMB secure type2=item · SearchBoxTemplate search · gear na nativní broom plate · nativní AutoSort reparent · footer hairline · pevná velikost = plný rozbalený bag · dense grid PAD 2 · NumberFontNormalSmall counts · broom/gear jako CombinedBags · footer N/M = font peněz · fill wells default off)  
+**Verze reference:** 0.5.78 (OpenAllBags replace merchant · 0.5.77 TransferLane · 0.5.63 lane bulk · vendor auto-sell grey · 0.5.21 Trash drop: itemID před pickup · header drop bez collapse · Junk≠Trash · 0.5.20 Trash jen click-only destroy · 0.5.19 Trash lane auto-destroy + ghosts + `/bb trashtest` · Shift/Ctrl+LMB = nativní link / dress-up / split · prázdné custom lanes kreslené jako drop target · drag-teach lanes · custom lanes v Settings · Settings v chrome bagu · broom = stejná plate jako gear/X · sticky velikost okna · broom/gear v chrome Close · bank RMB secure type2=item · SearchBoxTemplate search · gear na nativní broom plate · nativní AutoSort reparent · footer hairline · pevná velikost = plný rozbalený bag · dense grid PAD 2 · NumberFontNormalSmall counts · broom/gear jako CombinedBags · footer N/M = font peněz · fill wells default off)  
 **Stabilita:** Project `docs/bag-addon-brief.md` + Scenario Maps `docs/scenarios/BetterBackpack/`  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never path C harvest).
 
@@ -11,7 +11,7 @@
 
 ```mermaid
 flowchart TD
-  B[ToggleAllBags + ToggleBackpack replaced]
+  B[ToggleAllBags + ToggleBackpack + OpenAllBags replaced]
   Bar[ToggleBag / ToggleKeyRing → Blizzard]
   B --> Rep[Replace global — skip Blizzard body]
   Rep --> Black[BlackoutAllBlizzard alpha=0 first]

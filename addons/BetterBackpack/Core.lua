@@ -286,6 +286,10 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
     if Context then
       Context.SyncSpecialMode()
     end
+    OpenClose = OC() or OpenClose
+    if OpenClose and OpenClose.OnMerchantShow then
+      SafeCall("merchantBags", OpenClose.OnMerchantShow)
+    end
     if Layout and Layout.IsShown and Layout.IsShown() and Layout.UpdateMoney then
       Layout.UpdateMoney()
     end

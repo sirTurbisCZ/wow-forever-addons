@@ -927,6 +927,10 @@ function OpenClose.RestoreBlizzardToggles()
   for i = 1, #BLIZZARD_TOGGLES do
     RestoreBlizzardToggle(BLIZZARD_TOGGLES[i])
   end
+  CaptureBlizzardOpens()
+  for i = 1, #BLIZZARD_OPENS do
+    RestoreBlizzardOpen(BLIZZARD_OPENS[i])
+  end
 end
 
 OpenClose.RestoreAllBlizzardBagToggles = OpenClose.RestoreBlizzardToggles
@@ -1246,7 +1250,7 @@ local function onBackpackToggle(...)
   onBagKey("ToggleBackpack")
 end
 
----- Open-only (OpenAllBags / OpenBag / CombinedBags fallback): open if closed;-- if open, park Blizzard + refresh focus.--
+-- Open-only (OpenAllBags / OpenBag): open if closed; if open, park Blizzard + refresh focus.
 local function onOpenIntent(bagID)
   if inOpenIntent or inBagKey or ignoringBagShow or closeBusy or openBusy then
     return
@@ -1255,9 +1259,39 @@ local function onOpenIntent(bagID)
     return
   end
   if BagBarNativeEnabled() then
-    if SessionOpen() or OursVisible() then
-      OpenClose.CloseOurs({ closeBlizzard = false, suppress = 0.05 })
+    bagID = NormalizeBagID(bagID)
+    if bagID ~= nil then
+      InvokeNativeToggleBag(bagID)
+      return
     end
+    inOpenIntent = true
+    pcall(CloseNativeCombinedBags)
+    pcall(BlackoutCombinedOnly)
+    ClearFocusBag()
+    ClearCategoryFilter()
+    if SessionOpen() or OursVisible() or openBusy then
+      ParkAllShown()
+      if Layout and Layout.Raise then
+        pcall(Layout.Raise)
+      end
+      if Layout and Layout.Relayout then
+        pcall(Layout.Relayout)
+      end
+      inOpenIntent = false
+      return
+    end
+    if OpenClose.IsReplaceSuppressed() then
+      OpenClose.ClearReplaceSuppress()
+    end
+    local t = Now()
+    if t < toggleLockUntil then
+      ParkAllShown()
+      inOpenIntent = false
+      return
+    end
+    toggleLockUntil = t + TOGGLE_LOCK
+    pcall(OpenOurs)
+    inOpenIntent = false
     return
   end
   inOpenIntent = true
@@ -1535,6 +1569,83 @@ local function HookBagBarButtons()
 end
 
 local BAG_KEY_TOGGLES = { "ToggleAllBags", "ToggleBackpack" }
+local BLIZZARD_OPENS = { "OpenAllBags", "OpenBag" }
+
+local function CaptureBlizzardOpens()
+  for i = 1, #BLIZZARD_OPENS do
+    local name = BLIZZARD_OPENS[i]
+    local key = "_blizzard_" .. name
+    if type(OpenClose[key]) ~= "function" then
+      local fn = _G[name]
+      if type(fn) == "function" then
+        OpenClose[key] = fn
+      end
+    end
+  end
+end
+
+local function RestoreBlizzardOpen(globalName)
+  local orig = OpenClose["_blizzard_" .. globalName] or OpenClose["_orig_" .. globalName]
+  if type(orig) ~= "function" then
+    return
+  end
+  _G[globalName] = orig
+  OpenClose["_orig_" .. globalName] = nil
+  OpenClose["_replaced_" .. globalName] = nil
+end
+
+local function ReplaceOpen(globalName, handler)
+  local orig = _G[globalName]
+  if type(orig) ~= "function" then
+    return false
+  end
+  if OpenClose["_replaced_" .. globalName] then
+    return true
+  end
+  OpenClose["_replaced_" .. globalName] = true
+  OpenClose["_orig_" .. globalName] = orig
+  _G[globalName] = function(...)
+    if not EnabledReplace() then
+      return orig(...)
+    end
+    local ok, err = pcall(handler, ...)
+    if not ok then
+      if BetterBackpack and BetterBackpack.RecordError then
+        BetterBackpack.RecordError(globalName, err)
+      elseif DEFAULT_CHAT_FRAME then
+        DEFAULT_CHAT_FRAME:AddMessage("|cffff5050BetterBackpack|r " .. tostring(globalName) .. ": " .. tostring(err))
+      end
+    end
+  end
+  return true
+end
+
+local function ApplyOpenAPIReplace()
+  CaptureBlizzardOpens()
+  ReplaceOpen("OpenAllBags", function()
+    onOpenIntent(nil)
+  end)
+  ReplaceOpen("OpenBag", function(bagID)
+    onOpenIntent(bagID)
+  end)
+end
+
+function OpenClose.OnMerchantShow()
+  if not EnabledReplace() then
+    return
+  end
+  pcall(CloseNativeCombinedBags)
+  pcall(BlackoutCombinedOnly)
+  if SessionOpen() or OursVisible() then
+    pcall(ParkBlizzardForOverlay)
+    if Layout and Layout.Raise then
+      pcall(Layout.Raise)
+    end
+    if Layout and Layout.Relayout then
+      pcall(Layout.Relayout)
+    end
+  end
+end
 
 local function ApplyBagKeyReplace()
   CaptureBlizzardToggles()
@@ -1544,6 +1655,7 @@ local function ApplyBagKeyReplace()
     onBagKey("ToggleAllBags")
   end)
   ReplaceToggle("ToggleBackpack", onBackpackToggle)
+  ApplyOpenAPIReplace()
 end
 
 function OpenClose.EnsureBagKeyReplace()
@@ -1572,11 +1684,13 @@ function OpenClose.InstallHooks()
     if OpenClose._replaced_ToggleBackpack then
       n = n + 1
     end
+    if OpenClose._replaced_OpenAllBags then
+      n = n + 1
+    end
     if n > 0 then
       LogHooksOnce(string.format(
-        "B → BetterBackpack XOR · %d/%d toggles · ToggleBag=native",
-        n,
-        #BAG_KEY_TOGGLES
+        "B/OpenAllBags → BB · %d toggles · OpenBag hooked",
+        n
       ))
     else
       LogHooksOnce("bag-key toggles missing · /bb only")
