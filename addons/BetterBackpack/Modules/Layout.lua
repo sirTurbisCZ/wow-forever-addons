@@ -1,7 +1,7 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.3.6).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.3.9).
   Forever: never SetToplevel (ADDON_ACTION_BLOCKED).
-  Title chrome: reparent native BagItemAutoSortButton + CombinedBags filter/PortraitButton.
+  Title chrome: native BagItemAutoSortButton + settings twin (AutoSort-sized); footer player+reagent.
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -1084,8 +1084,8 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local CHROME_VER = 14 -- reparent native BagItemAutoSort + CombinedBags filter
-local CHROME_GAP = 2
+local CHROME_VER = 15 -- native AutoSort + visible settings twin; align with Close
+local CHROME_GAP = 4
 local chromeLogged = false
 local customChromeHidden = false
 
@@ -1114,7 +1114,7 @@ local function HideCustomChromeOnce()
   end
 end
 
-local function LogNativeChromeOnce(sortBtn, filterBtn, close)
+local function LogChromeOnce(sortBtn, settingsBtn, close)
   if chromeLogged then
     return
   end
@@ -1123,16 +1123,17 @@ local function LogNativeChromeOnce(sortBtn, filterBtn, close)
     if not b then
       return "nil"
     end
-    local w, h = 0, 0
+    local w, h, name = 0, 0, "?"
     pcall(function()
       w, h = b:GetWidth(), b:GetHeight()
+      name = (b.GetName and b:GetName()) or name
     end)
-    return string.format("%s %.1fx%.1f", b.GetName and b:GetName() or "?", w or 0, h or 0)
+    return string.format("%s %.0fx%.0f", tostring(name), w or 0, h or 0)
   end
   local msg = string.format(
-    "|cff88ff88BetterBackpack|r native chrome sort=%s filter=%s close=%s",
+    "|cff88ff88BetterBackpack|r chrome sort=%s settings=%s close=%s",
     wh(sortBtn),
-    wh(filterBtn),
+    wh(settingsBtn),
     wh(close)
   )
   if DEFAULT_CHAT_FRAME then
@@ -1140,48 +1141,127 @@ local function LogNativeChromeOnce(sortBtn, filterBtn, close)
   end
 end
 
--- Resolve Blizzard CombinedBags filter control (prefer visible Button over DropDown MENU).
-local function ResolveNativeFilterButton()
-  local combined = ContainerFrameCombinedBags
-  local candidates = {
-    _G.BagItemFilterDropdown,
-    _G.BagItemFilterDropDown,
-    _G.BagItemFilterButton,
-    combined and combined.PortraitButton,
-    combined and combined.FilterButton,
-    combined and combined.FilterDropDown,
-    _G.ContainerFrameCombinedBagsFilterDropDown,
-    _G.ContainerFrame1FilterDropDown,
-    _G.ContainerFrameFilterDropDown,
-  }
-  for i = 1, #candidates do
-    local f = candidates[i]
-    if f and f.SetParent and f.ClearAllPoints then
-      local ot
-      pcall(function()
-        ot = f.GetObjectType and f:GetObjectType()
-      end)
-      -- Prefer real Buttons (PortraitButton / filter gear) over invisible MENU frames.
-      if ot == "Button" or ot == "CheckButton" or ot == "DropdownButton" then
-        return f
+-- Measure BagItemAutoSortButton (native broom) — settings twin uses same pixels.
+local function MeasureNativeSort(sortBtn, close)
+  local w, h = 28, 26
+  if sortBtn then
+    pcall(function()
+      sortBtn:Show()
+      local cw, ch = sortBtn:GetWidth(), sortBtn:GetHeight()
+      if type(cw) == "number" and cw > 0 then
+        w = cw
       end
-    end
+      if type(ch) == "number" and ch > 0 then
+        h = ch
+      end
+    end)
   end
-  -- Fallback: first frame that can be reparented.
-  for i = 1, #candidates do
-    local f = candidates[i]
-    if f and f.SetParent and f.ClearAllPoints then
-      return f
-    end
+  if (not sortBtn or w < 8) and close then
+    pcall(function()
+      local cw, ch = close:GetWidth(), close:GetHeight()
+      if type(cw) == "number" and cw > 0 then
+        w = cw
+      end
+      if type(ch) == "number" and ch > 0 then
+        h = ch
+      end
+    end)
   end
-  return nil
+  return w, h
 end
 
 --[[
-  Borrow Blizzard chrome — DO NOT create custom gear/broom.
-  BagItemAutoSortButton = broom (native size/textures).
-  PortraitButton / FilterDropDown = bag filter (native).
-  Reparent while ours is shown; CombinedBags UpdateSearchBox may steal back — re-borrow each Ensure.
+  Visible settings gear — PortraitButton cannot live in the title row (portrait-only).
+  One durable button, sized exactly to BagItemAutoSortButton, opens BB Settings.
+]]
+local function EnsureSettingsButton(frame, sortBtn, close, w, h)
+  local btn = frame.settingsBtn
+  if btn and btn._bbSettingsChrome then
+    pcall(function()
+      btn:SetParent(frame)
+    end)
+  else
+    btn = _G.BetterBackpackSettingsBtn15
+    if not (btn and btn._bbSettingsChrome) then
+      btn = CreateFrame("Button", "BetterBackpackSettingsBtn15", frame)
+      btn._bbSettingsChrome = true
+      pcall(function()
+        btn:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
+        local nt = btn:GetNormalTexture()
+        if nt then
+          nt:ClearAllPoints()
+          nt:SetAllPoints()
+          nt:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        end
+        btn:SetPushedTexture("Interface\\Buttons\\UI-OptionsButton")
+        local pt = btn:GetPushedTexture()
+        if pt then
+          pt:ClearAllPoints()
+          pt:SetAllPoints()
+          pt:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+          pt:SetVertexColor(0.85, 0.85, 0.85)
+        end
+        btn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+        local ht = btn:GetHighlightTexture()
+        if ht then
+          ht:ClearAllPoints()
+          ht:SetAllPoints()
+        end
+      end)
+      btn:SetScript("OnEnter", function(self)
+        if GameTooltip then
+          GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+          GameTooltip:SetText("Nastavení")
+          GameTooltip:AddLine("Kategorie zapnout / vypnout.", 0.7, 0.7, 0.7, true)
+          GameTooltip:Show()
+        end
+      end)
+      btn:SetScript("OnLeave", function()
+        if GameTooltip then
+          GameTooltip:Hide()
+        end
+      end)
+      btn:SetScript("OnClick", function()
+        local S = BetterBackpack.Modules.Settings
+        if S and S.Toggle then
+          S.Toggle()
+        end
+      end)
+    else
+      pcall(function()
+        btn:SetParent(frame)
+      end)
+    end
+  end
+  frame.settingsBtn = btn
+  pcall(function()
+    btn:ClearAllPoints()
+    if sortBtn then
+      btn:SetPoint("RIGHT", sortBtn, "LEFT", -CHROME_GAP, 0)
+    elseif close then
+      btn:SetPoint("RIGHT", close, "LEFT", -CHROME_GAP, 0)
+    else
+      btn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -40, -4)
+    end
+    btn:SetSize(w, h)
+    btn:SetWidth(w)
+    btn:SetHeight(h)
+    btn:SetFrameLevel((frame:GetFrameLevel() or 1) + 510)
+    btn:SetAlpha(1)
+    btn:EnableMouse(true)
+    btn:Show()
+    local nt = btn:GetNormalTexture()
+    if nt then
+      nt:ClearAllPoints()
+      nt:SetAllPoints()
+    end
+  end)
+  return btn
+end
+
+--[[
+  Native broom + visible settings twin, title-row aligned with Close.
+  Do not reparent PortraitButton (invisible / wrong in title strip).
 ]]
 local function BorrowNativeChrome(frame, close)
   if not frame then
@@ -1195,12 +1275,11 @@ local function BorrowNativeChrome(frame, close)
       sortBtn:SetParent(frame)
       sortBtn:ClearAllPoints()
       if close then
+        -- Title-row: sit left of X, vertically centered on Close.
         sortBtn:SetPoint("RIGHT", close, "LEFT", -CHROME_GAP, 0)
       else
-        -- Blizzard CombinedBags default when no Close anchor.
-        sortBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -9, -34)
+        sortBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -9, -4)
       end
-      -- Never SetSize — keep Blizzard textures/hitbox.
       sortBtn:SetFrameLevel((frame:GetFrameLevel() or 1) + 500)
       sortBtn:SetAlpha(1)
       sortBtn:EnableMouse(true)
@@ -1208,35 +1287,26 @@ local function BorrowNativeChrome(frame, close)
     end)
   end
 
-  local filterBtn = ResolveNativeFilterButton()
-  if filterBtn then
+  -- Measure native broom before/after reparent; keep Blizzard size (do not stretch to Close).
+  local w, h = MeasureNativeSort(sortBtn, close)
+  if sortBtn then
     pcall(function()
-      filterBtn:SetParent(frame)
-      filterBtn:ClearAllPoints()
-      if sortBtn then
-        filterBtn:SetPoint("RIGHT", sortBtn, "LEFT", -CHROME_GAP, 0)
-      elseif close then
-        filterBtn:SetPoint("RIGHT", close, "LEFT", -CHROME_GAP, 0)
-      else
-        filterBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -40, -34)
-      end
-      filterBtn:SetFrameLevel((frame:GetFrameLevel() or 1) + 510)
-      filterBtn:SetAlpha(1)
-      filterBtn:EnableMouse(true)
-      filterBtn:Show()
+      sortBtn:SetSize(w, h)
+      sortBtn:SetWidth(w)
+      sortBtn:SetHeight(h)
     end)
   end
 
-  frame.sortBtn = sortBtn
-  frame.settingsBtn = filterBtn
+  local settingsBtn = EnsureSettingsButton(frame, sortBtn, close, w, h)
 
-  LogNativeChromeOnce(sortBtn, filterBtn, close)
-  return sortBtn, filterBtn
+  frame.sortBtn = sortBtn
+  frame.settingsBtn = settingsBtn
+  LogChromeOnce(sortBtn, settingsBtn, close)
+  return sortBtn, settingsBtn
 end
 
 --[[
   Assign into forward-declared EnsureTitleChrome (must NOT use `local function` here).
-  Native CombinedBags buttons only — no custom gear/broom.
 ]]
 EnsureTitleChrome = function(frame)
   if not frame then
@@ -1268,7 +1338,8 @@ EnsureTitleChrome = function(frame)
       tt:ClearAllPoints()
       local anchor = frame.TitleContainer or frame
       tt:SetPoint("LEFT", anchor, "LEFT", 10, 0)
-      tt:SetPoint("RIGHT", frame, "RIGHT", -96, 0)
+      -- Room for settings + broom + Close on the right.
+      tt:SetPoint("RIGHT", frame, "RIGHT", -100, 0)
       if tt.SetJustifyH then
         tt:SetJustifyH("LEFT")
       end
@@ -1277,7 +1348,6 @@ EnsureTitleChrome = function(frame)
   end)
 
   local tidy, gear = BorrowNativeChrome(frame, close)
-  -- Keep module upvalues in sync for DiagnoseFrame.
   sortBtn = tidy
   settingsBtn = gear
 

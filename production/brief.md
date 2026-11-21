@@ -1,7 +1,9 @@
-# Playtest brief — BetterBackpack 0.3.8
+# Playtest brief — BetterBackpack 0.3.9
 
-**Bug:** footer 51/62 missing reagents; Materials empty. 62+8 reagent = 70.
+**Keep:** footer 62/70 (player+reagent) — do not touch count.
 
-**Fix:** `InventoryBagRanges` = bags 0..NUM_BAG_SLOTS + reagent (API or free+occupied probe). Footer + CollectBuckets both use it. Chat: `… R=8 → used/total=N/70`.
+**Bug:** only broom+X; no settings gear; chrome ugly/misaligned.
 
-**Done when:** `/reload` → footer **/70** · Materials shows reagent-bag items.
+**Fix:** keep native `BagItemAutoSortButton` left of Close; add visible settings twin sized to AutoSort (opens BB Nastavení). PortraitButton not reparented.
+
+**Done when:** `/reload` → gear | broom | X aligned · footer still ~/70.
