@@ -1,7 +1,5 @@
-# Playtest brief — BetterBackpack 0.1.4
+# Playtest brief — BetterBackpack 0.1.5
 
-**Goal:** One B close; CombinedBags-matching chrome.
+**Goal:** Classic coin money; slots `N/M` only; Sort visible; bag-icon hover highlights that bag’s items.
 
-**Avoid:** InOpenGrace on Toggle close; OpenOurs from CombinedBags OnShow; SetToplevel.
-
-**Done when:** `/reload` → v0.1.4; B opens CombinedBags-look panel; **one** B closes.
+**Done when:** `/reload` → `loaded v0.1.5` · money shows coin icons · bottom-left `64/70` style · Sort works · hover bag bar glows matching items · one B close still OK.

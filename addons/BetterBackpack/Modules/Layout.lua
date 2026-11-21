@@ -1,6 +1,7 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.1.4).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.1.5).
   Forever: never SetToplevel (ADDON_ACTION_BLOCKED).
+  Money: SmallMoneyFrameTemplate coins. Slots: N/M only. Bag-bar hover glow.
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -43,9 +44,11 @@ local CLASS = {
   Key = 13, Miscellaneous = 15, Glyph = 16,
 }
 
-local main, content, freeFs, moneyFs, emptyLabel
+local main, content, freeFs, moneyFs, emptyLabel, sortBtn
 local sectionFrames = {}
 local layoutBusy = false
+local bagHoverHooked = false
+local bagBarHoverHooked = {}
 
 local function SafeNum(v, fallback)
   return Slots.SafeNum(v, fallback)
@@ -314,6 +317,16 @@ local function UpdateMoney()
       copper = SafeNum(m, 0) or 0
     end
   end
+  if main and main.moneyFrame and MoneyFrame_Update then
+    local name
+    pcall(function()
+      name = main.moneyFrame:GetName()
+    end)
+    if name then
+      pcall(MoneyFrame_Update, name, copper)
+      return
+    end
+  end
   if moneyFs then
     moneyFs:SetText(string.format(
       "%dg %ds %dc",
@@ -324,6 +337,7 @@ local function UpdateMoney()
   end
 end
 
+-- Occupied/total only — no "Free N" label.
 local function UpdateFreeSpace()
   if not freeFs then
     return
@@ -339,8 +353,217 @@ local function UpdateFreeSpace()
       end
     end
   end
-  freeFs:SetTextColor(0.8, 0.8, 0.8)
-  freeFs:SetText(string.format("Free %d  ·  %d/%d", free, total - free, total))
+  freeFs:SetTextColor(0.85, 0.85, 0.85)
+  freeFs:SetText(string.format("%d/%d", total - free, total))
+end
+
+local function BagsMatchForHighlight(a, b)
+  if a == nil or b == nil then
+    return false
+  end
+  if Slots.IsReagentBag(a) and Slots.IsReagentBag(b) then
+    return true
+  end
+  local na, nb = SafeNum(a, nil), SafeNum(b, nil)
+  return na ~= nil and nb ~= nil and na == nb
+end
+
+local function EnsureBagIndicator(btn)
+  if not btn then
+    return nil
+  end
+  local ind = btn.BagIndicator
+  if not ind then
+    ind = btn:CreateTexture(nil, "OVERLAY", nil, 7)
+    btn.BagIndicator = ind
+  end
+  pcall(function()
+    local ok = pcall(ind.SetAtlas, ind, "bags-glow-white", true)
+    if not ok then
+      ind:SetColorTexture(0.35, 0.75, 1, 0.45)
+    end
+    if ind.SetBlendMode then
+      ind:SetBlendMode("ADD")
+    end
+    ind:ClearAllPoints()
+    ind:SetAllPoints(btn)
+  end)
+  return ind
+end
+
+local function ShowBagIndicator(ind, show)
+  if not ind then
+    return
+  end
+  pcall(function()
+    if ind.SetShown then
+      ind:SetShown(show and true or false)
+    elseif show then
+      ind:Show()
+    else
+      ind:Hide()
+    end
+  end)
+end
+
+local function SetBagMatchHighlight(bagID, highlight)
+  pcall(function()
+    Slots.ForEach(function(btn)
+      if not btn or (btn:GetAlpha() or 0) < 0.5 then
+        ShowBagIndicator(btn and btn.BagIndicator, false)
+        return
+      end
+      local show = highlight and BagsMatchForHighlight(btn._bbBag, bagID)
+      local ind = EnsureBagIndicator(btn)
+      ShowBagIndicator(ind, show)
+    end)
+  end)
+end
+
+local function ClearBagMatchGlows()
+  pcall(function()
+    Slots.ForEach(function(btn)
+      if btn and btn.BagIndicator then
+        ShowBagIndicator(btn.BagIndicator, false)
+      end
+    end)
+  end)
+end
+
+local function ResolveBagBarBagID(btn, forcedBag)
+  if forcedBag ~= nil then
+    return forcedBag
+  end
+  if not btn then
+    return nil
+  end
+  local bagID
+  pcall(function()
+    if btn.GetBagID then
+      bagID = btn:GetBagID()
+    elseif btn.bagID ~= nil then
+      bagID = btn.bagID
+    elseif btn.id ~= nil then
+      bagID = btn.id
+    end
+  end)
+  return bagID
+end
+
+local function HookOneBagBarButton(btn, forcedBag)
+  if not btn or bagBarHoverHooked[btn] then
+    return
+  end
+  bagBarHoverHooked[btn] = true
+  btn:HookScript("OnEnter", function(self)
+    if not Layout.IsShown() then
+      return
+    end
+    local bagID = ResolveBagBarBagID(self, forcedBag)
+    if bagID ~= nil then
+      SetBagMatchHighlight(bagID, true)
+    end
+  end)
+  btn:HookScript("OnLeave", function()
+    ClearBagMatchGlows()
+  end)
+end
+
+local function HookBagBarButtons()
+  local reb = Slots.ReagentBagIndex and Slots.ReagentBagIndex()
+  HookOneBagBarButton(_G.CharacterReagentBag0Slot, reb)
+  HookOneBagBarButton(_G.ReagentBagSlot, reb)
+  HookOneBagBarButton(_G.MainMenuBarBagButton5, reb)
+  HookOneBagBarButton(_G.MainMenuBarBackpackButton, 0)
+  for i = 0, 3 do
+    HookOneBagBarButton(_G["CharacterBag" .. i .. "Slot"])
+    HookOneBagBarButton(_G["MainMenuBarBagButton" .. (i + 1)])
+  end
+  for _, rootName in ipairs({ "BagsBar", "MainMenuBarBagButtons", "MicroButtonAndBagsBar" }) do
+    local root = _G[rootName]
+    if root and root.GetChildren then
+      local kids = { root:GetChildren() }
+      for i = 1, #kids do
+        HookOneBagBarButton(kids[i])
+      end
+    end
+  end
+  local combined = ContainerFrameCombinedBags
+  if combined then
+    if combined.PortraitButton then
+      HookOneBagBarButton(combined.PortraitButton, 0)
+    end
+    local list = combined.BagSlots or combined.bagButtons or combined.Bags
+    if type(list) == "table" then
+      for _, slotBtn in pairs(list) do
+        HookOneBagBarButton(slotBtn)
+      end
+    end
+  end
+end
+
+local function InstallBagHoverHighlight()
+  HookBagBarButtons()
+  if bagHoverHooked then
+    return
+  end
+  bagHoverHooked = true
+  local combined = ContainerFrameCombinedBags
+  if combined and combined.SetItemsMatchingBagHighlighted then
+    pcall(function()
+      hooksecurefunc(combined, "SetItemsMatchingBagHighlighted", function(_, bagID, highlight)
+        if not Layout.IsShown() then
+          return
+        end
+        if highlight then
+          SetBagMatchHighlight(bagID, true)
+        else
+          ClearBagMatchGlows()
+        end
+      end)
+    end)
+  end
+  if combined and combined.OnBagSlotLeave then
+    pcall(function()
+      hooksecurefunc(combined, "OnBagSlotLeave", function()
+        ClearBagMatchGlows()
+      end)
+    end)
+  end
+  if EventRegistry and EventRegistry.RegisterCallback then
+    pcall(function()
+      local function slotOf(a, b)
+        if type(b) == "table" and (b.GetBagID or b.bagID ~= nil) then
+          return b
+        end
+        if type(a) == "table" and (a.GetBagID or a.bagID ~= nil) then
+          return a
+        end
+      end
+      EventRegistry:RegisterCallback("BagSlot.OnEnter", function(a, b)
+        if not Layout.IsShown() then
+          return
+        end
+        local slot = slotOf(a, b)
+        local bagID = ResolveBagBarBagID(slot)
+        if bagID == nil and slot then
+          local n = ""
+          pcall(function()
+            n = slot.GetName and slot:GetName() or ""
+          end)
+          if type(n) == "string" and n:lower():find("reagent", 1, true) then
+            bagID = Slots.ReagentBagIndex and Slots.ReagentBagIndex()
+          end
+        end
+        if bagID ~= nil then
+          SetBagMatchHighlight(bagID, true)
+        end
+      end)
+      EventRegistry:RegisterCallback("BagSlot.OnLeave", function()
+        ClearBagMatchGlows()
+      end)
+    end)
+  end
 end
 
 local function EnsureSection(key)
@@ -663,6 +886,10 @@ function Layout.EnsureMain()
   if main then
     KillPortrait(main)
     ApplyCombinedBagsChrome(main)
+    InstallBagHoverHighlight()
+    if sortBtn then
+      sortBtn:Show()
+    end
     return main
   end
 
@@ -737,32 +964,62 @@ function Layout.EnsureMain()
     end)
   end
 
-  local sortBtn
+  -- Sort (title bar) — always create, template optional.
   pcall(function()
-    sortBtn = CreateFrame("Button", nil, main, "UIPanelButtonTemplate")
+    sortBtn = CreateFrame("Button", "BetterBackpackSortButton", main, "UIPanelButtonTemplate")
   end)
-  if sortBtn then
-    sortBtn:SetSize(56, 20)
-    if close then
-      sortBtn:SetPoint("TOPRIGHT", close, "TOPLEFT", -6, -6)
-    else
-      sortBtn:SetPoint("TOPRIGHT", -28, -8)
+  if not sortBtn then
+    sortBtn = CreateFrame("Button", "BetterBackpackSortButton", main)
+    sortBtn:SetSize(56, 22)
+    local fs = sortBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    fs:SetPoint("CENTER")
+    fs:SetText("Sort")
+    sortBtn:SetFontString(fs)
+    local bg = sortBtn:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(0.15, 0.15, 0.18, 0.9)
+  end
+  sortBtn:SetSize(56, 22)
+  if close then
+    sortBtn:SetPoint("TOPRIGHT", close, "TOPLEFT", -6, -6)
+  else
+    sortBtn:SetPoint("TOPRIGHT", -28, -8)
+  end
+  sortBtn:SetText("Sort")
+  sortBtn:SetFrameLevel((main:GetFrameLevel() or 1) + 20)
+  sortBtn:Show()
+  sortBtn:SetScript("OnClick", function()
+    local Tidy = BetterBackpack.Modules.Tidy
+    if Tidy and Tidy.SortBags then
+      Tidy.SortBags()
     end
-    sortBtn:SetText("Sort")
-    sortBtn:SetScript("OnClick", function()
-      local Tidy = BetterBackpack.Modules.Tidy
-      if Tidy and Tidy.SortBags then
-        Tidy.SortBags()
+  end)
+  main.sortBtn = sortBtn
+
+  -- Occupied/total (left) — no "Free N"
+  freeFs = main:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  freeFs:SetPoint("BOTTOMLEFT", 14, 12)
+  freeFs:SetJustifyH("LEFT")
+  freeFs:SetText("—/—")
+  main.freeFs = freeFs
+
+  -- Classic coin money (right)
+  local moneyFrame
+  pcall(function()
+    moneyFrame = CreateFrame("Frame", "BetterBackpackMoneyFrame", main, "SmallMoneyFrameTemplate")
+  end)
+  if moneyFrame then
+    moneyFrame:SetPoint("BOTTOMRIGHT", main, "BOTTOMRIGHT", -8, 10)
+    pcall(function()
+      if MoneyFrame_SetType then
+        MoneyFrame_SetType(moneyFrame, "STATIC")
       end
     end)
+    main.moneyFrame = moneyFrame
+  else
+    moneyFs = main:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    moneyFs:SetPoint("BOTTOMRIGHT", -14, 12)
   end
-
-  freeFs = main:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  freeFs:SetPoint("BOTTOMLEFT", 14, 10)
-  freeFs:SetText("Free —")
-
-  moneyFs = main:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-  moneyFs:SetPoint("BOTTOMRIGHT", -14, 10)
 
   content = CreateFrame("Frame", nil, main)
   content:EnableMouse(false)
@@ -778,6 +1035,7 @@ function Layout.EnsureMain()
   emptyLabel:SetPoint("TOPLEFT", 4, -4)
   emptyLabel:Hide()
 
+  InstallBagHoverHighlight()
   PlaceOnScreen()
   main:Hide()
   return main
@@ -808,6 +1066,11 @@ function Layout.Show()
   PlaceOnScreen()
   KillPortrait(main)
   ApplyCombinedBagsChrome(main)
+  InstallBagHoverHighlight()
+  if sortBtn then
+    sortBtn:Show()
+    sortBtn:SetFrameLevel((main:GetFrameLevel() or 1) + 20)
+  end
   main:Show()
   pcall(function()
     main:Raise()
@@ -817,6 +1080,7 @@ function Layout.Show()
   main:Show()
   PlaceOnScreen()
   ApplyCombinedBagsChrome(main)
+  UpdateMoney()
   pcall(function()
     main:Raise()
   end)
@@ -824,6 +1088,7 @@ function Layout.Show()
 end
 
 function Layout.Hide()
+  ClearBagMatchGlows()
   if main then
     main:Hide()
   end
