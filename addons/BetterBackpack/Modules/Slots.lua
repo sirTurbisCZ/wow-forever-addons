@@ -359,6 +359,46 @@ local function ResolveStackCount(info, bag, slot)
   return 1
 end
 
+local function ResolveIconTexture(info, bag, slot)
+  if type(info) == "table" then
+    local file = info.iconFileID
+    if file ~= nil and not IsSecret(file) then
+      return file
+    end
+    local id = info.itemID
+    if type(id) == "number" and not IsSecret(id) then
+      if C_Item and C_Item.GetItemIconByID then
+        local ok, tex = pcall(C_Item.GetItemIconByID, id)
+        if ok and tex ~= nil and not IsSecret(tex) then
+          return tex
+        end
+      end
+      if GetItemIcon then
+        local ok, tex = pcall(GetItemIcon, id)
+        if ok and tex ~= nil and not IsSecret(tex) then
+          return tex
+        end
+      end
+    end
+  end
+  -- Legacy GetContainerItemInfo texture (non-secret string/number).
+  if GetContainerItemInfo then
+    local ok, a = pcall(GetContainerItemInfo, bag, slot)
+    if ok then
+      if type(a) == "string" and a ~= "" and not IsSecret(a) then
+        return a
+      end
+      if type(a) == "number" and not IsSecret(a) then
+        return a
+      end
+      if type(a) == "table" and a.iconFileID ~= nil and not IsSecret(a.iconFileID) then
+        return a.iconFileID
+      end
+    end
+  end
+  return nil
+end
+
 function Slots.SyncVisual(btn, bag, slot)
   if not btn then
     return
@@ -371,8 +411,9 @@ function Slots.SyncVisual(btn, bag, slot)
         info = res
       end
     end
-    if not info then
-      local icon = btn.icon or btn.Icon
+    local icon = btn.icon or btn.Icon
+    local tex = ResolveIconTexture(info, bag, slot)
+    if not info and not tex then
       if icon then
         icon:SetTexture(nil)
       end
@@ -384,11 +425,15 @@ function Slots.SyncVisual(btn, bag, slot)
       Slots.SyncCooldown(btn, bag, slot)
       return
     end
-    local icon = btn.icon or btn.Icon
-    if icon and info.iconFileID and not IsSecret(info.iconFileID) then
-      icon:SetTexture(info.iconFileID)
-    elseif icon and not info.iconFileID then
-      icon:SetTexture(nil)
+    if icon then
+      if tex ~= nil then
+        icon:SetTexture(tex)
+        icon:SetAlpha(1)
+        icon:Show()
+      elseif not info or not info.iconFileID then
+        icon:SetTexture(nil)
+      end
+      -- secret iconFileID with no itemID fallback: leave prior tex; never SetTexture(secret)
     end
     local count = ResolveStackCount(info, bag, slot)
     local fs = EnsureCountFs(btn)
@@ -816,16 +861,26 @@ function Slots.Place(btn, parent, x, y, shown)
     shown = true
   end
   pcall(function()
+    if parent then
+      parent:Show()
+    end
     btn:SetParent(parent or EnsureHost())
     btn:ClearAllPoints()
     btn:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -y)
     btn:SetSize(SLOT, SLOT)
-    btn:SetFrameLevel((parent:GetFrameLevel() or 1) + 10)
+    -- Stay above ButtonFrameTemplate Inset.Bg (chrome raised close/gear to 500+).
+    local base = (parent and parent.GetFrameLevel and parent:GetFrameLevel()) or 1
+    btn:SetFrameLevel(base + 50)
     local mouseOn = shown and (btn._bbSecure or not inCombat)
     btn:EnableMouse(mouseOn and true or false)
     if shown then
       btn:SetAlpha(1)
       btn:Show()
+      local ic = btn.icon or btn.Icon
+      if ic then
+        ic:SetAlpha(1)
+        ic:Show()
+      end
       Slots.SyncVisual(btn, btn._bbBag, btn._bbSlot)
       if btn._bbSecure and not inCombat then
         Slots.SyncAttrs(btn, btn._bbBag, btn._bbSlot)

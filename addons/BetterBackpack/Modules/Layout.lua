@@ -1,8 +1,7 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.2.7).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.2.8).
   Forever: never SetToplevel (ADDON_ACTION_BLOCKED).
-  Native chrome: AutoSort broom + visible gear left of it; footer used/total N/M.
-  Hug-content height; bag-bar focus highlight via SetBagFocus.
+  Content layer above Inset.Bg so slot icons paint; native chrome + N/M.
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -782,16 +781,29 @@ local function DoLayout()
     -- Always from main (not Inset) — Inset stretch left empty black below Other.
     content:SetPoint("TOPLEFT", main, "TOPLEFT", INSET_X, -TOP_CHROME)
     content:SetSize(maxW, contentH)
+    content:Show()
+    -- Must sit above ButtonFrameTemplate Inset.Bg or lanes look empty (counts only).
+    local mainLvl = main:GetFrameLevel() or 200
+    pcall(function()
+      if main.Inset then
+        main.Inset:SetFrameLevel(math.max(1, mainLvl + 1))
+        main.Inset:EnableMouse(false)
+      end
+    end)
+    content:SetFrameLevel(mainLvl + 40)
     main:SetSize(width, height)
     if main.footer then
       main.footer:ClearAllPoints()
       main.footer:SetPoint("BOTTOMLEFT", main, "BOTTOMLEFT", 10, 6)
       main.footer:SetPoint("BOTTOMRIGHT", main, "BOTTOMRIGHT", -10, 6)
-      main.footer:SetFrameLevel((main:GetFrameLevel() or 1) + 5)
+      main.footer:SetFrameLevel(mainLvl + 5)
     end
     if main.moneyFrame then
       main.moneyFrame:ClearAllPoints()
       main.moneyFrame:SetPoint("BOTTOMRIGHT", main, "BOTTOMRIGHT", -4, 6)
+      pcall(function()
+        main.moneyFrame:SetFrameLevel(mainLvl + 6)
+      end)
     end
     -- Shrink Inset so its Bg does not paint empty under content.
     pcall(function()
@@ -1452,6 +1464,14 @@ function Layout.EnsureMain()
   contentFrame:EnableMouse(false)
   contentFrame:SetPoint("TOPLEFT", built, "TOPLEFT", INSET_X, -TOP_CHROME)
   contentFrame:SetSize(100, 100)
+  contentFrame:SetFrameLevel((built:GetFrameLevel() or 200) + 40)
+  contentFrame:Show()
+  pcall(function()
+    if built.Inset then
+      built.Inset:SetFrameLevel((built:GetFrameLevel() or 200) + 1)
+      built.Inset:EnableMouse(false)
+    end
+  end)
 
   local empty = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   empty:SetPoint("TOPLEFT", 4, -4)

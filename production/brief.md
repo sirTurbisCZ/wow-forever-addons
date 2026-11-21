@@ -1,5 +1,7 @@
-# Playtest brief — BetterBackpack 0.2.7
+# Playtest brief — BetterBackpack 0.2.8
 
-**Fix:** visible gear (`UI-OptionsButton`) left of AutoSort broom; footer classic `used/total` (e.g. 78/102) with fill% colors — no `(free)` prefix.
+**Bug:** category counts OK, item icons blank (Inset.Bg above content / secret iconFileID).
 
-**Done when:** `/reload` → `loaded v0.2.7` · gear + broom both visible · N/M like 78/102 green→red · bag click XOR still works.
+**Fix:** content frameLevel above Inset; slot Place +50; SyncVisual icon via itemID/GetItemIcon when iconFileID secret.
+
+**Done when:** `/reload` → `loaded v0.2.8` · lanes show real item icons · gear/broom/N/M still OK.
