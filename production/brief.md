@@ -1,4 +1,9 @@
-# Playtest brief — BetterBackpack 0.5.50 (B debounce + trace)
+# Playtest brief — BetterBackpack 0.5.51 (bar vs combined)
+
+**0.5.51**
+- **B + main backpack icon** → BetterBackpack **combined** (all bags), XOR close.
+- **Bag-bar slots** (1–4, reagent, keyring) → **single bag** only: native ContainerFrame when `bagBarNative`, else BB bag-focus filter XOR.
+- `ToggleBag` replaced: closes overlay then native single; `ToggleBackpack`/`ToggleAllBags` → combined.
 
 **0.5.50**
 - **B stuck:** Twin toggle (AllBags+Backpack) debounced 140ms; `BagKeyChat` logs every branch in chat. `ReleaseStaleBusy` if invisible but busy. ToggleBackpack → `onBackpackToggle` (bag-bar native arm). CloseOurs pcall + always clears `closeBusy`.
