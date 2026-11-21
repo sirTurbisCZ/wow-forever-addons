@@ -1,7 +1,7 @@
 --[[
-  BetterBackpack.OpenClose — B = OpenOurs/CloseOurs; bar = orig Blizzard (0.5.37)
+  BetterBackpack.OpenClose — only ToggleAllBags replaced (0.5.38)
 
-  ToggleAllBags / ToggleBackpack / ToggleBag / ToggleKeyRing are *replaced*
+  Only ToggleAllBags is *replaced* (BetterBackpack combined). ToggleBag/ToggleBackpack/ToggleKeyRing stay Blizzard.
   (not hooksecurefunc). Forever Toggle* bodies call Open*/Close* first; a
   post-hook XOR then closed what we just opened (or reopened after close) —
   open/close thrash that froze the client on B.
@@ -639,6 +639,7 @@ end
 function OpenClose.ShutdownToBlizzard()
   bagsOpen = false
   pulseToken = pulseToken + 1
+  OpenClose.RestoreBlizzardToggles()
   OpenClose.SuppressReplace(2.0)
   BetterBackpack._bbClosing = true
   if Layout and Layout.Hide then
@@ -731,6 +732,24 @@ end
   Replace Toggle* instead of hooksecurefunc. Post-hooks run AFTER Blizzard
   Open*/Close* (and our Open*/Close* hooks), so XOR always fought the body.
 ]]
+local function RestoreBlizzardToggle(globalName)
+  local orig = OpenClose["_orig_" .. globalName]
+  if type(orig) ~= "function" then
+    orig = _G[globalName]
+  end
+  if type(orig) == "function" then
+    _G[globalName] = orig
+    OpenClose["_orig_" .. globalName] = orig
+  end
+  OpenClose["_replaced_" .. globalName] = nil
+end
+
+function OpenClose.RestoreBlizzardToggles()
+  RestoreBlizzardToggle("ToggleBag")
+  RestoreBlizzardToggle("ToggleBackpack")
+  RestoreBlizzardToggle("ToggleKeyRing")
+end
+
 local function ReplaceToggle(globalName, handler)
   local orig = _G[globalName]
   if type(orig) ~= "function" then
@@ -1272,6 +1291,9 @@ local function HookBackpackBarMouseDown()
 end
 
 local function HookBagBarButtons()
+  if BagBarNativeEnabled() then
+    return 0
+  end
   HookBackpackBarMouseDown()
   local hooked = 0
   local names = {
@@ -1328,38 +1350,33 @@ function OpenClose.InstallHooks()
     return
   end
 
-  -- Replace Toggle* (do not hooksecurefunc): post-hooks fight Open*/Close* inside the body.
+  -- Nuclear 0.5.38: Blizzard owns bag bar; we only own combined (B / ToggleAllBags).
+  OpenClose.RestoreBlizzardToggles()
   ReplaceToggle("ToggleAllBags", onBagKey)
-  ReplaceToggle("ToggleBackpack", onBackpackToggle)
-  ReplaceToggle("ToggleBag", function(id)
-    onBagToggle(id, "ToggleBag")
-  end)
-  ReplaceToggle("ToggleKeyRing", onKeyRingToggle)
 
-  if type(OpenKeyRing) == "function" then
-    hooksecurefunc("OpenKeyRing", function()
-      if BagBarNativeEnabled() then
-        return
-      end
-      if ignoringBagShow or OpenClose._nativeOpening or not EnabledReplace() then
-        return
-      end
-    end)
+  local function blizzardNativeOpen()
+    return BagBarNativeEnabled()
   end
 
   if type(OpenAllBags) == "function" then
     hooksecurefunc("OpenAllBags", function()
+      if blizzardNativeOpen() then
+        return
+      end
       onOpenIntent(nil)
     end)
   end
   if type(OpenBackpack) == "function" then
     hooksecurefunc("OpenBackpack", function()
+      if blizzardNativeOpen() then
+        return
+      end
       onOpenIntent(0)
     end)
   end
   if type(OpenBag) == "function" then
     hooksecurefunc("OpenBag", function(id)
-      if BagBarNativeEnabled() then
+      if blizzardNativeOpen() then
         return
       end
       if ignoringBagShow or OpenClose._nativeOpening or OpenClose.IsReplaceSuppressed() then
@@ -1370,16 +1387,25 @@ function OpenClose.InstallHooks()
   end
   if type(CloseBag) == "function" then
     hooksecurefunc("CloseBag", function()
+      if blizzardNativeOpen() and not SessionOpen() then
+        return
+      end
       onCloseIntent()
     end)
   end
   if type(CloseAllBags) == "function" then
     hooksecurefunc("CloseAllBags", function()
+      if blizzardNativeOpen() and not SessionOpen() then
+        return
+      end
       onCloseIntent()
     end)
   end
   if type(CloseBackpack) == "function" then
     hooksecurefunc("CloseBackpack", function()
+      if blizzardNativeOpen() and not SessionOpen() then
+        return
+      end
       onCloseIntent()
     end)
   end
@@ -1566,27 +1592,27 @@ function OpenClose.InstallHooks()
   hookContainers()
   hookKeyRingFrames()
   local nBag = HookBagBarButtons()
-  -- Forever BagsBar: some slots fire BagSlotOnClick / ToggleBag only — already hooked.
-  -- Re-run bag-bar hooks after BagsBar exists.
-  pcall(function()
-    if BagSlotButtonMixin and BagSlotButtonMixin.OnClick and not OpenClose._bagSlotHooked then
-      OpenClose._bagSlotHooked = true
-      hooksecurefunc(BagSlotButtonMixin, "OnClick", function(self)
-        if not EnabledReplace() then
-          return
-        end
-        if IsKeyringBarButton(self) then
-          onKeyRingToggle()
-          return
-        end
-        local id = BagIdFromButton(self)
-        if id ~= nil then
-          onBagToggle(id, "BagSlotMixin")
-        end
-      end)
-      nBag = (nBag or 0) + 1
-    end
-  end)
+  if not BagBarNativeEnabled() then
+    pcall(function()
+      if BagSlotButtonMixin and BagSlotButtonMixin.OnClick and not OpenClose._bagSlotHooked then
+        OpenClose._bagSlotHooked = true
+        hooksecurefunc(BagSlotButtonMixin, "OnClick", function(self)
+          if not EnabledReplace() then
+            return
+          end
+          if IsKeyringBarButton(self) then
+            onKeyRingToggle()
+            return
+          end
+          local id = BagIdFromButton(self)
+          if id ~= nil then
+            onBagToggle(id, "BagSlotMixin")
+          end
+        end)
+        nBag = (nBag or 0) + 1
+      end
+    end)
+  end
 
   local guard = CreateFrame("Frame")
   guard:SetScript("OnUpdate", function(_, elapsed)
@@ -1620,7 +1646,7 @@ function OpenClose.InstallHooks()
   end)
 
   hooksInstalled = true
-  LogHooksOnce(string.format("Toggle* replaced · Open/Close hooks · bagBtns=%d", nBag or 0))
+  LogHooksOnce(string.format("ToggleAllBags only · bagBtns=%d", nBag or 0))
 
   if C_Timer and C_Timer.After then
     C_Timer.After(1, function()

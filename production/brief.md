@@ -1,4 +1,7 @@
-# Playtest brief — BetterBackpack 0.5.37 (simplified open)
+# Playtest brief — BetterBackpack 0.5.38 (nuclear bar restore)
+
+**0.5.38**
+- Only **ToggleAllBags** → BetterBackpack. Bag bar + keyring = vanilla Blizzard (globals restored, no bar hooks).
 
 **0.5.37**
 - OpenClose reset: B = overlay XOR only; bag bar = orig Blizzard toggles (raw bag id, secrets OK); no ContainerFrame park when `bagBarNativeBag`.
