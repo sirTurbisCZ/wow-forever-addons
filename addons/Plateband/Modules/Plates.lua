@@ -1,9 +1,8 @@
 --[[
-  Plateband.Modules.Plates — above-plate AuraContainer band (solo personal DoTs).
-  Secret-safe plate discovery via GetNamePlates + token fallbacks.
-  AC-first; native DebuffList scrape fallback when AC empty (no SetTexCoord).
-  Auto lastDiagnose → SavedVariables (disk flush only on /reload|logout).
-  No CLEU. No SetStatusBarColor on plate HP. Click-through. No world tint.
+  Plateband.Modules.Plates — above-plate aura companion (solo = native-first).
+  Blizzard DebuffList stays fully visible. Plateband does NOT cover it.
+  Solo personal DoTs: prefer native only (no overlay paint / no park).
+  Later: only add auras native does not show (party). No CLEU / no HP recolor.
 ]]
 
 Plateband = Plateband or {}
@@ -673,16 +672,15 @@ local function CreateBandContainer(parent, size)
   return container
 end
 
---- Soft-park Forever DebuffList when we own the above-plate row.
---- Use SetAlpha only (SetPoint/Hide on DebuffListFrame can taint Forever).
-local function SetNativeParked(plate, park)
+--- Always keep native DebuffList fully visible (solo native-first).
+local function EnsureNativeVisible(plate)
   local list = NativeDebuffList(plate)
   if not list then
     return
   end
   pcall(function()
     if list.SetAlpha then
-      list:SetAlpha(park and 0 or 1)
+      list:SetAlpha(1)
     end
   end)
 end
@@ -787,7 +785,7 @@ end
 local function ClearOverlay(unit)
   local plate = unit and PlateFor(unit)
   if plate then
-    SetNativeParked(plate, false)
+    EnsureNativeVisible(plate)
   end
   local holder = overlays[unit]
   if holder then
@@ -975,14 +973,10 @@ local function PaintFallback(unit, plate)
   end)
   fb:SetFrameLevel(lvl)
 
-  if painted > 0 then
-    fb:Show()
-    SetNativeParked(plate, true)
-  else
-    fb:Hide()
-  end
-  fb._painted = painted
-  return painted
+  -- Solo native-first: never show fallback that copies native icons.
+  fb:Hide()
+  fb._painted = 0
+  return 0
 end
 
 local function UpdateOverlay(unit, plate)
@@ -996,60 +990,18 @@ local function UpdateOverlay(unit, plate)
   end
 
   overlayUpdates = overlayUpdates + 1
-  local holder = EnsureOverlay(unit)
-  local acPainted = 0
-
+  -- Solo v0.1.5: NEVER paint AC/fallback. Native DebuffList owns the above-plate
+  -- row (Serpent Sting + Hunter's Mark look). Overlay was covering name/health.
+  -- Party "add missing auras beside native" comes later — paint stays off until then.
+  EnsureNativeVisible(plate)
+  local holder = overlays[unit]
   if holder then
-    holder.plateUnit = unit
-    if AnchorBand(holder, unit, plate) then
-      local parentOk = false
-      pcall(function()
-        parentOk = holder:GetParent() ~= UIParent
-      end)
-      if parentOk then
-        BindUnit(holder, unit)
-        pcall(holder.SetEnabled, holder, true)
-        pcall(holder.UpdateAllAuras, holder)
-        -- Populate may be deferred one frame on Forever.
-        holder:Show()
-        acPainted = CountShownAuraKids(holder)
-        if acPainted == 0 and C_Timer and C_Timer.After then
-          C_Timer.After(0, function()
-            pcall(function()
-              pcall(holder.UpdateAllAuras, holder)
-              local n = CountShownAuraKids(holder)
-              if n > 0 then
-                holder:Show()
-                ClearFallback(unit)
-                SetNativeParked(plate, true)
-              end
-            end)
-          end)
-        end
-      else
-        holder:Hide()
-      end
-    else
-      holder:Hide()
-    end
+    pcall(holder.SetEnabled, holder, false)
+    holder:Hide()
+    holder:ClearAllPoints()
   end
-
-  if acPainted > 0 then
-    ClearFallback(unit)
-    if holder then
-      holder:Show()
-    end
-    SetNativeParked(plate, true)
-  else
-    -- AC empty → one scrape row in the native slot; park native to avoid doubles.
-    if holder then
-      holder:Hide()
-    end
-    local fbN = PaintFallback(unit, plate)
-    if fbN == 0 then
-      SetNativeParked(plate, false)
-    end
-  end
+  ClearFallback(unit)
+  -- Do not EnsureOverlay / CreateBandContainer / Show — zero chrome on plate.
 end
 
 -- Forward decl for auto-diag after RefreshAll
@@ -1397,14 +1349,17 @@ local function OnEvent(_, event, arg1)
 end
 
 function Mod.Start()
-  -- Retry AuraContainer after SetTexCoord fix / prior init failures.
   acCreateFailed = false
+  -- Always wipe any leftover overlay chrome (0.1.3–0.1.4 could cover name).
+  for unit in pairs(overlays) do
+    ClearOverlay(unit)
+    overlays[unit] = nil
+  end
+  for unit in pairs(fallbacks) do
+    ClearFallback(unit)
+    fallbacks[unit] = nil
+  end
   if started then
-    -- Drop stale holders so buttons re-init without SetTexCoord.
-    for unit in pairs(overlays) do
-      ClearOverlay(unit)
-      overlays[unit] = nil
-    end
     RefreshAll()
     EnsureTicker()
     EnsureWatchTicker()

@@ -6,7 +6,7 @@ Plateband.L = Plateband.L or {}
 local L = Plateband.L
 
 L.PREFIX = "|cff7ec8e3[Plateband]|r"
-L.LOADED = "loaded v%s · quiet diag in SV · /pb"
+L.LOADED = "loaded v%s · native auras · /pb"
 L.UNKNOWN_CMD = "unknown command — /pb help"
 L.HELP_LINES = {
   "/pb help — this help",
