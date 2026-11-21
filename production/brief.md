@@ -1,4 +1,8 @@
-# Playtest brief — BetterBackpack 0.5.65 (load hotfix)
+# Playtest brief — BetterBackpack 0.5.66 (OpenClose parse)
+
+**0.5.66**
+- **Load fix:** WoW Lua lexer — no inline `--[[ ... ]]` after multiline blocks; `_G[name]` loops without `]]` token (false long-comment close). ASCII combat trace.
+- Expect chat `loaded v0.5.66` and **B** opens BetterBackpack after `/reload` (FrameXML.log clean on `OpenClose.lua`).
 
 **0.5.65**
 - **Hotfix:** OpenClose load (FrameXML parse / UTF-8 in combat trace); login hooks before deferred ColdPreload; precreate+EnsureMain restored on LOGIN.
