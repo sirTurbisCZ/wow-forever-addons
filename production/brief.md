@@ -1,7 +1,10 @@
-# Playtest brief — BetterBackpack 0.5.41 (/bb only)
+# Playtest brief — BetterBackpack 0.5.42 (load fix)
+
+**0.5.42**
+- Fix: `OpenClose.lua` failed to load (`unexpected symbol near 'if'` after bare `return`). `InstallHooks` trimmed; keyring helper renamed `BBKeyringBagIndex` (no Blizzard global clash). **`/reload`** → `loaded v0.5.42`, no `OpenClose` nil in FELog.
 
 **0.5.41**
-- No global Toggle* replace. All Blizzard bag keys native. **`/bb`** (or bare `/bb`) toggles BetterBackpack. Login should not crash.
+- No global Toggle* replace. All Blizzard bag keys native. **`/bb`** toggles BetterBackpack. Login should not crash.
 
 **0.5.40**
 - Crash stop: **only ToggleAllBags** hooked; all frame/Open/Close/bag-bar hooks off (`SOFT_BAG_HOOKS`). pcall on replace handler + onBagKey path.
