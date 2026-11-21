@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.15).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.16).
   Forever: never SetToplevel / SetFrameStrata (ADDON_ACTION_BLOCKED).
   Chrome metrics from Baganator Forever Blizzard skin + ContainerFrameCombinedBags:
     ButtonFrameOffset=6, Bg/TopTile @ (6,-21), NineSlice borders, Inset hidden.
@@ -1459,7 +1459,7 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local CHROME_VER = 29 -- 0.5.15: broom/gear in Close chrome; sticky frame size
+local CHROME_VER = 30 -- 0.5.16: broom glyph tight crop + gold tint (no orange plate)
 local chromeLogged = false
 local customChromeHidden = false
 
@@ -1772,7 +1772,9 @@ local function PaintGlyph(icon, kind, w, h)
   icon:SetTexCoord(0, 1, 0, 1)
   local m = math.min(w, h)
   if kind == "tidy" then
-    icon:SetSize(math.floor(m * 0.8 + 0.5), math.floor(m * 0.8 + 0.5))
+    -- Crop well inside the autosort bevel: its silver frame and brown fill, drawn ADD,
+    -- tinted the whole Close plate orange. Same footprint + gold tint as the gear.
+    icon:SetSize(math.floor(m * 0.66 + 0.5), math.floor(m * 0.66 + 0.5))
     local ok, info = false, nil
     if C_Texture and C_Texture.GetAtlasInfo then
       ok, info = pcall(C_Texture.GetAtlasInfo, "bags-button-autosort-up")
@@ -1780,8 +1782,10 @@ local function PaintGlyph(icon, kind, w, h)
     local file = ok and info and (info.file or info.filename)
     if file and info.leftTexCoord then
       SubRegion(icon, file, info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord,
-        0.16, 0.84, 0.16, 0.84)
+        0.24, 0.76, 0.24, 0.76)
       icon:SetBlendMode("ADD")
+      icon:SetDesaturated(true)
+      icon:SetVertexColor(1, 0.82, 0.18)
     else
       icon:SetTexture("Interface\\Buttons\\UI-RefreshButton")
     end
