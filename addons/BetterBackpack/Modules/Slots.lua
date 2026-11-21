@@ -431,6 +431,9 @@ function Slots.SyncVisual(btn, bag, slot)
         fs:Hide()
       end
       Slots.SyncCooldown(btn, bag, slot)
+      if Slots.Normalize then
+        Slots.Normalize(btn)
+      end
       return
     end
     if icon then
@@ -465,6 +468,9 @@ function Slots.SyncVisual(btn, bag, slot)
       fs:Show()
     end
     Slots.SyncCooldown(btn, bag, slot)
+    if Slots.Normalize then
+      Slots.Normalize(btn)
+    end
   end)
 end
 
@@ -864,50 +870,68 @@ function Slots.IsPreCreated()
   return preCreated
 end
 
--- One grid size for every category (ItemButtonTemplate defaults differ on Forever).
+-- One grid size for every category (ItemButtonTemplate / quality border drift).
 local function NormalizeSlotVisual(btn)
   if not btn then
     return
   end
-  btn:SetScale(1)
-  btn:SetSize(SLOT, SLOT)
+  pcall(function()
+    btn:SetScale(1)
+    if btn.SetIgnoreParentScale then
+      btn:SetIgnoreParentScale(false)
+    end
+    btn:SetSize(SLOT, SLOT)
+    btn:SetWidth(SLOT)
+    btn:SetHeight(SLOT)
+    if btn.SetHitRectInsets then
+      btn:SetHitRectInsets(0, 0, 0, 0)
+    end
+  end)
   local ic = btn.icon or btn.Icon or btn.IconTexture
   if ic then
-    ic:ClearAllPoints()
-    -- Inset 1px so border/normal textures cannot inflate the glyph.
-    ic:SetPoint("TOPLEFT", btn, "TOPLEFT", 1, -1)
-    ic:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -1, 1)
-    ic:SetSize(SLOT - 2, SLOT - 2)
-    ic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    if ic.SetDrawLayer then
-      ic:SetDrawLayer("ARTWORK", 0)
-    end
-    ic:SetAlpha(1)
-    ic:Show()
+    pcall(function()
+      ic:ClearAllPoints()
+      ic:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
+      ic:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
+      ic:SetSize(SLOT, SLOT)
+      ic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+      if ic.SetDrawLayer then
+        ic:SetDrawLayer("ARTWORK", 0)
+      end
+      ic:SetAlpha(1)
+      ic:Show()
+    end)
   end
   pcall(function()
     local nt = btn.GetNormalTexture and btn:GetNormalTexture()
     if nt then
       nt:ClearAllPoints()
-      nt:SetAllPoints()
+      nt:SetAllPoints(btn)
       nt:SetSize(SLOT, SLOT)
     end
     local pt = btn.GetPushedTexture and btn:GetPushedTexture()
     if pt then
       pt:ClearAllPoints()
-      pt:SetAllPoints()
+      pt:SetAllPoints(btn)
     end
     local ht = btn.GetHighlightTexture and btn:GetHighlightTexture()
     if ht then
       ht:ClearAllPoints()
-      ht:SetAllPoints()
+      ht:SetAllPoints(btn)
     end
   end)
-  if btn.IconBorder then
-    pcall(function()
-      btn.IconBorder:ClearAllPoints()
-      btn.IconBorder:SetAllPoints()
-    end)
+  -- Quality / overlay chrome must not inflate past SLOT.
+  for _, key in ipairs({ "IconBorder", "IconOverlay", "IconOverlay2", "IconQuestTexture", "flash" }) do
+    local r = btn[key]
+    if r and r.ClearAllPoints then
+      pcall(function()
+        r:ClearAllPoints()
+        r:SetAllPoints(btn)
+        if r.SetSize then
+          r:SetSize(SLOT, SLOT)
+        end
+      end)
+    end
   end
   if btn.Count then
     pcall(function()
@@ -915,6 +939,17 @@ local function NormalizeSlotVisual(btn)
       btn.Count:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -1, 1)
     end)
   end
+  if btn.cooldown or btn.Cooldown then
+    pcall(function()
+      local cd = btn.cooldown or btn.Cooldown
+      cd:ClearAllPoints()
+      cd:SetAllPoints(btn)
+    end)
+  end
+end
+
+function Slots.Normalize(btn)
+  NormalizeSlotVisual(btn)
 end
 
 function Slots.Place(btn, parent, x, y, shown)
@@ -931,9 +966,8 @@ function Slots.Place(btn, parent, x, y, shown)
     btn:Show()
     btn:SetParent(parent)
     btn:ClearAllPoints()
-    -- Dual anchor locks pixel size even when SetSize is ignored by ItemButtonTemplate.
+    -- TOPLEFT + explicit 37×37 (dual-anchor stretched some ItemButtons unevenly).
     btn:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -y)
-    btn:SetPoint("BOTTOMRIGHT", parent, "TOPLEFT", x + SLOT, -(y + SLOT))
     NormalizeSlotVisual(btn)
     pcall(function()
       btn:SetFrameStrata(parent:GetFrameStrata() or "DIALOG")
@@ -945,17 +979,21 @@ function Slots.Place(btn, parent, x, y, shown)
     if shown then
       btn:SetAlpha(1)
       btn:Show()
+      NormalizeSlotVisual(btn)
       Slots.SyncVisual(btn, btn._bbBag, btn._bbSlot)
+      -- SetItemButtonQuality can resize IconBorder — normalize again after.
       NormalizeSlotVisual(btn)
       btn:SetAlpha(1)
       btn:Show()
       if btn._bbSecure and not inCombat then
         Slots.SyncAttrs(btn, btn._bbBag, btn._bbSlot)
       end
+      NormalizeSlotVisual(btn)
     else
       btn:SetAlpha(0)
       btn:EnableMouse(false)
       btn:Show()
+      NormalizeSlotVisual(btn)
     end
   end)
 end

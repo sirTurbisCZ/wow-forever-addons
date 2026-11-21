@@ -1,7 +1,7 @@
 # BetterBackpack — smyčky a grafy
 
 **Kód:** `Core.lua`, `Modules/{Slots,Layout,Context,OpenClose,Tidy}.lua`  
-**Verze reference:** 0.3.2  
+**Verze reference:** 0.3.3  
 **Stabilita:** Project `docs/bag-addon-brief.md` + Scenario Maps `docs/scenarios/BetterBackpack/`  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never path C harvest).
 
@@ -34,8 +34,9 @@ flowchart TD
 - **ToggleBag + bag-bar OnClick = XOR** (same as B). OpenBag/OpenAllBags = open-only. CloseBag/CloseAllBags close ours.
 - HookScript OnClick only on frames with `HasScript("OnClick")` / Button — never throw on BagsBar chrome kids.
 - Bag focus: `Layout.SetBagFocus(id)` highlights that bag’s slots after open.
-- Title chrome: gear + broom = `Close:GetWidth/Height`, MinimizeButton highlight, title-bar row left of X.
-- CombinedBags/Container OnShow: park now; **defer** open to next tick so Toggle* XOR runs first (else B opens then immediately closes).
+- Title chrome: gear + broom dual-anchored to Close (`GetWidth`/`GetHeight` exact), MinimizeButton ring.
+- Slots: `Normalize` 37×37 on every `Place` and after `SetItemButtonQuality`.
+- CombinedBags/Container OnShow: park now; **defer** open to next tick so Toggle* XOR runs first.
 
 ---
 
