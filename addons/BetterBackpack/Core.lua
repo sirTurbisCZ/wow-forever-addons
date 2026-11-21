@@ -441,7 +441,24 @@ SlashCmdList.BETTERBACKPACK = function(msg)
     end
     local id = tonumber((rest or ""):match("^(%d+)"))
     if not id then
-      Print("usage: /bb pin <itemID>")
+      -- Cursor / tooltip item for smoke testing without typing IDs.
+      pcall(function()
+        local info = C_Cursor and C_Cursor.GetCursorItem and C_Cursor.GetCursorItem()
+        if info and info.GetItemID then
+          id = info:GetItemID()
+        end
+      end)
+      if not id and GameTooltip and GameTooltip.GetItem then
+        pcall(function()
+          local _, link = GameTooltip:GetItem()
+          if type(link) == "string" then
+            id = tonumber(link:match("item:(%d+)"))
+          end
+        end)
+      end
+    end
+    if not id then
+      Print("usage: /bb pin <itemID> (or hover/cursor item)")
       return
     end
     Pins.Toggle(id)

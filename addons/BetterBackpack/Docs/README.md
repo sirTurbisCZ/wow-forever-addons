@@ -6,7 +6,7 @@ Category-lane bags for **World of Warcraft Forever** (Interface 16001) with comb
 
 1. Put this folder in `Interface/AddOns/BetterBackpack/` (or symlink via `./scripts/link-addon.sh BetterBackpack`).
 2. Enable at character select if needed.
-3. `/reload` in game — chat should show `loaded v0.5.1` (0.4.2 BagShelves chrome + nice-to-have search/filter/merge/pins).
+3. `/reload` in game — chat should show `loaded v0.5.2` (0.4.2 BagShelves chrome + nice-to-have search/filter/merge/pins).
 
 ## Slash
 
@@ -32,7 +32,7 @@ Category-lane bags for **World of Warcraft Forever** (Interface 16001) with comb
 
 Also `/betterbackpack`. Úklid / Nastavení stay Czech on chrome.
 
-## Nice-to-have modules (0.5.1)
+## Nice-to-have modules (0.5.2)
 
 | File | Job |
 |------|-----|

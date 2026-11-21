@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.1).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.2).
   Forever: never SetToplevel (ADDON_ACTION_BLOCKED).
   Width/padding match BagShelves; title buttons = AutoSort twins (no glow).
   NTH hooks via optional Feat("Search|Filter|…") — do not rewrite OpenClose chrome here.
@@ -1168,10 +1168,10 @@ local function CreateBagPanel()
 end
 
 local function DestroyHalfBuilt()
+  -- Keep parent UIParent — SetParent(nil) left a shell that Show() could not revive.
   if main then
     pcall(function()
       main:Hide()
-      main:SetParent(nil)
     end)
   end
   main, content, freeFs, moneyFs, emptyLabel, sortBtn, settingsBtn = nil, nil, nil, nil, nil, nil, nil
@@ -1181,13 +1181,17 @@ local function DestroyHalfBuilt()
     if old then
       old._bbBuilt = nil
       old._bbContent = nil
+      old._bbEmpty = nil
+      old._bbMoneyFs = nil
       old:Hide()
-      -- Keep named frame for reuse; CreateBagPanel will finish chrome.
+      if old:GetParent() ~= UIParent then
+        old:SetParent(UIParent)
+      end
     end
   end)
 end
 
-local CHROME_VER = 17 -- AutoSort-twin settings+tidy (same size, no glow)
+local CHROME_VER = 18 -- no SetFrameStrata; search+twins CombinedBags-like
 local chromeLogged = false
 local customChromeHidden = false
 local nativeSortReleased = false
@@ -1574,10 +1578,15 @@ function Layout.EnsureMain()
     end
   end
   if main then
+    pcall(function()
+      if main:GetParent() ~= UIParent then
+        main:SetParent(UIParent)
+      end
+    end)
     KillPortrait(main)
     ApplyCombinedBagsChrome(main)
-    EnsureTitleChrome(main)
-    InstallBagHoverHighlight()
+    pcall(EnsureTitleChrome, main)
+    pcall(InstallBagHoverHighlight)
     return main
   end
 
@@ -1589,18 +1598,21 @@ function Layout.EnsureMain()
     freeFs = built.freeFs
     moneyFs = built._bbMoneyFs
     emptyLabel = built._bbEmpty
-    EnsureTitleChrome(main)
-    InstallBagHoverHighlight()
+    pcall(function()
+      if main:GetParent() ~= UIParent then
+        main:SetParent(UIParent)
+      end
+      main:SetFrameLevel(500)
+    end)
+    pcall(EnsureTitleChrome, main)
+    pcall(InstallBagHoverHighlight)
     return main
   end
   built:SetSize(456, 360)
-  -- Forever: SetFrameStrata on our frame can ADDON_ACTION_BLOCKED and *error*
-  -- mid-EnsureMain → half-built BetterBackpackFrame → OpenOurs false forever.
+  -- Forever: never SetFrameStrata on BetterBackpackFrame (ADDON_ACTION_BLOCKED
+  -- still fires inside pcall and previously aborted EnsureMain). Level only.
   pcall(function()
-    built:SetFrameStrata("DIALOG")
-  end)
-  pcall(function()
-    built:SetFrameLevel(200)
+    built:SetFrameLevel(500)
   end)
   built:SetMovable(true)
   built:EnableMouse(true)
@@ -1628,7 +1640,13 @@ function Layout.EnsureMain()
     end
   end)
   built:SetScript("OnHide", function()
+    if BetterBackpack._bbBuilding or BetterBackpack._bbClosing then
+      return
+    end
     local OpenClose = BetterBackpack.Modules.OpenClose
+    if OpenClose and OpenClose._openBusy then
+      return
+    end
     if OpenClose and OpenClose.NotifyHidden then
       OpenClose.NotifyHidden()
     end
@@ -1769,11 +1787,15 @@ function Layout.EnsureMain()
   main._bbEmpty = empty
   main._bbMoneyFs = moneyFallback
   main._bbBuilt = true
-  EnsureTitleChrome(main)
-
-  InstallBagHoverHighlight()
-  PlaceOnScreen()
-  main:Hide()
+  BetterBackpack._bbBuilding = true
+  pcall(EnsureTitleChrome, main)
+  pcall(InstallBagHoverHighlight)
+  pcall(PlaceOnScreen)
+  BetterBackpack._bbBuilding = false
+  -- Stay hidden until Layout.Show; do not fire NotifyHidden close race.
+  pcall(function()
+    main:Hide()
+  end)
   return main
 end
 
@@ -1782,8 +1804,11 @@ function Layout.IsShown()
 end
 
 function Layout.Show()
-  Layout.EnsureMain()
-  if not main then
+  local okEns = pcall(Layout.EnsureMain)
+  if not okEns or not main then
+    if BetterBackpack.RecordError then
+      BetterBackpack.RecordError("Show", "EnsureMain failed")
+    end
     return false
   end
   local p = Profile()
@@ -1795,10 +1820,7 @@ function Layout.Show()
     if main:GetParent() ~= UIParent then
       main:SetParent(UIParent)
     end
-  end)
-  pcall(function()
-    main:SetFrameStrata("DIALOG")
-    main:SetFrameLevel(200)
+    main:SetFrameLevel(500)
     main:SetAlpha(1)
     main:SetScale(1)
   end)
@@ -1807,29 +1829,36 @@ function Layout.Show()
       main:SetSize(456, 360)
     end)
   end
-  PlaceOnScreen()
+  pcall(PlaceOnScreen)
   KillPortrait(main)
   ApplyCombinedBagsChrome(main)
   pcall(EnsureTitleChrome, main)
-  InstallBagHoverHighlight()
-  main:Show()
+  pcall(InstallBagHoverHighlight)
   pcall(function()
-    main:Raise()
+    main:Show()
   end)
-  DoLayout()
-  main:SetAlpha(1)
-  main:Show()
-  PlaceOnScreen()
+  pcall(Layout.Raise)
+  pcall(DoLayout)
+  pcall(function()
+    main:SetAlpha(1)
+    main:Show()
+  end)
+  pcall(PlaceOnScreen)
   ApplyCombinedBagsChrome(main)
-  -- After layout: remount chrome + clone Close GetWidth/Height exactly.
   pcall(EnsureTitleChrome, main)
+  local SearchChrome = Feat("Search")
+  if SearchChrome and SearchChrome.EnsureChrome then
+    pcall(SearchChrome.EnsureChrome, main)
+  end
   UpdateFreeSpace()
   UpdateMoney()
-  pcall(function()
-    main:Raise()
-  end)
+  pcall(Layout.Raise)
   UpdateFreeSpace()
-  return main:IsShown() and true or false
+  local shown = main:IsShown() and true or false
+  if not shown and BetterBackpack.RecordError then
+    BetterBackpack.RecordError("Show", "IsShown=false after Show()")
+  end
+  return shown
 end
 
 function Layout.Hide()
@@ -1883,11 +1912,15 @@ function Layout.Raise()
   if not main then
     return
   end
-  -- Forever: SetToplevel is ADDON_ACTION_BLOCKED — use strata/level only.
+  -- Forever: no SetToplevel / SetFrameStrata on our frame — level only.
   pcall(function()
-    main:SetFrameStrata("DIALOG")
-    main:SetFrameLevel(200)
-    main:Raise()
+    if main:GetParent() ~= UIParent then
+      main:SetParent(UIParent)
+    end
+    main:SetFrameLevel(500)
+    if main.Raise then
+      main:Raise()
+    end
   end)
 end
 

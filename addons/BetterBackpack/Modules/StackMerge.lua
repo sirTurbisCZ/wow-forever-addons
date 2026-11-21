@@ -135,6 +135,13 @@ function StackMerge.ApplyDisplayCount(btn, entry)
   end
   local fs = btn.Count
   if not fs then
+    pcall(function()
+      fs = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+      fs:SetPoint("BOTTOMRIGHT", -2, 2)
+      btn.Count = fs
+    end)
+  end
+  if not fs then
     return
   end
   pcall(function()

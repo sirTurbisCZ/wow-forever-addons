@@ -1059,9 +1059,7 @@ function Slots.Place(btn, parent, x, y, shown)
     -- TOPLEFT + explicit 37×37 (dual-anchor stretched some ItemButtons unevenly).
     btn:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -y)
     NormalizeSlotVisual(btn)
-    pcall(function()
-      btn:SetFrameStrata(parent:GetFrameStrata() or "DIALOG")
-    end)
+    -- No SetFrameStrata on slot buttons (Forever BLOCKED noise).
     local base = (parent.GetFrameLevel and parent:GetFrameLevel()) or 1
     btn:SetFrameLevel(base + 80)
     local mouseOn = shown and (btn._bbSecure or not inCombat)
