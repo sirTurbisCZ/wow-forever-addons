@@ -1,4 +1,7 @@
-# Playtest brief — BetterBackpack 0.5.35 (keyring nil fix)
+# Playtest brief — BetterBackpack 0.5.36 (native all bags)
+
+**0.5.36**
+- Bag bar: backpack 0, bags 1–4, reagent, keyring — `ToggleBag` secret indices pass through to Blizzard (fix post-0.5.35 early return).
 
 **0.5.35**
 - FElog `OpenClose.lua:191`: forward-decl `NormalizeBagID`; `ToggleBag -1` → keyring path; `CallOrigToggle` guards missing Blizzard orig.

@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.OpenClose — B overlay + bag-bar native (0.5.35)
+  BetterBackpack.OpenClose — B overlay + bag-bar native (0.5.36)
 
   ToggleAllBags / ToggleBackpack / ToggleBag / ToggleKeyRing are *replaced*
   (not hooksecurefunc). Forever Toggle* bodies call Open*/Close* first; a
@@ -870,6 +870,10 @@ NormalizeBagID = function(bagID)
     end
   end
   if type(bagID) == "number" then
+    if Slots and Slots.SafeNum and Slots.SafeNum(bagID, nil) == nil then
+      -- Forever secret bag index — keep opaque value for Blizzard ToggleBag/OpenBag.
+      return bagID
+    end
     return bagID
   end
   if type(bagID) == "string" then
@@ -877,6 +881,18 @@ NormalizeBagID = function(bagID)
     if n then
       return n
     end
+  end
+  return nil
+end
+
+--- Plain number when possible; otherwise raw bag token (incl. secret Enum indices).
+local function BagIDForNative(bagID)
+  local plain = NormalizeBagID(bagID)
+  if plain ~= nil then
+    return plain
+  end
+  if bagID ~= nil then
+    return bagID
   end
   return nil
 end
@@ -938,32 +954,44 @@ local function IsKeyringBarButton(btn)
 end
 
 local function IsKnownBagID(bagID)
-  bagID = NormalizeBagID(bagID)
-  if bagID == nil then
+  local raw = bagID
+  if raw == nil then
     return false, nil
   end
   local Slots = BetterBackpack.Modules.Slots
-  if Slots then
-    if Slots.IsReagentBag and Slots.IsReagentBag(bagID) then
-      return true, bagID
+  if Slots and Slots.IsKeyringBag and Slots.IsKeyringBag(raw) then
+    local key = KeyringIndex()
+    return true, key or raw
+  end
+  if Slots and Slots.IsReagentBag and Slots.IsReagentBag(raw) then
+    local reb = Slots.ReagentBagIndex and Slots.ReagentBagIndex() or 5
+    return true, reb or raw
+  end
+  local plain = nil
+  if Slots and Slots.SafeNum then
+    plain = Slots.SafeNum(raw, nil)
+  elseif type(raw) == "number" and (not Slots or not Slots.IsSecret or not Slots.IsSecret(raw)) then
+    plain = raw
+  end
+  if plain ~= nil then
+    local max = 4
+    pcall(function()
+      if NUM_BAG_SLOTS ~= nil then
+        local n = Slots and Slots.SafeNum and Slots.SafeNum(NUM_BAG_SLOTS, nil) or NUM_BAG_SLOTS
+        if type(n) == "number" then
+          max = n
+        end
+      end
+    end)
+    if plain >= 0 and plain <= math.max(max, 4) then
+      return true, plain
     end
-    if Slots.IsKeyringBag and Slots.IsKeyringBag(bagID) then
-      return true, bagID
+    if plain >= -4 and plain <= 13 then
+      return true, plain
     end
   end
-  local max = 4
-  pcall(function()
-    if NUM_BAG_SLOTS ~= nil then
-      max = NUM_BAG_SLOTS
-    end
-  end)
-  if bagID >= 0 and bagID <= math.max(max, 4) then
-    return true, bagID
-  end
-  if type(bagID) == "number" and bagID >= -4 and bagID <= 13 then
-    return true, bagID
-  end
-  return false, nil
+  -- Secret or opaque bag index from BagsBar / ToggleBag — pass through to Blizzard.
+  return true, raw
 end
 
 local function FinishNativeOpen()
@@ -1018,17 +1046,18 @@ InvokeNativeKeyRing = function()
 end
 
 local function InvokeNativeToggleBag(bagID)
-  bagID = NormalizeBagID(bagID)
+  local raw = bagID
   local Slots = BetterBackpack.Modules.Slots
-  if Slots and Slots.IsKeyringBag and bagID ~= nil and Slots.IsKeyringBag(bagID) then
+  if Slots and Slots.IsKeyringBag and raw ~= nil and Slots.IsKeyringBag(raw) then
     InvokeNativeKeyRing()
     return
   end
+  local apiBag = BagIDForNative(raw)
   ignoringBagShow = true
   OpenClose._nativeOpening = true
   BlackoutCombinedOnly()
-  if not CallOrigToggle("ToggleBag", bagID) and type(OpenBag) == "function" and bagID ~= nil then
-    pcall(OpenBag, bagID)
+  if apiBag ~= nil and not CallOrigToggle("ToggleBag", apiBag) and type(OpenBag) == "function" then
+    pcall(OpenBag, apiBag)
   end
   if C_Timer and C_Timer.After then
     C_Timer.After(0, FinishNativeOpen)
@@ -1125,21 +1154,23 @@ local function onBagToggle(bagID, src)
     return
   end
 
-  bagID = NormalizeBagID(bagID)
+  local raw = bagID
   local Slots = BetterBackpack.Modules.Slots
-  if Slots and Slots.IsKeyringBag and bagID ~= nil and Slots.IsKeyringBag(bagID) then
+  if Slots and Slots.IsKeyringBag and raw ~= nil and Slots.IsKeyringBag(raw) then
     onKeyRingToggle()
     return
   end
-  if BagBarNativeEnabled() and bagID == nil then
-    return
-  end
   if BagBarNativeEnabled() then
-    local okId, canon = IsKnownBagID(bagID)
-    if not okId then
+    local okId, canon = IsKnownBagID(raw)
+    if not okId or canon == nil then
       return
     end
     bagID = canon
+  else
+    bagID = BagIDForNative(raw)
+    if bagID == nil then
+      return
+    end
   end
   LogBagPathOnce(src or "ToggleBag", bagID)
 
@@ -1167,8 +1198,9 @@ local function onBagToggle(bagID, src)
     if bagID ~= nil and (nativeSession or NativeContainersVisible()) and nativeFocusBag ~= nil and FocusBagsMatch(bagID, nativeFocusBag) then
       ignoringBagShow = true
       OpenClose._nativeOpening = true
-      if not CallOrigToggle("ToggleBag", bagID) and type(CloseBag) == "function" then
-        pcall(CloseBag, bagID)
+      local apiBag = BagIDForNative(bagID) or bagID
+      if not CallOrigToggle("ToggleBag", apiBag) and type(CloseBag) == "function" then
+        pcall(CloseBag, apiBag)
       end
       EndNativeSession()
       FinishNativeOpen()
