@@ -1,9 +1,9 @@
-# Playtest brief — BetterBackpack 0.5.52 (keyring + combined)
+# Playtest brief — BetterBackpack 0.5.53 (restore B XOR)
 
-**0.5.52**
-- Main backpack/B: ToggleBag within 140ms of combined open **ignored** (no random native bag stealing combined).
-- Keyring: **always native** UI (`InvokeNativeKeyRing` XOR); BB overlay keys filter removed (empty OK).
-- `OpenCombinedBags` clears focus/filter twice + relayout.
+**0.5.53**
+- Revert 0.5.51–52 toggle breakage: **B XOR = 0.5.50** (`OpenOurs`, no `ToggleBag` replace, no combined debounce on bag slots).
+- **Combined:** B + main backpack + `ToggleBackpack`/`ToggleAllBags` clear focus then open.
+- **Keyring:** native `InvokeNativeKeyRing` XOR (`ToggleKeyRing` hooked only).
 
 **0.5.51**
 - **B + main backpack icon** → BetterBackpack **combined** (all bags), XOR close.
