@@ -96,31 +96,87 @@ local function CursorHasSomething()
   return false
 end
 
+local function NormalizeBagSlot(bag, slot)
+  if Slots and Slots.AttrBagSlot then
+    local b, s = Slots.AttrBagSlot(bag, slot)
+    if b ~= nil and s ~= nil then
+      return b, s
+    end
+  end
+  return bag, slot
+end
+
+local function StackCount(bag, slot)
+  if C_Container and C_Container.GetContainerItemInfo then
+    local ok, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
+    if ok and info and info.stackCount ~= nil then
+      return info.stackCount
+    end
+  end
+  return nil
+end
+
+local function SlotChanged(bag, slot, idBefore, countBefore)
+  if not Slots or not Slots.SlotOccupied then
+    return true
+  end
+  if not Slots.SlotOccupied(bag, slot) then
+    return true
+  end
+  local idAfter = ItemID(bag, slot)
+  if idBefore and idAfter and idBefore ~= idAfter then
+    return true
+  end
+  local countAfter = StackCount(bag, slot)
+  if countBefore and countAfter and countAfter < countBefore then
+    return true
+  end
+  return false
+end
+
 local function MerchantAllowed(bag, slot)
-  local id = ItemID(bag, slot)
+  local b, s = NormalizeBagSlot(bag, slot)
+  local id = ItemID(b, s)
   if not id then
     return false
   end
   local Trash = BetterBackpack.Modules.Trash
-  if Trash and Trash.Refuse and Trash.Refuse(id, bag, slot) then
+  if Trash and Trash.Refuse and Trash.Refuse(id, b, s) then
     return false
   end
-  if SlotLocked(bag, slot) then
+  if SlotLocked(b, s) then
     return false
   end
   if C_MerchantFrame and C_MerchantFrame.IsSellItemAllowed then
-    local ok, allow = pcall(C_MerchantFrame.IsSellItemAllowed, id)
-    if ok then
-      return allow and true or false
+    local ok, allow = pcall(C_MerchantFrame.IsSellItemAllowed, b, s)
+    if not ok then
+      ok, allow = pcall(C_MerchantFrame.IsSellItemAllowed, id)
+    end
+    if ok and allow == false then
+      return false
     end
   end
   return true
 end
 
-local function TransferMerchant(bag, slot)
-  if not MerchantAllowed(bag, slot) then
-    return false
+local function MerchantUseContainer(bag, slot)
+  local idBefore = ItemID(bag, slot)
+  local countBefore = StackCount(bag, slot)
+  local used = false
+  if C_Container and C_Container.UseContainerItem then
+    used = select(1, pcall(C_Container.UseContainerItem, bag, slot))
+  elseif UseContainerItem then
+    used = select(1, pcall(UseContainerItem, bag, slot))
   end
+  if used and SlotChanged(bag, slot, idBefore, countBefore) then
+    return true
+  end
+  return false
+end
+
+local function MerchantPickupSell(bag, slot)
+  local idBefore = ItemID(bag, slot)
+  local countBefore = StackCount(bag, slot)
   if not PickupSlot(bag, slot) or not CursorHasSomething() then
     return false
   end
@@ -130,14 +186,26 @@ local function TransferMerchant(bag, slot)
   if ClearCursor then
     pcall(ClearCursor)
   end
-  return true
+  return SlotChanged(bag, slot, idBefore, countBefore)
+end
+
+local function TransferMerchant(bag, slot)
+  local b, s = NormalizeBagSlot(bag, slot)
+  if not MerchantAllowed(b, s) then
+    return false
+  end
+  if MerchantUseContainer(b, s) then
+    return true
+  end
+  return MerchantPickupSell(b, s)
 end
 
 local function TransferMail(bag, slot)
-  if SlotLocked(bag, slot) then
+  local b, s = NormalizeBagSlot(bag, slot)
+  if SlotLocked(b, s) then
     return false
   end
-  if not PickupSlot(bag, slot) or not CursorHasSomething() then
+  if not PickupSlot(b, s) or not CursorHasSomething() then
     return false
   end
   if ClickSendMailItemButton then
@@ -150,14 +218,15 @@ local function TransferMail(bag, slot)
 end
 
 local function TransferBank(bag, slot)
-  if SlotLocked(bag, slot) then
+  local b, s = NormalizeBagSlot(bag, slot)
+  if SlotLocked(b, s) then
     return false
   end
   if C_Container and C_Container.UseContainerItem then
-    return select(1, pcall(C_Container.UseContainerItem, bag, slot))
+    return select(1, pcall(C_Container.UseContainerItem, b, s))
   end
   if UseContainerItem then
-    return select(1, pcall(UseContainerItem, bag, slot))
+    return select(1, pcall(UseContainerItem, b, s))
   end
   return false
 end
@@ -208,34 +277,48 @@ local function Pump()
   local ctx = pumpQueue.ctx
   local moved = 0
   local limit = 12
+  if ctx == "merchant" or ctx == "mail" then
+    limit = 1
+  end
   while #pumpQueue.slots > 0 and moved < limit do
     local e = table.remove(pumpQueue.slots, 1)
     if e and e.bag and e.slot and Slots.SlotOccupied and Slots.SlotOccupied(e.bag, e.slot) then
       if TransferOne(e.bag, e.slot, ctx) then
         moved = moved + 1
+        pumpQueue.sold = (pumpQueue.sold or 0) + 1
       end
     end
   end
   if #pumpQueue.slots > 0 then
+    local delay = (ctx == "merchant" or ctx == "mail") and 0.08 or 0.04
     if C_Timer and C_Timer.After then
-      C_Timer.After(0.04, Pump)
+      C_Timer.After(delay, Pump)
     else
       Pump()
     end
   else
+    local q = pumpQueue
     pumpQueue = nil
+    if q and q.ctx == "merchant" and BetterBackpack.Print then
+      BetterBackpack.Print(string.format(
+        "|cff88ccffBulk|r sold %d / %d%s",
+        q.sold or 0,
+        q.total or 0,
+        q.label and (" · " .. q.label) or ""
+      ))
+    end
     if Layout and Layout.Refresh then
       Layout.Refresh()
     end
   end
 end
 
-local function StartQueue(ctx, slots)
+local function StartQueue(ctx, slots, label)
   if not slots or #slots == 0 then
     return false, "empty"
   end
   pumpToken = pumpToken + 1
-  pumpQueue = { ctx = ctx, slots = {}, token = pumpToken }
+  pumpQueue = { ctx = ctx, slots = {}, token = pumpToken, sold = 0, total = #slots, label = label }
   for i = 1, #slots do
     pumpQueue.slots[i] = { bag = slots[i].bag, slot = slots[i].slot }
   end
@@ -279,11 +362,12 @@ function BulkTransfer.TransferLane(laneKey)
     end
     return true
   end
-  local ok = StartQueue(ctx, slots)
+  local label = tostring(Layout.GetCategoryLabel and Layout.GetCategoryLabel(laneKey) or laneKey)
+  local ok = StartQueue(ctx, slots, label)
   if ok and BetterBackpack.Print then
     BetterBackpack.Print(string.format(
-      "|cff88ccffBulk|r %s · %s · %d stacks",
-      tostring(Layout.GetCategoryLabel and Layout.GetCategoryLabel(laneKey) or laneKey),
+      "|cff88ccffBulk|r %s · %s · %d stacks (selling…)",
+      label,
       tostring(ActionVerb(ctx) or ctx),
       #slots
     ))

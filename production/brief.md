@@ -1,4 +1,8 @@
-# Playtest brief — BetterBackpack 0.5.79
+# Playtest brief — BetterBackpack 0.5.80
+
+**0.5.80**
+- Shift+RMB lane sell: `UseContainerItem` then Pickup+`SellCursorItem`; 1 stack/tick.
+- Chat end: `Bulk sold N / M · <lane>`.
 
 **0.5.79**
 - Fix load: `CaptureBlizzardOpens` before `RestoreBlizzardToggles` (B XOR works again).

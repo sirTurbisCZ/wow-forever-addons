@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 0.5.79 fix OpenClose forward ref; B XOR restored. 0.5.78 OpenAllBags.
+## Notes: 0.5.80 merchant bulk UseContainerItem+SellCursor; sold count.
 ## Author: tuma
-## Version: 0.5.79
+## Version: 0.5.80
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled
