@@ -3,8 +3,8 @@
 Companion for Forever nameplate auras. Looks and feels like Blizzard’s native DebuffList.
 
 - **Your** personal DoTs stay 100% native (Plateband does not paint them).
-- When you **target** a mob others are attacking, Plateband appends **only** harmful icons Blizzard omitted — beside the native DebuffList band.
-- Never covers the name, health bar, or cast bar. Never parks or hides native DebuffList.
+- When you **target** a unit others have DoTed (party **or** any other player), Plateband appends **only** harmful icons Blizzard omitted — same band as native DebuffList.
+- Aura row sits **fully above** the name (no horizontal overlap with name text). Never parks or hides native DebuffList.
 
 ## Install
 

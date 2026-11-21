@@ -1,9 +1,9 @@
 --[[
   Plateband.Modules.Plates — native DebuffList stays fully visible.
   Solo personal DoTs: leave 100% native (no duplicate paint).
-  Merge: when target has others' harmful auras Blizzard omits, append those
-  icons beside the native band (never cover name/HP/cast; never park native).
-  No CLEU / no HP recolor.
+  Merge: ALL harmful auras Blizzard omits (any other player — party or not),
+  same band as native; aura row stacked ABOVE the name (no horizontal clash).
+  Never park native. No CLEU / no HP recolor.
 ]]
 
 Plateband = Plateband or {}
@@ -22,6 +22,7 @@ local WATCH_DEFAULT_SEC = 2
 
 local overlays = {} -- [nameplateUnit] = AuraContainer (or nil)
 local fallbacks = {} -- [nameplateUnit] = scrape Frame
+local nameShifts = {} -- [nameplateUnit] = { saved points / shifted }
 local acCreateFailed = false
 local ticker
 local watchTicker
@@ -783,11 +784,127 @@ local function ClearFallback(unit)
   fb:ClearAllPoints()
 end
 
+local function PlateNameFS(plate)
+  local name
+  pcall(function()
+    local uf = plate and plate.UnitFrame
+    name = uf and uf.name
+  end)
+  return name
+end
+
+local function SaveNamePoints(unit, nameFS)
+  if not unit or not nameFS then
+    return
+  end
+  local st = nameShifts[unit]
+  if st and st.saved then
+    return
+  end
+  st = { saved = false, shifted = false }
+  pcall(function()
+    local n = nameFS:GetNumPoints()
+    if type(n) == "number" and not IsSecret(n) and n >= 1 then
+      local point, rel, relPoint, x, y = nameFS:GetPoint(1)
+      st.point, st.rel, st.relPoint = point, rel, relPoint
+      st.x = (type(x) == "number" and not IsSecret(x)) and x or 0
+      st.y = (type(y) == "number" and not IsSecret(y)) and y or 0
+      st.saved = true
+    end
+  end)
+  nameShifts[unit] = st
+end
+
+local function RestoreNameShift(unit, plate)
+  local st = nameShifts[unit]
+  if not st or not st.shifted or not st.saved then
+    if st then
+      st.shifted = false
+    end
+    return
+  end
+  local nameFS = PlateNameFS(plate or (unit and PlateFor(unit)))
+  if not nameFS then
+    st.shifted = false
+    return
+  end
+  pcall(function()
+    nameFS:ClearAllPoints()
+    nameFS:SetPoint(st.point, st.rel, st.relPoint, st.x or 0, st.y or 0)
+  end)
+  st.shifted = false
+end
+
+--- Stack: [aura row] above [name] above [health]. No horizontal clash with name text.
+local function LayoutAuraRowAboveName(unit, plate, mergeFb, painted)
+  local nameFS = PlateNameFS(plate)
+  local bar = HealthBar(plate)
+  local native = NativeDebuffList(plate)
+  local nativeN = CountShownAuraKids(native)
+  local rowActive = (nativeN > 0) or (painted and painted > 0)
+
+  if not rowActive then
+    RestoreNameShift(unit, plate)
+    return
+  end
+
+  if nameFS and bar then
+    SaveNamePoints(unit, nameFS)
+    -- Pin name just above the health bar so the aura row can sit fully above it.
+    pcall(function()
+      nameFS:ClearAllPoints()
+      nameFS:SetPoint("BOTTOM", bar, "TOP", 0, 2)
+    end)
+    local st = nameShifts[unit]
+    if st then
+      st.shifted = true
+    end
+  end
+
+  -- Prefer not SetPoint native (Forever taint risk) — only raise merge above name.
+  -- If native already overlaps name, name-below-bar-top + merge above name clears horizontal clash for merge icons.
+  if mergeFb and painted and painted > 0 then
+    mergeFb:ClearAllPoints()
+    if nameFS then
+      -- Entire merge band above the name (centered on name).
+      mergeFb:SetPoint("BOTTOM", nameFS, "TOP", 0, OVERLAY_GAP_ABOVE)
+    else
+      local anchor = NativeBandRightAnchor(plate)
+      if anchor then
+        mergeFb:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, OVERLAY_GAP_ABOVE)
+      elseif bar then
+        mergeFb:SetPoint("BOTTOM", bar, "TOP", 0, (IconSize() + OVERLAY_GAP_ABOVE + 4))
+      else
+        mergeFb:SetPoint("BOTTOM", plate, "TOP", 0, OVERLAY_GAP_ABOVE)
+      end
+    end
+  end
+
+  -- When native icons exist, also try stacking native above name (pcall — may no-op/taint-safe fail).
+  if native and nameFS and nativeN > 0 then
+    pcall(function()
+      native:ClearAllPoints()
+      native:SetPoint("BOTTOM", nameFS, "TOP", 0, OVERLAY_GAP_ABOVE)
+    end)
+    -- Merge continues the same row to the right of native (still above name).
+    if mergeFb and painted and painted > 0 then
+      local right = NativeBandRightAnchor(plate)
+      mergeFb:ClearAllPoints()
+      if right then
+        mergeFb:SetPoint("LEFT", right, "RIGHT", OVERLAY_PAD, 0)
+      else
+        mergeFb:SetPoint("LEFT", native, "RIGHT", OVERLAY_PAD, 0)
+      end
+    end
+  end
+end
+
 local function ClearOverlay(unit)
   local plate = unit and PlateFor(unit)
   if plate then
     EnsureNativeVisible(plate)
   end
+  RestoreNameShift(unit, plate)
   local holder = overlays[unit]
   if holder then
     pcall(holder.SetEnabled, holder, false)
@@ -1021,7 +1138,47 @@ local function CollectPlayerOwnedKeys(unitToken, into)
   end
 end
 
---- Prefer non-player harmful icons from C_UnitAuras (secret-safe).
+--- Dedupe key: public texture, else public spellId, else nil (caller may still paint).
+local function AuraDedupeKey(data, icon)
+  local key = PublicTexKey(icon)
+  if key then
+    return key
+  end
+  if data then
+    local spellKey
+    pcall(function()
+      local id = data.spellId
+      if type(id) == "number" and not IsSecret(id) then
+        spellKey = "spell:" .. tostring(id)
+      end
+    end)
+    if spellKey then
+      return spellKey
+    end
+  end
+  return nil
+end
+
+--- Source looks like another unit (not local player/pet) — include foreign like "Ours".
+local function AuraLooksForeign(data)
+  if not data then
+    return false
+  end
+  local src
+  pcall(function()
+    src = data.sourceUnit
+  end)
+  if type(src) ~= "string" or IsSecret(src) or src == "" then
+    return false
+  end
+  if SameUnit(src, "player") or SameUnit(src, "pet") then
+    return false
+  end
+  -- Any other public unit token (partyN, nameplateN, raidN, or player name token).
+  return true
+end
+
+--- All harmful Blizzard may omit: other players (party or not). Not party-only.
 local function CollectUnitAuraMissing(unitToken, skipKeys, out, maxN)
   if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
     return
@@ -1038,12 +1195,24 @@ local function CollectUnitAuraMissing(unitToken, skipKeys, out, maxN)
       break
     end
 
-    -- Skip clearly player-owned — native DebuffList owns those.
-    if AuraIsPlayerOwned(data) ~= true then
+    local owned = AuraIsPlayerOwned(data)
+    -- Skip only clearly *our* auras — native DebuffList owns those.
+    if owned == true then
+      -- skip
+    else
       local icon = data.icon
-      local key = PublicTexKey(icon)
-      -- Only paint when we have a public key not already shown / player-owned.
+      local key = AuraDedupeKey(data, icon)
+      local take = false
       if key and not skipKeys[key] then
+        take = true
+      elseif not key then
+        -- Secret FileID: still take when publicly not ours / foreign source.
+        if owned == false or AuraLooksForeign(data) then
+          take = true
+          key = "sec:" .. tostring(i) .. ":" .. tostring(unitToken)
+        end
+      end
+      if take and key and not skipKeys[key] then
         out[#out + 1] = icon
         skipKeys[key] = true
       end
@@ -1051,8 +1220,8 @@ local function CollectUnitAuraMissing(unitToken, skipKeys, out, maxN)
   end
 end
 
---- TargetFrame often shows the full harmful set (incl. others) while plate DebuffList omits.
---- skipKeys must already include native + player-owned public keys (avoids solo dups when native FileIDs are secret).
+--- TargetFrame scrape for public-key textures not already shown / player-owned.
+--- (Secret TF textures skipped — unit-aura foreign path handles secret FileIDs safely.)
 local function CollectTargetFrameMissing(skipKeys, out, maxN)
   local texes = {}
   CollectAuraTextures(GetTargetAuraContainer(), texes, maxN)
@@ -1117,8 +1286,12 @@ local function PaintMergeMissing(unit, plate)
     CollectUnitAuraMissing(unit, skipKeys, missing, maxN)
   end
 
+  local nativeN = CountShownAuraKids(NativeDebuffList(plate))
+
   if #missing == 0 then
     ClearFallback(unit)
+    -- Still lift name above bar / under native when native row alone would clash.
+    LayoutAuraRowAboveName(unit, plate, nil, 0)
     return 0
   end
 
@@ -1148,22 +1321,10 @@ local function PaintMergeMissing(unit, plate)
   if painted == 0 then
     fb:Hide()
     fb._painted = 0
+    LayoutAuraRowAboveName(unit, plate, nil, 0)
     return 0
   end
 
-  fb:ClearAllPoints()
-  local anchor = NativeBandRightAnchor(plate)
-  if anchor then
-    -- Same row as native DebuffList — extend to the right, never over name/HP.
-    fb:SetPoint("LEFT", anchor, "RIGHT", OVERLAY_PAD, 0)
-  else
-    local bar = HealthBar(plate)
-    if bar then
-      fb:SetPoint("BOTTOM", bar, "TOP", 0, OVERLAY_GAP_ABOVE)
-    else
-      fb:SetPoint("BOTTOM", plate, "TOP", 0, OVERLAY_GAP_ABOVE)
-    end
-  end
   fb:SetSize(math.max(1, painted * (sz + OVERLAY_PAD)), sz)
   fb:SetFrameStrata("MEDIUM")
   local lvl = 50
@@ -1173,6 +1334,9 @@ local function PaintMergeMissing(unit, plate)
   fb:SetFrameLevel(lvl)
   fb:Show()
   fb._painted = painted
+
+  -- Aura row fully ABOVE name (no left-of-name horizontal collision).
+  LayoutAuraRowAboveName(unit, plate, fb, painted)
   return painted
 end
 
@@ -1201,6 +1365,7 @@ local function UpdateOverlay(unit, plate)
   -- paintOverlay=false: do not replace native. mergeMissing: append others' omitted DoTs.
   if p.mergeMissing == false then
     ClearFallback(unit)
+    LayoutAuraRowAboveName(unit, plate, nil, 0)
     return
   end
 
@@ -1510,6 +1675,7 @@ local function OnEvent(_, event, arg1)
   elseif event == "NAME_PLATE_UNIT_REMOVED" then
     ClearOverlay(arg1)
     overlays[arg1] = nil
+    nameShifts[arg1] = nil
     if lastTargetPlateUnit == arg1 then
       lastTargetPlateUnit = nil
     end
@@ -1613,6 +1779,10 @@ function Mod.Stop()
   for unit in pairs(fallbacks) do
     ClearFallback(unit)
     fallbacks[unit] = nil
+  end
+  for unit in pairs(nameShifts) do
+    RestoreNameShift(unit, PlateFor(unit))
+    nameShifts[unit] = nil
   end
 end
 
