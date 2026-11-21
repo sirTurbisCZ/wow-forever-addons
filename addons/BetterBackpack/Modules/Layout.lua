@@ -1,7 +1,7 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.1.8).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.1.9).
   Forever: never SetToplevel (ADDON_ACTION_BLOCKED).
-  Money coins · N/M footer strip · Úklid = bags-button-autosort · bag-bar hover.
+  Content = TOPLEFT+SetSize only (no BOTTOMRIGHT stretch — that broke layout).
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -675,10 +675,24 @@ local function DoLayout()
       end
     end
 
-    local width = math.max(maxW + INSET_X * 2, 320)
-    local height = math.max(y + TOP_CHROME + BOT_CHROME + 8, 160)
+    local width = math.max(maxW + INSET_X * 2, 360)
+    local height = math.max(y + TOP_CHROME + BOT_CHROME + 8, 180)
+    -- TOPLEFT + size only — dual BOTTOMRIGHT+SetSize collapsed the panel.
+    content:ClearAllPoints()
+    if main.Inset then
+      content:SetPoint("TOPLEFT", main.Inset, "TOPLEFT", 4, -4)
+    else
+      content:SetPoint("TOPLEFT", main, "TOPLEFT", INSET_X, -TOP_CHROME)
+    end
     content:SetSize(maxW, math.max(y, 20))
     main:SetSize(width, height)
+    if main.footer then
+      main.footer:SetFrameLevel((main:GetFrameLevel() or 1) + 5)
+    end
+    if sortBtn then
+      sortBtn:Show()
+      sortBtn:SetFrameLevel((main:GetFrameLevel() or 1) + 30)
+    end
     UpdateFreeSpace()
     UpdateMoney()
   end)
@@ -866,24 +880,28 @@ local function ApplyCombinedBagsChrome(frame)
 end
 
 local function CreateBagPanel()
-  local frame
-  local templates = {
-    "ButtonFrameTemplate",
-    "BasicFrameTemplateWithInset",
-    "BasicFrameTemplate",
-  }
-  for i = 1, #templates do
-    local ok, f = pcall(function()
-      return CreateFrame("Frame", "BetterBackpackFrame", UIParent, templates[i])
-    end)
-    if ok and f then
-      frame = f
-      break
+  -- Named frame persists across failed EnsureMain — always reuse, never double-create.
+  local frame = _G.BetterBackpackFrame
+  if not frame then
+    local templates = {
+      "ButtonFrameTemplate",
+      "BasicFrameTemplateWithInset",
+      "BasicFrameTemplate",
+    }
+    for i = 1, #templates do
+      local ok, f = pcall(function()
+        return CreateFrame("Frame", "BetterBackpackFrame", UIParent, templates[i])
+      end)
+      if ok and f then
+        frame = f
+        break
+      end
     end
   end
   if not frame then
     frame = CreateFrame("Frame", "BetterBackpackFrame", UIParent)
   end
+  frame:SetParent(UIParent)
   pcall(function()
     if ButtonFrameTemplate_HidePortrait then
       ButtonFrameTemplate_HidePortrait(frame)
@@ -894,35 +912,114 @@ local function CreateBagPanel()
   return frame
 end
 
+local function DestroyHalfBuilt()
+  if main then
+    pcall(function()
+      main:Hide()
+      main:SetParent(nil)
+    end)
+  end
+  main, content, freeFs, moneyFs, emptyLabel, sortBtn = nil, nil, nil, nil, nil, nil
+  sectionFrames = {}
+  pcall(function()
+    local old = _G.BetterBackpackFrame
+    if old and old ~= main then
+      old:Hide()
+      old:SetParent(nil)
+    end
+  end)
+end
+
+local function StyleUklidButton(btn)
+  local iconSize = 24
+  btn:SetSize(28, 28)
+  pcall(function()
+    if btn.SetNormalAtlas then
+      btn:SetNormalAtlas("bags-button-autosort-up")
+    else
+      btn:SetNormalTexture("Interface\\Buttons\\UI-RefreshButton")
+      local nt = btn:GetNormalTexture()
+      if nt and nt.SetAtlas then
+        pcall(nt.SetAtlas, nt, "bags-button-autosort-up", false)
+      end
+    end
+  end)
+  pcall(function()
+    local nt = btn:GetNormalTexture()
+    if nt then
+      nt:ClearAllPoints()
+      nt:SetPoint("CENTER")
+      nt:SetSize(iconSize, iconSize)
+    end
+  end)
+  pcall(function()
+    btn:SetPushedTexture("Interface\\Buttons\\UI-RefreshButton")
+    local pt = btn:GetPushedTexture()
+    if pt then
+      if pt.SetAtlas then
+        pcall(pt.SetAtlas, pt, "bags-button-autosort-up", false)
+      end
+      pt:ClearAllPoints()
+      pt:SetPoint("CENTER", 1, -1)
+      pt:SetSize(iconSize, iconSize)
+    end
+  end)
+  pcall(function()
+    btn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+    local hl = btn:GetHighlightTexture()
+    if hl then
+      hl:ClearAllPoints()
+      hl:SetPoint("CENTER")
+      hl:SetSize(iconSize + 4, iconSize + 4)
+    end
+  end)
+end
+
 function Layout.EnsureMain()
+  -- Recover half-built frame (error mid-EnsureMain left empty chrome).
+  if main and not content then
+    DestroyHalfBuilt()
+  end
   if main then
     KillPortrait(main)
     ApplyCombinedBagsChrome(main)
     InstallBagHoverHighlight()
     if sortBtn then
       sortBtn:Show()
+      sortBtn:SetFrameLevel((main:GetFrameLevel() or 1) + 30)
     end
     return main
   end
 
-  main = CreateBagPanel()
-  main:SetSize(400, 320)
-  main:SetFrameStrata("DIALOG")
-  main:SetFrameLevel(200)
-  main:SetMovable(true)
-  main:EnableMouse(true)
-  main:RegisterForDrag("LeftButton")
-  main:SetScript("OnDragStart", function(self)
+  local built = CreateBagPanel()
+  -- Reattach locals if a prior load already finished chrome on this named frame.
+  if built._bbBuilt and built._bbContent then
+    main = built
+    content = built._bbContent
+    freeFs = built.freeFs
+    moneyFs = built._bbMoneyFs
+    emptyLabel = built._bbEmpty
+    sortBtn = built.sortBtn or built.tidy
+    InstallBagHoverHighlight()
+    return main
+  end
+  built:SetSize(400, 320)
+  built:SetFrameStrata("DIALOG")
+  built:SetFrameLevel(200)
+  built:SetMovable(true)
+  built:EnableMouse(true)
+  built:RegisterForDrag("LeftButton")
+  built:SetScript("OnDragStart", function(self)
     if InCombatLockdown and InCombatLockdown() then
       return
     end
     self:StartMoving()
   end)
-  main:SetScript("OnDragStop", function(self)
+  built:SetScript("OnDragStop", function(self)
     self:StopMovingOrSizing()
     PersistPos()
   end)
-  main:SetScript("OnShow", function(self)
+  built:SetScript("OnShow", function(self)
     KillPortrait(self)
     ApplyCombinedBagsChrome(self)
     local title = CombinedBagTitle()
@@ -934,33 +1031,42 @@ function Layout.EnsureMain()
       self.title:SetText(title)
     end
   end)
-  main:SetScript("OnHide", function()
+  built:SetScript("OnHide", function()
     local OpenClose = BetterBackpack.Modules.OpenClose
     if OpenClose and OpenClose.NotifyHidden then
       OpenClose.NotifyHidden()
     end
   end)
   if UISpecialFrames then
-    table.insert(UISpecialFrames, "BetterBackpackFrame")
+    local already = false
+    for i = 1, #UISpecialFrames do
+      if UISpecialFrames[i] == "BetterBackpackFrame" then
+        already = true
+        break
+      end
+    end
+    if not already then
+      table.insert(UISpecialFrames, "BetterBackpackFrame")
+    end
   end
 
   local titleText = CombinedBagTitle()
-  if main.SetTitle then
-    pcall(main.SetTitle, main, titleText)
+  if built.SetTitle then
+    pcall(built.SetTitle, built, titleText)
   end
-  if not main.TitleText and not main.title then
-    local title = main:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  if not built.TitleText and not built.title then
+    local title = built:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("TOP", 0, -6)
     title:SetText(titleText)
-    main.title = title
-  elseif main.TitleText then
-    main.TitleText:SetText(titleText)
+    built.title = title
+  elseif built.TitleText then
+    built.TitleText:SetText(titleText)
   end
 
-  local close = main.CloseButton
+  local close = built.CloseButton
   if not close then
     pcall(function()
-      close = CreateFrame("Button", nil, main, "UIPanelCloseButton")
+      close = CreateFrame("Button", nil, built, "UIPanelCloseButton")
     end)
   end
   if close then
@@ -971,127 +1077,120 @@ function Layout.EnsureMain()
       if OpenClose and OpenClose.CloseOurs then
         OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
       else
-        main:Hide()
+        built:Hide()
       end
     end)
   end
 
-  -- Úklid = CombinedBags broom (bags-button-autosort-up), title chrome next to close.
-  local cw, ch = 28, 28
-  local iconSize = 26
-  sortBtn = CreateFrame("Button", "BetterBackpackSortButton", main)
-  sortBtn:SetSize(cw, ch)
+  -- Úklid broom (CombinedBags autosort atlas).
+  local tidy = CreateFrame("Button", "BetterBackpackSortButton", built)
+  StyleUklidButton(tidy)
   if close then
-    sortBtn:SetPoint("RIGHT", close, "LEFT", -2, 0)
-    sortBtn:SetFrameLevel((close:GetFrameLevel() or 100) + 1)
+    tidy:SetPoint("RIGHT", close, "LEFT", -2, 0)
   else
-    sortBtn:SetPoint("TOPRIGHT", -28, -4)
-    sortBtn:SetFrameLevel((main:GetFrameLevel() or 1) + 20)
+    tidy:SetPoint("TOPRIGHT", -28, -4)
   end
-  do
-    local function MakeTex(layer, dx, dy)
-      local tex = sortBtn:CreateTexture(nil, layer)
-      tex:SetSize(iconSize, iconSize)
-      tex:SetPoint("CENTER", dx or 0, dy or 0)
-      local ok = pcall(tex.SetAtlas, tex, "bags-button-autosort-up", false)
-      if not ok then
-        pcall(tex.SetTexture, tex, "Interface\\Buttons\\UI-RefreshButton")
-      end
-      return tex
-    end
-    sortBtn:SetNormalTexture(MakeTex("ARTWORK", 0, 0))
-    sortBtn:SetPushedTexture(MakeTex("ARTWORK", 1, -1))
-    pcall(function()
-      sortBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
-      local hl = sortBtn:GetHighlightTexture()
-      if hl then
-        hl:ClearAllPoints()
-        hl:SetPoint("CENTER")
-        hl:SetSize(iconSize + 4, iconSize + 4)
-      end
-    end)
-  end
-  sortBtn:SetScript("OnEnter", function(self)
+  tidy:SetFrameLevel((built:GetFrameLevel() or 1) + 30)
+  tidy:SetScript("OnEnter", function(self)
     if GameTooltip then
       GameTooltip:SetOwner(self, "ANCHOR_LEFT")
       GameTooltip:SetText("Úklid")
-      GameTooltip:AddLine("Blizzard SortBags. Mimo boj.", 0.7, 0.7, 0.7, true)
+      GameTooltip:AddLine("SortBags + stack. Mimo boj.", 0.7, 0.7, 0.7, true)
       GameTooltip:Show()
     end
   end)
-  sortBtn:SetScript("OnLeave", function()
+  tidy:SetScript("OnLeave", function()
     if GameTooltip then
       GameTooltip:Hide()
     end
   end)
-  sortBtn:SetScript("OnClick", function()
+  tidy:SetScript("OnClick", function()
     local Tidy = BetterBackpack.Modules.Tidy
     if Tidy and Tidy.SortBags then
       Tidy.SortBags()
     end
   end)
-  sortBtn:Show()
-  main.sortBtn = sortBtn
-  main.tidy = sortBtn
+  tidy:Show()
 
-  -- Footer strip: N/M left + coin money right, shared baseline.
-  local footer = CreateFrame("Frame", nil, main)
+  -- Footer on main (not Inset) — stable when main:SetSize runs.
+  local footer = CreateFrame("Frame", nil, built)
   footer:SetHeight(FOOTER_H)
   footer:EnableMouse(false)
-  if main.Inset then
-    footer:SetPoint("BOTTOMLEFT", main.Inset, "BOTTOMLEFT", 6, 4)
-    footer:SetPoint("BOTTOMRIGHT", main.Inset, "BOTTOMRIGHT", -6, 4)
-  else
-    footer:SetPoint("BOTTOMLEFT", 12, 8)
-    footer:SetPoint("BOTTOMRIGHT", -12, 8)
-  end
-  main.footer = footer
+  footer:SetPoint("BOTTOMLEFT", built, "BOTTOMLEFT", 14, 10)
+  footer:SetPoint("BOTTOMRIGHT", built, "BOTTOMRIGHT", -14, 10)
+  footer:SetFrameLevel((built:GetFrameLevel() or 1) + 5)
 
-  freeFs = footer:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
-  if not freeFs then
-    freeFs = footer:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  local fs
+  pcall(function()
+    fs = footer:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  end)
+  if not fs then
+    fs = footer:CreateFontString(nil, "OVERLAY")
+    pcall(function()
+      fs:SetFontObject(GameFontHighlight)
+    end)
   end
-  freeFs:SetPoint("LEFT", footer, "LEFT", 0, 0)
-  freeFs:SetJustifyH("LEFT")
-  freeFs:SetJustifyV("MIDDLE")
-  freeFs:SetWidth(72)
-  freeFs:SetText("—/—")
-  main.freeFs = freeFs
+  fs:SetPoint("LEFT", footer, "LEFT", 0, 1)
+  fs:SetJustifyH("LEFT")
+  fs:SetJustifyV("MIDDLE")
+  fs:SetWidth(80)
+  fs:SetText("—/—")
 
   local moneyFrame
   pcall(function()
-    moneyFrame = CreateFrame("Frame", "BetterBackpackMoneyFrame", footer, "SmallMoneyFrameTemplate")
+    moneyFrame = CreateFrame("Frame", "BetterBackpackMoneyFrame", built, "SmallMoneyFrameTemplate")
   end)
   if moneyFrame then
-    -- SmallMoneyFrameTemplate: right-edge coins; nudge to match N/M midline.
     moneyFrame:ClearAllPoints()
-    moneyFrame:SetPoint("RIGHT", footer, "RIGHT", 8, 0)
+    moneyFrame:SetPoint("BOTTOMRIGHT", built, "BOTTOMRIGHT", -6, 10)
     pcall(function()
       if MoneyFrame_SetType then
         MoneyFrame_SetType(moneyFrame, "STATIC")
       end
     end)
-    main.moneyFrame = moneyFrame
-  else
-    moneyFs = footer:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    moneyFs:SetPoint("RIGHT", footer, "RIGHT", 0, 0)
-    moneyFs:SetJustifyH("RIGHT")
-    moneyFs:SetJustifyV("MIDDLE")
+    -- Hide leftover "Player" label some templates show.
+    pcall(function()
+      if moneyFrame.border then
+        moneyFrame.border:Hide()
+      end
+      local name = moneyFrame:GetName()
+      if name and _G[name .. "TrialErrorButton"] then
+        _G[name .. "TrialErrorButton"]:Hide()
+      end
+    end)
+  end
+  local moneyFallback
+  if not moneyFrame then
+    moneyFallback = footer:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    moneyFallback:SetPoint("RIGHT", footer, "RIGHT", 0, 1)
+    moneyFallback:SetJustifyH("RIGHT")
   end
 
-  content = CreateFrame("Frame", nil, main)
-  content:EnableMouse(false)
-  if main.Inset then
-    content:SetPoint("TOPLEFT", main.Inset, "TOPLEFT", 4, -4)
-    content:SetPoint("BOTTOMRIGHT", main.Inset, "BOTTOMRIGHT", -4, FOOTER_H + 6)
-  else
-    content:SetPoint("TOPLEFT", INSET_X, -TOP_CHROME)
-    content:SetPoint("BOTTOMRIGHT", -INSET_X, BOT_CHROME)
-  end
+  local contentFrame = CreateFrame("Frame", nil, built)
+  contentFrame:EnableMouse(false)
+  contentFrame:SetPoint("TOPLEFT", built, "TOPLEFT", INSET_X, -TOP_CHROME)
+  contentFrame:SetSize(100, 100)
 
-  emptyLabel = content:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-  emptyLabel:SetPoint("TOPLEFT", 4, -4)
-  emptyLabel:Hide()
+  local empty = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  empty:SetPoint("TOPLEFT", 4, -4)
+  empty:Hide()
+
+  -- Commit only when fully built.
+  main = built
+  content = contentFrame
+  freeFs = fs
+  moneyFs = moneyFallback
+  emptyLabel = empty
+  sortBtn = tidy
+  main.footer = footer
+  main.freeFs = freeFs
+  main.moneyFrame = moneyFrame
+  main.sortBtn = tidy
+  main.tidy = tidy
+  main._bbContent = contentFrame
+  main._bbEmpty = empty
+  main._bbMoneyFs = moneyFallback
+  main._bbBuilt = true
 
   InstallBagHoverHighlight()
   PlaceOnScreen()

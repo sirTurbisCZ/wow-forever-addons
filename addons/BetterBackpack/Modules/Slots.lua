@@ -260,11 +260,31 @@ function Slots.SyncVisual(btn, bag, slot)
     elseif icon and not info.iconFileID then
       icon:SetTexture(nil)
     end
-    local count = SafeNum(info.stackCount or info.Count, 1) or 1
+    local count = SafeNum(info.stackCount or info.Count, nil)
+    if count == nil then
+      count = 1
+    end
+    if not btn.Count then
+      local fs
+      pcall(function()
+        fs = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+      end)
+      if not fs then
+        fs = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+      end
+      fs:SetPoint("BOTTOMRIGHT", -2, 2)
+      btn.Count = fs
+    end
     if SetItemButtonCount then
-      SetItemButtonCount(btn, count)
-    elseif btn.Count and btn.Count.SetText then
-      btn.Count:SetText(count > 1 and tostring(count) or "")
+      pcall(SetItemButtonCount, btn, count)
+    end
+    if btn.Count and btn.Count.SetText then
+      if count > 1 then
+        btn.Count:SetText(tostring(count))
+        btn.Count:Show()
+      else
+        btn.Count:SetText("")
+      end
     end
     if SetItemButtonQuality and type(info.quality) == "number" and not IsSecret(info.quality) then
       SetItemButtonQuality(btn, info.quality, info.itemID)
@@ -519,7 +539,13 @@ local function MakeVisualOnly(name, parent)
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     btn.icon = icon
     btn.Icon = icon
-    local count = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+    local count
+    pcall(function()
+      count = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+    end)
+    if not count then
+      count = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    end
     count:SetPoint("BOTTOMRIGHT", -2, 2)
     btn.Count = count
   end
@@ -577,7 +603,13 @@ function Slots.Acquire(bag, slot)
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     btn.icon = icon
     btn.Icon = icon
-    local count = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+    local count
+    pcall(function()
+      count = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+    end)
+    if not count then
+      count = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    end
     count:SetPoint("BOTTOMRIGHT", -2, 2)
     btn.Count = count
     local border = btn:CreateTexture(nil, "OVERLAY")
