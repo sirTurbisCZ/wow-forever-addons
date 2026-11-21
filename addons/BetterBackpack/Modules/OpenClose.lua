@@ -1536,9 +1536,6 @@ local function HookBackpackBarMouseDown()
 end
 
 local function HookBagBarButtons()
-  if BagBarNativeEnabled() then
-    return 0
-  end
   HookBackpackBarMouseDown()
   local hooked = 0
   local names = {
@@ -1591,6 +1588,24 @@ local function HookBagBarButtons()
   end
   return hooked
 end
+
+local bagBarHookPasses = 0
+
+local function EnsureBagBarHooks()
+  if not EnabledReplace() then
+    return 0
+  end
+  local n = HookBagBarButtons()
+  if n > 0 then
+    bagBarHookPasses = bagBarHookPasses + 1
+    if bagBarHookPasses == 1 then
+      LogHooksOnce(string.format("bag-bar clicks hooked=%d native=%s", n, tostring(BagBarNativeEnabled())))
+    end
+  end
+  return n
+end
+
+OpenClose.EnsureBagBarHooks = EnsureBagBarHooks
 
 local BAG_KEY_TOGGLES = { "ToggleAllBags", "ToggleBackpack" }
 
@@ -1658,14 +1673,22 @@ function OpenClose.OnMerchantShow()
   end
 end
 
+local function onToggleBag(...)
+  onBagToggle((...), "ToggleBag")
+end
+
 local function ApplyBagKeyReplace()
   CaptureBlizzardToggles()
   OpenClose.RestoreBlizzardToggles()
-  -- ToggleBag / ToggleKeyRing stay native — only B paths replaced (0.5.45 path).
+  -- B → BetterBackpack; bag-bar → onBagToggle (overlay or native per profile).
   ReplaceToggle("ToggleAllBags", function(...)
     onBagKey("ToggleAllBags")
   end)
   ReplaceToggle("ToggleBackpack", onBackpackToggle)
+  ReplaceToggle("ToggleBag", onToggleBag)
+  ReplaceToggle("ToggleKeyRing", function(...)
+    onKeyRingToggle()
+  end)
   ApplyOpenAPIReplace()
 end
 
@@ -1682,11 +1705,17 @@ function OpenClose.InstallHooks()
   if C_Timer and C_Timer.After then
     C_Timer.After(0, function()
       pcall(ApplyBagKeyReplace)
+      pcall(EnsureBagBarHooks)
     end)
+    C_Timer.After(0.5, EnsureBagBarHooks)
+    C_Timer.After(2, EnsureBagBarHooks)
     C_Timer.After(1, function()
       pcall(ApplyBagKeyReplace)
     end)
+  else
+    pcall(EnsureBagBarHooks)
   end
+  pcall(EnsureBagBarHooks)
   if ok then
     local n = 0
     if OpenClose._replaced_ToggleAllBags then

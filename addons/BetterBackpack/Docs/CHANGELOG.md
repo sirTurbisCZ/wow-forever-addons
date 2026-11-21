@@ -1,5 +1,9 @@
 # BetterBackpack changelog
 
+## 1.0.1
+
+- **Bag bar:** install `EnsureBagBarHooks` (was never called); hook clicks in native + overlay modes; replace `ToggleBag` / `ToggleKeyRing` through `onBagToggle` (B unchanged).
+
 ## 1.0.0 (release)
 
 - **Combat:** keep-shown bag shell; B toggles alpha without blocked `Show()` in lockdown.

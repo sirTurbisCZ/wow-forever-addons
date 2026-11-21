@@ -11,7 +11,7 @@
 ```mermaid
 flowchart TD
   B[ToggleAllBags + ToggleBackpack + OpenAllBags replaced]
-  Bar[ToggleBag / ToggleKeyRing → Blizzard]
+  Bar[ToggleBag / ToggleKeyRing → onBagToggle + bag-bar OnClick hooks]
   B --> Rep[Replace global — skip Blizzard body]
   Rep --> Black[BlackoutAllBlizzard alpha=0 first]
   Black --> Lock{t < toggleLockUntil or debounce?}
@@ -33,6 +33,7 @@ flowchart TD
 - Toggle globals are **replaced**, not post-hooked.
 - Combat (**1.0**): `_bbKeepShown` — main frame stays shown at alpha 0; open = alpha 1 only (no `Show()` in lockdown).
 - `OpenAllBags` / `OpenBag` → `OpenOurs` when replace is on (vendor keeps BB, not native CombinedBags).
+- Bag bar: `EnsureBagBarHooks` + `ToggleBag` replace → `onBagToggle` (BB lane focus or native single bag when `bagBarNativeBag`).
 - Window size is computed from the full unfiltered bag with all lanes expanded (sticky while open).
 
 ---
