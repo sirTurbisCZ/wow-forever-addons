@@ -1,0 +1,61 @@
+name: Release addon zip
+
+on:
+  push:
+    tags:
+      - "felog-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve addon from tag
+        id: meta
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          case "$TAG" in
+            felog-v*)
+              ADDON="ForeverErrorLog"
+              VER="${TAG#felog-v}"
+              ;;
+            *)
+              echo "Unsupported tag: $TAG" >&2
+              exit 1
+              ;;
+          esac
+          TOC="addons/${ADDON}/${ADDON}.toc"
+          TOC_VER="$(grep -E '^## Version:' "$TOC" | head -1 | sed 's/^## Version:[[:space:]]*//;s/[[:space:]]*$//')"
+          if [[ "$TOC_VER" != "$VER" ]]; then
+            echo "Tag version ($VER) does not match TOC ## Version ($TOC_VER)" >&2
+            exit 1
+          fi
+          echo "addon=$ADDON" >> "$GITHUB_OUTPUT"
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "asset=${ADDON}-${VER}.zip" >> "$GITHUB_OUTPUT"
+
+      - name: Package zip
+        run: |
+          chmod +x scripts/package-addon.sh
+          ./scripts/package-addon.sh "${{ steps.meta.outputs.addon }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ForeverErrorLog ${{ steps.meta.outputs.version }}
+          body: |
+            ## ForeverErrorLog ${{ steps.meta.outputs.version }}
+
+            Install: extract so `Interface/AddOns/ForeverErrorLog/` exists, then `/reload`.
+
+            Slash: `/felog help|list|dump|clear|reset`
+
+            Asset root is the `ForeverErrorLog/` folder.
+          files: dist/${{ steps.meta.outputs.asset }}
+          fail_on_unmatched_files: true
