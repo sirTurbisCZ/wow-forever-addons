@@ -1377,7 +1377,7 @@ function OpenClose.InstallHooks()
   OpenClose.RestoreBlizzardToggles()
   local replacedAll = ReplaceToggle("ToggleAllBags", onBagKey)
   if not replacedAll and type(_G.ToggleBackpack) == "function" then
-  ReplaceToggle("ToggleBackpack", onBagKey)
+    ReplaceToggle("ToggleBackpack", onBagKey)
   end
 
   if not BagBarNativeEnabled() then
