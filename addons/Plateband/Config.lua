@@ -2,7 +2,7 @@
 
 Plateband = Plateband or {}
 
-local CURRENT_SCHEMA = 6
+local CURRENT_SCHEMA = 7
 local MAX_ERRORS = 40
 local MAX_MSG = 2000
 
@@ -12,7 +12,7 @@ local Config = Plateband.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.1.14"
+Config.VERSION = "0.1.15"
 
 local function ProfileDefaults()
   return {
@@ -23,8 +23,8 @@ local function ProfileDefaults()
     showBand = true,
     -- Never replace/park native DebuffList (personal = Blizzard only).
     paintOverlay = false,
-    -- 0.1.12 safe default: native DebuffList only (merge broke plates via name SetPoint).
-    mergeMissing = false,
+    -- 0.1.15: safe beside-native merge default on (schema 6 had opt-in off).
+    mergeMissing = true,
     watchOn = false,
     watchInterval = 2,
     autoDiag = true,
@@ -138,6 +138,14 @@ function Config.EnsureDB()
     db.profile.paintOverlay = false
     db.profile.mergeMissing = false
     db.schemaVersion = 6
+    from = 6
+  end
+
+  if from < 7 then
+    EnsureProfile(db)
+    db.profile.paintOverlay = false
+    db.profile.mergeMissing = true
+    db.schemaVersion = 7
   end
 
   EnsureProfile(db)
