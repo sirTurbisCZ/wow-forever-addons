@@ -34,6 +34,7 @@ flowchart TD
 - **ToggleBag + bag-bar OnClick = XOR** (same as B). OpenBag/OpenAllBags = open-only. CloseBag/CloseAllBags close ours.
 - HookScript OnClick only on frames with `HasScript("OnClick")` / Button — never throw on BagsBar chrome kids.
 - Bag focus: `Layout.SetBagFocus(id)` highlights that bag’s slots after open.
+- Title chrome: gear + broom sized from `CloseButton` and anchored on the **same title-bar row** left of X (not the old `-34` sort strip).
 
 ---
 
