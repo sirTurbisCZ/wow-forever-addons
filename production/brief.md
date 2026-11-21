@@ -1,7 +1,7 @@
-# Playtest brief — BetterBackpack 0.3.6
+# Playtest brief — BetterBackpack 0.3.7
 
-**Bug:** custom gear/broom never matched Close size.
+**Where 102 came from:** footer used BagRanges + invented keyring 32 when API secret/failed → 70 + 32 = 102.
 
-**Fix:** STOP custom chrome. Reparent Blizzard `BagItemAutoSortButton` + CombinedBags filter/`PortraitButton` next to Close — native textures/sizes. Chat: `native chrome sort=… filter=… close=…`.
+**Fix:** `CountPlayerSlots` = only `GetContainerNumSlots(0..NUM_BAG_SLOTS)`; never invent; chat once `slots 0=… 1=… → used/total=N/70`.
 
-**Done when:** `/reload` → `loaded v0.3.6` · broom+filter look identical to default CombinedBags · same size as Blizzard.
+**Done when:** `/reload` → footer **/70** · chat breakdown sums to 70.

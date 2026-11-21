@@ -149,51 +149,94 @@ function Slots.NumSlotsForBag(bag)
     return 0
   end
   local ok, res = pcall(C_Container.GetContainerNumSlots, bag)
-  if not ok or type(res) ~= "number" then
-    if Slots.IsReagentBag(bag) then
-      return 36
-    end
-    if Slots.IsKeyringBag(bag) then
-      return 32
-    end
+  if not ok or type(res) ~= "number" or IsSecret(res) then
+    -- Never invent 36/32/120 — footer and layout must not fake capacity.
     return 0
   end
-  if IsSecret(res) then
-    if Slots.IsKeyringBag(bag) then
-      return 32
-    end
-    return 36
+  if res <= 0 or res > 96 then
+    return 0
   end
-  return res > 0 and res or 0
+  return res
 end
 
-function Slots.BagRanges()
-  local ranges = {}
-  local reb = Slots.ReagentBagIndex()
-  local key = Slots.KeyringBagIndex()
-  local bags = { 0, 1, 2, 3, 4, reb, key }
-  if not Slots.IsReagentBag(5) then
-    bags[#bags + 1] = 5
+-- Player bags only: 0 .. NUM_BAG_SLOTS (backpack + worn bags). No bank/keyring/warband.
+-- Ondřej: total MUST be GetContainerNumSlots(0)+…+(NUM_BAG_SLOTS). 102 was 70+32 invented keyring.
+function Slots.PlayerBagLastIndex()
+  local last = NUM_BAG_SLOTS
+  if type(last) ~= "number" or last < 0 or last > 12 then
+    last = 4
   end
-  for i = 1, #bags do
-    local bag = bags[i]
-    local already = false
-    for j = 1, #ranges do
-      local match = false
-      pcall(function()
-        if ranges[j].bag == bag then
-          match = true
-        end
-      end)
-      if match
-          or (Slots.IsReagentBag(ranges[j].bag) and Slots.IsReagentBag(bag))
-          or (Slots.IsKeyringBag(ranges[j].bag) and Slots.IsKeyringBag(bag))
-      then
-        already = true
-        break
+  return last
+end
+
+function Slots.IsPlayerBagIndex(bag)
+  local b = SafeNum(bag, nil)
+  if b == nil then
+    return false
+  end
+  if Slots.IsKeyringBag(b) then
+    return false
+  end
+  return b >= 0 and b <= Slots.PlayerBagLastIndex()
+end
+
+function Slots.PlayerBagRanges()
+  local ranges = {}
+  local last = Slots.PlayerBagLastIndex()
+  for bag = 0, last do
+    -- Only real API count — never invent.
+    local n = 0
+    if C_Container and C_Container.GetContainerNumSlots then
+      local ok, res = pcall(C_Container.GetContainerNumSlots, bag)
+      if ok and type(res) == "number" and not IsSecret(res) and res > 0 and res <= 96 then
+        n = res
       end
     end
-    if not already then
+    if n > 0 then
+      ranges[#ranges + 1] = {
+        bag = bag,
+        slots = n,
+        reagent = false,
+        keyring = false,
+      }
+    end
+  end
+  return ranges
+end
+
+-- Footer audit: used/total + per-bag GetContainerNumSlots(0..NUM_BAG_SLOTS).
+function Slots.CountPlayerSlots()
+  local parts = {}
+  local total, free = 0, 0
+  local ranges = Slots.PlayerBagRanges()
+  for i = 1, #ranges do
+    local bag, n = ranges[i].bag, ranges[i].slots
+    parts[#parts + 1] = string.format("%d=%d", bag, n)
+    total = total + n
+    for slot = 1, n do
+      if not Slots.SlotOccupied(bag, slot) then
+        free = free + 1
+      end
+    end
+  end
+  local used = total - free
+  if used < 0 then
+    used = 0
+  end
+  return used, total, free, table.concat(parts, " ")
+end
+
+-- Layout lanes: player bags + real reagent/keyring when API reports slots (still no invent).
+function Slots.BagRanges()
+  local ranges = Slots.PlayerBagRanges()
+  local seen = {}
+  for i = 1, #ranges do
+    seen[ranges[i].bag] = true
+  end
+  local extras = { Slots.ReagentBagIndex(), Slots.KeyringBagIndex() }
+  for i = 1, #extras do
+    local bag = extras[i]
+    if bag ~= nil and not seen[bag] and not Slots.IsPlayerBagIndex(bag) then
       local n = Slots.NumSlotsForBag(bag)
       if n > 0 then
         ranges[#ranges + 1] = {
@@ -202,6 +245,7 @@ function Slots.BagRanges()
           reagent = Slots.IsReagentBag(bag),
           keyring = Slots.IsKeyringBag(bag),
         }
+        seen[bag] = true
       end
     end
   end
@@ -850,14 +894,10 @@ function Slots.PreCreate()
     return false
   end
   EnsureHost()
-  local bags = { 0, 1, 2, 3, 4, Slots.ReagentBagIndex(), Slots.KeyringBagIndex() }
-  if not Slots.IsReagentBag(5) then
-    bags[#bags + 1] = 5
-  end
-  for i = 1, #bags do
-    local bag = bags[i]
-    local maxSlots = Slots.IsKeyringBag(bag) and 32 or 36
-    for slot = 1, maxSlots do
+  local ranges = Slots.BagRanges()
+  for i = 1, #ranges do
+    local bag, n = ranges[i].bag, ranges[i].slots
+    for slot = 1, n do
       local btn = Slots.Acquire(bag, slot)
       Slots.SyncAttrs(btn, bag, slot)
     end

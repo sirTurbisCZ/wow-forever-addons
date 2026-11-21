@@ -358,32 +358,52 @@ local function UpdateMoney()
   end
 end
 
--- Classic used/total N/M, colored by fill %.
+-- Classic used/total N/M: ONLY GetContainerNumSlots(0..NUM_BAG_SLOTS). 102 was 70+32 keyring invent.
+local freeSpaceLogged = false
+
+local function LogPlayerSlotsOnce(used, total, parts)
+  if freeSpaceLogged then
+    return
+  end
+  freeSpaceLogged = true
+  local msg = string.format(
+    "|cff88ff88BetterBackpack|r slots %s → used/total=%d/%d (no keyring/bank)",
+    tostring(parts or "?"),
+    used or 0,
+    total or 0
+  )
+  if DEFAULT_CHAT_FRAME then
+    DEFAULT_CHAT_FRAME:AddMessage(msg)
+  end
+end
+
 local function UpdateFreeSpace()
   freeFs = (main and main.freeFs) or freeFs
   if not freeFs then
     return
   end
-  local free, total = 0, 0
-  local okRanges, ranges = pcall(function()
-    return Slots.BagRanges()
-  end)
-  if okRanges and type(ranges) == "table" then
-    for i = 1, #ranges do
-      local bag, n = ranges[i].bag, ranges[i].slots
-      n = tonumber(n) or 0
-      total = total + n
-      for slot = 1, n do
-        if not Slots.SlotOccupied(bag, slot) then
-          free = free + 1
+  local used, total, free, parts = 0, 0, 0, "?"
+  pcall(function()
+    if Slots.CountPlayerSlots then
+      used, total, free, parts = Slots.CountPlayerSlots()
+    else
+      local ranges = Slots.PlayerBagRanges and Slots.PlayerBagRanges() or {}
+      for i = 1, #ranges do
+        local n = ranges[i].slots
+        total = total + n
+        for slot = 1, n do
+          if not Slots.SlotOccupied(ranges[i].bag, slot) then
+            free = free + 1
+          end
         end
       end
+      used = total - free
     end
-  end
-  local used = total - free
+  end)
   if used < 0 then
     used = 0
   end
+  LogPlayerSlotsOnce(used, total, parts)
   pcall(function()
     freeFs:Show()
     freeFs:ClearAllPoints()
@@ -398,7 +418,6 @@ local function UpdateFreeSpace()
     freeFs:SetJustifyV("MIDDLE")
     freeFs:SetDrawLayer("OVERLAY", 7)
     freeFs:SetText(string.format("%d/%d", used, total))
-    -- ≤50% green, ≤75% yellow, <100% orange, 100% red
     local ratio = (total > 0) and (used / total) or 0
     if ratio <= 0.50 then
       freeFs:SetTextColor(0.25, 0.85, 0.35)
@@ -1642,18 +1661,22 @@ function Layout.DiagnoseBags()
       filled = filled + 1
     end
   end
-  local ranges = Slots.BagRanges()
+  local ranges = Slots.PlayerBagRanges and Slots.PlayerBagRanges() or Slots.BagRanges()
   local total, free = 0, 0
-  local hasReb = false
   for i = 1, #ranges do
     total = total + ranges[i].slots
-    if ranges[i].reagent then
-      hasReb = true
-    end
     for s = 1, ranges[i].slots do
       if not Slots.SlotOccupied(ranges[i].bag, s) then
         free = free + 1
       end
+    end
+  end
+  local all = Slots.BagRanges()
+  local hasReb = false
+  for i = 1, #all do
+    if all[i].reagent then
+      hasReb = true
+      break
     end
   end
   return {
