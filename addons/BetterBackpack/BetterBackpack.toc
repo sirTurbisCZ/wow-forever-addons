@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 0.5.75 keep-shown shell; combat open alpha1 only (no Show in lockdown).
+## Notes: 0.5.76 Shift+RMB lane bulk; RMB = collapse. 0.5.75 combat keep-shown shell.
 ## Author: tuma
-## Version: 0.5.75
+## Version: 0.5.76
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled

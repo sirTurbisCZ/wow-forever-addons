@@ -1,5 +1,5 @@
 --[[
-  BulkTransfer — lane header RMB bulk moves (OOC only).
+  BulkTransfer - lane header Shift+RMB bulk (OOC only).
   Context: merchant = sell, mail = attach, bank = UseContainerItem deposit.
   Never touches OpenClose / Toggle* globals.
 ]]
@@ -193,7 +193,7 @@ function BulkTransfer.HeaderTooltipLine()
   if not verb then
     return nil
   end
-  return "RMB header — " .. verb
+  return "Shift+RMB header - " .. verb
 end
 
 local function Pump()

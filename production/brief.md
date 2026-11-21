@@ -1,4 +1,8 @@
-# Playtest brief — BetterBackpack 0.5.75
+# Playtest brief — BetterBackpack 0.5.76
+
+**0.5.76**
+- Lane header **RMB** = collapse/expand (unchanged).
+- **Shift+RMB** header at vendor/mail/bank = bulk sell/attach/deposit (tooltip when context open).
 
 **0.5.75**
 - After `EnsureCombatShell`: `_bbKeepShown` - frame stays `Show()`; close = alpha 0 only.

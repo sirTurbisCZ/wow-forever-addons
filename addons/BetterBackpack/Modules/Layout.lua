@@ -1079,9 +1079,12 @@ local function EnsureSection(key)
   end)
   header:SetScript("OnClick", function(_, button)
     if button == "RightButton" and not Layout.DropOnLane(key) and not CursorHoldingItem() then
-      local BT = Feat("BulkTransfer")
-      if BT and BT.LaneHeaderRmb and BT.LaneHeaderRmb(key) then
-        return
+      local shift = IsShiftKeyDown and IsShiftKeyDown()
+      if shift then
+        local BT = Feat("BulkTransfer")
+        if BT and BT.LaneHeaderRmb and BT.LaneHeaderRmb(key) then
+          return
+        end
       end
     end
     if Layout.DropOnLane(key) then
