@@ -13,7 +13,7 @@ local Config = BetterBackpack.Config
 local Slots = BetterBackpack.Modules.Slots
 
 local SLOT = 37
-local PAD = 4
+local PAD = 2
 local HEADER_H = 18
 local ghosts = {} -- itemID → frame
 local section

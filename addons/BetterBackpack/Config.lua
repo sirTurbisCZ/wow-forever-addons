@@ -12,7 +12,7 @@ local Config = BetterBackpack.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.5.7"
+Config.VERSION = "0.5.8"
 
 local function ProfileDefaults()
   return {
@@ -41,6 +41,7 @@ local function ProfileDefaults()
     customCategories = {}, -- { { id, name, itemIDs = {} } }
     hiddenDefaults = {}, -- { junk = true } → hide default lane (items → Other)
     stackMerge = true, -- visual merge same itemID
+    fillEmptyWells = true, -- empty slot wells in space freed by collapse / search
     pins = {}, -- { [itemID] = true } red ghost when not owned
     layoutMode = "lanes", -- "lanes" | "dense"
     pos = nil, -- { point, relPoint, x, y } when user-moved

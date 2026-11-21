@@ -136,8 +136,8 @@ function StackMerge.ApplyDisplayCount(btn, entry)
   local fs = btn.Count
   if not fs then
     pcall(function()
-      fs = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
-      fs:SetPoint("BOTTOMRIGHT", -5, 2)
+      fs = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+      fs:SetPoint("BOTTOMRIGHT", -3, 2)
       btn.Count = fs
     end)
   end
@@ -146,7 +146,7 @@ function StackMerge.ApplyDisplayCount(btn, entry)
   end
   pcall(function()
     fs:SetText(tostring(count))
-    -- Same white NumberFontNormal as any Blizzard stack — merge is invisible chrome-wise.
+    -- Same white NumberFontNormalSmall as any Blizzard stack — merge is invisible chrome-wise.
     fs:SetTextColor(1, 1, 1, 1)
     fs:Show()
   end)

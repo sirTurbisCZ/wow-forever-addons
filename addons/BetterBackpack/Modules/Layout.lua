@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.7).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.8).
   Forever: never SetToplevel / SetFrameStrata (ADDON_ACTION_BLOCKED).
   Chrome metrics from Baganator Forever Blizzard skin + ContainerFrameCombinedBags:
     ButtonFrameOffset=6, Bg/TopTile @ (6,-21), NineSlice borders, Inset hidden.
@@ -20,10 +20,10 @@ local function Feat(name)
 end
 
 local SLOT = 37
-local PAD = 4
-local HEADER_H = 20
+local PAD = 2 -- dense grid (0.5.8)
+local HEADER_H = 18
 local HEADER_PAD = 2
-local SECTION_GAP = 8
+local SECTION_GAP = 4
 -- Baganator Forever Blizzard skin: ButtonFrameOffset=6, OffsetTop=2.
 local BF_OFFSET = 6
 local BF_OFFSET_TOP = 2
@@ -831,6 +831,39 @@ local function SetHeaderState(header, label, count, collapsed)
   end)
 end
 
+-- Filtered view keeps the unfiltered frame size; pad the space under the matches with
+-- empty bags-item-slot64 wells so the window reads as a bag, not a blank panel.
+local wellPool = {}
+local function FillEmptyWells(on, startY, contentH, cols)
+  local n = 0
+  if on then
+    local y = startY
+    while y + SLOT <= contentH + 0.5 do
+      for col = 0, cols - 1 do
+        n = n + 1
+        local w = wellPool[n]
+        if not w then
+          w = content:CreateTexture(nil, "BACKGROUND", nil, 1)
+          w:SetSize(SLOT, SLOT)
+          if not pcall(w.SetAtlas, w, "bags-item-slot64") or not w:GetAtlas() then
+            w:SetTexture("Interface\\Buttons\\UI-EmptySlot-Disabled")
+            w:SetTexCoord(0.15, 0.85, 0.15, 0.85)
+          end
+          w:SetAlpha(0.9)
+          wellPool[n] = w
+        end
+        w:ClearAllPoints()
+        w:SetPoint("TOPLEFT", content, "TOPLEFT", col * (SLOT + PAD), -y)
+        w:Show()
+      end
+      y = y + SLOT + PAD
+    end
+  end
+  for i = n + 1, #wellPool do
+    wellPool[i]:Hide()
+  end
+end
+
 local function DoLayout()
   if not main or not content then
     return
@@ -864,12 +897,14 @@ local function DoLayout()
 
     local lists = MergedLists(CollectBuckets(false))
     -- Size from the unfiltered bag: search / filter / "No matches" keep the same frame.
+    -- Frame size = full bag, every lane expanded, no search/filter. Collapse and search
+    -- only change what is drawn inside; the window never resizes for them.
     local sizing = IsFiltering() and MergedLists(CollectBuckets(true)) or lists
 
-    -- Hug content: grid is as wide as the widest expanded lane (capped at maxCols).
+    -- Hug content: grid is as wide as the widest lane (capped at maxCols).
     local widest = 0
-    for key, list in pairs(sizing) do
-      if not IsCollapsed(key) and #list > widest then
+    for _, list in pairs(sizing) do
+      if #list > widest then
         widest = #list
       end
     end
@@ -881,9 +916,7 @@ local function DoLayout()
       local list = sizing[order[i]]
       if list and #list > 0 then
         lanesH = lanesH + HEADER_H + HEADER_PAD
-        if not IsCollapsed(order[i]) then
-          lanesH = lanesH + math.ceil(#list / cols) * (SLOT + PAD) - PAD
-        end
+        lanesH = lanesH + math.ceil(#list / cols) * (SLOT + PAD) - PAD
         lanesH = lanesH + SECTION_GAP
       end
     end
@@ -995,6 +1028,8 @@ local function DoLayout()
     content:SetPoint("TOPLEFT", main, "TOPLEFT", INSET_X, -TOP_CHROME)
     content:SetSize(contentW, contentH)
     content:Show()
+    -- Space freed by collapse / search (frame stays full size) → empty wells.
+    FillEmptyWells(Profile().fillEmptyWells ~= false, y + SECTION_GAP, contentH, cols)
     -- Content above Bg; Inset stays hidden (Baganator). NineSlice draws borders.
     local mainLvl = main:GetFrameLevel() or 200
     pcall(function()
@@ -1361,7 +1396,7 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local CHROME_VER = 23 -- 0.5.7: bag-arrow headers; ItemButtonTemplate slot art; NumberFontNormal counts
+local CHROME_VER = 24 -- 0.5.8: fixed full-bag size; dense grid; small counts; fill wells
 local chromeLogged = false
 local customChromeHidden = false
 local nativeSortReleased = false

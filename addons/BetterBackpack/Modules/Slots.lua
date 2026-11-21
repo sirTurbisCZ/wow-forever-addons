@@ -394,7 +394,7 @@ local function EnsureCountFs(btn)
   local fs = btn.Count
   if not fs then
     pcall(function()
-      fs = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+      fs = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
     end)
     if not fs then
       fs = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -402,14 +402,14 @@ local function EnsureCountFs(btn)
     btn.Count = fs
   end
   pcall(function()
-    -- ItemButtonTemplate Count: NumberFontNormal, RIGHT, BOTTOMRIGHT -5,2, font's own white + shadow.
-    if NumberFontNormal then
-      fs:SetFontObject(NumberFontNormal)
+    -- Compact count: NumberFontNormalSmall white, RIGHT, BOTTOMRIGHT -3,2 (font shadow).
+    if NumberFontNormalSmall then
+      fs:SetFontObject(NumberFontNormalSmall)
     elseif GameFontHighlightSmall then
       fs:SetFontObject(GameFontHighlightSmall)
     end
     fs:ClearAllPoints()
-    fs:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -5, 2)
+    fs:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -3, 2)
     fs:SetJustifyH("RIGHT")
     fs:SetTextColor(1, 1, 1, 1)
     if fs.SetDrawLayer then
@@ -1002,12 +1002,12 @@ local function MakeVisualOnly(name, parent)
     btn.Icon = icon
     local count
     pcall(function()
-      count = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+      count = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
     end)
     if not count then
       count = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     end
-    count:SetPoint("BOTTOMRIGHT", -5, 2)
+    count:SetPoint("BOTTOMRIGHT", -3, 2)
     btn.Count = count
     ApplyItemButtonArt(btn)
   end
@@ -1067,12 +1067,12 @@ function Slots.Acquire(bag, slot)
     btn.Icon = icon
     local count
     pcall(function()
-      count = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+      count = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
     end)
     if not count then
       count = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     end
-    count:SetPoint("BOTTOMRIGHT", -5, 2)
+    count:SetPoint("BOTTOMRIGHT", -3, 2)
     btn.Count = count
     ApplyItemButtonArt(btn)
     EnsureCooldown(btn)
@@ -1198,7 +1198,7 @@ local function NormalizeSlotVisual(btn)
   if btn.Count then
     pcall(function()
       btn.Count:ClearAllPoints()
-      btn.Count:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -5, 2)
+      btn.Count:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -3, 2)
     end)
   end
   if btn.cooldown or btn.Cooldown then

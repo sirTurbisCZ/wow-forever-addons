@@ -1,13 +1,14 @@
-# Playtest brief — BetterBackpack 0.5.7
+# Playtest brief — BetterBackpack 0.5.8
 
-**0.5.6 (fixed):** helpers called before `local` decl → DoLayout aborted (empty lanes, all `[+]`, stuck 456×360). Confirmed in SV: `Slots.lua:894` / `Layout.lua:941` nil-call errors from the 0.5.5 session.
+**History:** 0.5.6 fixed empty lanes (helpers called before `local` decl). 0.5.7 added bag-arrow headers, ItemButtonTemplate slot art, white counts. Ondřej rejected the 0.5.7 result (little visible change; window resized on collapse/search).
 
-**0.5.7 (iteration 2 — look + stable size)**
-- Stack counts: `NumberFontNormal` white, BOTTOMRIGHT −5,2 (StackMerge cyan removed)
-- Headers: Baganator Forever `bag-arrow` (rotated) + `GameFontNormalMed2` label + grey `(n)`; no `[+]/[-]` text
-- Slots: ItemButtonTemplate Normal/Pushed/Highlight/IconBorder read at runtime; full-texcoord icon in BORDER; `bags-item-slot64` well
-- Frame size pinned to the unfiltered bag: search / filter / "No matches" never shrink the window
+**0.5.8**
+- Window size fixed = full bag, unfiltered, every lane expanded → collapse / search / filter / "No matches" never resize
+- Space freed by collapse / search → empty `bags-item-slot64` wells (`profile.fillEmptyWells`, default on)
+- Lanes with no matches hide with their header
+- Dense grid: PAD 2, HEADER_H 18, SECTION_GAP 4 (Pins grid PAD 2 to match)
+- Stack counts `NumberFontNormalSmall` white, BOTTOMRIGHT −3,2
 
 **Keep:** Toggle* replace (B stable) — OpenClose untouched.
 
-**Done when:** `/reload` → `v0.5.7` → B: arrows + gold headers, white counts, Blizzard-like slots · type a no-match search → window size unchanged · clear search → same layout · B closes.
+**Done when:** `/reload` → `v0.5.8` → B · collapse a lane → size unchanged, wells fill gap · search no-match → size unchanged, wells · clear → same layout · B closes.

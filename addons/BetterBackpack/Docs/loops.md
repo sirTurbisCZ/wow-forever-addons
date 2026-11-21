@@ -1,7 +1,7 @@
 # BetterBackpack — smyčky a grafy
 
 **Kód:** `Core.lua`, `Modules/{Slots,Layout,Context,OpenClose,Tidy,Settings,Search,Filter,CustomCategories,StackMerge,Pins,LayoutModes}.lua`  
-**Verze reference:** 0.5.7 (bag-arrow headery · ItemButtonTemplate slot art · NumberFontNormal counts · velikost okna připnutá na nefiltrovaný obsah)  
+**Verze reference:** 0.5.8 (pevná velikost = plný rozbalený bag · dense grid PAD 2 · NumberFontNormalSmall counts · fill wells · bag-arrow headery · ItemButtonTemplate slot art)  
 **Stabilita:** Project `docs/bag-addon-brief.md` + Scenario Maps `docs/scenarios/BetterBackpack/`  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never path C harvest).
 
@@ -37,10 +37,10 @@ flowchart TD
 - **ToggleBag + bag-bar OnClick = XOR** (same as B; `toggleLockUntil` after replaced ToggleBag). OpenBag/OpenAllBags = open-only. CloseBag/CloseAllBags close ours.
 - HookScript OnClick only on frames with `HasScript("OnClick")` / Button — never throw on BagsBar chrome kids.
 - Bag focus: `Layout.SetBagFocus(id)` highlights that bag’s slots after open.
-- Frame size (**0.5.6 hug**): `cols = clamp(nejširší rozbalená lane, MIN_COLS=6, Columns())` (Columns = profile 10, dense ≥12). Grid = `cols*37 + (cols-1)*4`; outer = `INSET_X + grid + INSET_X` (symetricky, INSET_X=14); výška = TOP_CHROME 54 + obsah + BOT_CHROME 30. Žádný prázdný pruh vpravo.
-- **0.5.7 pinned size:** cols + výška se počítají z **nefiltrovaného** bagu (`CollectBuckets(true)`); Search / Filter / „No matches“ jen skrývají ikony uvnitř stejně velkého okna. Mění se jen při změně obsahu bagu nebo collapse.
+- Frame size (**0.5.8 fixed**): počítá se vždy z **plného bagu — nefiltrovaný, všechny lanes rozbalené** (`CollectBuckets(true)`, collapse ignorován). `cols = clamp(nejširší lane, MIN_COLS=6, Columns())` (Columns = profile 10, dense ≥12). Grid = `cols*37 + (cols-1)*2` (PAD 2, dense); outer = `INSET_X + grid + INSET_X` (INSET_X=14); výška = TOP_CHROME 54 + lanesH + BOT_CHROME 30. HEADER_H 18, SECTION_GAP 4.
+- Collapse / Search / Filter / „No matches“ **nikdy nemění velikost okna** — mění se jen při změně obsahu bagu. Lanes bez shody se skryjí i s headerem. Uvolněné místo pod obsahem vyplní prázdné wells `bags-item-slot64` (`profile.fillEmptyWells`, default true).
 - Header (0.5.7) = Baganator Forever: atlas `bag-arrow` 14×14 (rozbaleno rotace π/2, sbaleno −π; fallback UI-Minus/PlusButton), label `GameFontNormalMed2`, počet `(n)` `GameFontDisableSmall`, hover = bílý label.
-- Slot art (0.5.7) = ContainerFrameItemButton: Normal/Pushed/Highlight + IconBorder čtené z hidden `ItemButtonTemplate` (fallback UI-Quickslot2 64×64 CENTER 0,-1 / Quickslot-Depress / ButtonHilight-Square ADD / WhiteIconFrame), ikona full texcoord v `BORDER`, well `bags-item-slot64`. Count `NumberFontNormal` bílý BOTTOMRIGHT −5,2 (i StackMerge — žádný cyan).
+- Slot art (0.5.7) = ContainerFrameItemButton: Normal/Pushed/Highlight + IconBorder čtené z hidden `ItemButtonTemplate` (fallback UI-Quickslot2 64×64 CENTER 0,-1 / Quickslot-Depress / ButtonHilight-Square ADD / WhiteIconFrame), ikona full texcoord v `BORDER`, well `bags-item-slot64`. Count (0.5.8) `NumberFontNormalSmall` bílý BOTTOMRIGHT −3,2 (i StackMerge — žádný cyan).
 - Kategorie jsou **default rozbalené**; klik na header = per-profile toggle. Schema 3 (0.5.6) jednorázově maže `collapsed` zaseknutý z 0.5.4/0.5.5 (prázdné lanes → hráč zavřel všechny headery).
 - Lua 5.1: helper volaný z `DoLayout` / `SyncVisual` / `Acquire` musí být deklarovaný **nad** volajícím (nebo forward `local X` + `X = function`). 0.5.4/0.5.5 volaly `ApplyCombinedBagsChrome` / `EnsureSlotBackground` jako nil global → DoLayout abort na prvním itemu (žádné ikony, frame se nezmenšil).
 - Title chrome: AutoSort **twins** (same native size, atlas art, no ADD glow); broom | gear | X. No native reparent.
@@ -62,15 +62,19 @@ flowchart TD
   Merge --> Filt{Search / Filter active?}
   Filt -->|ano| Full[sizing = CollectBuckets unfiltered]
   Filt -->|ne| Same[sizing = rendered lists]
-  Full --> Hug[cols + lanesH from sizing · clamp widest expanded lane, 6, Columns]
+  Full --> Hug[cols + lanesH from sizing · every lane EXPANDED · clamp widest lane, 6, Columns]
   Same --> Hug
-  Hug --> Col{lane collapsed?}
-  Col -->|ano| Hdr[header only · bag-arrow −π]
-  Col -->|ne default| Place[Slots.Acquire + Place on main · SlotBackground well · ApplyDisplayCount]
+  Hug --> Col{lane has matches?}
+  Col -->|ne| HideH[hide header]
+  Col -->|ano| Coll{collapsed?}
+  Coll -->|ano| Hdr[header only · bag-arrow −π]
+  Coll -->|ne default| Place[Slots.Acquire + Place on main · SlotBackground well · ApplyDisplayCount]
   Hdr --> Pins
+  HideH --> Pins
   Place --> Pins[Pins.Layout ghosts for missing · same cols]
-  Pins --> Size[main:SetSize INSET+grid+INSET × TOP+max rendered, lanesH+BOT]
-  Size --> Chrome[ApplyCombinedBagsChrome NineSlice/Bg/TopTile · EnsureTitleChrome · Search.EnsureChrome]
+  Pins --> Size[main:SetSize fixed: INSET+grid+INSET × TOP+lanesH+BOT]
+  Size --> Wells[FillEmptyWells: space freed by collapse/search → empty bags-item-slot64]
+  Wells --> Chrome[ApplyCombinedBagsChrome NineSlice/Bg/TopTile · EnsureTitleChrome · Search.EnsureChrome]
   Chrome --> Foot[UpdateFreeSpace N/M + money]
   Place --> Attrs{OOC?}
   Attrs -->|ano| Sync[SyncAttrs type2=item]
