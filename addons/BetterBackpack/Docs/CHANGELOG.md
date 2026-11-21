@@ -1,5 +1,9 @@
 # BetterBackpack changelog
 
+## 1.0.2
+
+- **Bag bar:** forward-declare `BagIdFromButton` (nil call in `IsKeyringBarButton` when hooks run).
+
 ## 1.0.1
 
 - **Bag bar:** install `EnsureBagBarHooks` (was never called); hook clicks in native + overlay modes; replace `ToggleBag` / `ToggleKeyRing` through `onBagToggle` (B unchanged).

@@ -37,6 +37,7 @@ local ClearFocusBag
 local ClearCategoryFilter
 local OpenOurs
 local InvokeNativeKeyRing
+local BagIdFromButton
 
 local function InCombat()
   return InCombatLockdown and InCombatLockdown() and true or false
@@ -1457,7 +1458,7 @@ local function SafeHookOnClick(btn, handler)
   return ok
 end
 
-local function BagIdFromButton(btn)
+BagIdFromButton = function(btn)
   if not btn then
     return nil
   end
