@@ -227,12 +227,19 @@ end
 
 local function EnsureHost()
   if host then
+    -- Never keep park host Hidden — SecureActionButtons created under a
+    -- Hidden parent can refuse to paint after SetParent to a shown frame.
+    host:Show()
+    host:SetAlpha(0)
+    host:EnableMouse(false)
     return host
   end
   host = CreateFrame("Frame", "BetterBackpackSlotHost", UIParent)
-  host:SetSize(1, 1)
+  host:SetSize(SLOT, SLOT)
   host:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -9000, 0)
-  host:Hide()
+  host:SetAlpha(0)
+  host:EnableMouse(false)
+  host:Show()
   return host
 end
 
@@ -861,16 +868,20 @@ function Slots.Place(btn, parent, x, y, shown)
     shown = true
   end
   pcall(function()
-    if parent then
-      parent:Show()
-    end
-    btn:SetParent(parent or EnsureHost())
+    parent = parent or EnsureHost()
+    parent:Show()
+    -- Re-show before reparent so hide-tree from park host does not stick.
+    btn:Show()
+    btn:SetParent(parent)
     btn:ClearAllPoints()
     btn:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -y)
     btn:SetSize(SLOT, SLOT)
-    -- Stay above ButtonFrameTemplate Inset.Bg (chrome raised close/gear to 500+).
-    local base = (parent and parent.GetFrameLevel and parent:GetFrameLevel()) or 1
-    btn:SetFrameLevel(base + 50)
+    btn:SetScale(1)
+    pcall(function()
+      btn:SetFrameStrata(parent:GetFrameStrata() or "DIALOG")
+    end)
+    local base = (parent.GetFrameLevel and parent:GetFrameLevel()) or 1
+    btn:SetFrameLevel(base + 80)
     local mouseOn = shown and (btn._bbSecure or not inCombat)
     btn:EnableMouse(mouseOn and true or false)
     if shown then
@@ -878,10 +889,18 @@ function Slots.Place(btn, parent, x, y, shown)
       btn:Show()
       local ic = btn.icon or btn.Icon
       if ic then
+        ic:ClearAllPoints()
+        ic:SetAllPoints()
+        ic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        ic:SetDrawLayer("ARTWORK", 0)
         ic:SetAlpha(1)
         ic:Show()
       end
       Slots.SyncVisual(btn, btn._bbBag, btn._bbSlot)
+      -- Second size/show pass — Forever sometimes drops size on first Show after reparent.
+      btn:SetSize(SLOT, SLOT)
+      btn:SetAlpha(1)
+      btn:Show()
       if btn._bbSecure and not inCombat then
         Slots.SyncAttrs(btn, btn._bbBag, btn._bbSlot)
       end

@@ -1,7 +1,7 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.2.8).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.2.9).
   Forever: never SetToplevel (ADDON_ACTION_BLOCKED).
-  Content layer above Inset.Bg so slot icons paint; native chrome + N/M.
+  Slots parented to main (not content) so icons paint above Inset; park host never Hide.
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -674,6 +674,7 @@ local function EnsureSection(key)
   end
   sf = CreateFrame("Frame", nil, content)
   sf:SetSize(100, HEADER_H)
+  sf:SetFrameLevel((content:GetFrameLevel() or 1) + 5)
   local header = CreateFrame("Button", nil, sf)
   header:SetPoint("TOPLEFT")
   header:SetPoint("TOPRIGHT")
@@ -733,11 +734,17 @@ local function DoLayout()
           if not collapsed then
             local col, row = 0, 0
             local rows = math.ceil(#list / cols)
+            -- Parent to main (absolute), not content — content sat under Inset.Bg.
+            local parentFrame = main or content
             for j = 1, #list do
               local bag, slot = list[j].bag, list[j].slot
               local btn = Slots.Acquire(bag, slot)
-              used[btn] = true
-              Slots.Place(btn, content, col * (SLOT + PAD), y + row * (SLOT + PAD), true)
+              if btn then
+                used[btn] = true
+                local px = INSET_X + col * (SLOT + PAD)
+                local py = TOP_CHROME + y + row * (SLOT + PAD)
+                Slots.Place(btn, parentFrame, px, py, true)
+              end
               col = col + 1
               if col >= cols then
                 col = 0

@@ -1,7 +1,7 @@
-# Playtest brief — BetterBackpack 0.2.8
+# Playtest brief — BetterBackpack 0.2.9
 
-**Bug:** category counts OK, item icons blank (Inset.Bg above content / secret iconFileID).
+**Bug:** category counts, zero item icons (0.2.8 layer bump not enough).
 
-**Fix:** content frameLevel above Inset; slot Place +50; SyncVisual icon via itemID/GetItemIcon when iconFileID secret.
+**Fix:** park host never `Hide()` (SecureActionButton paint); slots `Place` on **main** with absolute TOP_CHROME coords; force Show/Size/Scale/icon layer after reparent.
 
-**Done when:** `/reload` → `loaded v0.2.8` · lanes show real item icons · gear/broom/N/M still OK.
+**Done when:** `/reload` → `loaded v0.2.9` · real item icons in every non-empty lane.
