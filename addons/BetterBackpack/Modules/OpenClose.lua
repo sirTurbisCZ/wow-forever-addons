@@ -896,8 +896,9 @@ local function onKeyRingToggle()
   end
 end
 
----- Replace Toggle* instead of hooksecurefunc. Post-hooks run AFTER Blizzard-- Open*/Close* (and our Open*/Close* hooks), so XOR always fought the body.--
+-- Replace Toggle* instead of hooksecurefunc (post-hooks fought XOR).
 local BLIZZARD_TOGGLES = { "ToggleBag", "ToggleBackpack", "ToggleKeyRing", "ToggleAllBags" }
+local BLIZZARD_OPENS = { "OpenAllBags", "OpenBag" }
 
 local function CaptureBlizzardToggles()
   for i = 1, #BLIZZARD_TOGGLES do
@@ -912,7 +913,30 @@ local function CaptureBlizzardToggles()
   end
 end
 
+local function CaptureBlizzardOpens()
+  for i = 1, #BLIZZARD_OPENS do
+    local name = BLIZZARD_OPENS[i]
+    local key = "_blizzard_" .. name
+    if type(OpenClose[key]) ~= "function" then
+      local fn = _G[name]
+      if type(fn) == "function" then
+        OpenClose[key] = fn
+      end
+    end
+  end
+end
+
 local function RestoreBlizzardToggle(globalName)
+  local orig = OpenClose["_blizzard_" .. globalName] or OpenClose["_orig_" .. globalName]
+  if type(orig) ~= "function" then
+    return
+  end
+  _G[globalName] = orig
+  OpenClose["_orig_" .. globalName] = nil
+  OpenClose["_replaced_" .. globalName] = nil
+end
+
+local function RestoreBlizzardOpen(globalName)
   local orig = OpenClose["_blizzard_" .. globalName] or OpenClose["_orig_" .. globalName]
   if type(orig) ~= "function" then
     return
@@ -1569,30 +1593,6 @@ local function HookBagBarButtons()
 end
 
 local BAG_KEY_TOGGLES = { "ToggleAllBags", "ToggleBackpack" }
-local BLIZZARD_OPENS = { "OpenAllBags", "OpenBag" }
-
-local function CaptureBlizzardOpens()
-  for i = 1, #BLIZZARD_OPENS do
-    local name = BLIZZARD_OPENS[i]
-    local key = "_blizzard_" .. name
-    if type(OpenClose[key]) ~= "function" then
-      local fn = _G[name]
-      if type(fn) == "function" then
-        OpenClose[key] = fn
-      end
-    end
-  end
-end
-
-local function RestoreBlizzardOpen(globalName)
-  local orig = OpenClose["_blizzard_" .. globalName] or OpenClose["_orig_" .. globalName]
-  if type(orig) ~= "function" then
-    return
-  end
-  _G[globalName] = orig
-  OpenClose["_orig_" .. globalName] = nil
-  OpenClose["_replaced_" .. globalName] = nil
-end
 
 local function ReplaceOpen(globalName, handler)
   local orig = _G[globalName]
@@ -1634,9 +1634,15 @@ function OpenClose.OnMerchantShow()
   if not EnabledReplace() then
     return
   end
-  pcall(CloseNativeCombinedBags)
-  pcall(BlackoutCombinedOnly)
-  if SessionOpen() or OursVisible() then
+  if not (SessionOpen() or OursVisible()) then
+    return
+  end
+  local function tick()
+    if not (SessionOpen() or OursVisible()) then
+      return
+    end
+    pcall(CloseNativeCombinedBags)
+    pcall(BlackoutCombinedOnly)
     pcall(ParkBlizzardForOverlay)
     if Layout and Layout.Raise then
       pcall(Layout.Raise)
@@ -1644,6 +1650,11 @@ function OpenClose.OnMerchantShow()
     if Layout and Layout.Relayout then
       pcall(Layout.Relayout)
     end
+  end
+  if C_Timer and C_Timer.After then
+    C_Timer.After(0, tick)
+  else
+    tick()
   end
 end
 

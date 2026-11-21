@@ -1,4 +1,8 @@
-# Playtest brief — BetterBackpack 0.5.78
+# Playtest brief — BetterBackpack 0.5.79
+
+**0.5.79**
+- Fix load: `CaptureBlizzardOpens` before `RestoreBlizzardToggles` (B XOR works again).
+- Merchant hook: deferred + only when BB already open (OpenAllBags still routes vendor).
 
 **0.5.78**
 - Vendor **MERCHANT_SHOW**: park CombinedBags; keep BB if open.

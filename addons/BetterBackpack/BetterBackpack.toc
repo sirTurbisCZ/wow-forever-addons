@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 0.5.78 MERCHANT OpenAllBags to OpenOurs. 0.5.77 TransferLane.
+## Notes: 0.5.79 fix OpenClose forward ref; B XOR restored. 0.5.78 OpenAllBags.
 ## Author: tuma
-## Version: 0.5.78
+## Version: 0.5.79
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled
