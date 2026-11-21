@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 0.5.74 combat metrics dump; force CENTER if offscreen/zero size.
+## Notes: 0.5.75 keep-shown shell; combat open alpha1 only (no Show in lockdown).
 ## Author: tuma
-## Version: 0.5.74
+## Version: 0.5.75
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled

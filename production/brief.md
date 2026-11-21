@@ -1,4 +1,8 @@
-# Playtest brief — BetterBackpack 0.5.74
+# Playtest brief — BetterBackpack 0.5.75
+
+**0.5.75**
+- After `EnsureCombatShell`: `_bbKeepShown` - frame stays `Show()`; close = alpha 0 only.
+- Combat `CombatPresentFrame`: **no `Show()`** in lockdown (alpha 1 + mouse). Metrics add `keep=`.
 
 **0.5.74**
 - Combat open: force CENTER (not saved offscreen pos); fix w/h<100; one chat `combat B · metrics · w=…`.

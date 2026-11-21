@@ -367,7 +367,7 @@ local function ResetOverlaySessionState()
       Layout.Hide()
     end
     local g = _G.BetterBackpackFrame
-    if g and g.IsShown and g:IsShown() and g.Hide then
+    if not BetterBackpack._bbKeepShown and g and g.IsShown and g:IsShown() and g.Hide then
       g:Hide()
     end
   end)
@@ -710,7 +710,7 @@ function OpenClose.CloseOurs(opts)
     else
       pcall(function()
         local f = _G.BetterBackpackFrame
-        if f and f.Hide then
+        if f and not BetterBackpack._bbKeepShown and f.Hide then
           f:Hide()
         end
       end)

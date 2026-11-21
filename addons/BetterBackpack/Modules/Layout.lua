@@ -2721,6 +2721,18 @@ function Layout.EnsureCombatShell()
   end
   local f = main or _G.BetterBackpackFrame
   if f and f._bbBuilt then
+    if not BetterBackpack._bbLayoutWarm then
+      pcall(PlaceOnScreen)
+      pcall(DoLayout)
+      BetterBackpack._bbLayoutWarm = true
+    end
+    BetterBackpack._bbKeepShown = true
+    combatVisuallyHidden = true
+    pcall(function()
+      f:Show()
+      f:SetAlpha(0)
+      f:EnableMouse(false)
+    end)
     return true
   end
   if Slots and Slots.PreCreate then
@@ -2736,6 +2748,7 @@ function Layout.EnsureCombatShell()
     pcall(DoLayout)
     BetterBackpack._bbLayoutWarm = true
   end
+  BetterBackpack._bbKeepShown = true
   combatVisuallyHidden = true
   pcall(function()
     f:Show()
@@ -2779,7 +2792,7 @@ local function DumpCombatFrameMetrics(frame)
     end)
   end
   OC.CombatTraceOnce("metrics", string.format(
-    "w=%.0f h=%.0f a=%.2f shown=%s L=%.0f B=%.0f R=%.0f T=%.0f scale=%.2f parent=%s cw=%.0f ch=%.0f warm=%s",
+    "w=%.0f h=%.0f a=%.2f shown=%s L=%.0f B=%.0f R=%.0f T=%.0f scale=%.2f parent=%s cw=%.0f ch=%.0f warm=%s keep=%s",
     tonumber(w) or 0,
     tonumber(h) or 0,
     tonumber(a) or 0,
@@ -2792,7 +2805,8 @@ local function DumpCombatFrameMetrics(frame)
     tostring(parName),
     tonumber(cw) or 0,
     tonumber(ch) or 0,
-    tostring(BetterBackpack._bbLayoutWarm)
+    tostring(BetterBackpack._bbLayoutWarm),
+    tostring(BetterBackpack._bbKeepShown)
   ))
 end
 
@@ -2826,15 +2840,24 @@ local function CombatPresentFrame(frame)
       frame:SetSize(fw, targetH)
     end
   end)
+  local inCombat = InCombatLockdown and InCombatLockdown()
   pcall(function()
-    frame:Show()
-    frame:SetAlpha(1)
-    frame:EnableMouse(true)
+    if inCombat then
+      frame:SetAlpha(1)
+      frame:EnableMouse(true)
+    else
+      frame:Show()
+      frame:SetAlpha(1)
+      frame:EnableMouse(true)
+    end
   end)
-  if content and content.Show then
+  if content then
     pcall(function()
-      content:Show()
+      if not inCombat and content.Show then
+        content:Show()
+      end
       content:SetAlpha(1)
+      content:EnableMouse(true)
     end)
   end
   pcall(Layout.Raise)
@@ -2986,7 +3009,7 @@ function Layout.Hide()
   if S and S.Hide then
     S.Hide()
   end
-  if InCombatLockdown and InCombatLockdown() then
+  if BetterBackpack._bbKeepShown or (InCombatLockdown and InCombatLockdown()) then
     Layout.CombatHide()
     return
   end
@@ -3000,6 +3023,9 @@ end
 
 function Layout.ForceHidden()
   Layout.Hide()
+  if BetterBackpack._bbKeepShown then
+    return
+  end
   local g = _G.BetterBackpackFrame
   if g and g.Hide and (not main or g ~= main) then
     pcall(function()
