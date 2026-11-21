@@ -29,8 +29,9 @@ local BAG_KEY_DEBOUNCE = 0.14
 local lastBagKeyHandledAt = 0
 local guardElapsed = 0
 
--- Forward decls (BBKeyringBagIndex / frame helpers run before NormalizeBagID assignment).
+-- Forward decls (RestoreNativeBagFrames / BBKeyring run before later assignments).
 local NormalizeBagID
+local KeyRingFrameNames
 local FocusBagsMatch
 local SetFocusBag
 local ClearFocusBag
@@ -196,7 +197,7 @@ local function NativeContainersVisible()
   return false
 end
 
-local function KeyRingFrameNames()
+KeyRingFrameNames = function()
   local names = {
     "KeyRingFrame",
     "ContainerFrameKeyRing",
