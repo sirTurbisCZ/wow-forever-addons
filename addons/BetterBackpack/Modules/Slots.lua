@@ -1,6 +1,7 @@
 --[[
   BetterBackpack.Slots — 1:1 bag:slot SecureActionButtons (path B CS-RMB).
   Never shared pool. Create/SetAttribute OOC only. Never harvest CombinedBags.Items.
+  All visible slots forced to SLOT×SLOT (37) — one grid for every category.
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -705,6 +706,10 @@ local function MakeVisualOnly(name, parent)
   pcall(function()
     btn = CreateFrame("ItemButton", name, parent, "ItemButtonTemplate")
   end)
+  if btn then
+    btn:SetSize(SLOT, SLOT)
+    btn:SetScale(1)
+  end
   if not btn then
     btn = CreateFrame("Button", name, parent)
     btn:SetSize(SLOT, SLOT)
@@ -859,6 +864,59 @@ function Slots.IsPreCreated()
   return preCreated
 end
 
+-- One grid size for every category (ItemButtonTemplate defaults differ on Forever).
+local function NormalizeSlotVisual(btn)
+  if not btn then
+    return
+  end
+  btn:SetScale(1)
+  btn:SetSize(SLOT, SLOT)
+  local ic = btn.icon or btn.Icon or btn.IconTexture
+  if ic then
+    ic:ClearAllPoints()
+    -- Inset 1px so border/normal textures cannot inflate the glyph.
+    ic:SetPoint("TOPLEFT", btn, "TOPLEFT", 1, -1)
+    ic:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -1, 1)
+    ic:SetSize(SLOT - 2, SLOT - 2)
+    ic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    if ic.SetDrawLayer then
+      ic:SetDrawLayer("ARTWORK", 0)
+    end
+    ic:SetAlpha(1)
+    ic:Show()
+  end
+  pcall(function()
+    local nt = btn.GetNormalTexture and btn:GetNormalTexture()
+    if nt then
+      nt:ClearAllPoints()
+      nt:SetAllPoints()
+      nt:SetSize(SLOT, SLOT)
+    end
+    local pt = btn.GetPushedTexture and btn:GetPushedTexture()
+    if pt then
+      pt:ClearAllPoints()
+      pt:SetAllPoints()
+    end
+    local ht = btn.GetHighlightTexture and btn:GetHighlightTexture()
+    if ht then
+      ht:ClearAllPoints()
+      ht:SetAllPoints()
+    end
+  end)
+  if btn.IconBorder then
+    pcall(function()
+      btn.IconBorder:ClearAllPoints()
+      btn.IconBorder:SetAllPoints()
+    end)
+  end
+  if btn.Count then
+    pcall(function()
+      btn.Count:ClearAllPoints()
+      btn.Count:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -1, 1)
+    end)
+  end
+end
+
 function Slots.Place(btn, parent, x, y, shown)
   if not btn then
     return
@@ -870,13 +928,13 @@ function Slots.Place(btn, parent, x, y, shown)
   pcall(function()
     parent = parent or EnsureHost()
     parent:Show()
-    -- Re-show before reparent so hide-tree from park host does not stick.
     btn:Show()
     btn:SetParent(parent)
     btn:ClearAllPoints()
+    -- Dual anchor locks pixel size even when SetSize is ignored by ItemButtonTemplate.
     btn:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -y)
-    btn:SetSize(SLOT, SLOT)
-    btn:SetScale(1)
+    btn:SetPoint("BOTTOMRIGHT", parent, "TOPLEFT", x + SLOT, -(y + SLOT))
+    NormalizeSlotVisual(btn)
     pcall(function()
       btn:SetFrameStrata(parent:GetFrameStrata() or "DIALOG")
     end)
@@ -887,18 +945,8 @@ function Slots.Place(btn, parent, x, y, shown)
     if shown then
       btn:SetAlpha(1)
       btn:Show()
-      local ic = btn.icon or btn.Icon
-      if ic then
-        ic:ClearAllPoints()
-        ic:SetAllPoints()
-        ic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        ic:SetDrawLayer("ARTWORK", 0)
-        ic:SetAlpha(1)
-        ic:Show()
-      end
       Slots.SyncVisual(btn, btn._bbBag, btn._bbSlot)
-      -- Second size/show pass — Forever sometimes drops size on first Show after reparent.
-      btn:SetSize(SLOT, SLOT)
+      NormalizeSlotVisual(btn)
       btn:SetAlpha(1)
       btn:Show()
       if btn._bbSecure and not inCombat then

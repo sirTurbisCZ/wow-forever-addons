@@ -1,7 +1,7 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.2.9).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.3.0).
   Forever: never SetToplevel (ADDON_ACTION_BLOCKED).
-  Slots parented to main (not content) so icons paint above Inset; park host never Hide.
+  Uniform SLOT grid (37) on main; park host never Hide.
 ]]
 
 BetterBackpack = BetterBackpack or {}

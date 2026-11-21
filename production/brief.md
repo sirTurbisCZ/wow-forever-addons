@@ -1,7 +1,7 @@
-# Playtest brief — BetterBackpack 0.2.9
+# Playtest brief — BetterBackpack 0.3.0
 
-**Bug:** category counts, zero item icons (0.2.8 layer bump not enough).
+**Bug:** Gear icons huge, Consumables tiny (ItemButtonTemplate vs SAB size drift).
 
-**Fix:** park host never `Hide()` (SecureActionButton paint); slots `Place` on **main** with absolute TOP_CHROME coords; force Show/Size/Scale/icon layer after reparent.
+**Fix:** every slot dual-anchored to exact 37×37; NormalizeSlotVisual locks icon/normal/highlight/count.
 
-**Done when:** `/reload` → `loaded v0.2.9` · real item icons in every non-empty lane.
+**Done when:** `/reload` → `loaded v0.3.0` · all category icons same size + even grid.
