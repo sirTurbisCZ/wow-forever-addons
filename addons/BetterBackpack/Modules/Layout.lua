@@ -2332,7 +2332,7 @@ local function EnsureBagShelvesTitleChrome(frame, close)
     gear:SetScript("OnEnter", function(self)
       if GameTooltip then
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("Nastavení")
+        GameTooltip:SetText("Settings")
         GameTooltip:AddLine("Lanes on/off, custom lanes, learned items.", 0.7, 0.7, 0.7, true)
         GameTooltip:Show()
       end
@@ -2373,8 +2373,8 @@ local function EnsureBagShelvesTitleChrome(frame, close)
     tidy:SetScript("OnEnter", function(self)
       if GameTooltip then
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("Úklid")
-        GameTooltip:AddLine("SortBags + stack. Mimo boj.", 0.7, 0.7, 0.7, true)
+        GameTooltip:SetText("Tidy")
+        GameTooltip:AddLine("SortBags + stack merge. Out of combat only.", 0.7, 0.7, 0.7, true)
         GameTooltip:Show()
       end
     end)

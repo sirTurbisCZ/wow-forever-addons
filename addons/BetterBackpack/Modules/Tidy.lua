@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.Tidy — OOC Úklid: SortBags then stack merge.
+  BetterBackpack.Tidy — OOC tidy: SortBags then stack merge.
 ]]
 
 BetterBackpack = BetterBackpack or {}

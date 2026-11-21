@@ -6,13 +6,13 @@ BetterBackpack.L = BetterBackpack.L or {}
 local L = BetterBackpack.L
 
 L.PREFIX = "|cffc9a227[BetterBackpack]|r"
-L.LOADED = "loaded v%s · B = bags · Úklid/Nastavení · search · /bb"
+L.LOADED = "loaded v%s · B = bags · Tidy / Settings · search · /bb help"
 L.UNKNOWN_CMD = "unknown command — /bb help"
 L.HELP_LINES = {
   "/bb — toggle bags",
   "/bb help — this help",
   "/bb on|off — enable / restore Blizzard bags",
-  "/bb sort|uklid — OOC Úklid (SortBags+stack)",
+  "/bb sort|tidy — OOC tidy (SortBags + stack merge)",
   "/bb settings — categories + feature toggles",
   "/bb search <text> — filter by name/itemID (empty clears)",
   "/bb filter <cat|all> — show one category lane",
