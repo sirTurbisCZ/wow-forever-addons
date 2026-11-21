@@ -1,7 +1,7 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.2.6).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.2.7).
   Forever: never SetToplevel (ADDON_ACTION_BLOCKED).
-  Native chrome: BagItemAutoSort atlases + gear; free slots NumberFontNormalSmall (N).
+  Native chrome: AutoSort broom + visible gear left of it; footer used/total N/M.
   Hug-content height; bag-bar focus highlight via SetBagFocus.
 ]]
 
@@ -24,7 +24,7 @@ local TOP_CHROME = 56 -- title + CombinedBags-style sort row (AutoSort at y=-34)
 local BOT_CHROME = 26 -- free-slots + money strip
 local FOOTER_H = 20
 local SORT_BTN_W, SORT_BTN_H = 28, 26 -- BagItemAutoSortButton
-local GEAR_BTN = 22
+local GEAR_BTN = 26 -- visible gear, same ballpark as broom
 
 local CATEGORY_ORDER = {
   "junk", "consumable", "reagent", "gem", "gear", "quest", "keys", "container", "other",
@@ -359,7 +359,7 @@ local function UpdateMoney()
   end
 end
 
--- CombinedBags CountContainer style: NumberFontNormalSmall, "(free)".
+-- Classic used/total N/M, colored by fill %.
 local function UpdateFreeSpace()
   freeFs = (main and main.freeFs) or freeFs
   if not freeFs then
@@ -381,15 +381,6 @@ local function UpdateFreeSpace()
       end
     end
   end
-  -- Prefer Blizzard total-free API when available (matches CombinedBags).
-  pcall(function()
-    if C_Container and C_Container.CalculateTotalNumberOfFreeBagSlots then
-      local n = C_Container.CalculateTotalNumberOfFreeBagSlots()
-      if type(n) == "number" then
-        free = n
-      end
-    end
-  end)
   local used = total - free
   if used < 0 then
     used = 0
@@ -398,7 +389,6 @@ local function UpdateFreeSpace()
     freeFs:Show()
     freeFs:ClearAllPoints()
     local footer = main.footer or freeFs:GetParent()
-    -- Left of money, vertically centered in footer (CombinedBags count is small + right-ish of portrait).
     freeFs:SetPoint("LEFT", footer, "LEFT", 4, 0)
     freeFs:SetPoint("TOP", footer, "TOP", 0, 0)
     freeFs:SetPoint("BOTTOM", footer, "BOTTOM", 0, 0)
@@ -408,14 +398,13 @@ local function UpdateFreeSpace()
     freeFs:SetJustifyH("LEFT")
     freeFs:SetJustifyV("MIDDLE")
     freeFs:SetDrawLayer("OVERLAY", 7)
-    -- Native format "(free)"; append used/total for free-vs-used readout.
-    local fmt = (type(BACKPACK_FREESLOTS_FORMAT) == "string" and BACKPACK_FREESLOTS_FORMAT) or "(%s)"
-    freeFs:SetText(string.format("%s  %d/%d", fmt:format(tostring(free)), used, total))
+    freeFs:SetText(string.format("%d/%d", used, total))
+    -- ≤50% green, ≤75% yellow, <100% orange, 100% red
     local ratio = (total > 0) and (used / total) or 0
     if ratio <= 0.50 then
-      freeFs:SetTextColor(1, 1, 1)
+      freeFs:SetTextColor(0.25, 0.85, 0.35)
     elseif ratio <= 0.75 then
-      freeFs:SetTextColor(1, 0.82, 0.2)
+      freeFs:SetTextColor(0.95, 0.85, 0.20)
     elseif ratio < 1 then
       freeFs:SetTextColor(1.0, 0.55, 0.15)
     else
@@ -1053,7 +1042,7 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local CHROME_VER = 7
+local CHROME_VER = 8
 
 local function ClearLegacyTextChrome(btn)
   if not btn then
@@ -1105,44 +1094,38 @@ local function StyleNativeSortButton(btn)
   btn:Show()
 end
 
--- Bag-filter / options gear (PortraitButton role → settings).
+-- Visible options gear left of broom (file texture — atlases were invisible on Forever).
 local function StyleNativeGearButton(btn)
   ClearLegacyTextChrome(btn)
   btn:SetSize(GEAR_BTN, GEAR_BTN)
-  if not btn._bbGearStyled then
-    local painted = false
-    local atlases = {
-      "ui-questmapdetails-gear",
-      "character-selectgear",
-      "GM-icon-settings",
-    }
-    for i = 1, #atlases do
-      local ok = pcall(function()
-        local nt = btn:CreateTexture(nil, "ARTWORK")
-        nt:SetAllPoints()
-        nt:SetAtlas(atlases[i], true)
-        btn:SetNormalTexture(nt)
-        painted = true
-      end)
-      if ok and painted then
-        break
-      end
-      painted = false
-    end
-    if not painted then
-      pcall(function()
-        btn:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
-        local nt = btn:GetNormalTexture()
-        if nt then
-          nt:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        end
-      end)
-    end
-    pcall(function()
-      btn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
-    end)
-    btn._bbGearStyled = true
+  -- Always rebuild icon so CHROME_VER bumps repaint a blank atlas from 0.2.6.
+  local icon = btn._bbGearIcon
+  if not icon then
+    icon = btn:CreateTexture(nil, "ARTWORK")
+    btn._bbGearIcon = icon
   end
+  icon:ClearAllPoints()
+  icon:SetPoint("CENTER", 0, 0)
+  icon:SetSize(GEAR_BTN - 2, GEAR_BTN - 2)
+  icon:SetTexture("Interface\\Buttons\\UI-OptionsButton")
+  icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+  icon:SetVertexColor(1, 0.82, 0.2)
+  icon:Show()
+  pcall(function()
+    btn:SetNormalTexture(nil)
+    btn:SetPushedTexture(nil)
+  end)
+  -- Keep a hit-tested normal so click/highlight work.
+  pcall(function()
+    local hit = btn:CreateTexture(nil, "BACKGROUND")
+    hit:SetAllPoints()
+    hit:SetColorTexture(0, 0, 0, 0.01)
+    btn:SetNormalTexture(hit)
+  end)
+  pcall(function()
+    btn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+  end)
+  btn._bbGearStyled = true
   btn:EnableMouse(true)
   btn:Show()
 end
@@ -1190,19 +1173,17 @@ EnsureTitleChrome = function(frame)
   end)
 
   -- Native AutoSort sits on the frame (not title strip), TOPRIGHT -9,-34.
-  local tidy = frame.sortBtn
-  if not tidy or frame._bbChromeVer ~= CHROME_VER then
-    if tidy then
-      pcall(tidy.Hide, tidy)
-    end
+  local tidy = frame.sortBtn or _G.BetterBackpackSortButton
+  if not tidy then
     tidy = CreateFrame("Button", "BetterBackpackSortButton", frame)
-    frame.sortBtn = tidy
   end
+  frame.sortBtn = tidy
   tidy:SetParent(frame)
   tidy:ClearAllPoints()
   tidy:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -9, -34)
   StyleNativeSortButton(tidy)
   tidy:SetFrameLevel((frame:GetFrameLevel() or 1) + 500)
+  tidy:SetAlpha(1)
   tidy:SetScript("OnEnter", function(self)
     if not GameTooltip then
       return
@@ -1248,23 +1229,22 @@ EnsureTitleChrome = function(frame)
   frame.tidy = tidy
   sortBtn = tidy
 
-  local gear = frame.settingsBtn
-  if not gear or frame._bbChromeVer ~= CHROME_VER then
-    if gear then
-      pcall(gear.Hide, gear)
-    end
+  local gear = frame.settingsBtn or _G.BetterBackpackSettingsButton
+  if not gear then
     gear = CreateFrame("Button", "BetterBackpackSettingsButton", frame)
-    frame.settingsBtn = gear
   end
+  frame.settingsBtn = gear
   gear:SetParent(frame)
   gear:ClearAllPoints()
-  gear:SetPoint("RIGHT", tidy, "LEFT", -4, 0)
+  -- Explicitly left of broom (CombinedBags filter gear sits near sort).
+  gear:SetPoint("RIGHT", tidy, "LEFT", -6, 0)
   StyleNativeGearButton(gear)
-  gear:SetFrameLevel((frame:GetFrameLevel() or 1) + 500)
+  gear:SetFrameLevel((frame:GetFrameLevel() or 1) + 510)
+  gear:SetAlpha(1)
   gear:SetScript("OnEnter", function(self)
     if GameTooltip then
       GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-      GameTooltip:SetText((type(BAG_FILTER_TITLE_SORTING) == "string" and BAG_FILTER_TITLE_SORTING) or "Bag Options")
+      GameTooltip:SetText("Nastavení")
       GameTooltip:AddLine("Kategorie zapnout / vypnout. Skrytá → Other.", 0.7, 0.7, 0.7, true)
       GameTooltip:Show()
     end
@@ -1281,6 +1261,9 @@ EnsureTitleChrome = function(frame)
     end
   end)
   gear:Show()
+  if gear._bbGearIcon then
+    gear._bbGearIcon:Show()
+  end
   frame.gear = gear
   settingsBtn = gear
 
@@ -1431,8 +1414,8 @@ function Layout.EnsureMain()
   fs:SetPoint("BOTTOM", footer, "BOTTOM", 0, 0)
   fs:SetJustifyH("LEFT")
   fs:SetJustifyV("MIDDLE")
-  fs:SetText("(0)  0/0")
-  fs:SetTextColor(1, 1, 1)
+  fs:SetText("0/0")
+  fs:SetTextColor(0.25, 0.85, 0.35)
   fs:SetDrawLayer("OVERLAY", 7)
 
   local moneyFrame
