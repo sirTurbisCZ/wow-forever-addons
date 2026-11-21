@@ -502,6 +502,10 @@ local function GetTargetAuraContainer()
   return c
 end
 
+-- Forward decls: TF harvest must see these locals (Lua scope — nil global = dead merge).
+local IconSize
+local MaxIcons
+
 --- Forever TF auras live in auraPools — GetChildren() alone often yields tf=0.
 local function HarvestAuraPoolButtons(pools, out, maxN)
   if type(pools) ~= "table" or not out then
@@ -630,7 +634,7 @@ local function CountTargetFrameAuras()
   return n
 end
 
-local function IconSize()
+IconSize = function()
   local p = Profile()
   local sz = tonumber(p.iconSize) or 18
   if sz < 12 then
@@ -664,7 +668,7 @@ local function IconSize()
   return sz
 end
 
-local function MaxIcons()
+MaxIcons = function()
   local n = tonumber(Profile().maxIcons) or 12
   if n < 1 then
     n = 1
@@ -819,16 +823,25 @@ local function CreateBandContainer(parent, size)
 end
 
 --- Always keep native DebuffList fully visible (solo native-first).
+--- Never ClearAllPoints on DebuffList — 0.1.8 orphaned icons when SetPoint FORBIDDEN.
 local function EnsureNativeVisible(plate)
-  local list = NativeDebuffList(plate)
-  if not list then
-    return
-  end
-  pcall(function()
-    if list.SetAlpha then
-      list:SetAlpha(1)
+  local function restore(list)
+    if not list then
+      return
     end
-  end)
+    pcall(function()
+      if list.SetAlpha then
+        list:SetAlpha(1)
+      end
+    end)
+    pcall(function()
+      if list.Show and not SafeShown(list) then
+        list:Show()
+      end
+    end)
+  end
+  restore(NativeDebuffList(plate))
+  restore(NativeBuffList(plate))
 end
 
 local function AnchorBand(container, unit, plate)
