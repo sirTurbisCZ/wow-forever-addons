@@ -725,6 +725,123 @@ local function EnsureSlotBackground(btn)
   return btn.SlotBackground
 end
 
+local function QuestBangTexturePath()
+  local g = _G.TEXTURE_ITEM_QUEST_BANG
+  if type(g) == "string" and g ~= "" then
+    return g
+  end
+  return "Interface\\ContainerFrame\\UI-Icon-QuestBang"
+end
+
+--- Blizzard ContainerFrame: quest starter not yet in log (not objective isQuestItem alone).
+local function SlotShowsQuestBang(bag, slot)
+  if bag == nil or slot == nil then
+    return false
+  end
+  local fn = (C_Container and C_Container.GetContainerItemQuestInfo) or GetContainerItemQuestInfo
+  if not fn then
+    return false
+  end
+  local ok, a, b, c = pcall(fn, bag, slot)
+  if not ok then
+    return false
+  end
+  local questID
+  local isActive = false
+  if type(a) == "table" then
+    questID = SafeNum(a.questID, nil)
+    local raw = a.isActive
+    if raw == true or raw == 1 then
+      isActive = true
+    elseif raw == false or raw == 0 or raw == nil then
+      isActive = false
+    elseif IsSecret(raw) then
+      return false
+    end
+  else
+    questID = SafeNum(b, nil)
+    if c == true or c == 1 then
+      isActive = true
+    elseif c == false or c == 0 or c == nil then
+      isActive = false
+    elseif type(c) == "number" and IsSecret(c) then
+      return false
+    end
+  end
+  if not questID or questID <= 0 then
+    return false
+  end
+  return not isActive
+end
+
+Slots.SlotShowsQuestBang = SlotShowsQuestBang
+
+local function EnsureQuestBang(btn)
+  if not btn then
+    return nil
+  end
+  if btn._bbQuestBang then
+    return btn._bbQuestBang
+  end
+  if InCombatLockdown and InCombatLockdown() then
+    return nil
+  end
+  local tex
+  pcall(function()
+    tex = btn:CreateTexture(nil, "OVERLAY", nil, 7)
+    tex:SetSize(18, 18)
+    tex:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
+    btn._bbQuestBang = tex
+  end)
+  return btn._bbQuestBang
+end
+
+local function SyncQuestBang(btn, bag, slot)
+  if not btn then
+    return
+  end
+  local show = SlotShowsQuestBang(bag, slot)
+  if btn.IconQuestTexture then
+    pcall(function()
+      btn.IconQuestTexture:Hide()
+    end)
+  end
+  local tex = btn._bbQuestBang
+  if show and not tex then
+    tex = EnsureQuestBang(btn)
+  end
+  if not tex then
+    return
+  end
+  if not show then
+    pcall(function()
+      tex:Hide()
+    end)
+    return
+  end
+  pcall(function()
+    local path = QuestBangTexturePath()
+    local set = false
+    if tex.SetAtlas then
+      local ok = pcall(tex.SetAtlas, tex, "QuestBang")
+      set = ok
+    end
+    if not set then
+      tex:SetTexture(path)
+    end
+    if tex.ClearAllPoints then
+      tex:ClearAllPoints()
+      tex:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
+    end
+    if tex.SetSize then
+      tex:SetSize(18, 18)
+    end
+    tex:Show()
+  end)
+end
+
+Slots.SyncQuestBang = SyncQuestBang
+
 function Slots.SyncVisual(btn, bag, slot)
   if not btn then
     return
@@ -760,6 +877,7 @@ function Slots.SyncVisual(btn, bag, slot)
       if Slots.Normalize then
         Slots.Normalize(btn)
       end
+      SyncQuestBang(btn, bag, slot)
       return
     end
     if icon then
@@ -801,6 +919,7 @@ function Slots.SyncVisual(btn, bag, slot)
     if Slots.Normalize then
       Slots.Normalize(btn)
     end
+    SyncQuestBang(btn, bag, slot)
   end)
 end
 
@@ -1247,6 +1366,7 @@ local function MakeVisualOnly(name, parent)
     ApplyItemButtonArt(btn)
   end
   EnsureCooldown(btn)
+  EnsureQuestBang(btn)
   btn._bbSecure = false
   return btn
 end
@@ -1311,6 +1431,7 @@ function Slots.Acquire(bag, slot)
     btn.Count = count
     ApplyItemButtonArt(btn)
     EnsureCooldown(btn)
+    EnsureQuestBang(btn)
   end
   btn._bbSecure = isSecure and true or false
   btn._bbProxy = true
@@ -1484,6 +1605,7 @@ function Slots.Place(btn, parent, x, y, shown)
         Slots.SyncAttrs(btn, btn._bbBag, btn._bbSlot)
       end
       NormalizeSlotVisual(btn)
+      SyncQuestBang(btn, btn._bbBag, btn._bbSlot)
     else
       btn:SetAlpha(0)
       btn:EnableMouse(false)

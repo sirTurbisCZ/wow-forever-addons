@@ -213,6 +213,9 @@ bootFrame:RegisterEvent("BAG_UPDATE_DELAYED")
 bootFrame:RegisterEvent("ITEM_LOCK_CHANGED")
 bootFrame:RegisterEvent("UNIT_INVENTORY_CHANGED")
 bootFrame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+bootFrame:RegisterEvent("QUEST_ACCEPTED")
+bootFrame:RegisterEvent("QUEST_REMOVED")
+bootFrame:RegisterEvent("UNIT_QUEST_LOG_CHANGED")
 bootFrame:RegisterEvent("SPELL_UPDATE_COOLDOWN")
 bootFrame:RegisterEvent("PLAYER_MONEY")
 bootFrame:RegisterEvent("MERCHANT_SHOW")
@@ -323,6 +326,24 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
       or event == "GET_ITEM_INFO_RECEIVED"
   then
     QueueBagRefresh()
+    return
+  end
+
+  if event == "QUEST_ACCEPTED" or event == "QUEST_REMOVED" then
+    if Layout and Layout.IsShown and Layout.IsShown() and Layout.RefreshCooldowns then
+      SafeCall("questBang", Layout.RefreshCooldowns)
+    end
+    return
+  end
+
+  if event == "UNIT_QUEST_LOG_CHANGED" then
+    local unit = ...
+    if unit and unit ~= "player" then
+      return
+    end
+    if Layout and Layout.IsShown and Layout.IsShown() and Layout.RefreshCooldowns then
+      SafeCall("questBang", Layout.RefreshCooldowns)
+    end
     return
   end
 
