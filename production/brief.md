@@ -1,4 +1,9 @@
-# Playtest brief — BetterBackpack 0.5.72
+# Playtest brief — BetterBackpack 0.5.73
+
+**0.5.73**
+- Shell warmup runs **one OOC DoLayout** (`_bbLayoutWarm`) so combat has slots.
+- `CombatPresentFrame`: UIParent, PlaceOnScreen, size, alpha 1, Raise, content Show, chrome refresh.
+- No SetFrameStrata (Forever blocked).
 
 **0.5.72**
 - Combat visibility: `IsBagFrameVisible` uses alpha+`_bbBuilt` in lockdown (not `IsShown`).

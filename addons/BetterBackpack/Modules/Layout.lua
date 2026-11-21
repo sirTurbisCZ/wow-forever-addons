@@ -2731,6 +2731,11 @@ function Layout.EnsureCombatShell()
   if not f or not f._bbBuilt then
     return false
   end
+  pcall(PlaceOnScreen)
+  if not BetterBackpack._bbLayoutWarm then
+    pcall(DoLayout)
+    BetterBackpack._bbLayoutWarm = true
+  end
   combatVisuallyHidden = true
   pcall(function()
     f:Show()
@@ -2740,11 +2745,9 @@ function Layout.EnsureCombatShell()
   return true
 end
 
--- Combat open: alpha 1 (no DoLayout in lockdown).
-function Layout.CombatShow()
-  local frame = Layout.CombatAttachMain() or _G.BetterBackpackFrame
-  if not frame or not frame._bbBuilt then
-    return Layout.ShowCombatMinimal()
+local function CombatPresentFrame(frame)
+  if not frame then
+    return false
   end
   main = frame
   if frame._bbContent then
@@ -2752,15 +2755,43 @@ function Layout.CombatShow()
   end
   combatVisuallyHidden = false
   pcall(function()
+    if frame.GetParent and frame:GetParent() ~= UIParent then
+      frame:SetParent(UIParent)
+    end
+    frame:SetFrameLevel(500)
+  end)
+  pcall(PlaceOnScreen)
+  pcall(function()
+    if not frame.GetWidth or not frame:GetWidth() or frame:GetWidth() < 100 then
+      frame:SetSize(456, 360)
+    end
+  end)
+  pcall(function()
     frame:Show()
     frame:SetAlpha(1)
     frame:EnableMouse(true)
   end)
+  if content and content.Show then
+    pcall(function()
+      content:Show()
+      content:SetAlpha(1)
+    end)
+  end
   pcall(Layout.Raise)
+  pcall(ApplyCombinedBagsChrome, frame)
   pcall(RefreshCooldowns)
   UpdateFreeSpace()
   UpdateMoney()
   return Layout.IsBagFrameVisible()
+end
+
+-- Combat open: alpha 1 (no DoLayout in lockdown).
+function Layout.CombatShow()
+  local frame = Layout.CombatAttachMain() or _G.BetterBackpackFrame
+  if not frame or not frame._bbBuilt then
+    return Layout.ShowCombatMinimal()
+  end
+  return CombatPresentFrame(frame)
 end
 
 -- Combat close: alpha 0 only (never Hide in lockdown).
@@ -2798,21 +2829,7 @@ function Layout.ShowCombatMinimal()
     end
     return false
   end
-  main = frame
-  if frame._bbContent then
-    content = frame._bbContent
-  end
-  combatVisuallyHidden = false
-  pcall(function()
-    frame:Show()
-    frame:SetAlpha(1)
-    frame:EnableMouse(true)
-  end)
-  pcall(Layout.Raise)
-  pcall(RefreshCooldowns)
-  UpdateFreeSpace()
-  UpdateMoney()
-  return Layout.IsBagFrameVisible()
+  return CombatPresentFrame(frame)
 end
 
 function Layout.Show()

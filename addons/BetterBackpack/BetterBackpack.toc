@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 0.5.72 combat B: alpha visibility + EnsureCombatShell. SessionOpen/IsBagFrameVisible aligned.
+## Notes: 0.5.73 combat B: OOC DoLayout in shell; CombatPresentFrame on screen.
 ## Author: tuma
-## Version: 0.5.72
+## Version: 0.5.73
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled
