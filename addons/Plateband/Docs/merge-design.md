@@ -1,7 +1,7 @@
 # Plateband — safe merge design (no name mutation)
 
-**Status:** designed under three-addon refactor · **default OFF** (`mergeMissing=false`, schema 6+)  
-**Versions:** safe baseline **0.1.12+**; this design ships documented in **0.1.13**
+**Status:** shipped (opt-in) under three-addon refactor · **default OFF** (`mergeMissing=false`, schema 6+)  
+**Versions:** safe baseline **0.1.12+**; toggle **`/pb merge on`** in **0.1.14+**
 
 ## Goal
 
@@ -56,10 +56,12 @@ Skip: `AuraIsPlayerOwned == true`; native public texture keys.
 Default stays **off**. After playtest of native-only 0.1.12+:
 
 ```
-PlatebandDB.profile.mergeMissing = true
+/pb merge on
 ```
 
-then `/reload`. Expect `/pb diagnose` `fb>0` when TF/API shows foreign DoTs native omits; `fb=0` solo.
+(or `PlatebandDB.profile.mergeMissing = true` then `/reload`).
+
+Expect `/pb diagnose` `merge=1`, `fb>0` when TF/API shows foreign DoTs native omits; solo personal DoTs stay `fb=0`, `native>0`.
 
 ## Coordination (BetterBackpack / ForeverErrorLog)
 

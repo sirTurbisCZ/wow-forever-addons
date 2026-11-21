@@ -318,6 +318,29 @@ SlashCmdList.PLATEBAND = function(msg)
     return
   end
 
+  if cmd == "merge" then
+    local a = (rest or ""):lower()
+    if a == "on" or a == "1" then
+      p.mergeMissing = true
+      if Plates and Plates.Refresh then
+        SafeCall("merge:on", Plates.Refresh)
+      end
+      Print(L.MERGE_ON or "merge on — foreign DoTs beside native DebuffList (enemy plates)")
+    elseif a == "off" or a == "0" then
+      p.mergeMissing = false
+      if Plates and Plates.Refresh then
+        SafeCall("merge:off", Plates.Refresh)
+      end
+      Print(L.MERGE_OFF or "merge off — native DebuffList only")
+    else
+      Print(string.format(
+        L.MERGE_USAGE or "usage: /pb merge on|off  (currently %s)",
+        p.mergeMissing and "on" or "off"
+      ))
+    end
+    return
+  end
+
   Print(L.UNKNOWN_CMD or "unknown command — /pb help")
 end
 
