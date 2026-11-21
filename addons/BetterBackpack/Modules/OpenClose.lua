@@ -29,8 +29,7 @@ local BAG_KEY_DEBOUNCE = 0.14
 local lastBagKeyHandledAt = 0
 local guardElapsed = 0
 
--- Forward decls (RestoreNativeBagFrames / BBKeyring run before later assignments).
-local NormalizeBagID
+-- Forward decls (frame helpers assigned after RestoreNativeBagFrames).
 local KeyRingFrameNames
 local FocusBagsMatch
 local SetFocusBag
@@ -89,16 +88,16 @@ local function RestoreFrameInteractive(f)
   end)
 end
 
-NormalizeBagID = function(bagID)
+local function NormalizeBagID(bagID)
   local Slots = BetterBackpack.Modules.Slots
-  if Slots and Slots.SafeNum then
+  if Slots and type(Slots.SafeNum) == "function" then
     local plain = Slots.SafeNum(bagID, nil)
     if plain ~= nil then
       return plain
     end
   end
   if type(bagID) == "number" then
-    if Slots and Slots.SafeNum and Slots.SafeNum(bagID, nil) == nil then
+    if Slots and type(Slots.SafeNum) == "function" and Slots.SafeNum(bagID, nil) == nil then
       return bagID
     end
     return bagID
@@ -151,7 +150,13 @@ local function RestoreNativeBagFrames()
     end
     RestoreFrameInteractive(cf)
   end
-  for _, name in ipairs(KeyRingFrameNames()) do
+  -- B/CloseOurs: static keyring frames only (no KeyRingFrameNames — live FELog nil @ ~154).
+  for _, name in ipairs({
+    "KeyRingFrame",
+    "ContainerFrameKeyRing",
+    "ContainerFrame-2",
+    "ContainerFrame-" .. tostring(KEYRING_CONTAINER or -2),
+  }) do
     RestoreFrameInteractive(_G[name])
   end
   -- Never restore CombinedBags here — was undoing blackout during B/open.

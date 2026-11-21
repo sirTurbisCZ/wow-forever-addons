@@ -2,7 +2,7 @@
 ## Title: BetterBackpack
 ## Notes: 1.0.0 — category lanes, combat B, vendor bulk, auto-sell.
 ## Author: tuma
-## Version: 1.0.6
+## Version: 1.0.7
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled
