@@ -1386,13 +1386,16 @@ function OpenClose.InstallHooks()
   if hooksInstalled then
     return
   end
-
-  -- 0.5.42: restore Blizzard toggles only; overlay via /bb. (Legacy hook block removed —
-  -- Lua 5.1 forbids statements after return in the same block.)
-  CaptureBlizzardToggles()
-  OpenClose.RestoreBlizzardToggles()
+  local ok, err = pcall(function()
+    CaptureBlizzardToggles()
+    OpenClose.RestoreBlizzardToggles()
+  end)
   hooksInstalled = true
-  LogHooksOnce("Blizzard bag API · open /bb")
+  if ok then
+    LogHooksOnce("Blizzard bag API · open /bb")
+  elseif BetterBackpack and BetterBackpack.RecordError then
+    BetterBackpack.RecordError("hooks", err)
+  end
 end
 
 

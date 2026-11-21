@@ -1,4 +1,8 @@
-# Playtest brief — BetterBackpack 0.5.42 (load fix)
+# Playtest brief — BetterBackpack 0.5.43 (post-load harden)
+
+**0.5.43**
+- WTF top error was `OpenClose.lua:1398 unexpected symbol near 'if'` (0.5.42 trims InstallHooks). Harden: `EnsureMain` / `DoLayout` chrome in pcall; Settings `notes` nil; hooks install pcall.
+- **`/reload`** → `loaded v0.5.43`, `/bb` opens without `EnsureMain failed` / layout abort.
 
 **0.5.42**
 - Fix: `OpenClose.lua` failed to load (`unexpected symbol near 'if'` after bare `return`). `InstallHooks` trimmed; keyring helper renamed `BBKeyringBagIndex` (no Blizzard global clash). **`/reload`** → `loaded v0.5.42`, no `OpenClose` nil in FELog.

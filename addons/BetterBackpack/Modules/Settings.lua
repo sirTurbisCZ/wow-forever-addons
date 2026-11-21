@@ -94,7 +94,9 @@ local function HideAll()
     end
   end
   for i = 1, #notes do
-    notes[i]:Hide()
+    if notes[i] and notes[i].Hide then
+      notes[i]:Hide()
+    end
   end
   if panel then
     if panel.addBtn then

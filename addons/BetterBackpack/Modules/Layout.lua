@@ -938,7 +938,7 @@ local function HookBagBarButtons()
 end
 
 local function InstallBagHoverHighlight()
-  HookBagBarButtons()
+  pcall(HookBagBarButtons)
   if bagHoverHooked then
     return
   end
@@ -1394,8 +1394,8 @@ local function DoLayout()
         main.moneyFrame:SetFrameLevel(mainLvl + 6)
       end)
     end
-    ApplyCombinedBagsChrome(main)
-    EnsureTitleChrome(main)
+    pcall(ApplyCombinedBagsChrome, main)
+    pcall(EnsureTitleChrome, main)
     local SearchChrome = Feat("Search")
     if SearchChrome and SearchChrome.EnsureChrome then
       pcall(SearchChrome.EnsureChrome, main)
@@ -2412,7 +2412,7 @@ function Layout.EnsureMain()
       end
     end)
     KillPortrait(main)
-    ApplyCombinedBagsChrome(main)
+    pcall(ApplyCombinedBagsChrome, main)
     pcall(EnsureTitleChrome, main)
     pcall(InstallBagHoverHighlight)
     return main
@@ -2457,7 +2457,7 @@ function Layout.EnsureMain()
   end)
   built:SetScript("OnShow", function(self)
     KillPortrait(self)
-    ApplyCombinedBagsChrome(self)
+    pcall(ApplyCombinedBagsChrome, self)
     local title = CombinedBagTitle()
     if self.SetTitle then
       pcall(self.SetTitle, self, title)
@@ -2524,7 +2524,7 @@ function Layout.EnsureMain()
   end
 
   -- Native CombinedBags chrome (AutoSort + gear).
-  EnsureTitleChrome(built)
+  pcall(EnsureTitleChrome, built)
 
   -- Footer = CombinedBags CountContainer strip (free left, money right).
   local footer = CreateFrame("Frame", nil, built)
