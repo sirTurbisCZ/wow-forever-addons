@@ -37,7 +37,8 @@ flowchart TD
 - Anti-flash: `Show`/`OnShow`/`onToggle` → **Blackout alpha=0 first**; CloseOurs never `RestoreBlizzardBags`. OpenOurs fail OOC → `ForceCloseBlizzard`; v combatu jen `ParkBlizzardForOverlay` (not Unblackout).
 - CombinedBags stays `IsShown`+parked while ours open — **ne** `:Hide()` mid-session.
 - `SuppressReplace`; OnShow nesmí ClearSuppress→OpenOurs.
-- **Open (0.5.32):** v combatu `OpenOurs` → `ParkBlizzardForOverlay` (CombinedBags + Container** jen alpha**, bez `SetPoint`); `Layout.Show` = reuse `BetterBackpackFrame` + `DoLayout` (proxy sloty, bez `SetAttribute`). Mimo combat plný park off-screen. LOGIN vždy `EnsureMain` warmup.
+- **Open (0.5.33):** combat `OpenOurs` → `ShowCombatMinimal` (jen `Show` + cooldowns, **bez** `DoLayout`/create); chybí frame → chat `COMBAT_NO_FRAME`. Blizzard park = alpha-only v lockdownu.
+- **Keyring (0.5.33):** `KeyRingFrameNames` (KeyRingFrame / ContainerFrameKeyRing / `ContainerFrame-{KEYRING}`); `InvokeNativeKeyRing` jeden API krok; container OnShow restore pro `IsKeyringBag`; XOR přes `KeyRingNativeOpen`.
 - HookScript OnClick only on frames with `HasScript("OnClick")` / Button — never throw on BagsBar chrome kids.
 - Frame size (**0.5.8 fixed**): počítá se vždy z **plného bagu — nefiltrovaný, všechny lanes rozbalené** (`CollectBuckets(true)`, collapse ignorován). `cols = clamp(nejširší lane, MIN_COLS=6, Columns())` (Columns = profile 10, dense ≥12). Grid = `cols*37 + (cols-1)*2` (PAD 2, dense); outer = `INSET_X + grid + INSET_X` (INSET_X=14); výška = TOP_CHROME 54 + lanesH + BOT_CHROME 30. HEADER_H 18, SECTION_GAP 4.
 - Collapse / Search / Filter / „No matches“ **nikdy nemění velikost okna**; během otevření ho nezmenší ani úbytek itemů (sticky 0.5.15), roste jen při novém lootu. Lanes bez shody se skryjí i s headerem. Uvolněné místo zůstane prázdné (Bg). Opt-in: `profile.fillEmptyWells = true` → prázdné wells `bags-item-slot64` (0.5.9 default **false**, schema 4 vypne i uložené true).

@@ -2631,7 +2631,49 @@ function Layout.IsShown()
   return main and main:IsShown() and true or false
 end
 
+--- Reuse prebuilt UI for lockdown — no CreateFrame / EnsureTitleChrome / DoLayout.
+function Layout.CombatAttachMain()
+  if main and content and main._bbBuilt then
+    return main
+  end
+  local orphan = _G.BetterBackpackFrame
+  if orphan and orphan._bbBuilt and orphan._bbContent then
+    main = orphan
+    content = orphan._bbContent
+    freeFs = orphan.freeFs or freeFs
+    moneyFs = orphan._bbMoneyFs or moneyFs
+    emptyLabel = orphan._bbEmpty or emptyLabel
+    return main
+  end
+  return nil
+end
+
+function Layout.ShowCombatMinimal()
+  local p = Profile()
+  if not p.enabled or p.safeMode then
+    return false
+  end
+  local frame = Layout.CombatAttachMain()
+  if not frame then
+    return false
+  end
+  pcall(function()
+    frame:SetAlpha(1)
+    frame:Show()
+  end)
+  pcall(Layout.Raise)
+  pcall(RefreshCooldowns)
+  UpdateFreeSpace()
+  UpdateMoney()
+  return frame:IsShown() and true or false
+end
+
 function Layout.Show()
+  local inCombat = InCombatLockdown and InCombatLockdown()
+  if inCombat then
+    return Layout.ShowCombatMinimal()
+  end
+
   local okEns = pcall(Layout.EnsureMain)
   if not okEns or not main then
     if BetterBackpack.RecordError then
@@ -2642,24 +2684,6 @@ function Layout.Show()
   local p = Profile()
   if not p.enabled or p.safeMode then
     return false
-  end
-
-  local inCombat = InCombatLockdown and InCombatLockdown()
-  if inCombat then
-    pcall(function()
-      if main:GetParent() ~= UIParent then
-        main:SetParent(UIParent)
-      end
-      main:SetFrameLevel(500)
-      main:SetAlpha(1)
-      main:Show()
-    end)
-    pcall(Layout.Raise)
-    pcall(DoLayout)
-    pcall(RefreshCooldowns)
-    UpdateFreeSpace()
-    UpdateMoney()
-    return main:IsShown() and true or false
   end
 
   pcall(function()

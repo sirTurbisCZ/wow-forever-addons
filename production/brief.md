@@ -1,4 +1,8 @@
-# Playtest brief — BetterBackpack 0.5.32 (combat B)
+# Playtest brief — BetterBackpack 0.5.33 (combat B + keyring)
+
+**0.5.33**
+- **B in combat:** `ShowCombatMinimal` — only if `BetterBackpackFrame` was built OOC; else one chat line. No DoLayout/create/SetAttribute in lockdown.
+- **Keyring:** native XOR; probes KeyRingFrame + ContainerFrame + KEYRING id; no triple ToggleKeyRing+ToggleBag+OpenKeyRing.
 
 **0.5.32**
 - **B in combat:** combined opens with prebuilt frame; Blizzard CombinedBags hidden alpha-only (no reparent). No new SecureActionButton/SetAttribute in combat.
