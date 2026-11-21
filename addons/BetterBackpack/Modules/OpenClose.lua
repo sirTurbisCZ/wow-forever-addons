@@ -29,8 +29,7 @@ local BAG_KEY_DEBOUNCE = 0.14
 local lastBagKeyHandledAt = 0
 local guardElapsed = 0
 
--- Forward decls (assigned later in file).
-local OpenOurs
+-- Forward decl (assigned later in file).
 local InvokeNativeKeyRing
 
 local function InCombat()
@@ -164,7 +163,12 @@ local function FocusBagsMatch(a, b)
     return false
   end
   local Slots = BetterBackpack.Modules.Slots
-  if Slots and Slots.IsReagentBag and Slots.IsReagentBag(a) and Slots.IsReagentBag(b) then
+  if
+    Slots
+    and type(Slots.IsReagentBag) == "function"
+    and Slots.IsReagentBag(a)
+    and Slots.IsReagentBag(b)
+  then
     return true
   end
   return a == b
@@ -596,7 +600,7 @@ local function PulsePark()
   end
 end
 
-OpenOurs = function()
+local function OpenOurs()
   if closeBusy then
     BagKeyChat("open-skip", "closeBusy")
     return SessionOpen()
@@ -784,7 +788,10 @@ function OpenClose.CloseOurs(opts)
     elseif InCombat() then
       ParkBlizzardForOverlay()
     end
-    pcall(RestoreNativeBagFrames)
+    -- bagBarNative: ParkBlizzardForOverlay never touches ContainerFrame* — skip restore (FELog CloseOurs nil).
+    if not BagBarNativeEnabled() then
+      pcall(RestoreNativeBagFrames)
+    end
     ResetOverlaySessionState()
   end)
   closeBusy = false
