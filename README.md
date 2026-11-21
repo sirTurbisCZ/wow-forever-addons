@@ -9,7 +9,7 @@ Install from [Releases](https://github.com/sirTurbisCZ/wow-forever-addons/releas
 | Addon | Slash | What it does |
 |-------|-------|----------------|
 | [ForeverErrorLog](addons/ForeverErrorLog/) | `/felog` | Captures Lua errors from all addons into SavedVariables (Blizzard error popup off by default) |
-| [Plateband](addons/Plateband/) | `/pb` | Shared harmful / DoT icons grouped with native nameplate debuffs above the plate |
+| [Plateband](addons/Plateband/) | `/pb` | Native DebuffList companion — merges omitted party DoTs beside Blizzard’s band |
 
 Player docs live next to each addon (`Docs/README.md`). Development notes and Scenario Maps stay in the Cursor project store, not in this repo.
 

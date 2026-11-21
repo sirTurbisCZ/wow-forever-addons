@@ -972,8 +972,57 @@ local function IsTargetPlate(unit, plate)
   return false
 end
 
+--- True when aura data is publicly player/pet-owned (nil = unknown/secret).
+local function AuraIsPlayerOwned(data)
+  if not data then
+    return nil
+  end
+  local owned
+  pcall(function()
+    local v = data.isFromPlayerOrPlayerPet
+    if not IsSecret(v) then
+      owned = v and true or false
+    end
+  end)
+  if owned ~= nil then
+    return owned
+  end
+  local src
+  pcall(function()
+    src = data.sourceUnit
+  end)
+  if type(src) == "string" and not IsSecret(src) then
+    if SameUnit(src, "player") or SameUnit(src, "pet") then
+      return true
+    end
+  end
+  return nil
+end
+
+--- Public texture keys known to be player-owned (skip even if native keys are secret).
+local function CollectPlayerOwnedKeys(unitToken, into)
+  if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
+    return
+  end
+  for i = 1, 40 do
+    local data
+    local ok = pcall(function()
+      data = C_UnitAuras.GetAuraDataByIndex(unitToken, i, "HARMFUL")
+    end)
+    if not ok or not data then
+      break
+    end
+    if AuraIsPlayerOwned(data) == true then
+      local key = PublicTexKey(data.icon)
+      if key then
+        into[key] = true
+      end
+    end
+  end
+end
+
 --- Prefer non-player harmful icons from C_UnitAuras (secret-safe).
-local function CollectUnitAuraMissing(unitToken, nativeKeys, out, maxN)
+local function CollectUnitAuraMissing(unitToken, skipKeys, out, maxN)
   if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
     return
   end
@@ -990,33 +1039,21 @@ local function CollectUnitAuraMissing(unitToken, nativeKeys, out, maxN)
     end
 
     -- Skip clearly player-owned — native DebuffList owns those.
-    local skipPlayer = false
-    pcall(function()
-      local owned = data.isFromPlayerOrPlayerPet
-      if not IsSecret(owned) and owned then
-        skipPlayer = true
-      end
-      local src = data.sourceUnit
-      if not skipPlayer and type(src) == "string" and not IsSecret(src) then
-        if SameUnit(src, "player") or SameUnit(src, "pet") then
-          skipPlayer = true
-        end
-      end
-    end)
-    if not skipPlayer then
+    if AuraIsPlayerOwned(data) ~= true then
       local icon = data.icon
       local key = PublicTexKey(icon)
-      -- Only paint when we have a public key not already on native (avoids secret dups).
-      if key and not nativeKeys[key] then
+      -- Only paint when we have a public key not already shown / player-owned.
+      if key and not skipKeys[key] then
         out[#out + 1] = icon
-        nativeKeys[key] = true -- mark so TF pass won't re-add
+        skipKeys[key] = true
       end
     end
   end
 end
 
 --- TargetFrame often shows the full harmful set (incl. others) while plate DebuffList omits.
-local function CollectTargetFrameMissing(nativeKeys, out, maxN)
+--- skipKeys must already include native + player-owned public keys (avoids solo dups when native FileIDs are secret).
+local function CollectTargetFrameMissing(skipKeys, out, maxN)
   local texes = {}
   CollectAuraTextures(GetTargetAuraContainer(), texes, maxN)
   for i = 1, #texes do
@@ -1025,9 +1062,9 @@ local function CollectTargetFrameMissing(nativeKeys, out, maxN)
     end
     local t = texes[i]
     local key = PublicTexKey(t)
-    if key and not nativeKeys[key] then
+    if key and not skipKeys[key] then
       out[#out + 1] = t
-      nativeKeys[key] = true
+      skipKeys[key] = true
     end
   end
 end
@@ -1058,21 +1095,26 @@ local function PaintMergeMissing(unit, plate)
 
   EnsureNativeVisible(plate)
 
-  local nativeKeys = NativeKeySet(plate)
+  -- skipKeys = native DebuffList + known player-owned (never re-paint personal).
+  local skipKeys = NativeKeySet(plate)
   local maxN = MaxIcons()
   local missing = {}
 
   -- Target plate: merge TF + unit auras Blizzard omitted from DebuffList.
   if IsTargetPlate(unit, plate) then
-    CollectUnitAuraMissing("target", nativeKeys, missing, maxN)
-    CollectTargetFrameMissing(nativeKeys, missing, maxN)
-    -- Also try nameplate token if distinct.
+    CollectPlayerOwnedKeys("target", skipKeys)
     if type(unit) == "string" and unit ~= "target" then
-      CollectUnitAuraMissing(unit, nativeKeys, missing, maxN)
+      CollectPlayerOwnedKeys(unit, skipKeys)
     end
+    CollectUnitAuraMissing("target", skipKeys, missing, maxN)
+    if type(unit) == "string" and unit ~= "target" then
+      CollectUnitAuraMissing(unit, skipKeys, missing, maxN)
+    end
+    CollectTargetFrameMissing(skipKeys, missing, maxN)
   else
     -- Non-target: only unit API missing (no TF). Often empty on Forever — OK.
-    CollectUnitAuraMissing(unit, nativeKeys, missing, maxN)
+    CollectPlayerOwnedKeys(unit, skipKeys)
+    CollectUnitAuraMissing(unit, skipKeys, missing, maxN)
   end
 
   if #missing == 0 then

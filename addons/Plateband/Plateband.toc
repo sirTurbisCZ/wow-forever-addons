@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: Plateband
-## Notes: Shared harmful / DoT icons grouped with native nameplate debuffs above the plate.
+## Notes: Native nameplate DebuffList companion — merges omitted party DoTs beside Blizzard's band.
 ## Author: tuma
-## Version: 0.1.6
+## Version: 0.1.7
 ## SavedVariables: PlatebandDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled
