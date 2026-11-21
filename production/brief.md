@@ -1,4 +1,9 @@
-# Playtest brief — BetterBackpack 0.5.28 (B combined fix)
+# Playtest brief — BetterBackpack 0.5.29 (B + bag-bar diagnose)
+
+**0.5.29**
+- B: `ToggleAllBags` and `ToggleBackpack` → combined XOR (Forever often binds B to ToggleBackpack). Backpack **icon** still native bag 0 (mouse-down arm).
+- Native visibility ignores parked off-screen frames; `OpenBag` + anchor refresh.
+- `/bb dump` prints open-state line — paste if still broken.
 
 **0.5.28**
 - **B / ToggleAllBags** opens/closes BetterBackpack combined again; not blocked after bag-bar click; with native bag open, B switches to combined.

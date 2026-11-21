@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.OpenClose — B overlay + bag-bar native (0.5.28)
+  BetterBackpack.OpenClose — B overlay + bag-bar native (0.5.29)
 
   ToggleAllBags / ToggleBackpack / ToggleBag / ToggleKeyRing are *replaced*
   (not hooksecurefunc). Forever Toggle* bodies call Open*/Close* first; a
@@ -30,6 +30,7 @@ local closeBusy = false
 local ignoringBagShow = false
 local nativeSession = false
 local nativeFocusBag = nil
+local backpackBarArmUntil = 0
 local TOGGLE_LOCK = 0.28
 local guardElapsed = 0
 
@@ -74,29 +75,36 @@ local function RestoreFrameInteractive(f)
   end)
 end
 
+local function FrameOnScreen(f)
+  if not f or not f:IsShown() then
+    return false
+  end
+  local a = 1
+  pcall(function()
+    a = f:GetAlpha() or 1
+  end)
+  if a < 0.05 then
+    return false
+  end
+  local left
+  pcall(function()
+    left = f:GetLeft()
+  end)
+  if left ~= nil and left < -500 then
+    return false
+  end
+  return true
+end
+
 local function NativeContainersVisible()
   for i = 1, 13 do
-    local f = _G["ContainerFrame" .. i]
-    if f and f:IsShown() then
-      local a = 1
-      pcall(function()
-        a = f:GetAlpha() or 1
-      end)
-      if a >= 0.05 then
-        return true
-      end
+    if FrameOnScreen(_G["ContainerFrame" .. i]) then
+      return true
     end
   end
   for _, name in ipairs({ "KeyRingFrame", "ContainerFrame-2", "ContainerFrameKeyRing" }) do
-    local f = _G[name]
-    if f and f:IsShown() then
-      local a = 1
-      pcall(function()
-        a = f:GetAlpha() or 1
-      end)
-      if a >= 0.05 then
-        return true
-      end
+    if FrameOnScreen(_G[name]) then
+      return true
     end
   end
   return false
@@ -440,13 +448,12 @@ local function onBagKey()
 
   ClearFocusBag()
   ClearCategoryFilter()
+  OpenClose.ClearReplaceSuppress()
+  ignoringBagShow = true
   if nativeOpen then
     CloseNativeBags()
   end
-  if OpenClose.IsReplaceSuppressed() then
-    OpenClose.ClearReplaceSuppress()
-  end
-  toggleLockUntil = Now() + TOGGLE_LOCK
+  ignoringBagShow = false
   OpenOurs()
 end
 
@@ -687,12 +694,28 @@ local function InvokeNativeToggleBag(bagID)
   local orig = OrigToggle("ToggleBag")
   ignoringBagShow = true
   BlackoutCombinedOnly()
-  if orig then
-    pcall(orig, bagID)
-  elseif type(OpenBag) == "function" and bagID ~= nil then
+  if type(OpenBag) == "function" and bagID ~= nil then
     pcall(OpenBag, bagID)
+  elseif orig then
+    pcall(orig, bagID)
+  end
+  if type(UpdateContainerFrameAnchors) == "function" then
+    pcall(UpdateContainerFrameAnchors)
   end
   local function after()
+    RestoreShownNativeBags()
+    for i = 1, 13 do
+      local f = _G["ContainerFrame" .. i]
+      if f and f:IsShown() then
+        local left
+        pcall(function()
+          left = f:GetLeft()
+        end)
+        if left ~= nil and left < -500 and type(OpenBag) == "function" and bagID ~= nil then
+          pcall(OpenBag, bagID)
+        end
+      end
+    end
     RestoreShownNativeBags()
     ignoringBagShow = false
   end
@@ -703,15 +726,19 @@ local function InvokeNativeToggleBag(bagID)
   end
 end
 
+local function ArmBackpackBarNative()
+  backpackBarArmUntil = Now() + 0.2
+end
+
 local function onBackpackToggle()
   if not EnabledReplace() then
     return
   end
-  if BagBarNativeEnabled() then
-    onBagToggle(0, "ToggleBackpack")
-  else
-    onBagKey()
+  if BagBarNativeEnabled() and Now() < backpackBarArmUntil then
+    onBagToggle(0, "ToggleBackpack-bar")
+    return
   end
+  onBagKey()
 end
 
 --[[
@@ -978,7 +1005,36 @@ local function onBagBarClick(btn)
   end
 end
 
+local function HookOneBackpackArm(btn)
+  if not btn or btn.BetterBackpackArmNative then
+    return false
+  end
+  local ok = pcall(function()
+    btn:HookScript("OnMouseDown", function()
+      if EnabledReplace() and BagBarNativeEnabled() then
+        ArmBackpackBarNative()
+      end
+    end)
+  end)
+  if ok then
+    btn.BetterBackpackArmNative = true
+  end
+  return ok
+end
+
+local function HookBackpackBarMouseDown()
+  local n = 0
+  if HookOneBackpackArm(_G.MainMenuBarBackpackButton) then
+    n = n + 1
+  end
+  if HookOneBackpackArm(_G.CharacterBag0Slot) then
+    n = n + 1
+  end
+  return n > 0
+end
+
 local function HookBagBarButtons()
+  HookBackpackBarMouseDown()
   local hooked = 0
   local names = {
     "MainMenuBarBackpackButton",
@@ -1118,7 +1174,9 @@ function OpenClose.InstallHooks()
             PulsePark()
             return
           end
-          onOpenIntent(nil)
+          if not BagBarNativeEnabled() then
+            onOpenIntent(nil)
+          end
         end
         if C_Timer and C_Timer.After then
           C_Timer.After(0, afterToggle)
@@ -1265,6 +1323,25 @@ function OpenClose.RunOpenCloseSelfTest()
   ok(not OursVisible(), "frame still shown after close")
   OpenClose.ClearReplaceSuppress()
   return fail == 0, pass, fail, notes
+end
+
+function OpenClose.DumpOpenState()
+  local lockRem = math.max(0, toggleLockUntil - Now())
+  local supRem = math.max(0, suppressUntil - Now())
+  return string.format(
+    "open overlay=%s session=%s layout=%s · native sess=%s focus=%s ui=%s · lock=%.2fs suppress=%.2fs · busy o/c=%s/%s · bagBarNative=%s",
+    tostring(bagsOpen),
+    tostring(SessionOpen()),
+    tostring(OursVisible()),
+    tostring(nativeSession),
+    tostring(nativeFocusBag),
+    tostring(NativeContainersVisible()),
+    lockRem,
+    supRem,
+    tostring(openBusy),
+    tostring(closeBusy),
+    tostring(BagBarNativeEnabled())
+  )
 end
 
 OpenClose.ForceCloseBlizzard = ForceCloseBlizzard

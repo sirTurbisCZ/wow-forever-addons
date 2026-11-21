@@ -164,6 +164,9 @@ local function DumpRing()
     tostring(Config.VERSION),
     tostring(OpenClose and OpenClose.BagsOpen and OpenClose.BagsOpen())
   ))
+  if OpenClose and OpenClose.DumpOpenState then
+    Print("|cffaaaaaa" .. OpenClose.DumpOpenState() .. "|r")
+  end
   if db.lastSelftest and db.lastSelftest.card then
     print("|cffaaaaaa" .. tostring(db.lastSelftest.card) .. "|r")
   end
