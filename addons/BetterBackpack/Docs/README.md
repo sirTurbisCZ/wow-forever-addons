@@ -70,4 +70,4 @@ Also `/betterbackpack`.
 ## Notes
 
 - Optional: **ForeverErrorLog** for errors.
-- Do not run alongside **BagShelves** if both replace bags.
+- Do not run alongside **BagShelves** (or **CombinedBags**) if both replace bags — disable at character login. Live check: **`/bb bagkey`** (`ToggleBackpack ours=true` expected). Stale `BagShelves.lua` SV without the addon installed is harmless.

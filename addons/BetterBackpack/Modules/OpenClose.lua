@@ -182,7 +182,7 @@ local function ClearCategoryFilter()
 end
 
 local function RestoreNativeBagFrames()
-  if not BagBarNativeEnabled() then
+  if BagBarNativeEnabled() then
     return
   end
   for i = 1, 13 do
@@ -1720,6 +1720,98 @@ end
 
 function OpenClose.EnsureBagKeyReplace()
   pcall(ApplyBagKeyReplace)
+end
+
+local CONFLICT_BAG_ADDONS = {
+  BagShelves = true,
+  CombinedBags = true,
+}
+
+local function AddOnFolderExists(name)
+  if not (C_AddOns and C_AddOns.GetAddOnInfo) then
+    return false
+  end
+  local ok, _, _, loadable = pcall(C_AddOns.GetAddOnInfo, name)
+  return ok and loadable ~= false
+end
+
+function OpenClose.WarnBagConflicts()
+  if not EnabledReplace() then
+    return
+  end
+  local Print = BetterBackpack.Print
+  if not Print then
+    return
+  end
+  local loaded = {}
+  for name in pairs(CONFLICT_BAG_ADDONS) do
+    if C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded(name) then
+      loaded[#loaded + 1] = name
+    end
+  end
+  if #loaded > 0 then
+    Print(
+      "|cffff5050BetterBackpack:|r Incompatible bag replacers loaded: "
+        .. table.concat(loaded, ", ")
+        .. " — disable at character login (AddOns). B will not work reliably."
+    )
+    pcall(OpenClose.EnsureBagKeyReplace)
+    return
+  end
+  if _G.BagShelvesDB and _G.BagShelvesDB.enabled ~= false and AddOnFolderExists("BagShelves") then
+    Print(
+      "|cffff8800BetterBackpack:|r BagShelves is enabled in settings — disable BagShelves at login if both replace bags."
+    )
+  elseif _G.BagShelvesDB and _G.BagShelvesDB.enabled ~= false and not AddOnFolderExists("BagShelves") then
+    Print(
+      "BetterBackpack: BagShelves saved vars only (addon not installed) — no BagShelves conflict."
+    )
+  end
+end
+
+function OpenClose.DiagnoseBagKey()
+  local lines = {}
+  local wrap = OpenClose._bb_wrap_ToggleBackpack
+  local g = _G.ToggleBackpack
+  local p = Profile()
+  lines[#lines + 1] = string.format(
+    "ver=%s replace=%s enabled=%s safe=%s bagBarNative=%s",
+    tostring(Config.VERSION),
+    tostring(p.replaceBlizzard),
+    tostring(p.enabled),
+    tostring(p.safeMode),
+    tostring(p.bagBarNativeBag)
+  )
+  lines[#lines + 1] = string.format(
+    "ToggleBackpack: global=%s ours=%s replaced=%s",
+    type(g),
+    tostring(g == wrap),
+    tostring(OpenClose._replaced_ToggleBackpack and true or false)
+  )
+  if C_AddOns and C_AddOns.IsAddOnLoaded then
+    lines[#lines + 1] = string.format(
+      "BagShelves loaded=%s folder=%s",
+      tostring(C_AddOns.IsAddOnLoaded("BagShelves")),
+      tostring(AddOnFolderExists("BagShelves"))
+    )
+  end
+  local db = BetterBackpackDB
+  local tr = db and db.bagKeyTrace
+  if tr and #tr > 0 then
+    local from = math.max(1, #tr - 7)
+    for i = from, #tr do
+      local e = tr[i]
+      lines[#lines + 1] = string.format(
+        "trace %s · %s · %s",
+        tostring(e.t or "?"),
+        tostring(e.branch or "?"),
+        tostring(e.detail or "")
+      )
+    end
+  else
+    lines[#lines + 1] = "bagKeyTrace empty — no onBagKey since last /reload (B not handled by BB)"
+  end
+  return lines
 end
 
 function OpenClose.InstallHooks()

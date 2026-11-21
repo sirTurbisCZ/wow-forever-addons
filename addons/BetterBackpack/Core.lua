@@ -237,6 +237,19 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
       end
       return
     end
+    if name == "BagShelves" and ModuleWanted() and OpenClose then
+      Print(
+        "|cffff5050BetterBackpack:|r BagShelves loaded — conflicts with replace bags. Disable BagShelves at login."
+      )
+      if OpenClose.EnsureBagKeyReplace then
+        SafeCall("hooks", OpenClose.EnsureBagKeyReplace)
+      end
+      if C_Timer and C_Timer.After and OpenClose.EnsureBagKeyReplace then
+        C_Timer.After(0.5, function()
+          SafeCall("hooks", OpenClose.EnsureBagKeyReplace)
+        end)
+      end
+    end
     if ModuleWanted() and OpenClose and OpenClose.EnsureBagKeyReplace then
       if C_Timer and C_Timer.After then
         C_Timer.After(0, function()
@@ -261,6 +274,15 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
         SafeCall("hooks", OpenClose.InstallHooks)
       else
         Print("ERROR: OpenClose failed to load — check FrameXML.log")
+      end
+      if OpenClose and OpenClose.WarnBagConflicts then
+        if C_Timer and C_Timer.After then
+          C_Timer.After(0.5, function()
+            SafeCall("conflict", OpenClose.WarnBagConflicts)
+          end)
+        else
+          SafeCall("conflict", OpenClose.WarnBagConflicts)
+        end
       end
       if C_Timer and C_Timer.After then
         C_Timer.After(0, function()
@@ -623,6 +645,19 @@ SlashCmdList.BETTERBACKPACK = function(msg)
 
   if cmd == "dump" then
     DumpRing()
+    return
+  end
+
+  if cmd == "bagkey" or cmd == "bkey" then
+    if OpenClose and OpenClose.EnsureBagKeyReplace then
+      SafeCall("hooks", OpenClose.EnsureBagKeyReplace)
+    end
+    if OpenClose and OpenClose.DiagnoseBagKey then
+      local lines = OpenClose.DiagnoseBagKey()
+      for i = 1, #lines do
+        Print(lines[i])
+      end
+    end
     return
   end
 
