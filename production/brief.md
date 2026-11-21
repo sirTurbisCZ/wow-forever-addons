@@ -1,12 +1,11 @@
-# Playtest brief — BetterBackpack 0.5.4 (WFA-17)
+# Playtest brief — BetterBackpack 0.5.5
 
-**Plan:** store `docs/refactor-three-addons.md`
+**Chrome (CombinedBags + Baganator Forever Blizzard skin)**
+- NineSlice kit from CombinedBags; Bg/TopTile @ (6,-21); Inset hidden
+- Title GameFontNormal; search @ TOPLEFT 11,-28
+- Slots: empty `SlotBackground` (bags-item-slot64)
+- Footer free/money inside BF_OFFSET border
 
-**This slice (BB first)**
-1. Keep Toggle* replace (B stable — no open/close thrash).
-2. Native CombinedBags-class chrome: `ButtonFrameTemplate` + HidePortrait + CombinedBags NineSlice. No Lua `SetFrameStrata`.
-3. TOGGLE_LOCK 0.28; OpenOurs fail → ForceCloseBlizzard.
+**Keep:** Toggle* replace (B stable) — do not regress OpenClose.
 
-**Later (not this ship):** Plateband merge without name ClearAllPoints; FELog release smoke.
-
-**Done when:** `/reload` → `v0.5.4` → B opens & stays · B closes · NineSlice/title chrome · no freeze.
+**Done when:** `/reload` → `v0.5.5` → B open/stay/close · borders+title+slot wells+footer look native.

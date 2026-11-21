@@ -1,8 +1,9 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.4).
-  Forever: never SetToplevel (ADDON_ACTION_BLOCKED).
-  Width/padding match BagShelves; title buttons = AutoSort twins (no glow).
-  NTH hooks via optional Feat("Search|Filter|…") — do not rewrite OpenClose chrome here.
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.5).
+  Forever: never SetToplevel / SetFrameStrata (ADDON_ACTION_BLOCKED).
+  Chrome metrics from Baganator Forever Blizzard skin + ContainerFrameCombinedBags:
+    ButtonFrameOffset=6, Bg/TopTile @ (6,-21), NineSlice borders, Inset hidden.
+  Title buttons = AutoSort twins (no glow). NTH via Feat("Search|…") only.
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -20,16 +21,22 @@ end
 
 local SLOT = 37
 local PAD = 4
-local HEADER_H = 20 -- BagShelves
+local HEADER_H = 20
 local HEADER_PAD = 2
-local SECTION_GAP = 8 -- BagShelves section trailing gap
-local INSET_X = 14 -- BagShelves
-local TOP_CHROME = 58 -- BagShelves title band (not skinny header)
-local BOT_CHROME = 32 -- BagShelves footer strip
+local SECTION_GAP = 8
+-- Baganator Forever Blizzard skin: ButtonFrameOffset=6, OffsetTop=2.
+local BF_OFFSET = 6
+local BF_OFFSET_TOP = 2
+local INSET_X = BF_OFFSET + 8 -- content left inside NineSlice (≈ CombinedBags feel)
+local TOP_CHROME = 54 -- title + search row (Baganator search ≈ -28)
+local BOT_CHROME = 30 -- footer strip inside bottom border
 local FOOTER_H = 20
-local FRAME_RIGHT_PAD = 28 -- BagShelves ApplyFrameSize: width + INSET_X + 28
--- Fallback when CloseButton size is unavailable (UIPanelCloseButton is 32×32).
+local FRAME_RIGHT_PAD = BF_OFFSET + 22
 local CHROME_BTN = 32
+local CLASSIC_BORDER = {
+  "BotLeftCorner", "BotRightCorner", "BottomBorder", "LeftBorder", "RightBorder",
+  "TopRightCorner", "TopLeftCorner", "TopBorder",
+}
 
 local CATEGORY_ORDER = {
   "junk", "consumable", "reagent", "gem", "gear", "quest", "keys", "container", "other",
@@ -905,37 +912,33 @@ local function DoLayout()
     content:SetPoint("TOPLEFT", main, "TOPLEFT", INSET_X, -TOP_CHROME)
     content:SetSize(contentW, contentH)
     content:Show()
-    -- Must sit above ButtonFrameTemplate Inset.Bg or lanes look empty (counts only).
+    -- Content above Bg; Inset stays hidden (Baganator). NineSlice draws borders.
     local mainLvl = main:GetFrameLevel() or 200
     pcall(function()
       if main.Inset then
-        main.Inset:SetFrameLevel(math.max(1, mainLvl + 1))
+        main.Inset:Hide()
         main.Inset:EnableMouse(false)
+      end
+      if main.NineSlice then
+        main.NineSlice:SetFrameLevel(mainLvl + 2)
       end
     end)
     content:SetFrameLevel(mainLvl + 40)
     main:SetSize(width, height)
     if main.footer then
       main.footer:ClearAllPoints()
-      main.footer:SetPoint("BOTTOMLEFT", main, "BOTTOMLEFT", 10, 6)
-      main.footer:SetPoint("BOTTOMRIGHT", main, "BOTTOMRIGHT", -10, 6)
+      main.footer:SetPoint("BOTTOMLEFT", main, "BOTTOMLEFT", BF_OFFSET + 4, 6)
+      main.footer:SetPoint("BOTTOMRIGHT", main, "BOTTOMRIGHT", -(BF_OFFSET + 4), 6)
       main.footer:SetFrameLevel(mainLvl + 5)
     end
     if main.moneyFrame then
       main.moneyFrame:ClearAllPoints()
-      main.moneyFrame:SetPoint("BOTTOMRIGHT", main, "BOTTOMRIGHT", -4, 6)
+      main.moneyFrame:SetPoint("BOTTOMRIGHT", main, "BOTTOMRIGHT", -(BF_OFFSET + 2), 6)
       pcall(function()
         main.moneyFrame:SetFrameLevel(mainLvl + 6)
       end)
     end
-    -- Shrink Inset so its Bg does not paint empty under content.
-    pcall(function()
-      if main.Inset then
-        main.Inset:ClearAllPoints()
-        main.Inset:SetPoint("TOPLEFT", main, "TOPLEFT", 4, -(TOP_CHROME - 6))
-        main.Inset:SetPoint("BOTTOMRIGHT", main, "BOTTOMRIGHT", -4, BOT_CHROME - 4)
-      end
-    end)
+    ApplyCombinedBagsChrome(main)
     EnsureTitleChrome(main)
     local SearchChrome = Feat("Search")
     if SearchChrome and SearchChrome.EnsureChrome then
@@ -1072,13 +1075,28 @@ local function ApplyPanelBackgroundColor(frame)
   end)
 end
 
---[[ Match classic CombinedBags chrome (NineSlice kit + solid fill — never copy stashed alpha). ]]
+--[[
+  Legit CombinedBags / Baganator Forever Blizzard chrome:
+  NineSlice borders, TopTileStreaks, solid Bg inset (6,-21), Inset hidden.
+]]
 local function ApplyCombinedBagsChrome(frame)
   if not frame then
     return
   end
+  local src = ContainerFrameCombinedBags
+
+  -- Baganator backpack: Inset:Hide() — NineSlice draws the border.
   pcall(function()
-    local src = ContainerFrameCombinedBags
+    if frame.Inset then
+      frame.Inset:Hide()
+      frame.Inset:EnableMouse(false)
+      if frame.Inset.SetAlpha then
+        frame.Inset:SetAlpha(0)
+      end
+    end
+  end)
+
+  pcall(function()
     if src and src.NineSlice and NineSliceUtil then
       local kit
       if src.NineSlice.GetFrameLayoutTextureKit then
@@ -1087,45 +1105,91 @@ local function ApplyCombinedBagsChrome(frame)
       if type(kit) == "string" and not IsSecret(kit) then
         if not frame.NineSlice then
           frame.NineSlice = CreateFrame("Frame", nil, frame, "NineSlicePanelTemplate")
-          frame.NineSlice:SetAllPoints()
+          frame.NineSlice:SetAllPoints(frame)
         end
         NineSliceUtil.ApplyLayoutByName(frame.NineSlice, "UniqueCornersLayout", kit)
         frame.NineSlice:SetAlpha(1)
         frame.NineSlice:Show()
+        if frame.NineSlice.SetFrameLevel then
+          frame.NineSlice:SetFrameLevel((frame:GetFrameLevel() or 1) + 2)
+        end
       end
     end
   end)
+
+  -- Classic border regions when NineSlice has no painted kids (Baganator fallback).
+  pcall(function()
+    local ns = frame.NineSlice
+    local needClassic = not ns or (ns.GetRegions and ns:GetRegions() == nil)
+    if not needClassic then
+      return
+    end
+    for i = 1, #CLASSIC_BORDER do
+      local key = CLASSIC_BORDER[i]
+      local tex = frame[key]
+      if not tex and src and src[key] then
+        tex = frame:CreateTexture(nil, "OVERLAY", nil, 7)
+        frame[key] = tex
+        CopyTex(tex, src[key])
+        pcall(function()
+          local p, rel, rp, x, y = src[key]:GetPoint(1)
+          if p then
+            tex:ClearAllPoints()
+            tex:SetPoint(p, frame, rp or p, x or 0, y or 0)
+          end
+          if src[key].GetSize then
+            local w, h = src[key]:GetSize()
+            if type(w) == "number" and w > 0 then
+              tex:SetSize(w, h)
+            end
+          end
+        end)
+      end
+      if tex then
+        tex:SetAlpha(1)
+        tex:Show()
+      end
+    end
+  end)
+
   ApplyPanelBackgroundColor(frame)
   pcall(function()
-    local src = ContainerFrameCombinedBags
-    if src and src.TopTileStreaks then
-      if not frame.TopTileStreaks then
-        frame.TopTileStreaks = frame:CreateTexture(nil, "ARTWORK", nil, -7)
-        frame.TopTileStreaks:SetPoint("TOPLEFT", 6, -21)
-        frame.TopTileStreaks:SetPoint("TOPRIGHT", -6, -21)
-        frame.TopTileStreaks:SetHeight(40)
-      end
-      CopyTex(frame.TopTileStreaks, src.TopTileStreaks)
-      frame.TopTileStreaks:Show()
-      frame.TopTileStreaks:SetAlpha(1)
+    if not frame.Bg then
+      return
+    end
+    frame.Bg:ClearAllPoints()
+    -- Baganator Forever retail path with borders on.
+    frame.Bg:SetPoint("TOPLEFT", frame, "TOPLEFT", BF_OFFSET, -21)
+    frame.Bg:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -BF_OFFSET, 2)
+    frame.Bg:SetAlpha(1)
+    frame.Bg:Show()
+    if frame.Bg.SetDrawLayer then
+      frame.Bg:SetDrawLayer("BACKGROUND", -8)
     end
   end)
-  -- Force solid fill even if CombinedBags Bg was alpha-0 when copied.
+
   pcall(function()
-    if frame.Bg then
-      local r, g, b, a = 0.058, 0.058, 0.058, 0.97
-      if PANEL_BACKGROUND_COLOR and type(PANEL_BACKGROUND_COLOR.r) == "number" then
-        local c = PANEL_BACKGROUND_COLOR
-        r, g, b, a = c.r, c.g, c.b, c.a or 0.97
-      end
-      if frame.Bg.SetColorTexture then
-        frame.Bg:SetColorTexture(r, g, b, a)
-      else
-        frame.Bg:SetTexture("Interface\\Buttons\\WHITE8X8")
-        frame.Bg:SetVertexColor(r, g, b, a)
-      end
-      frame.Bg:SetAlpha(1)
-      frame.Bg:Show()
+    if not frame.TopTileStreaks then
+      frame.TopTileStreaks = frame:CreateTexture(nil, "ARTWORK", nil, -6)
+    end
+    frame.TopTileStreaks:ClearAllPoints()
+    frame.TopTileStreaks:SetPoint("TOPLEFT", frame, "TOPLEFT", BF_OFFSET, -21)
+    frame.TopTileStreaks:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -BF_OFFSET, -21)
+    frame.TopTileStreaks:SetHeight(40)
+    if src and src.TopTileStreaks then
+      CopyTex(frame.TopTileStreaks, src.TopTileStreaks)
+    end
+    frame.TopTileStreaks:SetAlpha(1)
+    frame.TopTileStreaks:Show()
+  end)
+
+  pcall(function()
+    if frame.CloseButton then
+      frame.CloseButton:SetFrameLevel((frame:GetFrameLevel() or 1) + 520)
+    end
+    if frame.TitleContainer then
+      frame.TitleContainer:SetFrameLevel((frame:GetFrameLevel() or 1) + 50)
+      frame.TitleContainer:Show()
     end
   end)
 end
@@ -1213,7 +1277,7 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local CHROME_VER = 20 -- ButtonFrameTemplate + CombinedBags NineSlice; no Lua SetFrameStrata
+local CHROME_VER = 21 -- Baganator Forever metrics + CombinedBags NineSlice/Bg/TopTile
 local chromeLogged = false
 local customChromeHidden = false
 local nativeSortReleased = false
@@ -1557,13 +1621,17 @@ EnsureTitleChrome = function(frame)
     if tt then
       tt:ClearAllPoints()
       local anchor = frame.TitleContainer or frame
-      tt:SetPoint("LEFT", anchor, "LEFT", 10, 0)
-      -- Room for broom + gear + Close (~3×32).
+      -- Forever ButtonFrameOffsetTop≈2; leave room for broom|gear|X.
+      tt:SetPoint("LEFT", anchor, "LEFT", BF_OFFSET + 4, BF_OFFSET_TOP > 0 and 0 or 0)
       tt:SetPoint("RIGHT", frame, "RIGHT", -110, 0)
       if tt.SetJustifyH then
         tt:SetJustifyH("LEFT")
       end
+      if tt.SetFontObject then
+        pcall(tt.SetFontObject, tt, GameFontNormal)
+      end
       tt:SetText(title)
+      tt:Show()
     end
   end)
 
@@ -1720,12 +1788,12 @@ function Layout.EnsureMain()
   -- Native CombinedBags chrome (AutoSort + gear).
   EnsureTitleChrome(built)
 
-  -- Footer on main (not Inset) — stable when main:SetSize runs.
+  -- Footer = CombinedBags CountContainer strip (free left, money right).
   local footer = CreateFrame("Frame", nil, built)
   footer:SetHeight(FOOTER_H)
   footer:EnableMouse(false)
-  footer:SetPoint("BOTTOMLEFT", built, "BOTTOMLEFT", 8, 6)
-  footer:SetPoint("BOTTOMRIGHT", built, "BOTTOMRIGHT", -8, 6)
+  footer:SetPoint("BOTTOMLEFT", built, "BOTTOMLEFT", BF_OFFSET + 4, 6)
+  footer:SetPoint("BOTTOMRIGHT", built, "BOTTOMRIGHT", -(BF_OFFSET + 4), 6)
   footer:SetFrameLevel((built:GetFrameLevel() or 1) + 5)
 
   -- CombinedBags CountContainer: NumberFontNormalSmall.
@@ -1755,7 +1823,7 @@ function Layout.EnsureMain()
   end)
   if moneyFrame then
     moneyFrame:ClearAllPoints()
-    moneyFrame:SetPoint("BOTTOMRIGHT", built, "BOTTOMRIGHT", -4, 6)
+    moneyFrame:SetPoint("BOTTOMRIGHT", built, "BOTTOMRIGHT", -(BF_OFFSET + 2), 6)
     pcall(function()
       if MoneyFrame_SetType then
         MoneyFrame_SetType(moneyFrame, "STATIC")

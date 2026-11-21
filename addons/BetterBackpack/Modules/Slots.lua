@@ -515,9 +515,17 @@ function Slots.SyncVisual(btn, bag, slot)
     end
     local icon = btn.icon or btn.Icon
     local tex = ResolveIconTexture(info, bag, slot)
+    EnsureSlotBackground(btn)
     if not info and not tex then
       if icon then
         icon:SetTexture(nil)
+        icon:Hide()
+      end
+      if btn.SlotBackground then
+        btn.SlotBackground:Show()
+      end
+      if btn.IconBorder then
+        btn.IconBorder:Hide()
       end
       local fs = EnsureCountFs(btn)
       if fs then
@@ -537,8 +545,12 @@ function Slots.SyncVisual(btn, bag, slot)
         icon:Show()
       elseif not info or not info.iconFileID then
         icon:SetTexture(nil)
+        icon:Hide()
       end
       -- secret iconFileID with no itemID fallback: leave prior tex; never SetTexture(secret)
+    end
+    if btn.SlotBackground then
+      btn.SlotBackground:Show()
     end
     local count = ResolveStackCount(info, bag, slot)
     local fs = EnsureCountFs(btn)
@@ -809,10 +821,12 @@ local function MakeVisualOnly(name, parent)
   if btn then
     btn:SetSize(SLOT, SLOT)
     btn:SetScale(1)
+    EnsureSlotBackground(btn)
   end
   if not btn then
     btn = CreateFrame("Button", name, parent)
     btn:SetSize(SLOT, SLOT)
+    EnsureSlotBackground(btn)
     local icon = btn:CreateTexture(nil, "ARTWORK")
     icon:SetAllPoints()
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -877,6 +891,7 @@ function Slots.Acquire(bag, slot)
     isSecure = false
   else
     btn:SetSize(SLOT, SLOT)
+    EnsureSlotBackground(btn)
     local icon = btn:CreateTexture(nil, "ARTWORK")
     icon:SetAllPoints()
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -960,11 +975,32 @@ function Slots.IsPreCreated()
   return preCreated
 end
 
+-- Baganator Blizzard skin: empty SlotBackground under icon (CombinedBags-like).
+local function EnsureSlotBackground(btn)
+  if not btn or btn.SlotBackground then
+    return btn and btn.SlotBackground
+  end
+  local sb
+  pcall(function()
+    sb = btn:CreateTexture(nil, "BACKGROUND", nil, -1)
+    sb:SetAllPoints(btn)
+    local ok = pcall(sb.SetAtlas, sb, "bags-item-slot64")
+    if not ok then
+      sb:SetTexture("Interface\\Buttons\\UI-EmptySlot-Disabled")
+      sb:SetTexCoord(0.15, 0.85, 0.15, 0.85)
+    end
+    sb:SetAlpha(0.9)
+    btn.SlotBackground = sb
+  end)
+  return btn.SlotBackground
+end
+
 -- One grid size for every category (ItemButtonTemplate / quality border drift).
 local function NormalizeSlotVisual(btn)
   if not btn then
     return
   end
+  EnsureSlotBackground(btn)
   pcall(function()
     btn:SetScale(1)
     if btn.SetIgnoreParentScale then
@@ -977,6 +1013,13 @@ local function NormalizeSlotVisual(btn)
       btn:SetHitRectInsets(0, 0, 0, 0)
     end
   end)
+  if btn.SlotBackground then
+    pcall(function()
+      btn.SlotBackground:ClearAllPoints()
+      btn.SlotBackground:SetAllPoints(btn)
+      btn.SlotBackground:Show()
+    end)
+  end
   local ic = btn.icon or btn.Icon or btn.IconTexture
   if ic then
     pcall(function()

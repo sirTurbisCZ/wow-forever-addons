@@ -120,14 +120,18 @@ function Search.EnsureChrome(main)
   end
 
   box = CreateFrame("Frame", "BetterBackpackSearchBox", main)
-  box:SetSize(160, 20)
-  -- CombinedBags / BagShelves: search under title on the LEFT, not fighting Close twins.
-  box:SetPoint("TOPLEFT", main, "TOPLEFT", 12, -30)
+  box:SetSize(168, 22)
+  -- Baganator Forever: TOPLEFT sideSpacing+ButtonFrameOffset+5, -28.
+  box:SetPoint("TOPLEFT", main, "TOPLEFT", 11, -28)
   box:SetFrameLevel((main:GetFrameLevel() or 1) + 80)
 
   local bg = box:CreateTexture(nil, "BACKGROUND")
   bg:SetAllPoints()
-  bg:SetColorTexture(0.08, 0.08, 0.1, 0.92)
+  bg:SetColorTexture(0.06, 0.06, 0.07, 0.94)
+  local edge = box:CreateTexture(nil, "BORDER")
+  edge:SetPoint("TOPLEFT", -1, 1)
+  edge:SetPoint("BOTTOMRIGHT", 1, -1)
+  edge:SetColorTexture(0.35, 0.35, 0.38, 0.55)
 
   edit = CreateFrame("EditBox", nil, box)
   edit:SetAllPoints()
