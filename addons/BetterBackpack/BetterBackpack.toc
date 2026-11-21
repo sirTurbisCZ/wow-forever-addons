@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 0.5.80 merchant bulk UseContainerItem+SellCursor; sold count.
+## Notes: 0.5.81 ContainerAPI sell; ListLaneSlots fix; bulk probe.
 ## Author: tuma
-## Version: 0.5.80
+## Version: 0.5.81
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled

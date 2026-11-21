@@ -3078,7 +3078,7 @@ function Layout.ListLaneSlots(laneKey, unfiltered)
   if not laneKey then
     return {}
   end
-  local buckets = CollectBuckets(unfiltered == false)
+  local buckets = CollectBuckets(unfiltered == true)
   local list = buckets[laneKey]
   if not list then
     return {}

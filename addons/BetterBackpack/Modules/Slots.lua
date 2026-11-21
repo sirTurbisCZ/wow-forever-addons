@@ -144,6 +144,28 @@ function Slots.AttrBagSlot(bag, slot)
   return SafeNum(bag, nil), s
 end
 
+-- Bag/slot tokens for C_Container.* (keep secret Enum bag indices).
+function Slots.ContainerAPI(bag, slot)
+  local s = SafeNum(slot, nil)
+  if s == nil and slot ~= nil then
+    s = slot
+  end
+  if s == nil then
+    return nil, nil
+  end
+  if Slots.IsKeyringBag(bag) then
+    return Slots.KeyringBagIndex() or bag, s
+  end
+  if Slots.IsReagentBag(bag) then
+    return Slots.ReagentBagIndex() or bag, s
+  end
+  local plain = SafeNum(bag, nil)
+  if plain ~= nil then
+    return plain, s
+  end
+  return bag, s
+end
+
 function Slots.NumSlotsForBag(bag)
   if C_Container and C_Container.GetContainerNumSlots then
     local ok, res = pcall(C_Container.GetContainerNumSlots, bag)

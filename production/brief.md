@@ -1,4 +1,8 @@
-# Playtest brief — BetterBackpack 0.5.80
+# Playtest brief — BetterBackpack 0.5.81
+
+**0.5.81**
+- Lane bulk: `Slots.ContainerAPI` for Forever bag enums; Pickup+Sell first.
+- Fix `ListLaneSlots(_, true)` unfiltered bug; probe + `sold N/M` always on merchant end.
 
 **0.5.80**
 - Shift+RMB lane sell: `UseContainerItem` then Pickup+`SellCursorItem`; 1 stack/tick.

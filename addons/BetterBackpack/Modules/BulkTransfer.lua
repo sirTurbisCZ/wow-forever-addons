@@ -1,8 +1,6 @@
---[[
-  BulkTransfer - lane header Shift+RMB bulk (OOC only).
-  Context: merchant = sell, mail = attach, bank = UseContainerItem deposit.
-  Never touches OpenClose / Toggle* globals.
-]]
+-- BulkTransfer - lane header Shift+RMB bulk (OOC only).
+-- Context: merchant = sell, mail = attach, bank = UseContainerItem deposit.
+-- Never touches OpenClose / Toggle* globals.
 
 BetterBackpack = BetterBackpack or {}
 BetterBackpack.Modules = BetterBackpack.Modules or {}
@@ -18,7 +16,6 @@ local TRASH = "trash"
 
 local pumpToken = 0
 local pumpQueue
-local headerTraceOnce = false
 
 local function OOC()
   if InCombatLockdown and InCombatLockdown() then
@@ -27,15 +24,26 @@ local function OOC()
   return true
 end
 
+local function ContainerAPI(bag, slot)
+  if Slots and Slots.ContainerAPI then
+    local b, s = Slots.ContainerAPI(bag, slot)
+    if b ~= nil and s ~= nil then
+      return b, s
+    end
+  end
+  return bag, slot
+end
+
 local function ItemID(bag, slot)
+  local b, s = ContainerAPI(bag, slot)
   if C_Container and C_Container.GetContainerItemInfo then
-    local ok, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
+    local ok, info = pcall(C_Container.GetContainerItemInfo, b, s)
     if ok and info and info.itemID then
       return info.itemID
     end
   end
   if GetContainerItemID then
-    local ok, id = pcall(GetContainerItemID, bag, slot)
+    local ok, id = pcall(GetContainerItemID, b, s)
     if ok then
       return id
     end
@@ -44,12 +52,12 @@ local function ItemID(bag, slot)
 end
 
 local function SlotQuality(bag, slot)
+  local b, s = ContainerAPI(bag, slot)
   if C_Container and C_Container.GetContainerItemInfo then
-    local ok, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
+    local ok, info = pcall(C_Container.GetContainerItemInfo, b, s)
     if ok and info and info.quality ~= nil then
-      local SlotsMod = Slots
-      if SlotsMod and SlotsMod.SafeNum then
-        return SlotsMod.SafeNum(info.quality, nil)
+      if Slots and Slots.SafeNum then
+        return Slots.SafeNum(info.quality, nil)
       end
       return info.quality
     end
@@ -58,8 +66,9 @@ local function SlotQuality(bag, slot)
 end
 
 local function SlotLocked(bag, slot)
+  local b, s = ContainerAPI(bag, slot)
   if C_Container and C_Container.GetContainerItemInfo then
-    local ok, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
+    local ok, info = pcall(C_Container.GetContainerItemInfo, b, s)
     if ok and info and info.isLocked then
       return true
     end
@@ -68,14 +77,15 @@ local function SlotLocked(bag, slot)
 end
 
 local function PickupSlot(bag, slot)
+  local b, s = ContainerAPI(bag, slot)
   if ClearCursor then
     pcall(ClearCursor)
   end
   if C_Container and C_Container.PickupContainerItem then
-    return select(1, pcall(C_Container.PickupContainerItem, bag, slot))
+    return select(1, pcall(C_Container.PickupContainerItem, b, s))
   end
   if PickupContainerItem then
-    return select(1, pcall(PickupContainerItem, bag, slot))
+    return select(1, pcall(PickupContainerItem, b, s))
   end
   return false
 end
@@ -96,19 +106,10 @@ local function CursorHasSomething()
   return false
 end
 
-local function NormalizeBagSlot(bag, slot)
-  if Slots and Slots.AttrBagSlot then
-    local b, s = Slots.AttrBagSlot(bag, slot)
-    if b ~= nil and s ~= nil then
-      return b, s
-    end
-  end
-  return bag, slot
-end
-
 local function StackCount(bag, slot)
+  local b, s = ContainerAPI(bag, slot)
   if C_Container and C_Container.GetContainerItemInfo then
-    local ok, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
+    local ok, info = pcall(C_Container.GetContainerItemInfo, b, s)
     if ok and info and info.stackCount ~= nil then
       return info.stackCount
     end
@@ -117,25 +118,56 @@ local function StackCount(bag, slot)
 end
 
 local function SlotChanged(bag, slot, idBefore, countBefore)
+  local b, s = ContainerAPI(bag, slot)
   if not Slots or not Slots.SlotOccupied then
     return true
   end
-  if not Slots.SlotOccupied(bag, slot) then
+  if not Slots.SlotOccupied(b, s) then
     return true
   end
-  local idAfter = ItemID(bag, slot)
+  local idAfter = ItemID(b, s)
   if idBefore and idAfter and idBefore ~= idAfter then
     return true
   end
-  local countAfter = StackCount(bag, slot)
+  local countAfter = StackCount(b, s)
   if countBefore and countAfter and countAfter < countBefore then
     return true
   end
   return false
 end
 
+local function MerchantFrameOpen()
+  if MerchantFrame then
+    if MerchantFrame.IsVisible then
+      local ok, v = pcall(MerchantFrame.IsVisible, MerchantFrame)
+      if ok and v then
+        return true
+      end
+    end
+    if MerchantFrame.IsShown then
+      local ok, v = pcall(MerchantFrame.IsShown, MerchantFrame)
+      if ok and v then
+        return true
+      end
+    end
+  end
+  if CanMerchantRepair then
+    local ok, v = pcall(CanMerchantRepair)
+    if ok and v then
+      return true
+    end
+  end
+  if Context and Context.SpecialRmbContext then
+    return Context.SpecialRmbContext() == "merchant"
+  end
+  return false
+end
+
 local function MerchantAllowed(bag, slot)
-  local b, s = NormalizeBagSlot(bag, slot)
+  if not MerchantFrameOpen() then
+    return false
+  end
+  local b, s = ContainerAPI(bag, slot)
   local id = ItemID(b, s)
   if not id then
     return false
@@ -160,48 +192,65 @@ local function MerchantAllowed(bag, slot)
 end
 
 local function MerchantUseContainer(bag, slot)
-  local idBefore = ItemID(bag, slot)
-  local countBefore = StackCount(bag, slot)
+  local b, s = ContainerAPI(bag, slot)
+  local idBefore = ItemID(b, s)
+  local countBefore = StackCount(b, s)
   local used = false
   if C_Container and C_Container.UseContainerItem then
-    used = select(1, pcall(C_Container.UseContainerItem, bag, slot))
+    used = select(1, pcall(C_Container.UseContainerItem, b, s))
   elseif UseContainerItem then
-    used = select(1, pcall(UseContainerItem, bag, slot))
+    used = select(1, pcall(UseContainerItem, b, s))
   end
-  if used and SlotChanged(bag, slot, idBefore, countBefore) then
+  if not used then
+    return false, false
+  end
+  if SlotChanged(b, s, idBefore, countBefore) then
+    return true, true
+  end
+  return true, false
+end
+
+local function MerchantPickupSell(bag, slot)
+  local b, s = ContainerAPI(bag, slot)
+  local idBefore = ItemID(b, s)
+  local countBefore = StackCount(b, s)
+  if not PickupSlot(b, s) or not CursorHasSomething() then
+    return false, false
+  end
+  local sold = false
+  if SellCursorItem then
+    sold = select(1, pcall(SellCursorItem))
+  end
+  if ClearCursor then
+    pcall(ClearCursor)
+  end
+  if sold then
+    return true, true
+  end
+  if SlotChanged(b, s, idBefore, countBefore) then
+    return true, true
+  end
+  return false, false
+end
+
+local function TransferMerchant(bag, slot)
+  local b, s = ContainerAPI(bag, slot)
+  if not MerchantAllowed(b, s) then
+    return false
+  end
+  local okPick, _ = MerchantPickupSell(b, s)
+  if okPick then
+    return true
+  end
+  local okUse, changed = MerchantUseContainer(b, s)
+  if okUse and changed then
     return true
   end
   return false
 end
 
-local function MerchantPickupSell(bag, slot)
-  local idBefore = ItemID(bag, slot)
-  local countBefore = StackCount(bag, slot)
-  if not PickupSlot(bag, slot) or not CursorHasSomething() then
-    return false
-  end
-  if SellCursorItem then
-    pcall(SellCursorItem)
-  end
-  if ClearCursor then
-    pcall(ClearCursor)
-  end
-  return SlotChanged(bag, slot, idBefore, countBefore)
-end
-
-local function TransferMerchant(bag, slot)
-  local b, s = NormalizeBagSlot(bag, slot)
-  if not MerchantAllowed(b, s) then
-    return false
-  end
-  if MerchantUseContainer(b, s) then
-    return true
-  end
-  return MerchantPickupSell(b, s)
-end
-
 local function TransferMail(bag, slot)
-  local b, s = NormalizeBagSlot(bag, slot)
+  local b, s = ContainerAPI(bag, slot)
   if SlotLocked(b, s) then
     return false
   end
@@ -218,7 +267,7 @@ local function TransferMail(bag, slot)
 end
 
 local function TransferBank(bag, slot)
-  local b, s = NormalizeBagSlot(bag, slot)
+  local b, s = ContainerAPI(bag, slot)
   if SlotLocked(b, s) then
     return false
   end
@@ -266,9 +315,35 @@ function BulkTransfer.HeaderTooltipLine()
   return "Shift+RMB header - " .. verb
 end
 
+local function FinishMerchantPump(q)
+  if not q or q.ctx ~= "merchant" or not BetterBackpack.Print then
+    return
+  end
+  BetterBackpack.Print(string.format(
+    "|cff88ccffBulk|r sold %d / %d%s",
+    q.sold or 0,
+    q.total or 0,
+    q.label and (" · " .. q.label) or ""
+  ))
+  if q.diag and q.diag ~= "" then
+    BetterBackpack.Print("|cff88ccffBulk|r " .. q.diag)
+  end
+end
+
 local function Pump()
-  if not OOC() or not pumpQueue or #pumpQueue == 0 then
+  if not pumpQueue then
+    return
+  end
+  if not OOC() then
+    local q = pumpQueue
     pumpQueue = nil
+    FinishMerchantPump(q)
+    return
+  end
+  if #pumpQueue.slots == 0 then
+    local q = pumpQueue
+    pumpQueue = nil
+    FinishMerchantPump(q)
     if Layout and Layout.Refresh then
       Layout.Refresh()
     end
@@ -282,8 +357,12 @@ local function Pump()
   end
   while #pumpQueue.slots > 0 and moved < limit do
     local e = table.remove(pumpQueue.slots, 1)
-    if e and e.bag and e.slot and Slots.SlotOccupied and Slots.SlotOccupied(e.bag, e.slot) then
-      if TransferOne(e.bag, e.slot, ctx) then
+    local b, s = e and e.bag, e and e.slot
+    if b ~= nil and s ~= nil then
+      b, s = ContainerAPI(b, s)
+    end
+    if b ~= nil and s ~= nil and Slots.SlotOccupied and Slots.SlotOccupied(b, s) then
+      if TransferOne(b, s, ctx) then
         moved = moved + 1
         pumpQueue.sold = (pumpQueue.sold or 0) + 1
       end
@@ -299,26 +378,27 @@ local function Pump()
   else
     local q = pumpQueue
     pumpQueue = nil
-    if q and q.ctx == "merchant" and BetterBackpack.Print then
-      BetterBackpack.Print(string.format(
-        "|cff88ccffBulk|r sold %d / %d%s",
-        q.sold or 0,
-        q.total or 0,
-        q.label and (" · " .. q.label) or ""
-      ))
-    end
+    FinishMerchantPump(q)
     if Layout and Layout.Refresh then
       Layout.Refresh()
     end
   end
 end
 
-local function StartQueue(ctx, slots, label)
+local function StartQueue(ctx, slots, label, diag)
   if not slots or #slots == 0 then
     return false, "empty"
   end
   pumpToken = pumpToken + 1
-  pumpQueue = { ctx = ctx, slots = {}, token = pumpToken, sold = 0, total = #slots, label = label }
+  pumpQueue = {
+    ctx = ctx,
+    slots = {},
+    token = pumpToken,
+    sold = 0,
+    total = #slots,
+    label = label,
+    diag = diag,
+  }
   for i = 1, #slots do
     pumpQueue.slots[i] = { bag = slots[i].bag, slot = slots[i].slot }
   end
@@ -330,19 +410,36 @@ local function StartQueue(ctx, slots, label)
   return true
 end
 
+local function MerchantProbe(first)
+  if not first then
+    return ""
+  end
+  local b, s = ContainerAPI(first.bag, first.slot)
+  local mVis = MerchantFrameOpen()
+  local repair = false
+  if CanMerchantRepair then
+    local ok, v = pcall(CanMerchantRepair)
+    repair = ok and v and true or false
+  end
+  local id = ItemID(b, s)
+  local allowed = id and MerchantAllowed(b, s)
+  local useApi = (C_Container and C_Container.UseContainerItem) and true or (UseContainerItem and true or false)
+  local sellApi = SellCursorItem and true or false
+  return string.format(
+    "probe id=%s allowed=%s useApi=%s sellApi=%s merchant=%s CanMerchantRepair=%s bag=%s slot=%s",
+    tostring(id),
+    tostring(allowed),
+    tostring(useApi),
+    tostring(sellApi),
+    tostring(mVis),
+    tostring(repair),
+    tostring(b),
+    tostring(s)
+  )
+end
+
 function BulkTransfer.TransferLane(laneKey)
   local ctx = Context and Context.SpecialRmbContext and Context.SpecialRmbContext()
-  if not headerTraceOnce and BetterBackpack.Print then
-    headerTraceOnce = true
-    local shift = IsShiftKeyDown and IsShiftKeyDown()
-    BetterBackpack.Print(string.format(
-      "|cff88ccffBulk|r header trace: lane=%s ctx=%s shift=%s ooc=%s",
-      tostring(laneKey),
-      tostring(ctx),
-      tostring(shift),
-      tostring(OOC())
-    ))
-  end
   if not OOC() or not laneKey or laneKey == TRASH then
     return false
   end
@@ -356,14 +453,40 @@ function BulkTransfer.TransferLane(laneKey)
     return false
   end
   local slots = Layout.ListLaneSlots(laneKey, true)
+  local mOpen = MerchantFrameOpen()
+  local repair = false
+  if CanMerchantRepair then
+    local ok, v = pcall(CanMerchantRepair)
+    repair = ok and v and true or false
+  end
+  if BetterBackpack.Print and ctx == "merchant" then
+    local first = slots[1]
+    local fb, fs = first and ContainerAPI(first.bag, first.slot)
+    BetterBackpack.Print(string.format(
+      "|cff88ccffBulk|r lane=%s slots=%d merchant=%s CanMerchantRepair=%s first=%s:%s",
+      tostring(laneKey),
+      #slots,
+      tostring(mOpen),
+      tostring(repair),
+      tostring(fb),
+      tostring(fs)
+    ))
+  end
   if #slots == 0 then
     if BetterBackpack.Print then
       BetterBackpack.Print("|cff88ccffBulk|r " .. tostring(laneKey) .. " — nothing to move")
     end
     return true
   end
+  if ctx == "merchant" and not mOpen then
+    if BetterBackpack.Print then
+      BetterBackpack.Print("|cff88ccffBulk|r — merchant frame not open")
+    end
+    return false
+  end
   local label = tostring(Layout.GetCategoryLabel and Layout.GetCategoryLabel(laneKey) or laneKey)
-  local ok = StartQueue(ctx, slots, label)
+  local diag = ctx == "merchant" and MerchantProbe(slots[1]) or nil
+  local ok = StartQueue(ctx, slots, label, diag)
   if ok and BetterBackpack.Print then
     BetterBackpack.Print(string.format(
       "|cff88ccffBulk|r %s · %s · %d stacks (selling…)",
