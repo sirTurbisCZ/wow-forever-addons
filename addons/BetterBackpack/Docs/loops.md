@@ -31,7 +31,7 @@ flowchart TD
 
 - Never `SetOverrideBindingClick` or `SetFrameStrata` / `SetToplevel` on our frame.
 - Toggle globals are **replaced**, not post-hooked.
-- Combat: OOC shell **`Hide()`** after warm (no keep-shown alpha 0 — ESC fix). In combat close = alpha 0 only; OOC close = `Hide()`. `UISpecialFrames` + `CloseSpecialWindows` strip when not user-visible.
+- Combat: OOC warm ends **`Hide()`** (ESC). **`PLAYER_REGEN_DISABLED`** → `OnCombatEnter` Show+alpha0 (keep-shown in combat only). Toggle B = alpha 1/0. **`PLAYER_REGEN_ENABLED`** → `OnCombatExit` real `Hide()` if closed in combat else stay open OOC. `UISpecialFrames` only when user-visible.
 - `OpenAllBags` / `OpenBag` → `OpenOurs` when replace is on (vendor keeps BB, not native CombinedBags).
 - Window size is computed from the full unfiltered bag with all lanes expanded (sticky while open).
 

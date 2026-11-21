@@ -1,5 +1,9 @@
 # BetterBackpack changelog
 
+## 1.1.4
+
+- **Combat B + ESC:** dual path — OOC `Hide()` after warm (ESC safe); `OnCombatEnter` on `PLAYER_REGEN_DISABLED` (Show+alpha0 in lockdown only); combat open/close = alpha 1/0; `OnCombatExit` syncs real `Hide()` if user closed in combat.
+
 ## 1.1.3
 
 - **ESC:** disable OOC keep-shown (`Show`+alpha 0 after `EnsureCombatShell`); parked shell is **`Hide()`**. In-combat close still alpha-only; OOC `Hide()`. `CloseSpecialWindows` may `Hide()` invisible frame. LIVE had no `bagEsc` in SV until logout — use `/bb bagkey` after `/reload`.
