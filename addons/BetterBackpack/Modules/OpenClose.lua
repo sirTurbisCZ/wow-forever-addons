@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.OpenClose — B + /bb (0.5.53)
+  BetterBackpack.OpenClose — B + /bb (0.5.54)
 
   B + ToggleBackpack/ToggleAllBags → onBagKey XOR (0.5.50). Main backpack icon → same combined path.
   Bag-bar slots → native ToggleBag when bagBarNative, else BB bag-focus. Keyring → native only.
@@ -902,6 +902,7 @@ end
 local function onKeyRingToggle()
   if not EnabledReplace() then
     CallOrigToggle("ToggleKeyRing")
+    ForceKeyRingFrameShow()
     return
   end
   if SessionOpen() or OursVisible() then
@@ -915,6 +916,7 @@ local function onKeyRingToggle()
   end
   BeginNativeSession(BBKeyringBagIndex())
   pcall(InvokeNativeKeyRing)
+  ForceKeyRingFrameShow()
 end
 
 --[[
@@ -1198,6 +1200,53 @@ local function FinishNativeOpen()
   ignoringBagShow = false
 end
 
+local function ForceKeyRingFrameShow()
+  local Slots = BetterBackpack.Modules.Slots
+  local key = BBKeyringBagIndex()
+  for _, name in ipairs(KeyRingFrameNames()) do
+    local f = _G[name]
+    if f then
+      pcall(function()
+        RestoreFrameInteractive(f)
+        if f.Show then
+          f:Show()
+        end
+        local left
+        pcall(function()
+          left = f:GetLeft()
+        end)
+        if left == nil or left < -500 then
+          f:ClearAllPoints()
+          f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+        end
+      end)
+    end
+  end
+  for i = 1, 13 do
+    local f = _G["ContainerFrame" .. i]
+    if f and f.GetID then
+      local id
+      pcall(function()
+        id = f:GetID()
+      end)
+      if id ~= nil and key ~= nil and (
+        FocusBagsMatch(id, key)
+        or (Slots and Slots.IsKeyringBag and Slots.IsKeyringBag(id))
+      ) then
+        pcall(function()
+          RestoreFrameInteractive(f)
+          f:Show()
+        end)
+      end
+    end
+  end
+  if type(UpdateContainerFrameAnchors) == "function" then
+    pcall(UpdateContainerFrameAnchors)
+  end
+end
+
+OpenClose.ForceKeyRingFrameShow = ForceKeyRingFrameShow
+
 InvokeNativeKeyRing = function()
   local key = BBKeyringBagIndex()
   ignoringBagShow = true
@@ -1211,21 +1260,32 @@ InvokeNativeKeyRing = function()
     return false
   end
 
-  if not CallOrigToggle("ToggleKeyRing") and key ~= nil then
+  CallOrigToggle("ToggleKeyRing")
+  ForceKeyRingFrameShow()
+
+  if not opened() and key ~= nil then
     CallOrigToggle("ToggleBag", key)
+    ForceKeyRingFrameShow()
   end
   if not opened() and key ~= nil then
     if not CallOrigToggle("ToggleBag", key) and type(OpenBag) == "function" then
       pcall(OpenBag, key)
     end
+    ForceKeyRingFrameShow()
   end
   if not opened() and type(OpenKeyRing) == "function" then
     pcall(OpenKeyRing)
+    ForceKeyRingFrameShow()
   end
 
   local _, krFrame = KeyRingFrameIsShown()
   if krFrame then
     RestoreFrameInteractive(krFrame)
+    pcall(function()
+      if krFrame.Show and not krFrame:IsShown() then
+        krFrame:Show()
+      end
+    end)
   end
   RestoreShownNativeBags()
 

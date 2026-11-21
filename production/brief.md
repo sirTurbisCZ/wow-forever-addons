@@ -1,4 +1,7 @@
-# Playtest brief — BetterBackpack 0.5.53 (restore B XOR)
+# Playtest brief — BetterBackpack 0.5.54 (keyring frame)
+
+**0.5.54**
+- Empty keyring: after `ToggleKeyRing`, **`ForceKeyRingFrameShow`** — `KeyRingFrame` / container `Show`, on-screen, interactive.
 
 **0.5.53**
 - Revert 0.5.51–52 toggle breakage: **B XOR = 0.5.50** (`OpenOurs`, no `ToggleBag` replace, no combined debounce on bag slots).
