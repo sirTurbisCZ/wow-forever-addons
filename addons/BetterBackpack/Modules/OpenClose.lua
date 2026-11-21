@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.OpenClose — B overlay + bag-bar native (0.5.27)
+  BetterBackpack.OpenClose — B overlay + bag-bar native (0.5.28)
 
   ToggleAllBags / ToggleBackpack / ToggleBag / ToggleKeyRing are *replaced*
   (not hooksecurefunc). Forever Toggle* bodies call Open*/Close* first; a
@@ -416,33 +416,38 @@ function OpenClose.OpenOurs()
 end
 
 --[[
-  Toggle* (B / backpack toggle): XOR open/close. Used by replaced globals.
+  ToggleAllBags (B): BetterBackpack combined XOR. Never blocked by bag-bar toggleLockUntil.
+  Native bag open + B => close native and open combined (not close-only).
 ]]
 local function onBagKey()
   if not EnabledReplace() then
     return
   end
 
-  local t = Now()
   BlackoutAll()
 
-  if t < toggleLockUntil then
-    ParkAllShown()
+  local overlayOpen = SessionOpen()
+  local nativeOpen = nativeSession or NativeContainersVisible()
+
+  if overlayOpen then
+    ClearFocusBag()
+    ClearCategoryFilter()
+    CloseNativeBags()
+    toggleLockUntil = Now() + TOGGLE_LOCK
+    OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
     return
   end
-  toggleLockUntil = t + TOGGLE_LOCK
 
-  if SessionOpen() or nativeSession or NativeContainersVisible() then
-    ClearFocusBag()
-    ClearCategoryFilter()
+  ClearFocusBag()
+  ClearCategoryFilter()
+  if nativeOpen then
     CloseNativeBags()
-    OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
-  else
-    ClearFocusBag()
-    ClearCategoryFilter()
-    CloseNativeBags()
-    OpenOurs()
   end
+  if OpenClose.IsReplaceSuppressed() then
+    OpenClose.ClearReplaceSuppress()
+  end
+  toggleLockUntil = Now() + TOGGLE_LOCK
+  OpenOurs()
 end
 
 local function onKeyRingToggle()

@@ -1,4 +1,7 @@
-# Playtest brief — BetterBackpack 0.5.27 (all bag icons + broom size)
+# Playtest brief — BetterBackpack 0.5.28 (B combined fix)
+
+**0.5.28**
+- **B / ToggleAllBags** opens/closes BetterBackpack combined again; not blocked after bag-bar click; with native bag open, B switches to combined.
 
 **0.5.27**
 - Every bag-bar icon (`0`–`NUM_BAG_SLOTS`, reagent, keyring) opens native `ContainerFrame`. Backpack icon uses `ToggleBackpack` → bag 0 (not combined). **B** = combined only (`ToggleAllBags`).
