@@ -1,7 +1,7 @@
 # BetterBackpack — smyčky a grafy
 
-**Kód:** `Core.lua`, `Modules/{Slots,Layout,Context,OpenClose,Tidy}.lua`  
-**Verze reference:** 0.2.4  
+**Kód:** `Core.lua`, `Modules/{Slots,Layout,Context,OpenClose,Tidy,Settings,Search,Filter,CustomCategories,StackMerge,Pins,LayoutModes}.lua`  
+**Verze reference:** 0.3.0-nth (feature branch `betterbackpack/features-nth`)  
 **Stabilita:** Project `docs/bag-addon-brief.md` + Scenario Maps `docs/scenarios/BetterBackpack/`  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never path C harvest).
 
@@ -36,20 +36,27 @@ flowchart TD
 
 ---
 
-## 2. Layout — own SAB only
+## 2. Layout — own SAB only (+ NTH feature hooks)
 
 ```mermaid
 flowchart TD
   L[Layout Relayout]
-  L --> Buckets[CollectBuckets ClassifyBagSlot]
-  Buckets --> Place[Slots.Acquire + Place into lanes]
+  L --> Class[ClassifyBagSlot + CustomCategories.Resolve]
+  Class --> Buckets[CollectBuckets]
+  Buckets --> SF[Search.Passes + Filter.Passes]
+  SF --> Merge[StackMerge.Collapse per lane]
+  Merge --> Place[Slots.Acquire + Place · ApplyDisplayCount]
+  Place --> Pins[Pins.Layout ghosts for missing]
+  Pins --> Chrome[Search.EnsureChrome]
   Place --> Attrs{OOC?}
   Attrs -->|ano| Sync[SyncAttrs type2=item]
   Attrs -->|ne combat| Keep[Keep prior attrs · visual sync]
   Place --> Unused[ParkUnused off-screen]
 ```
 
-Žádný harvest / `SetParent` CombinedBags.Items.
+Žádný harvest / `SetParent` CombinedBags.Items.  
+Feature modules are optional `Feat("Name")` lookups — TOC can omit a file without Layout crash.  
+`LayoutModes.Columns` densifies grid; stack merge is visual-only (first real bag:slot keeps clicks).
 
 ---
 

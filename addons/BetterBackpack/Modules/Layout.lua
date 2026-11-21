@@ -1,7 +1,9 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.2.4).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.3.0-nth).
   Forever: never SetToplevel (ADDON_ACTION_BLOCKED).
   Hug-content height; even section gaps; title LEFT + chrome LEFT of X.
+  Feature hooks (Search/Filter/CustomCategories/StackMerge/Pins/LayoutModes) are
+  optional module lookups — safe if TOC omits a feature file.
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -12,6 +14,10 @@ BetterBackpack.Modules.Layout = Layout
 
 local Config = BetterBackpack.Config
 local Slots = BetterBackpack.Modules.Slots
+
+local function Feat(name)
+  return BetterBackpack.Modules and BetterBackpack.Modules[name]
+end
 
 local SLOT = 37
 local PAD = 4
@@ -41,6 +47,25 @@ local CATEGORY_LABELS = {
 
 Layout.CATEGORY_ORDER = CATEGORY_ORDER
 Layout.CATEGORY_LABELS = CATEGORY_LABELS
+
+function Layout.GetCategoryOrder()
+  local CC = Feat("CustomCategories")
+  if CC and CC.ExtendOrder then
+    return CC.ExtendOrder(CATEGORY_ORDER)
+  end
+  return CATEGORY_ORDER
+end
+
+function Layout.GetCategoryLabel(key)
+  local CC = Feat("CustomCategories")
+  if CC and CC.Label then
+    local custom = CC.Label(key)
+    if custom then
+      return custom
+    end
+  end
+  return CATEGORY_LABELS[key] or key
+end
 
 local CLASS = {
   Consumable = 0, Container = 1, Weapon = 2, Gem = 3, Armor = 4, Reagent = 5,
@@ -76,15 +101,27 @@ end
 
 local function Columns()
   local c = Profile().columns
-  if type(c) == "number" and c >= 4 and c <= 16 then
-    return c
+  if type(c) ~= "number" or c < 4 or c > 16 then
+    c = 8
   end
-  return 8
+  local LM = Feat("LayoutModes")
+  if LM and LM.Columns then
+    return LM.Columns(c)
+  end
+  return c
 end
 
 local function CategoryEnabled(key)
   if key == "other" then
     return true
+  end
+  -- Custom category ids are always "enabled" when present in order.
+  if type(key) == "string" and key:find("^custom_", 1) then
+    return true
+  end
+  local CC = Feat("CustomCategories")
+  if CC and CC.IsDefaultHidden and CC.IsDefaultHidden(key) then
+    return false
   end
   local cats = Profile().categories
   if not cats then
@@ -226,6 +263,16 @@ function Layout.ClassifyBagSlot(bag, slot)
     return nil, nil
   end
   local itemID = ResolveItemID(bag, slot, info)
+  local CC = Feat("CustomCategories")
+  if CC and CC.Resolve and itemID then
+    local custom = CC.Resolve(itemID)
+    if type(custom) == "string" and custom ~= "" then
+      if custom == "weapon" or custom == "armor" then
+        custom = "gear"
+      end
+      return custom, info
+    end
+  end
   local rules = Profile().itemRules
   if itemID and type(rules) == "table" then
     local rule = rules[itemID] or rules[tostring(itemID)]
@@ -270,17 +317,20 @@ function Layout.ClassifyBagSlot(bag, slot)
 end
 
 local function CollectBuckets()
+  local order = Layout.GetCategoryOrder()
   local buckets = {}
-  for i = 1, #CATEGORY_ORDER do
-    buckets[CATEGORY_ORDER[i]] = {}
+  for i = 1, #order do
+    buckets[order[i]] = {}
   end
+  local Search = Feat("Search")
+  local Filter = Feat("Filter")
   local ranges = Slots.BagRanges()
   for i = 1, #ranges do
     local bag, n = ranges[i].bag, ranges[i].slots
     for slot = 1, n do
       if Slots.SlotOccupied(bag, slot) then
         -- Disabled category → Other (items always visible somewhere).
-        local cat = Layout.ClassifyBagSlot(bag, slot)
+        local cat, info = Layout.ClassifyBagSlot(bag, slot)
         if not cat or not CategoryEnabled(cat) then
           cat = "other"
         end
@@ -288,9 +338,20 @@ local function CollectBuckets()
           cat = "gear"
         end
         if not buckets[cat] then
-          cat = "other"
+          -- Unknown custom key: create bucket so custom lanes work.
+          if type(cat) == "string" and cat:find("^custom_", 1) then
+            buckets[cat] = {}
+          else
+            cat = "other"
+          end
         end
-        buckets[cat][#buckets[cat] + 1] = { bag = bag, slot = slot }
+        if Search and Search.Passes and not Search.Passes(bag, slot, info) then
+          -- filtered out by search
+        elseif Filter and Filter.Passes and not Filter.Passes(cat) then
+          -- filtered out by category filter
+        else
+          buckets[cat][#buckets[cat] + 1] = { bag = bag, slot = slot }
+        end
       end
     end
   end
@@ -653,11 +714,16 @@ local function DoLayout()
     local y = 0
     local maxW = cols * (SLOT + PAD) - PAD
     local any = false
+    local order = Layout.GetCategoryOrder()
+    local SM = Feat("StackMerge")
 
-    for i = 1, #CATEGORY_ORDER do
-      local key = CATEGORY_ORDER[i]
+    for i = 1, #order do
+      local key = order[i]
       if CategoryEnabled(key) then
         local list = buckets[key] or {}
+        if SM and SM.Collapse then
+          list = SM.Collapse(list)
+        end
         if #list > 0 then
           any = true
           local sf = EnsureSection(key)
@@ -669,7 +735,7 @@ local function DoLayout()
           sf.header.title:SetText(string.format(
             "%s%s (%d)",
             collapsed and "[+] " or "[-] ",
-            CATEGORY_LABELS[key] or key,
+            Layout.GetCategoryLabel(key),
             #list
           ))
           y = y + HEADER_H + HEADER_PAD
@@ -677,10 +743,14 @@ local function DoLayout()
             local col, row = 0, 0
             local rows = math.ceil(#list / cols)
             for j = 1, #list do
-              local bag, slot = list[j].bag, list[j].slot
+              local entry = list[j]
+              local bag, slot = entry.bag, entry.slot
               local btn = Slots.Acquire(bag, slot)
               used[btn] = true
               Slots.Place(btn, content, col * (SLOT + PAD), y + row * (SLOT + PAD), true)
+              if SM and SM.ApplyDisplayCount then
+                SM.ApplyDisplayCount(btn, entry)
+              end
               col = col + 1
               if col >= cols then
                 col = 0
@@ -700,13 +770,41 @@ local function DoLayout()
       end
     end
 
+    for key, sf in pairs(sectionFrames) do
+      local still = false
+      for i = 1, #order do
+        if order[i] == key then
+          still = true
+          break
+        end
+      end
+      if not still then
+        sf:Hide()
+      end
+    end
+
+    local PinsMod = Feat("Pins")
+    if PinsMod and PinsMod.Layout then
+      local pinH = PinsMod.Layout(content, y, cols) or 0
+      if pinH > 0 then
+        any = true
+        y = y + pinH + SECTION_GAP
+      end
+    end
+
     Slots.ParkUnused(used)
 
     if emptyLabel then
       if any then
         emptyLabel:Hide()
       else
-        emptyLabel:SetText("Bags empty")
+        local q = Feat("Search") and Feat("Search").GetQuery and Feat("Search").GetQuery() or ""
+        local filt = Feat("Filter") and Feat("Filter").GetCategory and Feat("Filter").GetCategory()
+        if (q and q ~= "") or filt then
+          emptyLabel:SetText("No matches")
+        else
+          emptyLabel:SetText("Bags empty")
+        end
         emptyLabel:Show()
         y = math.max(y, 36)
       end
@@ -744,6 +842,10 @@ local function DoLayout()
       end
     end)
     EnsureTitleChrome(main)
+    local SearchChrome = Feat("Search")
+    if SearchChrome and SearchChrome.EnsureChrome then
+      pcall(SearchChrome.EnsureChrome, main)
+    end
     UpdateFreeSpace()
     UpdateMoney()
   end)
