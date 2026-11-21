@@ -389,9 +389,9 @@ local function PaintTrash(y)
   if not T then
     return y
   end
-  y = Note(5, "Check Trash under Lanes to turn it on. Drop a grey or white item on the Trash header: "
-    .. "it is destroyed now, and every time you loot it again. Its grey icon stays in Trash — "
-    .. "drag it to another lane, or click it, to keep that item. Quest items and green+ are never destroyed.", y)
+  y = Note(5, "Trash is not Junk: Junk only sorts grey items; Trash |cffff6666(destroy)|r destroys them. "
+    .. "Drop a white/grey stack on the Trash header (not Junk). Confirm → gone → grey ghost in Trash. "
+    .. "Future loot waits red until your next click in the bag. Click or drag the ghost to keep it.", y)
   y = Note(6, TrashStatus(T), y)
   local row = CheckRow(trashChecks, 1)
   row:ClearAllPoints()

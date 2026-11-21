@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.20).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.21).
   Forever: never SetToplevel / SetFrameStrata (ADDON_ACTION_BLOCKED).
   Chrome metrics from Baganator Forever Blizzard skin + ContainerFrameCombinedBags:
     ButtonFrameOffset=6, Bg/TopTile @ (6,-21), NineSlice borders, Inset hidden.
@@ -76,6 +76,9 @@ function Layout.GetCategoryLabel(key)
     if custom then
       return custom
     end
+  end
+  if key == TRASH then
+    return (CATEGORY_LABELS.trash or "Trash") .. "  |cffff6666(destroy)|r"
   end
   return CATEGORY_LABELS[key] or key
 end
@@ -407,13 +410,30 @@ function Layout.SetDropHints(on)
   end
 end
 
+local function CursorHoldingItem()
+  if not GetCursorInfo then
+    return false
+  end
+  local ok, kind = pcall(GetCursorInfo)
+  return ok and kind == "item"
+end
+
 local function HeldDragSource()
   local src = Slots.GetDragSource and Slots.GetDragSource()
-  if not src or not src.itemID or not GetCursorInfo then
+  if not src or not GetCursorInfo then
     return nil
   end
   local ok, kind, id = pcall(GetCursorInfo)
   if not ok or kind ~= "item" then
+    return nil
+  end
+  if not src.itemID and src.bag ~= nil and src.slot ~= nil and Slots.ItemIDForBagSlot then
+    src.itemID = Slots.ItemIDForBagSlot(src.bag, src.slot)
+  end
+  if not src.itemID then
+    src.itemID = SafeNum(id)
+  end
+  if not src.itemID then
     return nil
   end
   local held = SafeNum(id)
@@ -432,9 +452,11 @@ local function EndDrag()
 end
 
 function Layout.DropOnLane(key)
+  if type(key) ~= "string" then
+    return false
+  end
   local src = HeldDragSource()
-  local CC = Feat("CustomCategories")
-  if not src or type(key) ~= "string" or not (CC and CC.Teach) then
+  if not src then
     return false
   end
   if key == TRASH then
@@ -449,6 +471,10 @@ function Layout.DropOnLane(key)
     Layout.SetDropHints(false)
     T.HandleDrop(src)
     return true
+  end
+  local CC = Feat("CustomCategories")
+  if not (CC and CC.Teach) then
+    return false
   end
   EndDrag()
   CC.Teach(src.itemID, key, Layout.NaturalLane(src.bag, src.slot))
@@ -690,8 +716,8 @@ local function LogPlayerSlotsOnce(used, total, parts)
     used or 0,
     total or 0
   )
-  if DEFAULT_CHAT_FRAME then
-    DEFAULT_CHAT_FRAME:AddMessage(msg)
+  if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
+    pcall(DEFAULT_CHAT_FRAME.AddMessage, DEFAULT_CHAT_FRAME, msg)
   end
 end
 
@@ -1052,7 +1078,9 @@ local function EnsureSection(key)
   header:SetPoint("TOPLEFT")
   header:SetPoint("TOPRIGHT")
   header:SetHeight(HEADER_H)
-  header:RegisterForClicks("LeftButtonUp")
+  header:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+  header:RegisterForDrag("LeftButton")
+  header:EnableMouse(true)
   local arrow = header:CreateTexture(nil, "ARTWORK")
   arrow:SetSize(14, 14)
   arrow:SetPoint("LEFT", 0, 0)
@@ -1070,17 +1098,6 @@ local function EnsureSection(key)
   local countFs = header:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   countFs:SetPoint("LEFT", title, "RIGHT", 4, 0)
   header.countFs = countFs
-  header:SetScript("OnEnter", function(self)
-    self.title:SetTextColor(1, 1, 1)
-  end)
-  header:SetScript("OnLeave", function(self)
-    local c = NORMAL_FONT_COLOR
-    if c and c.r then
-      self.title:SetTextColor(c.r, c.g, c.b)
-    else
-      self.title:SetTextColor(1, 0.82, 0)
-    end
-  end)
   local dropHl = header:CreateTexture(nil, "BACKGROUND")
   dropHl:SetAllPoints()
   dropHl:SetColorTexture(1, 0.82, 0, 0.12)
@@ -1089,8 +1106,37 @@ local function EnsureSection(key)
   header:SetScript("OnReceiveDrag", function()
     Layout.DropOnLane(key)
   end)
+  header:SetScript("OnMouseUp", function(_, button)
+    if button == "LeftButton" and CursorHoldingItem() then
+      Layout.DropOnLane(key)
+    end
+  end)
+  header:SetScript("OnEnter", function(self)
+    self.title:SetTextColor(1, 1, 1)
+    if key == TRASH and GameTooltip then
+      GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+      GameTooltip:SetText("Trash — destroys items")
+      GameTooltip:AddLine("Not the Junk lane (grey loot only sorts there).", 1, 0.82, 0, true)
+      GameTooltip:AddLine("Drop a white/grey stack here to destroy it and auto-destroy future loot.", 0.7, 0.7, 0.7, true)
+      GameTooltip:Show()
+    end
+  end)
+  header:SetScript("OnLeave", function(self)
+    local c = NORMAL_FONT_COLOR
+    if c and c.r then
+      self.title:SetTextColor(c.r, c.g, c.b)
+    else
+      self.title:SetTextColor(1, 0.82, 0)
+    end
+    if key == TRASH and GameTooltip then
+      GameTooltip:Hide()
+    end
+  end)
   header:SetScript("OnClick", function()
     if Layout.DropOnLane(key) then
+      return
+    end
+    if CursorHoldingItem() then
       return
     end
     local T = Feat("Trash")
@@ -1847,8 +1893,8 @@ local function LogChromeOnce(tidy, gear, close)
     wh(close),
     CHROME_VER
   )
-  if DEFAULT_CHAT_FRAME then
-    DEFAULT_CHAT_FRAME:AddMessage(msg)
+  if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
+    pcall(DEFAULT_CHAT_FRAME.AddMessage, DEFAULT_CHAT_FRAME, msg)
   end
 end
 

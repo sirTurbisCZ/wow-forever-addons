@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.Trash — auto-destroy lane (0.5.20).
+  BetterBackpack.Trash — auto-destroy lane (0.5.21).
   Drop a stack on the Trash lane → destroyed now (first time per item asks), itemID taught
   to "trash" (profile.itemRules). Its grey ghost stays in the lane (0 bag slots); drag the
   ghost to another lane, or click it → Keep / Move to, to stop destroying it.
@@ -223,6 +223,18 @@ local function IsQuestSlot(bag, slot)
   return a == true or (SafeNum(b) or 0) > 0
 end
 
+local function ItemOnCursor(itemID)
+  if not GetCursorInfo then
+    return false
+  end
+  local ok, kind, id = pcall(GetCursorInfo)
+  if not ok or kind ~= "item" then
+    return false
+  end
+  local held = SafeNum(id)
+  return held == itemID or (held == nil and itemID ~= nil)
+end
+
 --- Reason the item must never be destroyed, or nil. Hard filters: quest, green+, locked.
 function Trash.Refuse(itemID, bag, slot)
   if not itemID then
@@ -236,13 +248,24 @@ function Trash.Refuse(itemID, bag, slot)
   end
   local info = bag ~= nil and SlotInfo(bag, slot) or nil
   local quality = ItemQuality(itemID, info)
+  if quality == nil and C_Item and C_Item.GetItemQualityByID then
+    local ok, res = pcall(C_Item.GetItemQualityByID, itemID)
+    if ok then
+      quality = SafeNum(res)
+    end
+  end
   if quality == nil then
-    return "item quality not known yet — try again"
+    local classID = ItemClassID(itemID)
+    if classID == 15 then
+      quality = 0
+    else
+      return "item quality not known yet — try again"
+    end
   end
   if quality >= 2 then
     return "green or better quality"
   end
-  if info and info.isLocked then
+  if info and info.isLocked and not ItemOnCursor(itemID) then
     return "item is locked (trade / mail / moving)"
   end
   return nil
@@ -411,8 +434,22 @@ end
 
 --- Item from our bag dropped on the Trash lane (cursor still holds it).
 function Trash.HandleDrop(src)
-  if type(src) ~= "table" or not src.itemID then
+  if type(src) ~= "table" or src.bag == nil then
     pcall(ClearCursor)
+    return
+  end
+  if not src.itemID and Slots.ItemIDForBagSlot then
+    src.itemID = Slots.ItemIDForBagSlot(src.bag, src.slot)
+  end
+  if not src.itemID and GetCursorInfo then
+    local ok, kind, id = pcall(GetCursorInfo)
+    if ok and kind == "item" then
+      src.itemID = SafeNum(id)
+    end
+  end
+  if not src.itemID then
+    pcall(ClearCursor)
+    Print("Trash: couldn't read item — try again.")
     return
   end
   local id = src.itemID

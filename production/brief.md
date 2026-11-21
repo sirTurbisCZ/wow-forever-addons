@@ -1,6 +1,10 @@
-# Playtest brief — BetterBackpack 0.5.20 (Trash click-only + Shift-click links)
+# Playtest brief — BetterBackpack 0.5.21 (Trash drop fix + click-only destroy)
 
 Branch `cursor/bb-056-layout-expand-hug-9374` (includes bank RMB 0.5.12, search 0.5.11, Close-chrome title buttons 0.5.16, sticky size 0.5.15, drag-teach lanes 0.5.17–0.5.18).
+
+**0.5.21**
+- Trash drop fix: Forever secret item IDs on cursor no longer block `DropOnLane` — itemID captured before pickup. Dropping on Trash header works (OnMouseUp/OnReceiveDrag); header won't collapse while holding an item. Junk ≠ Trash (tooltip + header `(destroy)`).
+- No false "locked" while the stack is on your cursor; waiting-destroy flush only when cursor is empty.
 
 **0.5.20**
 - Trash is click-only on Forever (Ondřej's trashtest: click=OK, timer and event blocked). No more timer / event destroy attempts → no "Interface action failed". New loot of a Trash item waits red in Trash and goes on the next click in the bag.
@@ -21,4 +25,4 @@ Branch `cursor/bb-056-layout-expand-hug-9374` (includes bank RMB 0.5.12, search 
 
 **Keep:** Toggle* replace (B stable) · bank RMB deposit · fixed window size.
 
-**Done when:** `/reload` → `v0.5.20` · open a whisper, Shift+LMB an item in the bag → link appears in the box · gear → check Trash → Trash header `(0)` in bag · drop a grey item on it → popup → Destroy → gone, grey ghost with `x3` in Trash · drop a green item → refused message, item back · loot the same grey item again → red in Trash, no "Interface action failed" → click anything in the bag → destroyed · drag the ghost onto Junk/Other → "kept again", ghost gone · next loot stays · B ×5 stable.
+**Done when:** `/reload` → `v0.5.21` · open a whisper, Shift+LMB an item in the bag → link appears in the box · gear → check Trash → Trash header `(0)` in bag · drop a grey item on it → popup → Destroy → gone, grey ghost with `x3` in Trash · drop a green item → refused message, item back · loot the same grey item again → red in Trash, no "Interface action failed" → click anything in the bag → destroyed · drag the ghost onto Junk/Other → "kept again", ghost gone · next loot stays · B ×5 stable.

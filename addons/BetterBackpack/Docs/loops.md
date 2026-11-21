@@ -1,7 +1,7 @@
 # BetterBackpack — smyčky a grafy
 
 **Kód:** `Core.lua`, `Modules/{Slots,Layout,Context,OpenClose,Tidy,Settings,Search,Filter,CustomCategories,Trash,StackMerge,Pins,LayoutModes}.lua`  
-**Verze reference:** 0.5.20 (Trash jen click-only destroy · 0.5.19 Trash lane auto-destroy + ghosts + `/bb trashtest` · Shift/Ctrl+LMB = nativní link / dress-up / split · prázdné custom lanes kreslené jako drop target · drag-teach lanes · custom lanes v Settings · Settings v chrome bagu · broom = stejná plate jako gear/X · sticky velikost okna · broom/gear v chrome Close · bank RMB secure type2=item · SearchBoxTemplate search · gear na nativní broom plate · nativní AutoSort reparent · footer hairline · pevná velikost = plný rozbalený bag · dense grid PAD 2 · NumberFontNormalSmall counts · broom/gear jako CombinedBags · footer N/M = font peněz · fill wells default off)  
+**Verze reference:** 0.5.21 (Trash drop: itemID před pickup · header drop bez collapse · Junk≠Trash · 0.5.20 Trash jen click-only destroy · 0.5.19 Trash lane auto-destroy + ghosts + `/bb trashtest` · Shift/Ctrl+LMB = nativní link / dress-up / split · prázdné custom lanes kreslené jako drop target · drag-teach lanes · custom lanes v Settings · Settings v chrome bagu · broom = stejná plate jako gear/X · sticky velikost okna · broom/gear v chrome Close · bank RMB secure type2=item · SearchBoxTemplate search · gear na nativní broom plate · nativní AutoSort reparent · footer hairline · pevná velikost = plný rozbalený bag · dense grid PAD 2 · NumberFontNormalSmall counts · broom/gear jako CombinedBags · footer N/M = font peněz · fill wells default off)  
 **Stabilita:** Project `docs/bag-addon-brief.md` + Scenario Maps `docs/scenarios/BetterBackpack/`  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never path C harvest).
 
@@ -190,7 +190,7 @@ Design: Project store `docs/auto-destroy-lane.md` (v2). Lane `trash` je built-in
 
 ```mermaid
 flowchart TD
-  Drop[item z bagu puštěn na Trash header / item / ghost] --> DOL[Layout.DropOnLane trash · dragSrc clear · kurzor drží item]
+  Drop[item z bagu puštěn na Trash header / item / ghost] --> DOL[Layout.DropOnLane trash · dragSrc.itemID z slotu před pickup · header OnMouseUp/OnReceiveDrag · bez collapse když kurzor drží item]
   DOL --> Cmb{InCombatLockdown?}
   Cmb -->|ano| No1[ClearCursor · zpráva]
   Cmb -->|ne| Ref{Trash.Refuse: quest · green+ · locked · hearthstone · neznámá kvalita}

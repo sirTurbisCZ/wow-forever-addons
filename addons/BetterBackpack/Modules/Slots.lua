@@ -302,6 +302,39 @@ function Slots.BagRanges()
   return ranges
 end
 
+--- Item id for a bag slot (non-secret paths: container API, item link).
+function Slots.ItemIDForBagSlot(bag, slot)
+  if bag == nil or slot == nil then
+    return nil
+  end
+  if C_Container and C_Container.GetContainerItemID then
+    local ok, res = pcall(C_Container.GetContainerItemID, bag, slot)
+    if ok then
+      local id = SafeNum(res)
+      if id then
+        return id
+      end
+    end
+  end
+  if C_Container and C_Container.GetContainerItemInfo then
+    local ok, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
+    if ok and type(info) == "table" then
+      local id = SafeNum(info.itemID)
+      if id then
+        return id
+      end
+    end
+  end
+  local link = Slots.ItemLink(bag, slot)
+  if type(link) == "string" then
+    local fromLink = link:match("item:(%d+)")
+    if fromLink then
+      return tonumber(fromLink)
+    end
+  end
+  return nil
+end
+
 function Slots.SlotOccupied(bag, slot)
   if C_Container and C_Container.GetContainerItemID then
     local ok, res = pcall(C_Container.GetContainerItemID, bag, slot)
@@ -1053,14 +1086,19 @@ local function WireScripts(btn)
     then
       return
     end
+    local idBefore = Slots.ItemIDForBagSlot(b, s)
     if C_Container and C_Container.PickupContainerItem then
       pcall(C_Container.PickupContainerItem, b, s)
     elseif PickupContainerItem then
       pcall(PickupContainerItem, b, s)
     end
     local now = CursorItemID()
-    if now then
-      dragSrc = { bag = b, slot = s, lane = self._bbLane, itemID = now ~= true and now or nil }
+    local itemID = idBefore
+    if not itemID and now and now ~= true then
+      itemID = now
+    end
+    if now or idBefore then
+      dragSrc = { bag = b, slot = s, lane = self._bbLane, itemID = itemID }
     else
       dragSrc = nil
     end
@@ -1074,9 +1112,12 @@ local function WireScripts(btn)
   btn:SetScript("OnReceiveDrag", pickup)
   if btn.HookScript then
     btn:HookScript("OnMouseDown", function(self, button)
-      local Trash = BetterBackpack.Modules.Trash
-      if Trash and Trash.FlushOnClick and not (InCombatLockdown and InCombatLockdown()) then
-        Trash.FlushOnClick()
+      -- Flush waiting Trash stacks on click, but not while picking up (would fight the cursor).
+      if button == "LeftButton" and not CursorItemID() then
+        local Trash = BetterBackpack.Modules.Trash
+        if Trash and Trash.FlushOnClick and not (InCombatLockdown and InCombatLockdown()) then
+          Trash.FlushOnClick()
+        end
       end
       local Context = BetterBackpack.Modules.Context
       -- Only merchant/mail clear type2. Bank keeps secure UseContainerItem.
