@@ -1,4 +1,4 @@
-# Playtest brief — BetterBackpack 0.1.0
+# Playtest brief — BetterBackpack 0.1.1
 
 **Goal:** Category-lane bags; CS-RMB path B; CombinedBags park never Hide.
 

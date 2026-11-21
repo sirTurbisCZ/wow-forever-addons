@@ -414,6 +414,16 @@ SlashCmdList.BETTERBACKPACK = function(msg)
         Print("  ", notes[i])
       end
     end
+    if OpenClose.RunOpenCloseSelfTest then
+      local ocOk, ocPass, ocFail, ocNotes = OpenClose.RunOpenCloseSelfTest()
+      Print(string.format("open/close selftest pass=%s fail=%s", tostring(ocPass), tostring(ocFail)))
+      if ocNotes then
+        for i = 1, #ocNotes do
+          Print("  ", ocNotes[i])
+        end
+      end
+      ok = ok and ocOk
+    end
     if ok then
       Print(L.SELFTEST_HINT or "selftest PASS — still need 1× manual combat RMB")
     else

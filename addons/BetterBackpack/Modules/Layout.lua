@@ -560,7 +560,12 @@ function Layout.EnsureMain()
     else
       local bg = main:CreateTexture(nil, "BACKGROUND")
       bg:SetAllPoints()
-      bg:SetColorTexture(0.06, 0.06, 0.06, 0.94)
+      if bg.SetColorTexture then
+        bg:SetColorTexture(0.06, 0.06, 0.06, 0.94)
+      else
+        bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+        bg:SetVertexColor(0.06, 0.06, 0.06, 0.94)
+      end
     end
   end)
   main:SetFrameStrata("HIGH")
@@ -655,19 +660,50 @@ end
 
 function Layout.Show()
   Layout.EnsureMain()
+  if not main then
+    return false
+  end
   local p = Profile()
   if not p.enabled or p.safeMode then
     return false
   end
-  PlaceMainDefault()
-  DoLayout()
+  -- Show chrome first so open never depends on layout succeeding.
   main:SetAlpha(1)
+  if not p.userMoved then
+    -- Safe on-screen anchor (avoids secret GetRight / off-screen BOTTOMRIGHT math).
+    pcall(function()
+      main:ClearAllPoints()
+      main:SetPoint("CENTER", UIParent, "CENTER", 200, 40)
+    end)
+  else
+    PlaceMainDefault()
+  end
+  if not main:GetWidth() or main:GetWidth() < 80 then
+    main:SetSize(340, 200)
+  end
   main:Show()
   if main.SetToplevel then
     main:SetToplevel(true)
   end
   main:Raise()
-  return true
+  DoLayout()
+  -- After layout size change, re-assert visible + on-screen.
+  main:SetAlpha(1)
+  main:Show()
+  main:Raise()
+  if not p.userMoved then
+    local left
+    pcall(function()
+      left = main:GetLeft()
+    end)
+    if type(left) ~= "number" or left < -100 or left > 5000 then
+      pcall(function()
+        main:ClearAllPoints()
+        main:SetPoint("CENTER", UIParent, "CENTER", 200, 40)
+      end)
+    end
+  end
+  return main:IsShown() and true or false
 end
 
 function Layout.Hide()
