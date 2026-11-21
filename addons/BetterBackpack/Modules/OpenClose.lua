@@ -29,13 +29,7 @@ local BAG_KEY_DEBOUNCE = 0.14
 local lastBagKeyHandledAt = 0
 local guardElapsed = 0
 
--- Forward decls (BBKeyringBagIndex / frame helpers run before NormalizeBagID assignment).
-local NormalizeBagID
-local FocusBagsMatch
-local SetFocusBag
-local ClearFocusBag
-local ClearCategoryFilter
-local OpenOurs
+-- Forward decl (assigned later in file).
 local InvokeNativeKeyRing
 
 local function InCombat()
@@ -88,8 +82,107 @@ local function RestoreFrameInteractive(f)
   end)
 end
 
+local function NormalizeBagID(bagID)
+  local Slots = BetterBackpack.Modules.Slots
+  if Slots and type(Slots.SafeNum) == "function" then
+    local plain = Slots.SafeNum(bagID, nil)
+    if plain ~= nil then
+      return plain
+    end
+  end
+  if type(bagID) == "number" then
+    if Slots and type(Slots.SafeNum) == "function" and Slots.SafeNum(bagID, nil) == nil then
+      return bagID
+    end
+    return bagID
+  end
+  if type(bagID) == "string" then
+    local n = tonumber(bagID)
+    if n then
+      return n
+    end
+  end
+  return nil
+end
+
+local function BBKeyringBagIndex()
+  local Slots = BetterBackpack.Modules.Slots
+  if Slots and type(Slots.KeyringBagIndex) == "function" then
+    local raw = Slots.KeyringBagIndex()
+    if type(NormalizeBagID) == "function" then
+      local k = NormalizeBagID(raw)
+      if k ~= nil then
+        return k
+      end
+    elseif raw ~= nil then
+      return raw
+    end
+  end
+  if KEYRING_CONTAINER ~= nil then
+    if type(NormalizeBagID) == "function" then
+      return NormalizeBagID(KEYRING_CONTAINER)
+    end
+    return KEYRING_CONTAINER
+  end
+  return -2
+end
+
+local function KeyRingFrameNames()
+  local names = {
+    "KeyRingFrame",
+    "ContainerFrameKeyRing",
+    "ContainerFrame-2",
+  }
+  local key = BBKeyringBagIndex()
+  if KEYRING_CONTAINER ~= nil then
+    names[#names + 1] = "ContainerFrame-" .. tostring(KEYRING_CONTAINER)
+  end
+  if key ~= nil then
+    names[#names + 1] = "ContainerFrame-" .. tostring(key)
+  end
+  if Enum and Enum.BagIndex and Enum.BagIndex.Keyring ~= nil then
+    names[#names + 1] = "ContainerFrame-" .. tostring(Enum.BagIndex.Keyring)
+  end
+  return names
+end
+
+local function SetFocusBag(bagID)
+  if Layout and Layout.SetBagFocus then
+    pcall(Layout.SetBagFocus, bagID)
+  end
+end
+
+local function ClearFocusBag()
+  if Layout and Layout.ClearBagFocus then
+    pcall(Layout.ClearBagFocus)
+  end
+end
+
+local function FocusBagsMatch(a, b)
+  if a == nil or b == nil then
+    return false
+  end
+  local Slots = BetterBackpack.Modules.Slots
+  if
+    Slots
+    and type(Slots.IsReagentBag) == "function"
+    and Slots.IsReagentBag(a)
+    and Slots.IsReagentBag(b)
+  then
+    return true
+  end
+  return a == b
+end
+
+local function ClearCategoryFilter()
+  local Filter = BetterBackpack.Modules.Filter
+  if Filter and Filter.SetCategory then
+    pcall(Filter.SetCategory, "all")
+  end
+end
+
 local function RestoreNativeBagFrames()
-  if not BagBarNativeEnabled() then
+  if BagBarNativeEnabled() then
     return
   end
   for i = 1, 13 do
@@ -105,7 +198,13 @@ local function RestoreNativeBagFrames()
     end
     RestoreFrameInteractive(cf)
   end
-  for _, name in ipairs(KeyRingFrameNames()) do
+  -- B/CloseOurs: static keyring frames only (no KeyRingFrameNames — live FELog nil @ ~154).
+  for _, name in ipairs({
+    "KeyRingFrame",
+    "ContainerFrameKeyRing",
+    "ContainerFrame-2",
+    "ContainerFrame-" .. tostring(KEYRING_CONTAINER or -2),
+  }) do
     RestoreFrameInteractive(_G[name])
   end
   -- Never restore CombinedBags here — was undoing blackout during B/open.
@@ -149,25 +248,6 @@ local function NativeContainersVisible()
     end
   end
   return false
-end
-
-local function KeyRingFrameNames()
-  local names = {
-    "KeyRingFrame",
-    "ContainerFrameKeyRing",
-    "ContainerFrame-2",
-  }
-  local key = BBKeyringBagIndex()
-  if KEYRING_CONTAINER ~= nil then
-    names[#names + 1] = "ContainerFrame-" .. tostring(KEYRING_CONTAINER)
-  end
-  if key ~= nil then
-    names[#names + 1] = "ContainerFrame-" .. tostring(key)
-  end
-  if Enum and Enum.BagIndex and Enum.BagIndex.Keyring ~= nil then
-    names[#names + 1] = "ContainerFrame-" .. tostring(Enum.BagIndex.Keyring)
-  end
-  return names
 end
 
 local function KeyRingFrameIsShown()
@@ -219,28 +299,6 @@ local function NativeKeyRingVisible()
     end
   end
   return false
-end
-
-local function BBKeyringBagIndex()
-  local Slots = BetterBackpack.Modules.Slots
-  if Slots and type(Slots.KeyringBagIndex) == "function" then
-    local raw = Slots.KeyringBagIndex()
-    if type(NormalizeBagID) == "function" then
-      local k = NormalizeBagID(raw)
-      if k ~= nil then
-        return k
-      end
-    elseif raw ~= nil then
-      return raw
-    end
-  end
-  if KEYRING_CONTAINER ~= nil then
-    if type(NormalizeBagID) == "function" then
-      return NormalizeBagID(KEYRING_CONTAINER)
-    end
-    return KEYRING_CONTAINER
-  end
-  return -2
 end
 
 local function RestoreShownNativeBags()
@@ -332,13 +390,31 @@ local function SessionOpen()
   return OursVisible()
 end
 
-local function BagKeyChat(branch, detail)
+local BAG_KEY_TRACE_MAX = 16
+
+local function BagKeyTrace(branch, detail)
+  local p = Profile()
+  if not (p and p.debug) then
+    return
+  end
   local extra = detail and (" · " .. tostring(detail)) or ""
   local line = "|cffc9a227BetterBackpack|r onBagKey · " .. tostring(branch) .. extra
   if BetterBackpack.Print then
     BetterBackpack.Print(line)
   elseif DEFAULT_CHAT_FRAME then
     DEFAULT_CHAT_FRAME:AddMessage(line)
+  end
+  local db = (Config and Config.EnsureDB and Config.EnsureDB()) or BetterBackpackDB
+  if db then
+    db.bagKeyTrace = db.bagKeyTrace or {}
+    db.bagKeyTrace[#db.bagKeyTrace + 1] = {
+      t = Now(),
+      branch = tostring(branch),
+      detail = detail and tostring(detail) or "",
+    }
+    while #db.bagKeyTrace > BAG_KEY_TRACE_MAX do
+      table.remove(db.bagKeyTrace, 1)
+    end
   end
 end
 
@@ -542,16 +618,16 @@ local function PulsePark()
   end
 end
 
-OpenOurs = function()
+local function OpenOurs()
   if closeBusy then
-    BagKeyChat("open-skip", "closeBusy")
+    BagKeyTrace("open-skip", "closeBusy")
     return SessionOpen()
   end
   if openBusy then
     if not SessionOpen() then
       ReleaseStaleBusy()
     else
-      BagKeyChat("open-skip", "openBusy visible")
+      BagKeyTrace("open-skip", "openBusy visible")
       return true
     end
   end
@@ -691,7 +767,7 @@ function OpenClose.CloseOurs(opts)
     if not OursVisible() then
       ReleaseStaleBusy()
     else
-      BagKeyChat("close-skip", "closeBusy")
+      BagKeyTrace("close-skip", "closeBusy")
       return
     end
   end
@@ -701,7 +777,7 @@ function OpenClose.CloseOurs(opts)
   OpenClose._openBusy = false
   pulseToken = pulseToken + 1
   OpenClose.SuppressReplace(opts.suppress or 0.25)
-  ClearFocusBag()
+  pcall(ClearFocusBag)
 
   local ok, err = pcall(function()
     BetterBackpack._bbClosing = true
@@ -730,7 +806,10 @@ function OpenClose.CloseOurs(opts)
     elseif InCombat() then
       ParkBlizzardForOverlay()
     end
-    RestoreNativeBagFrames()
+    -- bagBarNative: ParkBlizzardForOverlay never touches ContainerFrame* — skip restore (FELog CloseOurs nil).
+    if not BagBarNativeEnabled() then
+      pcall(RestoreNativeBagFrames)
+    end
     ResetOverlaySessionState()
   end)
   closeBusy = false
@@ -808,16 +887,16 @@ end
 local function onBagKey(src)
   src = src or "?"
   if inBagKey then
-    BagKeyChat("skip", src .. " inBagKey")
+    BagKeyTrace("skip", src .. " inBagKey")
     return
   end
   local t = Now()
   if (t - lastBagKeyHandledAt) < BAG_KEY_DEBOUNCE then
-    BagKeyChat("skip", string.format("%s debounce %.0fms", src, (t - lastBagKeyHandledAt) * 1000))
+    BagKeyTrace("skip", string.format("%s debounce %.0fms", src, (t - lastBagKeyHandledAt) * 1000))
     return
   end
   if not EnabledReplace() then
-    BagKeyChat("skip", src .. " replaceOff")
+    BagKeyTrace("skip", src .. " replaceOff")
     return
   end
   inBagKey = true
@@ -825,7 +904,7 @@ local function onBagKey(src)
   OpenClose.ClearReplaceSuppress()
   lastBagKeyHandledAt = t
   local visible = SessionOpen()
-  BagKeyChat("enter", string.format(
+  BagKeyTrace("enter", string.format(
     "%s visible=%s busy=%s/%s lock=%.2f",
     src,
     tostring(visible),
@@ -835,9 +914,9 @@ local function onBagKey(src)
   ))
   local ok, err = pcall(function()
     if visible then
-      BagKeyChat("close", src)
+      BagKeyTrace("close", src)
       OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.05 })
-      BagKeyChat("after-close", string.format(
+      BagKeyTrace("after-close", string.format(
         "visible=%s busy=%s/%s",
         tostring(SessionOpen()),
         tostring(openBusy),
@@ -845,11 +924,11 @@ local function onBagKey(src)
       ))
       return
     end
-    BagKeyChat("open", src)
+    BagKeyTrace("open", src)
     pcall(CloseNativeCombinedBags)
     pcall(ParkBlizzardForOverlay)
     local opened = OpenOurs()
-    BagKeyChat("after-open", string.format(
+    BagKeyTrace("after-open", string.format(
       "opened=%s visible=%s busy=%s/%s",
       tostring(opened),
       tostring(SessionOpen()),
@@ -859,7 +938,7 @@ local function onBagKey(src)
   end)
   if not ok then
     ReleaseStaleBusy()
-    BagKeyChat("error", tostring(err))
+    BagKeyTrace("error", tostring(err))
     if BetterBackpack.RecordError then
       BetterBackpack.RecordError("onBagKey", err)
     end
@@ -898,7 +977,7 @@ end
 
 -- Replace Toggle* instead of hooksecurefunc (post-hooks fought XOR).
 local BLIZZARD_TOGGLES = { "ToggleBag", "ToggleBackpack", "ToggleKeyRing", "ToggleAllBags" }
-local BLIZZARD_OPENS = { "OpenAllBags", "OpenBag" }
+local BLIZZARD_OPENS = { "OpenAllBags", "OpenBag", "OpenBackpack", "CloseBackpack" }
 
 local function CaptureBlizzardToggles()
   for i = 1, #BLIZZARD_TOGGLES do
@@ -934,6 +1013,7 @@ local function RestoreBlizzardToggle(globalName)
   _G[globalName] = orig
   OpenClose["_orig_" .. globalName] = nil
   OpenClose["_replaced_" .. globalName] = nil
+  OpenClose["_bb_wrap_" .. globalName] = nil
 end
 
 local function RestoreBlizzardOpen(globalName)
@@ -944,6 +1024,7 @@ local function RestoreBlizzardOpen(globalName)
   _G[globalName] = orig
   OpenClose["_orig_" .. globalName] = nil
   OpenClose["_replaced_" .. globalName] = nil
+  OpenClose["_bb_wrap_" .. globalName] = nil
 end
 
 function OpenClose.RestoreBlizzardToggles()
@@ -960,16 +1041,27 @@ end
 OpenClose.RestoreAllBlizzardBagToggles = OpenClose.RestoreBlizzardToggles
 
 local function ReplaceToggle(globalName, handler)
-  local orig = _G[globalName]
+  local wrapKey = "_bb_wrap_" .. globalName
+  if OpenClose["_replaced_" .. globalName] and _G[globalName] == OpenClose[wrapKey] then
+    return true
+  end
+  local orig = OpenClose["_orig_" .. globalName]
+  if type(orig) ~= "function" then
+    orig = OpenClose["_blizzard_" .. globalName]
+  end
+  if type(orig) ~= "function" then
+    local fn = _G[globalName]
+    if type(fn) == "function" and fn ~= OpenClose[wrapKey] then
+      orig = fn
+      OpenClose["_blizzard_" .. globalName] = orig
+    end
+  end
   if type(orig) ~= "function" then
     return false
   end
-  if OpenClose["_replaced_" .. globalName] then
-    return true
-  end
   OpenClose["_replaced_" .. globalName] = true
   OpenClose["_orig_" .. globalName] = orig
-  _G[globalName] = function(...)
+  local wrapper = function(...)
     if not EnabledReplace() then
       return orig(...)
     end
@@ -982,6 +1074,8 @@ local function ReplaceToggle(globalName, handler)
       end
     end
   end
+  OpenClose[wrapKey] = wrapper
+  _G[globalName] = wrapper
   return true
 end
 
@@ -993,6 +1087,9 @@ local function LogHooksOnce(detail)
     return
   end
   hooksLogged = true
+  if not Profile().debug then
+    return
+  end
   if DEFAULT_CHAT_FRAME then
     DEFAULT_CHAT_FRAME:AddMessage(
       "|cff88ff88BetterBackpack|r hooks ok · " .. tostring(detail or "bag-bar")
@@ -1014,60 +1111,6 @@ local function LogBagPathOnce(which, bagID)
       )
     )
   end
-end
-
-SetFocusBag = function(bagID)
-  if Layout and Layout.SetBagFocus then
-    pcall(Layout.SetBagFocus, bagID)
-  end
-end
-
-ClearFocusBag = function()
-  if Layout and Layout.ClearBagFocus then
-    pcall(Layout.ClearBagFocus)
-  end
-end
-
-FocusBagsMatch = function(a, b)
-  if a == nil or b == nil then
-    return false
-  end
-  local Slots = BetterBackpack.Modules.Slots
-  if Slots and Slots.IsReagentBag and Slots.IsReagentBag(a) and Slots.IsReagentBag(b) then
-    return true
-  end
-  return a == b
-end
-
-ClearCategoryFilter = function()
-  local Filter = BetterBackpack.Modules.Filter
-  if Filter and Filter.SetCategory then
-    pcall(Filter.SetCategory, "all")
-  end
-end
-
-NormalizeBagID = function(bagID)
-  local Slots = BetterBackpack.Modules.Slots
-  if Slots and Slots.SafeNum then
-    local plain = Slots.SafeNum(bagID, nil)
-    if plain ~= nil then
-      return plain
-    end
-  end
-  if type(bagID) == "number" then
-    if Slots and Slots.SafeNum and Slots.SafeNum(bagID, nil) == nil then
-      -- Forever secret bag index — keep opaque value for Blizzard ToggleBag/OpenBag.
-      return bagID
-    end
-    return bagID
-  end
-  if type(bagID) == "string" then
-    local n = tonumber(bagID)
-    if n then
-      return n
-    end
-  end
-  return nil
 end
 
 --- Plain number when possible; otherwise raw bag token (incl. secret Enum indices).
@@ -1258,12 +1301,12 @@ end
 
 local function onBackpackToggle(...)
   if not EnabledReplace() then
-    BagKeyChat("backpack", "native replaceOff")
+    BagKeyTrace("backpack", "native replaceOff")
     CallOrigToggle("ToggleBackpack", ...)
     return
   end
   if BagBarNativeEnabled() and Now() < backpackBarArmUntil then
-    BagKeyChat("backpack", "native arm")
+    BagKeyTrace("backpack", "native arm")
     if SessionOpen() or OursVisible() then
       OpenClose.CloseOurs({ closeBlizzard = false, suppress = 0.05 })
     end
@@ -1595,16 +1638,27 @@ end
 local BAG_KEY_TOGGLES = { "ToggleAllBags", "ToggleBackpack" }
 
 local function ReplaceOpen(globalName, handler)
-  local orig = _G[globalName]
+  local wrapKey = "_bb_wrap_" .. globalName
+  if OpenClose["_replaced_" .. globalName] and _G[globalName] == OpenClose[wrapKey] then
+    return true
+  end
+  local orig = OpenClose["_orig_" .. globalName]
+  if type(orig) ~= "function" then
+    orig = OpenClose["_blizzard_" .. globalName]
+  end
+  if type(orig) ~= "function" then
+    local fn = _G[globalName]
+    if type(fn) == "function" and fn ~= OpenClose[wrapKey] then
+      orig = fn
+      OpenClose["_blizzard_" .. globalName] = orig
+    end
+  end
   if type(orig) ~= "function" then
     return false
   end
-  if OpenClose["_replaced_" .. globalName] then
-    return true
-  end
   OpenClose["_replaced_" .. globalName] = true
   OpenClose["_orig_" .. globalName] = orig
-  _G[globalName] = function(...)
+  local wrapper = function(...)
     if not EnabledReplace() then
       return orig(...)
     end
@@ -1617,7 +1671,59 @@ local function ReplaceOpen(globalName, handler)
       end
     end
   end
+  OpenClose[wrapKey] = wrapper
+  _G[globalName] = wrapper
   return true
+end
+
+local function PersistBagKeyHookState()
+  if not (Config and Config.EnsureDB) then
+    return
+  end
+  local db = Config.EnsureDB()
+  local wrapTB = OpenClose._bb_wrap_ToggleBackpack
+  local wrapTA = OpenClose._bb_wrap_ToggleAllBags
+  local gTB = _G.ToggleBackpack
+  local gTA = _G.ToggleAllBags
+  db.bagKeyHook = {
+    t = (time and time()) or 0,
+    ver = Config.VERSION,
+    toggleBackpack = {
+      globalType = type(gTB),
+      ours = gTB == wrapTB,
+      replaced = OpenClose._replaced_ToggleBackpack and true or false,
+    },
+    toggleAllBags = {
+      globalType = type(gTA),
+      ours = gTA == wrapTA,
+      replaced = OpenClose._replaced_ToggleAllBags and true or false,
+    },
+    openBackpack = type(_G.OpenBackpack),
+    closeBackpack = type(_G.CloseBackpack),
+  }
+end
+
+local bagKeyRetryGen = 0
+
+local function ScheduleBagKeyHookRetries()
+  if not (C_Timer and C_Timer.After) then
+    return
+  end
+  bagKeyRetryGen = bagKeyRetryGen + 1
+  local gen = bagKeyRetryGen
+  local delays = { 0.05, 0.25, 1, 3, 5, 10, 20 }
+  for i = 1, #delays do
+    C_Timer.After(delays[i], function()
+      if gen ~= bagKeyRetryGen then
+        return
+      end
+      if not EnabledReplace() then
+        return
+      end
+      pcall(ApplyBagKeyReplace)
+      pcall(PersistBagKeyHookState)
+    end)
+  end
 end
 
 local function ApplyOpenAPIReplace()
@@ -1627,6 +1733,12 @@ local function ApplyOpenAPIReplace()
   end)
   ReplaceOpen("OpenBag", function(bagID)
     onOpenIntent(bagID)
+  end)
+  ReplaceOpen("OpenBackpack", function()
+    onBagKey("OpenBackpack")
+  end)
+  ReplaceOpen("CloseBackpack", function()
+    onBagKey("CloseBackpack")
   end)
 end
 
@@ -1660,34 +1772,132 @@ end
 
 local function ApplyBagKeyReplace()
   CaptureBlizzardToggles()
-  OpenClose.RestoreBlizzardToggles()
+  -- No RestoreBlizzardToggles here: InstallHooks re-runs via C_Timer; restore + _replaced_* skips re-hook (B dead after reload).
   -- ToggleBag / ToggleKeyRing stay native — only B paths replaced (0.5.45 path).
   ReplaceToggle("ToggleAllBags", function(...)
     onBagKey("ToggleAllBags")
   end)
   ReplaceToggle("ToggleBackpack", onBackpackToggle)
   ApplyOpenAPIReplace()
+  PersistBagKeyHookState()
 end
 
 function OpenClose.EnsureBagKeyReplace()
   pcall(ApplyBagKeyReplace)
 end
 
-function OpenClose.InstallHooks()
-  if hooksInstalled then
+local CONFLICT_BAG_ADDONS = {
+  BagShelves = true,
+  CombinedBags = true,
+}
+
+local function AddOnFolderExists(name)
+  if not (C_AddOns and C_AddOns.GetAddOnInfo) then
+    return false
+  end
+  local ok, _, _, loadable = pcall(C_AddOns.GetAddOnInfo, name)
+  return ok and loadable ~= false
+end
+
+function OpenClose.WarnBagConflicts()
+  if not EnabledReplace() then
     return
   end
-  hooksInstalled = true
-  local ok, err = pcall(ApplyBagKeyReplace)
-  if C_Timer and C_Timer.After then
-    C_Timer.After(0, function()
-      pcall(ApplyBagKeyReplace)
-    end)
-    C_Timer.After(1, function()
-      pcall(ApplyBagKeyReplace)
-    end)
+  local Print = BetterBackpack.Print
+  if not Print then
+    return
   end
-  if ok then
+  local loaded = {}
+  for name in pairs(CONFLICT_BAG_ADDONS) do
+    if C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded(name) then
+      loaded[#loaded + 1] = name
+    end
+  end
+  if #loaded > 0 then
+    Print(
+      "|cffff5050BetterBackpack:|r Incompatible bag replacers loaded: "
+        .. table.concat(loaded, ", ")
+        .. " — disable at character login (AddOns). B will not work reliably."
+    )
+    pcall(OpenClose.EnsureBagKeyReplace)
+    return
+  end
+  if _G.BagShelvesDB and _G.BagShelvesDB.enabled ~= false and AddOnFolderExists("BagShelves") then
+    Print(
+      "|cffff8800BetterBackpack:|r BagShelves is enabled in settings — disable BagShelves at login if both replace bags."
+    )
+  elseif _G.BagShelvesDB and _G.BagShelvesDB.enabled ~= false and not AddOnFolderExists("BagShelves") then
+    Print(
+      "BetterBackpack: BagShelves saved vars only (addon not installed) — no BagShelves conflict."
+    )
+  end
+end
+
+function OpenClose.DiagnoseBagKey()
+  local lines = {}
+  local wrap = OpenClose._bb_wrap_ToggleBackpack
+  local g = _G.ToggleBackpack
+  local p = Profile()
+  lines[#lines + 1] = string.format(
+    "ver=%s replace=%s enabled=%s safe=%s bagBarNative=%s",
+    tostring(Config.VERSION),
+    tostring(p.replaceBlizzard),
+    tostring(p.enabled),
+    tostring(p.safeMode),
+    tostring(p.bagBarNativeBag)
+  )
+  lines[#lines + 1] = string.format(
+    "ToggleBackpack: global=%s ours=%s replaced=%s",
+    type(g),
+    tostring(g == wrap),
+    tostring(OpenClose._replaced_ToggleBackpack and true or false)
+  )
+  if C_AddOns and C_AddOns.IsAddOnLoaded then
+    lines[#lines + 1] = string.format(
+      "BagShelves loaded=%s folder=%s",
+      tostring(C_AddOns.IsAddOnLoaded("BagShelves")),
+      tostring(AddOnFolderExists("BagShelves"))
+    )
+  end
+  local db = (Config and Config.EnsureDB and Config.EnsureDB()) or BetterBackpackDB
+  local hk = db and db.bagKeyHook
+  if hk then
+  lines[#lines + 1] = string.format(
+      "bagKeyHook t=%s tb_ours=%s ta_ours=%s openBP=%s",
+      tostring(hk.t),
+      tostring(hk.toggleBackpack and hk.toggleBackpack.ours),
+      tostring(hk.toggleAllBags and hk.toggleAllBags.ours),
+      tostring(hk.openBackpack)
+    )
+  end
+  local tr = db and db.bagKeyTrace
+  if tr and #tr > 0 then
+    local from = math.max(1, #tr - 7)
+    for i = from, #tr do
+      local e = tr[i]
+      lines[#lines + 1] = string.format(
+        "trace %s · %s · %s",
+        tostring(e.t or "?"),
+        tostring(e.branch or "?"),
+        tostring(e.detail or "")
+      )
+    end
+  else
+    lines[#lines + 1] = "bagKeyTrace empty — enable /bb debug on and press B, or no onBagKey yet"
+  end
+  return lines
+end
+
+function OpenClose.InstallHooks()
+  local first = not hooksInstalled
+  if first then
+    hooksInstalled = true
+  end
+  local ok, err = pcall(ApplyBagKeyReplace)
+  if first then
+    ScheduleBagKeyHookRetries()
+  end
+  if first and ok then
     local n = 0
     if OpenClose._replaced_ToggleAllBags then
       n = n + 1
@@ -1706,7 +1916,7 @@ function OpenClose.InstallHooks()
     else
       LogHooksOnce("bag-key toggles missing · /bb only")
     end
-  elseif BetterBackpack and BetterBackpack.RecordError then
+  elseif first and BetterBackpack and BetterBackpack.RecordError then
     BetterBackpack.RecordError("hooks", err)
   end
 end

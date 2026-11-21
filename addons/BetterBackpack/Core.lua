@@ -207,6 +207,7 @@ end
 local bootFrame = CreateFrame("Frame")
 bootFrame:RegisterEvent("ADDON_LOADED")
 bootFrame:RegisterEvent("PLAYER_LOGIN")
+bootFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 bootFrame:RegisterEvent("BAG_UPDATE")
 bootFrame:RegisterEvent("BAG_UPDATE_DELAYED")
 bootFrame:RegisterEvent("ITEM_LOCK_CHANGED")
@@ -229,13 +230,35 @@ local blockedQuietUntil = 0
 bootFrame:SetScript("OnEvent", function(_, event, ...)
   if event == "ADDON_LOADED" then
     local name = ...
-    if name ~= addonName then
+    if name == addonName then
+      EnsureDB()
+      BulkTransfer = BT()
+      if not BulkTransfer or not BulkTransfer.TransferLane then
+        Print("ERROR: BulkTransfer failed to load — check FrameXML.log / TOC")
+      end
       return
     end
-    EnsureDB()
-    BulkTransfer = BT()
-    if not BulkTransfer or not BulkTransfer.TransferLane then
-      Print("ERROR: BulkTransfer failed to load — check FrameXML.log / TOC")
+    if name == "BagShelves" and ModuleWanted() and OpenClose then
+      Print(
+        "|cffff5050BetterBackpack:|r BagShelves loaded — conflicts with replace bags. Disable BagShelves at login."
+      )
+      if OpenClose.EnsureBagKeyReplace then
+        SafeCall("hooks", OpenClose.EnsureBagKeyReplace)
+      end
+      if C_Timer and C_Timer.After and OpenClose.EnsureBagKeyReplace then
+        C_Timer.After(0.5, function()
+          SafeCall("hooks", OpenClose.EnsureBagKeyReplace)
+        end)
+      end
+    end
+    if ModuleWanted() and OpenClose and OpenClose.EnsureBagKeyReplace then
+      if C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+          SafeCall("hooks", OpenClose.EnsureBagKeyReplace)
+        end)
+      else
+        SafeCall("hooks", OpenClose.EnsureBagKeyReplace)
+      end
     end
     return
   end
@@ -253,6 +276,15 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
       else
         Print("ERROR: OpenClose failed to load — check FrameXML.log")
       end
+      if OpenClose and OpenClose.WarnBagConflicts then
+        if C_Timer and C_Timer.After then
+          C_Timer.After(0.5, function()
+            SafeCall("conflict", OpenClose.WarnBagConflicts)
+          end)
+        else
+          SafeCall("conflict", OpenClose.WarnBagConflicts)
+        end
+      end
       if C_Timer and C_Timer.After then
         C_Timer.After(0, function()
           WarmCombatShell("login")
@@ -262,6 +294,13 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
       end
     end
     Print(string.format(L.LOADED or "loaded v%s · /bb", tostring(Config.VERSION)))
+    return
+  end
+
+  if event == "PLAYER_ENTERING_WORLD" then
+    if ModuleWanted() and OpenClose and OpenClose.EnsureBagKeyReplace then
+      SafeCall("hooks", OpenClose.EnsureBagKeyReplace)
+    end
     return
   end
 
@@ -614,6 +653,19 @@ SlashCmdList.BETTERBACKPACK = function(msg)
 
   if cmd == "dump" then
     DumpRing()
+    return
+  end
+
+  if cmd == "bagkey" or cmd == "bkey" then
+    if OpenClose and OpenClose.EnsureBagKeyReplace then
+      SafeCall("hooks", OpenClose.EnsureBagKeyReplace)
+    end
+    if OpenClose and OpenClose.DiagnoseBagKey then
+      local lines = OpenClose.DiagnoseBagKey()
+      for i = 1, #lines do
+        Print(lines[i])
+      end
+    end
     return
   end
 

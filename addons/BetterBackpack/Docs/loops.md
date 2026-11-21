@@ -10,7 +10,7 @@
 
 ```mermaid
 flowchart TD
-  B[ToggleAllBags + ToggleBackpack + OpenAllBags replaced]
+  B[ToggleAllBags + ToggleBackpack + Open/CloseBackpack<br/>reassert · bagKeyHook SV · debug-only onBagKey trace]
   Bar[ToggleBag / ToggleKeyRing → Blizzard]
   B --> Rep[Replace global — skip Blizzard body]
   Rep --> Black[BlackoutAllBlizzard alpha=0 first]

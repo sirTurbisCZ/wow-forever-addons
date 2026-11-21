@@ -24,6 +24,7 @@ L.HELP_LINES = {
   "/bb layout [lanes|dense] — layout mode toggle",
   "/bb merge [on|off] — visual stack merge",
   "/bb dump — status + recent errors",
+  "/bb bagkey — B-key hook + onBagKey trace (diagnose)",
   "/bb safe — safe mode (release to Blizzard)",
   "/bb reset — restore defaults",
   "/bb selftest — CS-RMB wiring card (still need 1× manual combat RMB)",
