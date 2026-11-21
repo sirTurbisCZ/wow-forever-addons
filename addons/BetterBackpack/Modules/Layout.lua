@@ -1,6 +1,6 @@
 --[[
-  BetterBackpack.Layout — category lanes + solid chrome (0.1.3).
-  Forever: never SetToplevel (ADDON_ACTION_BLOCKED). Plain Frame + WHITE8X8 Bg.
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.1.4).
+  Forever: never SetToplevel (ADDON_ACTION_BLOCKED).
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -453,43 +453,221 @@ local function DoLayout()
   end
 end
 
-local function PaintSolidBg(frame)
+local function IsSecret(v)
+  return Slots.IsSecret and Slots.IsSecret(v)
+end
+
+local function SafeAtlas(tex)
+  if not tex or not tex.GetAtlas then
+    return nil
+  end
+  local ok, a = pcall(tex.GetAtlas, tex)
+  if ok and type(a) == "string" and a ~= "" and not IsSecret(a) then
+    return a
+  end
+  return nil
+end
+
+local function SafeTexture(tex)
+  if not tex or not tex.GetTexture then
+    return nil
+  end
+  local ok, t = pcall(tex.GetTexture, tex)
+  if ok and t ~= nil and not IsSecret(t) then
+    return t
+  end
+  return nil
+end
+
+local function CopyTex(dst, src)
+  if not dst or not src then
+    return false
+  end
+  local atlas = SafeAtlas(src)
+  if atlas then
+    pcall(dst.SetAtlas, dst, atlas)
+    return true
+  end
+  local path = SafeTexture(src)
+  if path then
+    pcall(dst.SetTexture, dst, path)
+    pcall(function()
+      local l, r, t, b = src:GetTexCoord()
+      if type(l) == "number" then
+        dst:SetTexCoord(l, r, t, b)
+      end
+    end)
+    return true
+  end
+  return false
+end
+
+local function CombinedBagTitle()
+  if type(COMBINED_BAG_TITLE) == "string" and COMBINED_BAG_TITLE ~= "" and not IsSecret(COMBINED_BAG_TITLE) then
+    return COMBINED_BAG_TITLE
+  end
+  local src = ContainerFrameCombinedBags
+  if src then
+    local t = src.TitleText or (src.TitleContainer and src.TitleContainer.TitleText)
+    if t and t.GetText then
+      local ok, s = pcall(t.GetText, t)
+      if ok and type(s) == "string" and s ~= "" and not IsSecret(s) then
+        return s
+      end
+    end
+  end
+  return "BetterBackpack"
+end
+
+local function KillPortrait(frame)
+  local keys = {
+    "PortraitContainer", "Portrait", "portrait", "PortraitFrame", "portraitFrame",
+  }
+  for i = 1, #keys do
+    local p = frame[keys[i]]
+    if p then
+      pcall(function()
+        p:SetAlpha(0)
+        p:Hide()
+        p:SetSize(1, 1)
+        p:ClearAllPoints()
+        p:SetPoint("TOPLEFT", frame, "TOPLEFT", -4000, 0)
+        if p.EnableMouse then
+          p:EnableMouse(false)
+        end
+      end)
+    end
+  end
+end
+
+local function ApplyPanelBackgroundColor(frame)
+  pcall(function()
+    if not frame.Bg then
+      frame.Bg = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
+      frame.Bg:SetPoint("TOPLEFT", 6, -21)
+      frame.Bg:SetPoint("BOTTOMRIGHT", -6, 2)
+    end
+    local r, g, b, a = 0.058, 0.058, 0.058, 1
+    if PANEL_BACKGROUND_COLOR and type(PANEL_BACKGROUND_COLOR.r) == "number" then
+      local c = PANEL_BACKGROUND_COLOR
+      r, g, b, a = c.r, c.g, c.b, c.a or 1
+    end
+    if frame.Bg.SetColorTexture then
+      frame.Bg:SetColorTexture(r, g, b, a)
+    else
+      frame.Bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+      frame.Bg:SetVertexColor(r, g, b, a)
+    end
+    frame.Bg:SetAlpha(1)
+    frame.Bg:Show()
+    if frame.Inset and frame.Inset.Bg then
+      if frame.Inset.Bg.SetColorTexture then
+        frame.Inset.Bg:SetColorTexture(r, g, b, math.min(a, 0.92))
+      else
+        frame.Inset.Bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+        frame.Inset.Bg:SetVertexColor(r, g, b, math.min(a, 0.92))
+      end
+      frame.Inset.Bg:SetAlpha(1)
+    end
+  end)
+end
+
+--[[ Match classic CombinedBags chrome (NineSlice kit + solid fill — never copy stashed alpha). ]]
+local function ApplyCombinedBagsChrome(frame)
   if not frame then
     return
   end
   pcall(function()
-    if not frame.Bg then
-      frame.Bg = frame:CreateTexture(nil, "BACKGROUND")
+    local src = ContainerFrameCombinedBags
+    if src and src.NineSlice and NineSliceUtil then
+      local kit
+      if src.NineSlice.GetFrameLayoutTextureKit then
+        kit = src.NineSlice:GetFrameLayoutTextureKit()
+      end
+      if type(kit) == "string" and not IsSecret(kit) then
+        if not frame.NineSlice then
+          frame.NineSlice = CreateFrame("Frame", nil, frame, "NineSlicePanelTemplate")
+          frame.NineSlice:SetAllPoints()
+        end
+        NineSliceUtil.ApplyLayoutByName(frame.NineSlice, "UniqueCornersLayout", kit)
+        frame.NineSlice:SetAlpha(1)
+        frame.NineSlice:Show()
+      end
     end
-    frame.Bg:ClearAllPoints()
-    frame.Bg:SetAllPoints(frame)
-    frame.Bg:SetTexture("Interface\\Buttons\\WHITE8X8")
-    frame.Bg:SetVertexColor(0.08, 0.08, 0.09, 0.98)
-    frame.Bg:SetAlpha(1)
-    frame.Bg:Show()
   end)
+  ApplyPanelBackgroundColor(frame)
   pcall(function()
-    if not frame.Edge then
-      frame.Edge = frame:CreateTexture(nil, "BORDER")
+    local src = ContainerFrameCombinedBags
+    if src and src.TopTileStreaks then
+      if not frame.TopTileStreaks then
+        frame.TopTileStreaks = frame:CreateTexture(nil, "ARTWORK", nil, -7)
+        frame.TopTileStreaks:SetPoint("TOPLEFT", 6, -21)
+        frame.TopTileStreaks:SetPoint("TOPRIGHT", -6, -21)
+        frame.TopTileStreaks:SetHeight(40)
+      end
+      CopyTex(frame.TopTileStreaks, src.TopTileStreaks)
+      frame.TopTileStreaks:Show()
+      frame.TopTileStreaks:SetAlpha(1)
     end
-    frame.Edge:ClearAllPoints()
-    frame.Edge:SetPoint("TOPLEFT", -1, 1)
-    frame.Edge:SetPoint("BOTTOMRIGHT", 1, -1)
-    frame.Edge:SetTexture("Interface\\Buttons\\WHITE8X8")
-    frame.Edge:SetVertexColor(0.45, 0.4, 0.3, 0.7)
   end)
+  -- Force solid fill even if CombinedBags Bg was alpha-0 when copied.
+  pcall(function()
+    if frame.Bg then
+      local r, g, b, a = 0.058, 0.058, 0.058, 0.97
+      if PANEL_BACKGROUND_COLOR and type(PANEL_BACKGROUND_COLOR.r) == "number" then
+        local c = PANEL_BACKGROUND_COLOR
+        r, g, b, a = c.r, c.g, c.b, c.a or 0.97
+      end
+      if frame.Bg.SetColorTexture then
+        frame.Bg:SetColorTexture(r, g, b, a)
+      else
+        frame.Bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+        frame.Bg:SetVertexColor(r, g, b, a)
+      end
+      frame.Bg:SetAlpha(1)
+      frame.Bg:Show()
+    end
+  end)
+end
+
+local function CreateBagPanel()
+  local frame
+  local templates = {
+    "ButtonFrameTemplate",
+    "BasicFrameTemplateWithInset",
+    "BasicFrameTemplate",
+  }
+  for i = 1, #templates do
+    local ok, f = pcall(function()
+      return CreateFrame("Frame", "BetterBackpackFrame", UIParent, templates[i])
+    end)
+    if ok and f then
+      frame = f
+      break
+    end
+  end
+  if not frame then
+    frame = CreateFrame("Frame", "BetterBackpackFrame", UIParent)
+  end
+  pcall(function()
+    if ButtonFrameTemplate_HidePortrait then
+      ButtonFrameTemplate_HidePortrait(frame)
+    end
+  end)
+  KillPortrait(frame)
+  ApplyCombinedBagsChrome(frame)
+  return frame
 end
 
 function Layout.EnsureMain()
   if main then
-    PaintSolidBg(main)
+    KillPortrait(main)
+    ApplyCombinedBagsChrome(main)
     return main
   end
 
-  -- Plain Frame only — ButtonFrameTemplate/Backdrop caused broken chrome + SetToplevel BLOCKED.
-  main = CreateFrame("Frame", "BetterBackpackFrame", UIParent)
-  main:SetSize(360, 280)
-  PaintSolidBg(main)
+  main = CreateBagPanel()
+  main:SetSize(400, 320)
   main:SetFrameStrata("DIALOG")
   main:SetFrameLevel(200)
   main:SetMovable(true)
@@ -506,7 +684,16 @@ function Layout.EnsureMain()
     PersistPos()
   end)
   main:SetScript("OnShow", function(self)
-    PaintSolidBg(self)
+    KillPortrait(self)
+    ApplyCombinedBagsChrome(self)
+    local title = CombinedBagTitle()
+    if self.SetTitle then
+      pcall(self.SetTitle, self, title)
+    elseif self.TitleText then
+      self.TitleText:SetText(title)
+    elseif self.title then
+      self.title:SetText(title)
+    end
   end)
   main:SetScript("OnHide", function()
     local OpenClose = BetterBackpack.Modules.OpenClose
@@ -518,31 +705,49 @@ function Layout.EnsureMain()
     table.insert(UISpecialFrames, "BetterBackpackFrame")
   end
 
-  local title = main:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-  title:SetPoint("TOPLEFT", 14, -12)
-  title:SetText("BetterBackpack")
-  main.title = title
-
-  local close = CreateFrame("Button", nil, main, "UIPanelCloseButton")
-  if not close then
-    close = CreateFrame("Button", nil, main)
-    close:SetSize(24, 24)
-    close:SetText("X")
+  local titleText = CombinedBagTitle()
+  if main.SetTitle then
+    pcall(main.SetTitle, main, titleText)
   end
-  close:SetPoint("TOPRIGHT", 2, 2)
-  close:SetScript("OnClick", function()
-    local OpenClose = BetterBackpack.Modules.OpenClose
-    if OpenClose and OpenClose.CloseOurs then
-      OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.3 })
-    else
-      main:Hide()
-    end
-  end)
+  if not main.TitleText and not main.title then
+    local title = main:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOP", 0, -6)
+    title:SetText(titleText)
+    main.title = title
+  elseif main.TitleText then
+    main.TitleText:SetText(titleText)
+  end
 
-  local sortBtn = CreateFrame("Button", nil, main, "UIPanelButtonTemplate")
+  local close = main.CloseButton
+  if not close then
+    pcall(function()
+      close = CreateFrame("Button", nil, main, "UIPanelCloseButton")
+    end)
+  end
+  if close then
+    close:ClearAllPoints()
+    close:SetPoint("TOPRIGHT", 2, 1)
+    close:SetScript("OnClick", function()
+      local OpenClose = BetterBackpack.Modules.OpenClose
+      if OpenClose and OpenClose.CloseOurs then
+        OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
+      else
+        main:Hide()
+      end
+    end)
+  end
+
+  local sortBtn
+  pcall(function()
+    sortBtn = CreateFrame("Button", nil, main, "UIPanelButtonTemplate")
+  end)
   if sortBtn then
     sortBtn:SetSize(56, 20)
-    sortBtn:SetPoint("TOPRIGHT", close, "TOPLEFT", -4, -8)
+    if close then
+      sortBtn:SetPoint("TOPRIGHT", close, "TOPLEFT", -6, -6)
+    else
+      sortBtn:SetPoint("TOPRIGHT", -28, -8)
+    end
     sortBtn:SetText("Sort")
     sortBtn:SetScript("OnClick", function()
       local Tidy = BetterBackpack.Modules.Tidy
@@ -561,8 +766,13 @@ function Layout.EnsureMain()
 
   content = CreateFrame("Frame", nil, main)
   content:EnableMouse(false)
-  content:SetPoint("TOPLEFT", INSET_X, -TOP_CHROME)
-  content:SetSize(100, 100)
+  if main.Inset then
+    content:SetPoint("TOPLEFT", main.Inset, "TOPLEFT", 4, -4)
+    content:SetPoint("BOTTOMRIGHT", main.Inset, "BOTTOMRIGHT", -4, 24)
+  else
+    content:SetPoint("TOPLEFT", INSET_X, -TOP_CHROME)
+    content:SetSize(100, 100)
+  end
 
   emptyLabel = content:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   emptyLabel:SetPoint("TOPLEFT", 4, -4)
@@ -593,19 +803,20 @@ function Layout.Show()
   main:SetAlpha(1)
   main:SetScale(1)
   if not main:GetWidth() or main:GetWidth() < 100 then
-    main:SetSize(360, 280)
+    main:SetSize(400, 320)
   end
   PlaceOnScreen()
-  PaintSolidBg(main)
+  KillPortrait(main)
+  ApplyCombinedBagsChrome(main)
   main:Show()
   pcall(function()
     main:Raise()
   end)
   DoLayout()
-  -- Re-assert after layout (size change).
   main:SetAlpha(1)
   main:Show()
   PlaceOnScreen()
+  ApplyCombinedBagsChrome(main)
   pcall(function()
     main:Raise()
   end)

@@ -1,9 +1,7 @@
-# Playtest brief — BetterBackpack 0.1.3
+# Playtest brief — BetterBackpack 0.1.4
 
-**Goal:** B reliably opens/closes BetterBackpack only (session = source of truth).
+**Goal:** One B close; CombinedBags-matching chrome.
 
-**Evidence fixed:** `SetToplevel` ADDON_ACTION_BLOCKED; OnShow→Open + Toggle→Close empty UI.
+**Avoid:** InOpenGrace on Toggle close; OpenOurs from CombinedBags OnShow; SetToplevel.
 
-**Avoid:** SetToplevel; OpenOurs from CombinedBags OnShow; OpenAllBags as open owner.
-
-**Done when:** `/reload` → v0.1.3; B opens solid CENTER panel; one B closes; `/bb frame` shows shown=true.
+**Done when:** `/reload` → v0.1.4; B opens CombinedBags-look panel; **one** B closes.

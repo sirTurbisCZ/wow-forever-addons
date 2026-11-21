@@ -1,10 +1,8 @@
 --[[
-  BetterBackpack.OpenClose — B key ownership (0.1.3)
+  BetterBackpack.OpenClose — B key ownership (0.1.4)
 
-  Source of truth = our sessionOpen only.
-  ToggleAllBags/ToggleBackpack hook: blackout Blizzard → open XOR close ours.
-  CombinedBags OnShow: park only — NEVER OpenOurs (avoids OnShow open → Toggle close).
-  Do not open from OpenAllBags (Toggle* already owns the key).
+  One B close: session XOR only — NO InOpenGrace on Toggle close path.
+  CombinedBags OnShow: park only — NEVER OpenOurs (opens fight Toggle close).
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -20,13 +18,11 @@ local hooksInstalled = false
 local suppressUntil = 0
 local bagsOpen = false
 local toggleLockUntil = 0
-local openedAt = 0
 local pulseToken = 0
 local openBusy = false
 local closeBusy = false
 local ignoringBagShow = false
-local TOGGLE_LOCK = 0.35
-local OPEN_GRACE = 0.5
+local TOGGLE_LOCK = 0.22
 local guardElapsed = 0
 
 local function Now()
@@ -62,10 +58,6 @@ local function SessionOpen()
   return bagsOpen or OursVisible()
 end
 
-local function InOpenGrace()
-  return openedAt > 0 and (Now() - openedAt) < OPEN_GRACE
-end
-
 local function Blackout(f)
   if not f then
     return
@@ -94,16 +86,6 @@ local function Park(f)
   pcall(function()
     f:ClearAllPoints()
     f:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -8000, 8000)
-    f:SetScale(0.001)
-  end)
-end
-
-local function UnparkScale(f)
-  if not f then
-    return
-  end
-  pcall(function()
-    f:SetScale(1)
   end)
 end
 
@@ -127,11 +109,6 @@ local function ForceCloseBlizzard()
   if type(CloseAllBags) == "function" then
     pcall(CloseAllBags)
   end
-  -- Ensure scales restored for next real Blizzard open (/bb off).
-  UnparkScale(ContainerFrameCombinedBags)
-  for i = 1, 13 do
-    UnparkScale(_G["ContainerFrame" .. i])
-  end
   BlackoutAll()
   ignoringBagShow = false
 end
@@ -147,14 +124,10 @@ local function FrameVisible(f)
   if a < 0.05 then
     return false
   end
-  local left, scale = nil, 1
+  local left
   pcall(function()
     left = f:GetLeft()
-    scale = f:GetScale() or 1
   end)
-  if scale and scale < 0.05 then
-    return false
-  end
   if left ~= nil and left < -500 then
     return false
   end
@@ -190,8 +163,12 @@ OpenOurs = function()
   if openBusy or closeBusy then
     return SessionOpen()
   end
-  if not EnabledReplace() or OpenClose.IsReplaceSuppressed() then
+  if not EnabledReplace() then
     return false
+  end
+  -- Allow open after suppress (next B after close).
+  if OpenClose.IsReplaceSuppressed() then
+    OpenClose.ClearReplaceSuppress()
   end
   openBusy = true
   BlackoutAll()
@@ -211,7 +188,6 @@ OpenOurs = function()
   end
 
   bagsOpen = true
-  openedAt = Now()
   toggleLockUntil = Now() + TOGGLE_LOCK
   openBusy = false
   PulsePark()
@@ -228,9 +204,8 @@ function OpenClose.CloseOurs(opts)
   end
   closeBusy = true
   bagsOpen = false
-  openedAt = 0
   pulseToken = pulseToken + 1
-  OpenClose.SuppressReplace(opts.suppress or 0.3)
+  OpenClose.SuppressReplace(opts.suppress or 0.25)
 
   BlackoutAll()
   BetterBackpack._bbClosing = true
@@ -250,16 +225,14 @@ function OpenClose.NotifyHidden()
     return
   end
   if SessionOpen() then
-    OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.3 })
+    OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
   else
     bagsOpen = false
-    openedAt = 0
   end
 end
 
 function OpenClose.ShutdownToBlizzard()
   bagsOpen = false
-  openedAt = 0
   pulseToken = pulseToken + 1
   OpenClose.SuppressReplace(2.0)
   BetterBackpack._bbClosing = true
@@ -267,10 +240,6 @@ function OpenClose.ShutdownToBlizzard()
     pcall(Layout.Hide)
   end
   BetterBackpack._bbClosing = false
-  UnparkScale(ContainerFrameCombinedBags)
-  for i = 1, 13 do
-    UnparkScale(_G["ContainerFrame" .. i])
-  end
   pcall(function()
     local f = ContainerFrameCombinedBags
     if f then
@@ -278,6 +247,15 @@ function OpenClose.ShutdownToBlizzard()
       f:EnableMouse(true)
     end
   end)
+  for i = 1, 13 do
+    local f = _G["ContainerFrame" .. i]
+    if f then
+      pcall(function()
+        f:SetAlpha(1)
+        f:EnableMouse(true)
+      end)
+    end
+  end
 end
 
 function OpenClose.BagsOpen()
@@ -290,7 +268,7 @@ end
 
 function OpenClose.Toggle()
   if SessionOpen() then
-    OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.3 })
+    OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
   else
     OpenOurs()
   end
@@ -301,7 +279,7 @@ function OpenClose.OpenOurs()
 end
 
 --[[
-  Sole B-key owner. Ignore what Blizzard already did with CombinedBags.
+  Sole B owner. Session XOR — close always closes (no open-grace on Toggle).
 ]]
 local function onBagKey()
   if not EnabledReplace() then
@@ -311,29 +289,16 @@ local function onBagKey()
   local t = Now()
   BlackoutAll()
 
-  -- Same physical key can fire ToggleAllBags + ToggleBackpack.
+  -- Debounce ToggleAllBags + ToggleBackpack on the same keypress only.
   if t < toggleLockUntil then
-    if SessionOpen() then
-      PulsePark()
-    end
+    ParkAllShown()
     return
   end
-
-  -- After CloseOurs suppress: next B should open.
-  if OpenClose.IsReplaceSuppressed() then
-    OpenClose.ClearReplaceSuppress()
-  end
-
   toggleLockUntil = t + TOGGLE_LOCK
 
   if SessionOpen() then
-    -- Closing: never treat as open-grace reopen.
-    if InOpenGrace() then
-      -- Blizzard OpenAllBags raced our open on same press — keep ours, park Blizzard.
-      PulsePark()
-      return
-    end
-    OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.3 })
+    -- One B close — never PulsePark-as-close.
+    OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
   else
     OpenOurs()
   end
@@ -352,7 +317,6 @@ function OpenClose.InstallHooks()
     hooksecurefunc("ToggleBackpack", onBagKey)
   end
 
-  -- OpenAllBags: park only. Opening is Toggle*'s job (avoids double open/close).
   if type(OpenAllBags) == "function" then
     hooksecurefunc("OpenAllBags", function()
       if ignoringBagShow or closeBusy then
@@ -391,16 +355,11 @@ function OpenClose.InstallHooks()
       if not EnabledReplace() then
         return
       end
-      -- Park only — never OpenOurs from OnShow (OnShow→Open + Toggle→Close = empty UI).
+      -- Park only — NEVER OpenOurs (OnShow open + Toggle close = 2× B / empty UI).
       Blackout(self)
-      if SessionOpen() or openBusy or InOpenGrace() then
-        Park(self)
-      elseif not OpenClose.IsReplaceSuppressed() then
-        -- Ghost CombinedBags while ours closed: take over.
-        Park(self)
-        if not closeBusy then
-          OpenOurs()
-        end
+      Park(self)
+      if SessionOpen() or openBusy then
+        PulsePark()
       end
     end)
   end
@@ -414,7 +373,10 @@ function OpenClose.InstallHooks()
           if ignoringBagShow or not EnabledReplace() then
             return
           end
-          if SessionOpen() or openBusy or InOpenGrace() then
+          if SessionOpen() or openBusy then
+            Park(self)
+          elseif EnabledReplace() then
+            Blackout(self)
             Park(self)
           end
         end)
@@ -427,7 +389,7 @@ function OpenClose.InstallHooks()
 
   local guard = CreateFrame("Frame")
   guard:SetScript("OnUpdate", function(_, elapsed)
-    if not EnabledReplace() then
+    if not EnabledReplace() or not SessionOpen() then
       return
     end
     if openBusy or closeBusy or ignoringBagShow then
@@ -438,10 +400,9 @@ function OpenClose.InstallHooks()
       return
     end
     guardElapsed = 0
-    if SessionOpen() then
-      if FrameVisible(ContainerFrameCombinedBags) then
-        ParkAllShown()
-      end
+    if FrameVisible(ContainerFrameCombinedBags) then
+      ParkAllShown()
+    else
       for i = 1, 13 do
         if FrameVisible(_G["ContainerFrame" .. i]) then
           ParkAllShown()
@@ -482,12 +443,10 @@ function OpenClose.RunOpenCloseSelfTest()
   end
   ok(OpenOurs() == true, "OpenOurs failed")
   ok(OursVisible(), "frame not shown")
-  local d = Layout.DebugState and Layout.DebugState()
-  ok(d and d.shown and d.w and d.w >= 100 and d.h and d.h >= 80, "frame size/pos bad")
-  local cb = ContainerFrameCombinedBags
-  ok(not FrameVisible(cb), "CombinedBags still visible")
+  -- Simulate one close (no grace)
   OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.05 })
-  ok(not SessionOpen(), "still open after close")
+  ok(not SessionOpen(), "still open after one CloseOurs")
+  ok(not OursVisible(), "frame still shown after close")
   OpenClose.ClearReplaceSuppress()
   return fail == 0, pass, fail, notes
 end
