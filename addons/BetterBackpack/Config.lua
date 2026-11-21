@@ -2,7 +2,7 @@
 
 BetterBackpack = BetterBackpack or {}
 
-local CURRENT_SCHEMA = 2
+local CURRENT_SCHEMA = 6
 local MAX_ERRORS = 40
 local MAX_MSG = 2000
 
@@ -12,7 +12,7 @@ local Config = BetterBackpack.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.5.5"
+Config.VERSION = "1.0.0"
 
 local function ProfileDefaults()
   return {
@@ -32,17 +32,23 @@ local function ProfileDefaults()
       quest = true,
       keys = true,
       container = true,
+      trash = false, -- auto-destroy lane, opt-in
       other = true,
     },
     itemRules = {},
+    trash = { confirm = false, confirmed = {}, destroyed = {}, log = {} },
     -- Nice-to-have (from betterbackpack/features-nth): optional Feat() modules.
     searchQuery = "",
     filterCategory = nil, -- nil / "all" = no filter; else category key
     customCategories = {}, -- { { id, name, itemIDs = {} } }
     hiddenDefaults = {}, -- { junk = true } → hide default lane (items → Other)
     stackMerge = true, -- visual merge same itemID
+    fillEmptyWells = false, -- opt-in: empty slot wells in space freed by collapse / search
     pins = {}, -- { [itemID] = true } red ghost when not owned
     layoutMode = "lanes", -- "lanes" | "dense"
+    bagBarNativeBag = true, -- bar slots → native single bag; main backpack + B → BB combined
+    autoSellJunk = false, -- vendor: auto-sell poor (grey) quality items
+    autoSellJunkLane = false, -- vendor: also sell non-grey items in Junk lane (opt-in)
     pos = nil, -- { point, relPoint, x, y } when user-moved
     userMoved = false,
   }
@@ -108,6 +114,52 @@ function Config.EnsureDB()
     end
     db.schemaVersion = 2
     from = 2
+  end
+
+  -- 0.5.6: 0.5.4/0.5.5 lanes rendered empty, so players clicked every header shut.
+  -- Categories default expanded; drop that stuck collapse state once.
+  if from < 3 then
+    EnsureProfile(db)
+    if type(db.profile) == "table" then
+      db.profile.collapsed = {}
+    end
+    db.schemaVersion = 3
+    from = 3
+  end
+
+  -- 0.5.9: empty fill wells off by default (0.5.8 shipped them on).
+  if from < 4 then
+    EnsureProfile(db)
+    if type(db.profile) == "table" then
+      db.profile.fillEmptyWells = false
+    end
+    db.schemaVersion = 4
+    from = 4
+  end
+
+  -- 0.5.24: Trash destroys on drop without confirm unless user re-enables in Settings.
+  if from < 5 then
+    EnsureProfile(db)
+    if type(db.profile) == "table" and type(db.profile.trash) == "table" then
+      db.profile.trash.confirm = false
+    end
+    db.schemaVersion = 5
+    from = 5
+  end
+
+  -- 0.5.63: vendor auto-sell defaults (off).
+  if from < 6 then
+    EnsureProfile(db)
+    if type(db.profile) == "table" then
+      if db.profile.autoSellJunk == nil then
+        db.profile.autoSellJunk = false
+      end
+      if db.profile.autoSellJunkLane == nil then
+        db.profile.autoSellJunkLane = false
+      end
+    end
+    db.schemaVersion = 6
+    from = 6
   end
 
   EnsureProfile(db)

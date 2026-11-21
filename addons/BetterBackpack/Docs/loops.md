@@ -1,9 +1,8 @@
-# BetterBackpack — smyčky a grafy
+# BetterBackpack — workflows and diagrams
 
-**Kód:** `Core.lua`, `Modules/{Slots,Layout,Context,OpenClose,Tidy,Settings,Search,Filter,CustomCategories,StackMerge,Pins,LayoutModes}.lua`  
-**Verze reference:** 0.5.5 (Baganator Forever chrome metrics + CombinedBags NineSlice)  
-**Stabilita:** Project `docs/bag-addon-brief.md` + Scenario Maps `docs/scenarios/BetterBackpack/`  
-**CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never path C harvest).
+**Code:** `Core.lua`, `Modules/{Slots,Layout,Context,BulkTransfer,VendorJunk,OpenClose,Tidy,Settings,Search,Filter,CustomCategories,Trash,StackMerge,Pins,LayoutModes}.lua`  
+**Version reference:** 1.0.0 (combat keep-shown shell · sync vendor lane bulk · auto-sell grey · OpenAllBags→OpenOurs)  
+**CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never harvest CombinedBags items).
 
 ---
 
@@ -11,41 +10,34 @@
 
 ```mermaid
 flowchart TD
-  B[ToggleAllBags / ToggleBackpack / ToggleBag / ToggleKeyRing]
+  B[ToggleAllBags + ToggleBackpack + OpenAllBags replaced]
+  Bar[ToggleBag / ToggleKeyRing → Blizzard]
   B --> Rep[Replace global — skip Blizzard body]
   Rep --> Black[BlackoutAllBlizzard alpha=0 first]
   Black --> Lock{t < toggleLockUntil or debounce?}
-  Lock -->|ano| Pulse[Park only]
-  Lock -->|ne| Vis{SessionOpen?}
-  Vis -->|ne| Open[OpenOurs + SetBagFocus + park]
-  Vis -->|ano| Close[CloseOurs + ClearBagFocus]
+  Lock -->|yes| Pulse[Park only]
+  Lock -->|no| Vis{SessionOpen?}
+  Vis -->|no| Open[OpenOurs + Layout.Show]
+  Open --> ParkMode{InCombatLockdown?}
+  ParkMode -->|yes| AlphaOnly[ParkBlizzardForOverlay — alpha/mouse only]
+  ParkMode -->|no| OffPark[off-screen Park + PulsePark]
+  Vis -->|yes| Close[CloseOurs + ClearBagFocus]
   Close --> Keep0[Keep alpha=0 + CloseAllBags<br/>NEVER RestoreBlizzard alpha=1]
-  OpenOnly[OpenAllBags / OpenBag — non-Toggle API] --> OpenOrPark[Open if closed else park+focus]
+  OpenOnly[OpenAllBags / OpenBag] --> OpenOrPark[Open if closed else park+focus]
   CloseAPI[CloseBag / CloseAllBags] --> Close
-  OnShow[CombinedBags Show/OnShow] --> BO[Blackout first line]
-  BO --> Park[Park; deferred OpenOurs only if still closed]
 ```
 
-**Pravidla**
+**Rules**
 
-- Nikdy `SetOverrideBindingClick`.
-- Forever: never call `SetFrameStrata` / `SetToplevel` in Lua. **0.5.5:** `ButtonFrameTemplate` + CombinedBags NineSlice/TopTile/Bg at Baganator Forever offsets (6,-21); **Inset:Hide**; empty `SlotBackground` on slots; footer inside bottom border.
-- **0.5.3+:** `Toggle*` are **replaced**, not `hooksecurefunc`. Post-hooks ran after Blizzard `Open*`/`Close*` → open/close thrash that froze on B.
-- Anti-flash: `Show`/`OnShow`/`onToggle` → **Blackout alpha=0 first**; CloseOurs never `RestoreBlizzardBags`. OpenOurs fail → `ForceCloseBlizzard` (not Unblackout).
-- CombinedBags stays `IsShown`+parked while ours open — **ne** `:Hide()` mid-session.
-- `SuppressReplace`; OnShow nesmí ClearSuppress→OpenOurs.
-- **ToggleBag + bag-bar OnClick = XOR** (same as B; `toggleLockUntil` after replaced ToggleBag). OpenBag/OpenAllBags = open-only. CloseBag/CloseAllBags close ours.
-- HookScript OnClick only on frames with `HasScript("OnClick")` / Button — never throw on BagsBar chrome kids.
-- Bag focus: `Layout.SetBagFocus(id)` highlights that bag’s slots after open.
-- Frame size: **10 cols** default (CombinedBags/BagShelves); INSET_X=14, TOP_CHROME=58, BOT_CHROME=32; outer = contentW+INSET_X+28.
-- Title chrome: AutoSort **twins** (same native size, atlas art, no ADD glow); broom | gear | X. No native reparent.
-- Footer N/M: player bags `0..NUM_BAG_SLOTS` + **reagent bag** (Materials lane). Never keyring invent (102=70+32).
-- Slots: `Normalize` 37×37 on every `Place` and after `SetItemButtonQuality`.
-- CombinedBags/Container OnShow: park now; **defer** open to next tick (non-Toggle Open* only).
+- Never `SetOverrideBindingClick` or `SetFrameStrata` / `SetToplevel` on our frame.
+- Toggle globals are **replaced**, not post-hooked.
+- Combat (**1.0**): `_bbKeepShown` — main frame stays shown at alpha 0; open = alpha 1 only (no `Show()` in lockdown).
+- `OpenAllBags` / `OpenBag` → `OpenOurs` when replace is on (vendor keeps BB, not native CombinedBags).
+- Window size is computed from the full unfiltered bag with all lanes expanded (sticky while open).
 
 ---
 
-## 2. Layout — own SAB only (+ NTH Feat hooks)
+## 2. Layout
 
 ```mermaid
 flowchart TD
@@ -54,19 +46,13 @@ flowchart TD
   Class --> Buckets[CollectBuckets]
   Buckets --> SF[Search.Passes + Filter.Passes]
   SF --> Merge[StackMerge.Collapse per lane]
-  Merge --> Place[Slots.Acquire + Place on main · ApplyDisplayCount]
-  Place --> Pins[Pins.Layout ghosts for missing]
-  Pins --> Chrome[EnsureTitleChrome + Search.EnsureChrome]
+  Merge --> Place[Slots.Acquire + Place]
   Place --> Attrs{OOC?}
-  Attrs -->|ano| Sync[SyncAttrs type2=item]
-  Attrs -->|ne combat| Keep[Keep prior attrs · visual sync]
-  Place --> Unused[ParkUnused off-screen]
+  Attrs -->|yes| Sync[SyncAttrs type2=item]
+  Attrs -->|combat| Keep[visual sync only]
 ```
 
-Žádný harvest / `SetParent` CombinedBags.Items.  
-Feature modules are optional `Feat("Name")` lookups — TOC can omit a file without Layout crash.  
-`LayoutModes.Columns` densifies grid; stack merge is visual-only (first real bag:slot keeps clicks).  
-Title chrome / AutoSort twins remain the 0.4.x path — NTH does not own OpenClose.
+Optional feature modules: `Feat("Name")` lookups — Layout does not crash if a module is omitted from TOC.
 
 ---
 
@@ -78,7 +64,7 @@ sequenceDiagram
   participant C as Core
   participant S as Slots
 
-  Note over S: LOGIN OOC PreCreate 0–4+reagent ×36<br/>SecureActionButton type2=item
+  Note over S: LOGIN OOC PreCreate · SecureActionButton type2=item
   P->>C: B / open
   C->>S: Layout + SyncAttrs
   P->>C: enter combat
@@ -94,12 +80,30 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-  Show[MERCHANT/MAIL/BANK SHOW] --> Clear[Clear type2 use attrs]
-  Clear --> RMB[RMB Pickup + Sell / ClickSendMail / PutItemInBag]
+  Show[MERCHANT/MAIL SHOW] --> Clear[Clear type2 use attrs]
+  Clear --> RMB[RMB slot Pickup + Sell / ClickSendMail]
+  BankShow[BANKFRAME_OPENED] --> Keep[Keep type2=item]
+  Keep --> Deposit[Secure UseContainerItem deposits]
   Close[CLOSED] --> Restore[ForceRestore type2=item]
 ```
 
-Mail: `MailFrame:IsVisible()` — ne stuck SendMailFrame alone.
+### 4b. Lane header bulk (Shift+RMB, OOC)
+
+```mermaid
+flowchart TD
+  Down[RMB down capture Shift] --> Up[MouseUp / OnClick]
+  Up --> Shift{Shift held?}
+  Shift -->|no| Collapse[RMB collapse only]
+  Shift -->|yes| RMB[TransferLane bulk]
+  RMB --> Ctx{Context open?}
+  Ctx -->|merchant| Sell[sync in click · Pickup+SellCursor / UseContainerItem]
+  Ctx -->|mail| Mail[sync Pickup+ClickSendMail]
+  Ctx -->|bank| Bank[UseContainerItem per slot async]
+```
+
+- **RMB** without Shift = lane collapse only.
+- **Shift+RMB** at vendor: full lane via `Layout.ListLaneSlots(unfiltered)`; sells run **synchronously** in the header click (Forever blocks deferred Pickup/Sell).
+- **Auto-sell:** `MERCHANT_SHOW` + Settings — greys only; optional Junk lane non-grey (`VendorJunk`).
 
 ---
 
@@ -109,7 +113,19 @@ Mail: `MailFrame:IsVisible()` — ne stuck SendMailFrame alone.
 flowchart TD
   Sort[/bb sort]
   Sort --> Combat{InCombatLockdown?}
-  Combat -->|ano| Defer[message · bail]
-  Combat -->|ne| Native[C_Container.SortBags]
+  Combat -->|yes| Defer[message · bail]
+  Combat -->|no| Native[C_Container.SortBags]
   Native --> Settle[suppress refresh · one Layout ~0.55s]
 ```
+
+---
+
+## 6. Drag-teach lanes
+
+Drop an item on a lane header (or an item in another lane) to teach `profile.itemRules`. Drop back on its natural lane to forget. Out of combat only.
+
+---
+
+## 7. Trash lane
+
+Click-only destroy on Forever (no timer delete). See `Docs/README.md` and `/bb trashtest`.

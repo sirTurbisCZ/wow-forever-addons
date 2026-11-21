@@ -104,75 +104,85 @@ function Search.Passes(bag, slot, info)
   return false
 end
 
+local function SyncEdit()
+  if edit then
+    local cur = Search.GetQuery()
+    if edit:GetText() ~= cur then
+      edit:SetText(cur)
+    end
+  end
+end
+
+local function WireEdit(e)
+  e:SetAutoFocus(false)
+  e:SetMaxLetters(48)
+  e:HookScript("OnTextChanged", function(self)
+    local t = self:GetText() or ""
+    if t ~= Search.GetQuery() then
+      Search.SetQuery(t)
+    end
+  end)
+  e:HookScript("OnEscapePressed", function(self)
+    self:ClearFocus()
+    if (self:GetText() or "") ~= "" then
+      self:SetText("")
+    end
+  end)
+  e:HookScript("OnEnterPressed", function(self)
+    self:ClearFocus()
+  end)
+end
+
+-- Same look as CombinedBags' BagItemSearchBox: it is SearchBoxTemplate (rounded
+-- common-search-border, magnifier, clear X, "Search" instructions). Never
+-- BagSearchBoxTemplate — it drives C_Container.SetItemSearch and opens a second CombinedBags.
+local function CreateNativeLook(main)
+  local ok, e = pcall(CreateFrame, "EditBox", "BetterBackpackSearchBox", main, "SearchBoxTemplate")
+  if not ok or not e then
+    return nil
+  end
+  e:SetSize(160, 20)
+  e:SetPoint("TOPLEFT", main, "TOPLEFT", 16, -29)
+  return e
+end
+
+local function CreateFlat(main)
+  local e = CreateFrame("EditBox", "BetterBackpackSearchBoxFlat", main)
+  e:SetSize(168, 22)
+  e:SetPoint("TOPLEFT", main, "TOPLEFT", 11, -28)
+  local bg = e:CreateTexture(nil, "BACKGROUND")
+  bg:SetAllPoints()
+  bg:SetColorTexture(0.06, 0.06, 0.07, 0.94)
+  e:SetFontObject(GameFontHighlightSmall)
+  e:SetTextInsets(6, 6, 0, 0)
+  local ph = e:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  ph:SetPoint("LEFT", 6, 0)
+  ph:SetText(SEARCH or "Search")
+  local function SyncPh()
+    ph:SetShown((e:GetText() or "") == "" and not e:HasFocus())
+  end
+  e:HookScript("OnEditFocusGained", SyncPh)
+  e:HookScript("OnEditFocusLost", SyncPh)
+  e:HookScript("OnTextChanged", SyncPh)
+  SyncPh()
+  return e
+end
+
 function Search.EnsureChrome(main)
   if not main then
     return
   end
   if box and box:GetParent() == main then
-    if edit then
-      local cur = Search.GetQuery()
-      if edit:GetText() ~= cur then
-        edit:SetText(cur)
-      end
-    end
+    SyncEdit()
     box:Show()
     return box
   end
-
-  box = CreateFrame("Frame", "BetterBackpackSearchBox", main)
-  box:SetSize(168, 22)
-  -- Baganator Forever: TOPLEFT sideSpacing+ButtonFrameOffset+5, -28.
-  box:SetPoint("TOPLEFT", main, "TOPLEFT", 11, -28)
-  box:SetFrameLevel((main:GetFrameLevel() or 1) + 80)
-
-  local bg = box:CreateTexture(nil, "BACKGROUND")
-  bg:SetAllPoints()
-  bg:SetColorTexture(0.06, 0.06, 0.07, 0.94)
-  local edge = box:CreateTexture(nil, "BORDER")
-  edge:SetPoint("TOPLEFT", -1, 1)
-  edge:SetPoint("BOTTOMRIGHT", 1, -1)
-  edge:SetColorTexture(0.35, 0.35, 0.38, 0.55)
-
-  edit = CreateFrame("EditBox", nil, box)
-  edit:SetAllPoints()
-  edit:SetAutoFocus(false)
-  edit:SetFontObject(GameFontHighlightSmall)
-  edit:SetTextInsets(6, 6, 0, 0)
-  edit:SetMaxLetters(48)
-  edit:SetText(Search.GetQuery())
-  edit:SetScript("OnEscapePressed", function(self)
-    self:ClearFocus()
-    if self:GetText() ~= "" then
-      self:SetText("")
-      Search.SetQuery("")
-    end
-  end)
-  edit:SetScript("OnEnterPressed", function(self)
-    self:ClearFocus()
-  end)
-  edit:SetScript("OnTextChanged", function(self, user)
-    if not user then
-      return
-    end
-    Search.SetQuery(self:GetText() or "")
-  end)
-
-  local ph = box:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  ph:SetPoint("LEFT", 6, 0)
-  ph:SetText("Search…")
-  box.placeholder = ph
-  local function SyncPh()
-    if (edit:GetText() or "") == "" and not edit:HasFocus() then
-      ph:Show()
-    else
-      ph:Hide()
-    end
-  end
-  edit:HookScript("OnEditFocusGained", SyncPh)
-  edit:HookScript("OnEditFocusLost", SyncPh)
-  edit:HookScript("OnTextChanged", SyncPh)
-  SyncPh()
-
+  edit = CreateNativeLook(main) or CreateFlat(main)
+  box = edit
+  edit:SetFrameLevel((main:GetFrameLevel() or 1) + 80)
+  WireEdit(edit)
+  SyncEdit()
+  edit:Show()
   return box
 end
 

@@ -1,15 +1,4 @@
---[[
-  BetterBackpack.OpenClose — B + bag-bar + keyring (0.5.4)
-
-  ToggleAllBags / ToggleBackpack / ToggleBag / ToggleKeyRing are *replaced*
-  (not hooksecurefunc). Forever Toggle* bodies call Open*/Close* first; a
-  post-hook XOR then closed what we just opened (or reopened after close) —
-  open/close thrash that froze the client on B.
-
-  OpenAllBags / OpenBackpack / OpenBag = open (+ bag focus). Close* close
-  ours when session open. CombinedBags OnShow: park; deferred open only if
-  still closed after Toggle* (covers non-Toggle Open* paths).
-]]
+-- BetterBackpack.OpenClose - B + /bb (stable base).
 
 BetterBackpack = BetterBackpack or {}
 BetterBackpack.Modules = BetterBackpack.Modules or {}
@@ -21,6 +10,10 @@ local Config = BetterBackpack.Config
 local Layout = BetterBackpack.Modules.Layout
 
 local hooksInstalled = false
+local inBagKey = false
+local inOpenIntent = false
+-- 0.5.40: no frame/Open/Close/bag-bar hooks — ToggleAllBags replace only.
+local SOFT_BAG_HOOKS = true
 local suppressUntil = 0
 local bagsOpen = false
 local toggleLockUntil = 0
@@ -28,8 +21,26 @@ local pulseToken = 0
 local openBusy = false
 local closeBusy = false
 local ignoringBagShow = false
+local nativeSession = false
+local nativeFocusBag = nil
+local backpackBarArmUntil = 0
 local TOGGLE_LOCK = 0.28
+local BAG_KEY_DEBOUNCE = 0.14
+local lastBagKeyHandledAt = 0
 local guardElapsed = 0
+
+-- Forward decls (BBKeyringBagIndex / frame helpers run before NormalizeBagID assignment).
+local NormalizeBagID
+local FocusBagsMatch
+local SetFocusBag
+local ClearFocusBag
+local ClearCategoryFilter
+local OpenOurs
+local InvokeNativeKeyRing
+
+local function InCombat()
+  return InCombatLockdown and InCombatLockdown() and true or false
+end
 
 local function Now()
   return (GetTime and GetTime()) or 0
@@ -42,6 +53,259 @@ end
 local function EnabledReplace()
   local p = Profile()
   return p.enabled and not p.safeMode and p.replaceBlizzard
+end
+
+local function OverlayAllowed()
+  local p = Profile()
+  return p.enabled and not p.safeMode
+end
+
+local function BagBarNativeEnabled()
+  return Profile().bagBarNativeBag ~= false
+end
+
+function OpenClose.IsNativeSession()
+  return nativeSession
+end
+
+local function EndNativeSession()
+  nativeSession = false
+  nativeFocusBag = nil
+end
+
+local function BeginNativeSession(bagID)
+  nativeSession = true
+  nativeFocusBag = bagID
+end
+
+local function RestoreFrameInteractive(f)
+  if not f then
+    return
+  end
+  pcall(function()
+    f:SetAlpha(1)
+    f:EnableMouse(true)
+  end)
+end
+
+local function RestoreNativeBagFrames()
+  if not BagBarNativeEnabled() then
+    return
+  end
+  for i = 1, 13 do
+    local cf = _G["ContainerFrame" .. i]
+    if cf and not InCombat() and cf.IsShown and cf:IsShown() then
+      pcall(function()
+        local left = cf:GetLeft()
+        if left ~= nil and left < -500 then
+          cf:ClearAllPoints()
+          cf:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+        end
+      end)
+    end
+    RestoreFrameInteractive(cf)
+  end
+  for _, name in ipairs(KeyRingFrameNames()) do
+    RestoreFrameInteractive(_G[name])
+  end
+  -- Never restore CombinedBags here — was undoing blackout during B/open.
+end
+
+local function FrameOnScreen(f)
+  if not f or not f:IsShown() then
+    return false
+  end
+  local a = 1
+  pcall(function()
+    a = f:GetAlpha() or 1
+  end)
+  if a < 0.05 then
+    return false
+  end
+  local left
+  pcall(function()
+    left = f:GetLeft()
+  end)
+  if left ~= nil and left < -500 then
+    return false
+  end
+  return true
+end
+
+local function NativeContainersVisible()
+  for i = 1, 13 do
+    if FrameOnScreen(_G["ContainerFrame" .. i]) then
+      return true
+    end
+  end
+  for _, name in ipairs({
+    "KeyRingFrame",
+    "ContainerFrame-2",
+    "ContainerFrameKeyRing",
+    "ContainerFrame-" .. tostring(KEYRING_CONTAINER or -2),
+  }) do
+    if FrameOnScreen(_G[name]) then
+      return true
+    end
+  end
+  return false
+end
+
+local function KeyRingFrameNames()
+  local names = {
+    "KeyRingFrame",
+    "ContainerFrameKeyRing",
+    "ContainerFrame-2",
+  }
+  local key = BBKeyringBagIndex()
+  if KEYRING_CONTAINER ~= nil then
+    names[#names + 1] = "ContainerFrame-" .. tostring(KEYRING_CONTAINER)
+  end
+  if key ~= nil then
+    names[#names + 1] = "ContainerFrame-" .. tostring(key)
+  end
+  if Enum and Enum.BagIndex and Enum.BagIndex.Keyring ~= nil then
+    names[#names + 1] = "ContainerFrame-" .. tostring(Enum.BagIndex.Keyring)
+  end
+  return names
+end
+
+local function KeyRingFrameIsShown()
+  for _, name in ipairs(KeyRingFrameNames()) do
+    local f = _G[name]
+    if f and f.IsShown and f:IsShown() then
+      return true, f
+    end
+  end
+  local key = BBKeyringBagIndex()
+  local Slots = BetterBackpack.Modules.Slots
+  for i = 1, 13 do
+    local f = _G["ContainerFrame" .. i]
+    if f and f.IsShown and f:IsShown() and f.GetID then
+      local id
+      pcall(function()
+        id = NormalizeBagID(f:GetID())
+      end)
+      if id ~= nil and (
+        (key ~= nil and FocusBagsMatch(id, key))
+        or (Slots and Slots.IsKeyringBag and Slots.IsKeyringBag(id))
+      ) then
+        return true, f
+      end
+    end
+  end
+  return false, nil
+end
+
+local function NativeKeyRingVisible()
+  for _, name in ipairs(KeyRingFrameNames()) do
+    if FrameOnScreen(_G[name]) then
+      return true
+    end
+  end
+  local key = BBKeyringBagIndex()
+  if key ~= nil then
+    for i = 1, 13 do
+      local f = _G["ContainerFrame" .. i]
+      if f and f:IsShown() and f.GetID then
+        local id
+        pcall(function()
+          id = NormalizeBagID(f:GetID())
+        end)
+        if id ~= nil and FocusBagsMatch(id, key) then
+          return FrameOnScreen(f)
+        end
+      end
+    end
+  end
+  return false
+end
+
+local function BBKeyringBagIndex()
+  local Slots = BetterBackpack.Modules.Slots
+  if Slots and type(Slots.KeyringBagIndex) == "function" then
+    local raw = Slots.KeyringBagIndex()
+    if type(NormalizeBagID) == "function" then
+      local k = NormalizeBagID(raw)
+      if k ~= nil then
+        return k
+      end
+    elseif raw ~= nil then
+      return raw
+    end
+  end
+  if KEYRING_CONTAINER ~= nil then
+    if type(NormalizeBagID) == "function" then
+      return NormalizeBagID(KEYRING_CONTAINER)
+    end
+    return KEYRING_CONTAINER
+  end
+  return -2
+end
+
+local function RestoreShownNativeBags()
+  for i = 1, 13 do
+    local f = _G["ContainerFrame" .. i]
+    if f and f:IsShown() then
+      RestoreFrameInteractive(f)
+    end
+  end
+  for _, name in ipairs(KeyRingFrameNames()) do
+    local f = _G[name]
+    if f and f:IsShown() then
+      RestoreFrameInteractive(f)
+    end
+  end
+end
+
+local function KeyRingNativeOpen()
+  if NativeKeyRingVisible() then
+    return true
+  end
+  if KeyRingFrameIsShown() then
+    return true
+  end
+  local key = BBKeyringBagIndex()
+  if nativeSession and nativeFocusBag ~= nil and key ~= nil and FocusBagsMatch(key, nativeFocusBag) then
+    return true
+  end
+  return false
+end
+
+local function CloseNativeBags()
+  ignoringBagShow = true
+  if type(CloseAllBags) == "function" then
+    pcall(CloseAllBags)
+  end
+  EndNativeSession()
+  ignoringBagShow = false
+end
+
+local function OrigToggle(name)
+  local fn = OpenClose["_orig_" .. name]
+  if type(fn) == "function" then
+    return fn
+  end
+  return nil
+end
+
+local function CallOrigToggle(name, ...)
+  local orig = OpenClose["_blizzard_" .. name] or OrigToggle(name)
+  if type(orig) ~= "function" then
+    return false
+  end
+  return pcall(orig, ...)
+end
+
+local function BlackoutCombinedOnly()
+  local f = ContainerFrameCombinedBags
+  if not f then
+    return
+  end
+  pcall(function()
+    f:SetAlpha(0)
+    f:EnableMouse(false)
+  end)
 end
 
 function OpenClose.SuppressReplace(seconds)
@@ -57,11 +321,56 @@ function OpenClose.ClearReplaceSuppress()
 end
 
 local function OursVisible()
+  if Layout and Layout.IsBagFrameVisible then
+    return Layout.IsBagFrameVisible()
+  end
   return Layout and Layout.IsShown and Layout.IsShown()
 end
 
 local function SessionOpen()
-  return bagsOpen or OursVisible()
+  -- Single source of truth: frame visible (bagsOpen alone caused stuck XOR after close).
+  return OursVisible()
+end
+
+local function BagKeyChat(branch, detail)
+  local extra = detail and (" · " .. tostring(detail)) or ""
+  local line = "|cffc9a227BetterBackpack|r onBagKey · " .. tostring(branch) .. extra
+  if BetterBackpack.Print then
+    BetterBackpack.Print(line)
+  elseif DEFAULT_CHAT_FRAME then
+    DEFAULT_CHAT_FRAME:AddMessage(line)
+  end
+end
+
+local function ReleaseStaleBusy()
+  if SessionOpen() then
+    return
+  end
+  if openBusy or closeBusy or OpenClose._openBusy then
+    openBusy = false
+    closeBusy = false
+    OpenClose._openBusy = false
+  end
+end
+
+local function ResetOverlaySessionState()
+  bagsOpen = false
+  openBusy = false
+  inBagKey = false
+  inOpenIntent = false
+  OpenClose._openBusy = false
+  toggleLockUntil = 0
+  pcall(function()
+    if Layout and Layout.ForceHidden then
+      Layout.ForceHidden()
+    elseif Layout and Layout.Hide then
+      Layout.Hide()
+    end
+    local g = _G.BetterBackpackFrame
+    if not BetterBackpack._bbKeepShown and g and g.IsShown and g:IsShown() and g.Hide then
+      g:Hide()
+    end
+  end)
 end
 
 local function Blackout(f)
@@ -76,6 +385,9 @@ end
 
 local function BlackoutAll()
   Blackout(ContainerFrameCombinedBags)
+  if BagBarNativeEnabled() then
+    return
+  end
   for i = 1, 13 do
     Blackout(_G["ContainerFrame" .. i])
   end
@@ -95,11 +407,74 @@ local function Park(f)
   end)
 end
 
-local function ParkAllShown()
-  BlackoutAll()
+local combatTraceOnce = {}
+
+local function CombatTraceOnce(tag, detail)
+  if not InCombat() then
+    return
+  end
+  local key = tostring(tag or "?") .. "|" .. tostring(detail or "")
+  if combatTraceOnce[key] then
+    return
+  end
+  combatTraceOnce[key] = true
+  local line = "combat B · " .. tostring(tag or "?")
+  if detail and detail ~= "" then
+    line = line .. " — " .. tostring(detail)
+  end
+  if BetterBackpack.Print then
+    BetterBackpack.Print(line)
+  elseif DEFAULT_CHAT_FRAME then
+    DEFAULT_CHAT_FRAME:AddMessage("|cffc9a227BetterBackpack|r " .. line)
+  end
+end
+
+function OpenClose.CombatTraceOnce(tag, detail)
+  CombatTraceOnce(tag, detail)
+end
+
+function OpenClose.ResetCombatTrace()
+  combatTraceOnce = {}
+end
+
+--- CombinedBags must not win over our overlay (B often opens it via ToggleBackpack).
+local function CloseNativeCombinedBags()
   local f = ContainerFrameCombinedBags
-  if f and f:IsShown() then
+  if not f then
+    return
+  end
+  Blackout(f)
+  if InCombat() then
+    return
+  end
+  if f.IsShown and f:IsShown() then
     Park(f)
+    pcall(function()
+      f:Hide()
+    end)
+  end
+end
+
+--- Hide Blizzard bag UI for our overlay. Bag-bar native: CombinedBags only — never touch ContainerFrame*.
+local function ParkBlizzardForOverlay()
+  local combined = ContainerFrameCombinedBags
+  if combined then
+    Blackout(combined)
+  end
+  if not InCombat() and combined and combined.IsShown and combined:IsShown() then
+    Park(combined)
+  end
+  if BagBarNativeEnabled() then
+    return
+  end
+  for i = 1, 13 do
+    local cf = _G["ContainerFrame" .. i]
+    if cf and cf:IsShown() then
+      Blackout(cf)
+    end
+  end
+  if InCombat() then
+    return
   end
   for i = 1, 13 do
     local cf = _G["ContainerFrame" .. i]
@@ -107,6 +482,10 @@ local function ParkAllShown()
       Park(cf)
     end
   end
+end
+
+local function ParkAllShown()
+  ParkBlizzardForOverlay()
 end
 
 local function ForceCloseBlizzard()
@@ -140,11 +519,6 @@ local function FrameVisible(f)
   return true
 end
 
-local OpenOurs
-local SetFocusBag
-local ClearFocusBag
-local NormalizeBagID
-
 local function PulsePark()
   pulseToken = pulseToken + 1
   local token = pulseToken
@@ -169,10 +543,27 @@ local function PulsePark()
 end
 
 OpenOurs = function()
-  if openBusy or closeBusy then
+  if closeBusy then
+    BagKeyChat("open-skip", "closeBusy")
     return SessionOpen()
   end
-  if not EnabledReplace() then
+  if openBusy then
+    if not SessionOpen() then
+      ReleaseStaleBusy()
+    else
+      BagKeyChat("open-skip", "openBusy visible")
+      return true
+    end
+  end
+  if not OverlayAllowed() then
+    if InCombat() then
+      local p = Profile()
+      CombatTraceOnce("OpenOurs", string.format(
+        "off enabled=%s safe=%s",
+        tostring(p.enabled),
+        tostring(p.safeMode)
+      ))
+    end
     return false
   end
   -- Allow open after suppress (next B after close).
@@ -181,8 +572,39 @@ OpenOurs = function()
   end
   openBusy = true
   OpenClose._openBusy = true
-  BlackoutAll()
-  ParkAllShown()
+  pcall(CloseNativeCombinedBags)
+  ParkBlizzardForOverlay()
+
+  if InCombat() then
+    local shown = false
+    if Layout and Layout.CombatShow then
+      shown = Layout.CombatShow() and true or false
+    elseif Layout and Layout.ShowCombatMinimal then
+      shown = Layout.ShowCombatMinimal() and true or false
+    end
+    openBusy = false
+    OpenClose._openBusy = false
+    local visible = OursVisible()
+    if not shown and visible then
+      shown = true
+    end
+    if shown or visible then
+      bagsOpen = shown or visible
+      toggleLockUntil = Now() + TOGGLE_LOCK
+      ParkBlizzardForOverlay()
+      if Layout and Layout.Raise then
+        pcall(Layout.Raise)
+      end
+      return true
+    end
+    bagsOpen = false
+    ParkBlizzardForOverlay()
+    local global = _G.BetterBackpackFrame
+    local built = global and tostring(global._bbBuilt) or "nil"
+    local alpha = global and tostring(global:GetAlpha()) or "nil"
+    CombatTraceOnce("OpenOurs", string.format("combat show failed shown=%s visible=%s built=%s alpha=%s", tostring(shown), tostring(visible), built, alpha))
+    return false
+  end
 
   local function tryShow()
     local ok, shown = pcall(function()
@@ -215,7 +637,12 @@ OpenOurs = function()
     end)
     -- Keep Blizzard parked/closed — Unblackout + shown CombinedBags re-entered
     -- OnShow→OpenOurs and amplified the Toggle open/close thrash.
-    ForceCloseBlizzard()
+    pcall(CloseNativeCombinedBags)
+    if not InCombat() then
+      ForceCloseBlizzard()
+    else
+      ParkBlizzardForOverlay()
+    end
     if BetterBackpack.RecordError and (not OpenClose._lastOpenFailAt or (Now() - OpenClose._lastOpenFailAt) > 5) then
       OpenClose._lastOpenFailAt = Now()
       BetterBackpack.RecordError("OpenOurs", ok and tostring(shown) or tostring(shown))
@@ -223,55 +650,116 @@ OpenOurs = function()
     return false
   end
 
-  bagsOpen = true
-  toggleLockUntil = Now() + TOGGLE_LOCK
   openBusy = false
   OpenClose._openBusy = false
-  PulsePark()
-  if Layout and Layout.Raise then
-    pcall(Layout.Raise)
+  bagsOpen = OursVisible()
+  toggleLockUntil = bagsOpen and (Now() + TOGGLE_LOCK) or toggleLockUntil
+  pcall(CloseNativeCombinedBags)
+  if bagsOpen then
+    if not InCombat() then
+      PulsePark()
+    else
+      ParkBlizzardForOverlay()
+    end
+    if Layout and Layout.Raise then
+      pcall(Layout.Raise)
+    end
   end
-  return true
+  return bagsOpen == true
+end
+
+local function RestoreCombinedBagsUI()
+  local f = ContainerFrameCombinedBags
+  if not f then
+    return
+  end
+  RestoreFrameInteractive(f)
+  if InCombat() then
+    return
+  end
+  pcall(function()
+    if f.IsShown and f:IsShown() then
+      f:ClearAllPoints()
+      f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    end
+  end)
 end
 
 function OpenClose.CloseOurs(opts)
   opts = opts or {}
   if closeBusy then
-    return
+    if not OursVisible() then
+      ReleaseStaleBusy()
+    else
+      BagKeyChat("close-skip", "closeBusy")
+      return
+    end
   end
   closeBusy = true
   bagsOpen = false
+  openBusy = false
+  OpenClose._openBusy = false
   pulseToken = pulseToken + 1
   OpenClose.SuppressReplace(opts.suppress or 0.25)
   ClearFocusBag()
 
-  BlackoutAll()
-  BetterBackpack._bbClosing = true
-  if Layout and Layout.Hide then
-    pcall(Layout.Hide)
-  end
-  BetterBackpack._bbClosing = false
+  local ok, err = pcall(function()
+    BetterBackpack._bbClosing = true
+    if Layout and Layout.Hide then
+      pcall(Layout.Hide)
+    else
+      pcall(function()
+        local f = _G.BetterBackpackFrame
+        if f and not BetterBackpack._bbKeepShown and f.Hide then
+          f:Hide()
+        end
+      end)
+    end
+    BetterBackpack._bbClosing = false
 
-  if opts.closeBlizzard ~= false then
-    ForceCloseBlizzard()
-  end
+    if not OursVisible() and not InCombat() then
+      if opts.closeBlizzard ~= false then
+        if BagBarNativeEnabled() then
+          RestoreCombinedBagsUI()
+        else
+          ForceCloseBlizzard()
+        end
+      else
+        RestoreCombinedBagsUI()
+      end
+    elseif InCombat() then
+      ParkBlizzardForOverlay()
+    end
+    RestoreNativeBagFrames()
+    ResetOverlaySessionState()
+  end)
   closeBusy = false
+  if not ok and BetterBackpack.RecordError then
+    BetterBackpack.RecordError("CloseOurs", err)
+  end
+end
+
+function OpenClose.ResetBagSession()
+  ResetOverlaySessionState()
+  toggleLockUntil = 0
+  OpenClose.ClearReplaceSuppress()
 end
 
 function OpenClose.NotifyHidden()
   if BetterBackpack._bbClosing then
     return
   end
-  if SessionOpen() then
-    OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
-  else
-    bagsOpen = false
+  if OursVisible() then
+    pcall(OpenClose.CloseOurs, { closeBlizzard = true, suppress = 0.25 })
+    return
   end
+  ResetOverlaySessionState()
 end
 
 function OpenClose.ShutdownToBlizzard()
   bagsOpen = false
   pulseToken = pulseToken + 1
+  OpenClose.RestoreBlizzardToggles()
   OpenClose.SuppressReplace(2.0)
   BetterBackpack._bbClosing = true
   if Layout and Layout.Hide then
@@ -316,56 +804,89 @@ function OpenClose.OpenOurs()
   return OpenOurs()
 end
 
---[[
-  Toggle* (B / backpack toggle): XOR open/close. Used by replaced globals.
-]]
-local function onBagKey()
-  if not EnabledReplace() then
+-- ToggleAllBags (B): BetterBackpack overlay XOR only — no native bag filtering.
+local function onBagKey(src)
+  src = src or "?"
+  if inBagKey then
+    BagKeyChat("skip", src .. " inBagKey")
     return
   end
-
   local t = Now()
-  BlackoutAll()
-
-  if t < toggleLockUntil then
-    ParkAllShown()
+  if (t - lastBagKeyHandledAt) < BAG_KEY_DEBOUNCE then
+    BagKeyChat("skip", string.format("%s debounce %.0fms", src, (t - lastBagKeyHandledAt) * 1000))
     return
   end
-  toggleLockUntil = t + TOGGLE_LOCK
-
-  if SessionOpen() then
-    OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
-  else
-    OpenOurs()
+  if not EnabledReplace() then
+    BagKeyChat("skip", src .. " replaceOff")
+    return
   end
+  inBagKey = true
+  ReleaseStaleBusy()
+  OpenClose.ClearReplaceSuppress()
+  lastBagKeyHandledAt = t
+  local visible = SessionOpen()
+  BagKeyChat("enter", string.format(
+    "%s visible=%s busy=%s/%s lock=%.2f",
+    src,
+    tostring(visible),
+    tostring(openBusy),
+    tostring(closeBusy),
+    math.max(0, toggleLockUntil - t)
+  ))
+  local ok, err = pcall(function()
+    if visible then
+      BagKeyChat("close", src)
+      OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.05 })
+      BagKeyChat("after-close", string.format(
+        "visible=%s busy=%s/%s",
+        tostring(SessionOpen()),
+        tostring(openBusy),
+        tostring(closeBusy)
+      ))
+      return
+    end
+    BagKeyChat("open", src)
+    pcall(CloseNativeCombinedBags)
+    pcall(ParkBlizzardForOverlay)
+    local opened = OpenOurs()
+    BagKeyChat("after-open", string.format(
+      "opened=%s visible=%s busy=%s/%s",
+      tostring(opened),
+      tostring(SessionOpen()),
+      tostring(openBusy),
+      tostring(closeBusy)
+    ))
+  end)
+  if not ok then
+    ReleaseStaleBusy()
+    BagKeyChat("error", tostring(err))
+    if BetterBackpack.RecordError then
+      BetterBackpack.RecordError("onBagKey", err)
+    end
+  end
+  inBagKey = false
 end
 
 local function onKeyRingToggle()
   if not EnabledReplace() then
+    CallOrigToggle("ToggleKeyRing")
     return
   end
-  local Slots = BetterBackpack.Modules.Slots
-  local key
-  pcall(function()
-    key = NormalizeBagID(Slots and Slots.KeyringBagIndex and Slots.KeyringBagIndex())
-  end)
-  local t = Now()
-  BlackoutAll()
-  if t < toggleLockUntil then
-    ParkAllShown()
+  if BagBarNativeEnabled() then
+    if SessionOpen() or OursVisible() then
+      OpenClose.CloseOurs({ closeBlizzard = false, suppress = 0.05 })
+    end
+    BlackoutCombinedOnly()
+    CallOrigToggle("ToggleKeyRing")
     return
   end
-  toggleLockUntil = t + TOGGLE_LOCK
   if SessionOpen() then
     ClearFocusBag()
-    local Filter = BetterBackpack.Modules.Filter
-    if Filter and Filter.SetCategory then
-      pcall(Filter.SetCategory, "all")
-    end
+    ClearCategoryFilter()
     OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
   else
-    if key ~= nil then
-      SetFocusBag(key)
+    if BBKeyringBagIndex() ~= nil then
+      SetFocusBag(BBKeyringBagIndex())
     end
     local Filter = BetterBackpack.Modules.Filter
     if Filter and Filter.SetCategory then
@@ -375,10 +896,69 @@ local function onKeyRingToggle()
   end
 end
 
---[[
-  Replace Toggle* instead of hooksecurefunc. Post-hooks run AFTER Blizzard
-  Open*/Close* (and our Open*/Close* hooks), so XOR always fought the body.
-]]
+-- Replace Toggle* instead of hooksecurefunc (post-hooks fought XOR).
+local BLIZZARD_TOGGLES = { "ToggleBag", "ToggleBackpack", "ToggleKeyRing", "ToggleAllBags" }
+local BLIZZARD_OPENS = { "OpenAllBags", "OpenBag" }
+
+local function CaptureBlizzardToggles()
+  for i = 1, #BLIZZARD_TOGGLES do
+    local name = BLIZZARD_TOGGLES[i]
+    local key = "_blizzard_" .. name
+    if type(OpenClose[key]) ~= "function" then
+      local fn = _G[name]
+      if type(fn) == "function" then
+        OpenClose[key] = fn
+      end
+    end
+  end
+end
+
+local function CaptureBlizzardOpens()
+  for i = 1, #BLIZZARD_OPENS do
+    local name = BLIZZARD_OPENS[i]
+    local key = "_blizzard_" .. name
+    if type(OpenClose[key]) ~= "function" then
+      local fn = _G[name]
+      if type(fn) == "function" then
+        OpenClose[key] = fn
+      end
+    end
+  end
+end
+
+local function RestoreBlizzardToggle(globalName)
+  local orig = OpenClose["_blizzard_" .. globalName] or OpenClose["_orig_" .. globalName]
+  if type(orig) ~= "function" then
+    return
+  end
+  _G[globalName] = orig
+  OpenClose["_orig_" .. globalName] = nil
+  OpenClose["_replaced_" .. globalName] = nil
+end
+
+local function RestoreBlizzardOpen(globalName)
+  local orig = OpenClose["_blizzard_" .. globalName] or OpenClose["_orig_" .. globalName]
+  if type(orig) ~= "function" then
+    return
+  end
+  _G[globalName] = orig
+  OpenClose["_orig_" .. globalName] = nil
+  OpenClose["_replaced_" .. globalName] = nil
+end
+
+function OpenClose.RestoreBlizzardToggles()
+  CaptureBlizzardToggles()
+  for i = 1, #BLIZZARD_TOGGLES do
+    RestoreBlizzardToggle(BLIZZARD_TOGGLES[i])
+  end
+  CaptureBlizzardOpens()
+  for i = 1, #BLIZZARD_OPENS do
+    RestoreBlizzardOpen(BLIZZARD_OPENS[i])
+  end
+end
+
+OpenClose.RestoreAllBlizzardBagToggles = OpenClose.RestoreBlizzardToggles
+
 local function ReplaceToggle(globalName, handler)
   local orig = _G[globalName]
   if type(orig) ~= "function" then
@@ -388,11 +968,19 @@ local function ReplaceToggle(globalName, handler)
     return true
   end
   OpenClose["_replaced_" .. globalName] = true
+  OpenClose["_orig_" .. globalName] = orig
   _G[globalName] = function(...)
     if not EnabledReplace() then
       return orig(...)
     end
-    handler(...)
+    local ok, err = pcall(handler, ...)
+    if not ok then
+      if BetterBackpack and BetterBackpack.RecordError then
+        BetterBackpack.RecordError(globalName, err)
+      elseif DEFAULT_CHAT_FRAME then
+        DEFAULT_CHAT_FRAME:AddMessage("|cffff5050BetterBackpack|r " .. tostring(globalName) .. ": " .. tostring(err))
+      end
+    end
   end
   return true
 end
@@ -440,8 +1028,37 @@ ClearFocusBag = function()
   end
 end
 
+FocusBagsMatch = function(a, b)
+  if a == nil or b == nil then
+    return false
+  end
+  local Slots = BetterBackpack.Modules.Slots
+  if Slots and Slots.IsReagentBag and Slots.IsReagentBag(a) and Slots.IsReagentBag(b) then
+    return true
+  end
+  return a == b
+end
+
+ClearCategoryFilter = function()
+  local Filter = BetterBackpack.Modules.Filter
+  if Filter and Filter.SetCategory then
+    pcall(Filter.SetCategory, "all")
+  end
+end
+
 NormalizeBagID = function(bagID)
+  local Slots = BetterBackpack.Modules.Slots
+  if Slots and Slots.SafeNum then
+    local plain = Slots.SafeNum(bagID, nil)
+    if plain ~= nil then
+      return plain
+    end
+  end
   if type(bagID) == "number" then
+    if Slots and Slots.SafeNum and Slots.SafeNum(bagID, nil) == nil then
+      -- Forever secret bag index — keep opaque value for Blizzard ToggleBag/OpenBag.
+      return bagID
+    end
     return bagID
   end
   if type(bagID) == "string" then
@@ -453,27 +1070,275 @@ NormalizeBagID = function(bagID)
   return nil
 end
 
---[[
-  Open-only (OpenAllBags / OpenBag / CombinedBags fallback): open if closed;
-  if open, park Blizzard + refresh focus.
-]]
+--- Plain number when possible; otherwise raw bag token (incl. secret Enum indices).
+local function BagIDForNative(bagID)
+  local plain = NormalizeBagID(bagID)
+  if plain ~= nil then
+    return plain
+  end
+  if bagID ~= nil then
+    return bagID
+  end
+  return nil
+end
+
+local function BagIdFromButtonName(btn)
+  if not btn then
+    return nil
+  end
+  local name
+  pcall(function()
+    name = btn.GetName and btn:GetName()
+  end)
+  if type(name) ~= "string" or name == "" then
+    return nil
+  end
+  local Slots = BetterBackpack.Modules.Slots
+  if name == "MainMenuBarBackpackButton" then
+    return 0
+  end
+  local n = name:match("^CharacterBag(%d+)Slot$")
+  if n then
+    return tonumber(n)
+  end
+  n = name:match("^MainMenuBarBagButton(%d+)$")
+  if n then
+    local i = tonumber(n)
+    if i == 5 and Slots and Slots.ReagentBagIndex then
+      return Slots.ReagentBagIndex()
+    end
+    if i and i >= 1 then
+      return i
+    end
+    return i
+  end
+  n = name:match("^MultiBag(%d+)$")
+  if n then
+    return tonumber(n)
+  end
+  if name:find("KeyRing", 1, true) or name:find("Keyring", 1, true) then
+    return BBKeyringBagIndex()
+  end
+  return nil
+end
+
+local function IsKeyringBarButton(btn)
+  if not btn then
+    return false
+  end
+  local name
+  pcall(function()
+    name = btn.GetName and btn:GetName()
+  end)
+  if type(name) == "string" and (name:find("KeyRing", 1, true) or name:find("Keyring", 1, true)) then
+    return true
+  end
+  local Slots = BetterBackpack.Modules.Slots
+  local id = BagIdFromButton(btn)
+  return Slots and Slots.IsKeyringBag and id ~= nil and Slots.IsKeyringBag(id)
+end
+
+local function IsKnownBagID(bagID)
+  local raw = bagID
+  if raw == nil then
+    return false, nil
+  end
+  local Slots = BetterBackpack.Modules.Slots
+  if Slots and Slots.IsKeyringBag and Slots.IsKeyringBag(raw) then
+    local key = BBKeyringBagIndex()
+    return true, key or raw
+  end
+  if Slots and Slots.IsReagentBag and Slots.IsReagentBag(raw) then
+    local reb = Slots.ReagentBagIndex and Slots.ReagentBagIndex() or 5
+    return true, reb or raw
+  end
+  local plain = nil
+  if Slots and Slots.SafeNum then
+    plain = Slots.SafeNum(raw, nil)
+  elseif type(raw) == "number" and (not Slots or not Slots.IsSecret or not Slots.IsSecret(raw)) then
+    plain = raw
+  end
+  if plain ~= nil then
+    local max = 4
+    pcall(function()
+      if NUM_BAG_SLOTS ~= nil then
+        local n = Slots and Slots.SafeNum and Slots.SafeNum(NUM_BAG_SLOTS, nil) or NUM_BAG_SLOTS
+        if type(n) == "number" then
+          max = n
+        end
+      end
+    end)
+    if plain >= 0 and plain <= math.max(max, 4) then
+      return true, plain
+    end
+    if plain >= -4 and plain <= 13 then
+      return true, plain
+    end
+  end
+  -- Secret or opaque bag index from BagsBar / ToggleBag — pass through to Blizzard.
+  return true, raw
+end
+
+local function FinishNativeOpen()
+  OpenClose._nativeOpening = false
+  RestoreShownNativeBags()
+  if type(UpdateContainerFrameAnchors) == "function" then
+    pcall(UpdateContainerFrameAnchors)
+  end
+  if type(UpdateInventoryAndQuestFlags) == "function" then
+    pcall(UpdateInventoryAndQuestFlags)
+  end
+  ignoringBagShow = false
+end
+
+InvokeNativeKeyRing = function()
+  local key = BBKeyringBagIndex()
+  ignoringBagShow = true
+  OpenClose._nativeOpening = true
+  BlackoutCombinedOnly()
+
+  local function opened()
+    if NativeKeyRingVisible() or KeyRingFrameIsShown() then
+      return true
+    end
+    return false
+  end
+
+  if not CallOrigToggle("ToggleKeyRing") and key ~= nil then
+    CallOrigToggle("ToggleBag", key)
+  end
+  if not opened() and key ~= nil then
+    if not CallOrigToggle("ToggleBag", key) and type(OpenBag) == "function" then
+      pcall(OpenBag, key)
+    end
+  end
+  if not opened() and type(OpenKeyRing) == "function" then
+    pcall(OpenKeyRing)
+  end
+
+  local _, krFrame = KeyRingFrameIsShown()
+  if krFrame then
+    RestoreFrameInteractive(krFrame)
+  end
+  RestoreShownNativeBags()
+
+  if C_Timer and C_Timer.After then
+    C_Timer.After(0, FinishNativeOpen)
+    C_Timer.After(0.05, FinishNativeOpen)
+  else
+    FinishNativeOpen()
+  end
+end
+
+local function InvokeNativeToggleBag(bagID)
+  local raw = bagID
+  local Slots = BetterBackpack.Modules.Slots
+  if Slots and Slots.IsKeyringBag and raw ~= nil and Slots.IsKeyringBag(raw) then
+    InvokeNativeKeyRing()
+    return
+  end
+  local apiBag = BagIDForNative(raw)
+  ignoringBagShow = true
+  OpenClose._nativeOpening = true
+  BlackoutCombinedOnly()
+  if apiBag ~= nil and not CallOrigToggle("ToggleBag", apiBag) and type(OpenBag) == "function" then
+    pcall(OpenBag, apiBag)
+  end
+  if C_Timer and C_Timer.After then
+    C_Timer.After(0, FinishNativeOpen)
+    C_Timer.After(0.05, FinishNativeOpen)
+  else
+    FinishNativeOpen()
+  end
+end
+
+local function ArmBackpackBarNative()
+  backpackBarArmUntil = Now() + 0.2
+end
+
+local function onBackpackToggle(...)
+  if not EnabledReplace() then
+    BagKeyChat("backpack", "native replaceOff")
+    CallOrigToggle("ToggleBackpack", ...)
+    return
+  end
+  if BagBarNativeEnabled() and Now() < backpackBarArmUntil then
+    BagKeyChat("backpack", "native arm")
+    if SessionOpen() or OursVisible() then
+      OpenClose.CloseOurs({ closeBlizzard = false, suppress = 0.05 })
+    end
+    BlackoutCombinedOnly()
+    CallOrigToggle("ToggleBackpack", ...)
+    return
+  end
+  onBagKey("ToggleBackpack")
+end
+
+-- Open-only (OpenAllBags / OpenBag): open if closed; if open, park Blizzard + refresh focus.
 local function onOpenIntent(bagID)
-  if ignoringBagShow or closeBusy then
+  if inOpenIntent or inBagKey or ignoringBagShow or closeBusy or openBusy then
     return
   end
   if not EnabledReplace() then
     return
   end
+  if BagBarNativeEnabled() then
+    bagID = NormalizeBagID(bagID)
+    if bagID ~= nil then
+      InvokeNativeToggleBag(bagID)
+      return
+    end
+    inOpenIntent = true
+    pcall(CloseNativeCombinedBags)
+    pcall(BlackoutCombinedOnly)
+    ClearFocusBag()
+    ClearCategoryFilter()
+    if SessionOpen() or OursVisible() or openBusy then
+      ParkAllShown()
+      if Layout and Layout.Raise then
+        pcall(Layout.Raise)
+      end
+      if Layout and Layout.Relayout then
+        pcall(Layout.Relayout)
+      end
+      inOpenIntent = false
+      return
+    end
+    if OpenClose.IsReplaceSuppressed() then
+      OpenClose.ClearReplaceSuppress()
+    end
+    local t = Now()
+    if t < toggleLockUntil then
+      ParkAllShown()
+      inOpenIntent = false
+      return
+    end
+    toggleLockUntil = t + TOGGLE_LOCK
+    pcall(OpenOurs)
+    inOpenIntent = false
+    return
+  end
+  inOpenIntent = true
   bagID = NormalizeBagID(bagID)
+
   BlackoutAll()
+  CloseNativeBags()
   if bagID ~= nil then
     SetFocusBag(bagID)
+    ClearCategoryFilter()
+  else
+    ClearFocusBag()
+    ClearCategoryFilter()
   end
   if SessionOpen() or openBusy then
     ParkAllShown()
     if Layout and Layout.Raise then
       pcall(Layout.Raise)
     end
+    if Layout and Layout.Relayout then
+      pcall(Layout.Relayout)
+    end
+    inOpenIntent = false
     return
   end
   if OpenClose.IsReplaceSuppressed() then
@@ -482,23 +1347,36 @@ local function onOpenIntent(bagID)
   local t = Now()
   if t < toggleLockUntil then
     ParkAllShown()
+    inOpenIntent = false
     return
   end
   toggleLockUntil = t + TOGGLE_LOCK
-  OpenOurs()
+  pcall(OpenOurs)
+  inOpenIntent = false
 end
 
 -- ToggleBag + bag-bar OnClick often fire together — debounce to one XOR.
 local lastBagToggleAt = 0
 
---[[
-  XOR for bag-bar / ToggleBag (same contract as B).
-]]
+-- Bag-bar: orig Blizzard ToggleBag only (raw id, incl. secret Enum). Overlay mode: focus lane.
 local function onBagToggle(bagID, src)
-  if ignoringBagShow or closeBusy then
+  if not EnabledReplace() then
+    CallOrigToggle("ToggleBag", bagID)
     return
   end
-  if not EnabledReplace() then
+  if BagBarNativeEnabled() then
+    if SessionOpen() or OursVisible() then
+      OpenClose.CloseOurs({ closeBlizzard = false, suppress = 0.05 })
+    end
+    BlackoutCombinedOnly()
+    CallOrigToggle("ToggleBag", bagID)
+    return
+  end
+  if closeBusy then
+    return
+  end
+  bagID = BagIDForNative(bagID)
+  if bagID == nil then
     return
   end
   local t = Now()
@@ -506,24 +1384,26 @@ local function onBagToggle(bagID, src)
     return
   end
   lastBagToggleAt = t
-
-  bagID = NormalizeBagID(bagID)
-  LogBagPathOnce(src or "ToggleBag", bagID)
-  BlackoutAll()
-
   if t < toggleLockUntil then
-    ParkAllShown()
+    ParkBlizzardForOverlay()
     return
   end
   toggleLockUntil = t + TOGGLE_LOCK
-
+  ParkBlizzardForOverlay()
   if SessionOpen() then
-    ClearFocusBag()
-    OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
-  else
-    if bagID ~= nil then
+    local focused = Layout and Layout.GetBagFocus and Layout.GetBagFocus()
+    if focused ~= nil and FocusBagsMatch(bagID, focused) then
+      OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
+    else
       SetFocusBag(bagID)
+      ClearCategoryFilter()
+      if Layout and Layout.Relayout then
+        pcall(Layout.Relayout)
+      end
     end
+  else
+    SetFocusBag(bagID)
+    ClearCategoryFilter()
     OpenOurs()
   end
 end
@@ -538,6 +1418,8 @@ local function onCloseIntent()
   if SessionOpen() then
     ClearFocusBag()
     OpenClose.CloseOurs({ closeBlizzard = false, suppress = 0.25 })
+  elseif nativeSession or NativeContainersVisible() then
+    EndNativeSession()
   end
 end
 
@@ -589,7 +1471,11 @@ local function BagIdFromButton(btn)
       bagID = btn.id
     end
   end)
-  return NormalizeBagID(bagID)
+  local fromApi = NormalizeBagID(bagID)
+  if fromApi ~= nil then
+    return fromApi
+  end
+  return NormalizeBagID(BagIdFromButtonName(btn))
 end
 
 local function onBagBarClick(btn)
@@ -597,12 +1483,63 @@ local function onBagBarClick(btn)
     if not EnabledReplace() then
       return
     end
-    -- Blizzard ToggleBag already ran; XOR our session.
+    if BagBarNativeEnabled() then
+      -- Blizzard Toggle* replace forwards to orig; avoid filtered BagIdFromButton.
+      if IsKeyringBarButton(self or btn) then
+        onKeyRingToggle()
+        return
+      end
+      local raw
+      pcall(function()
+        local b = self or btn
+        if b and b.GetBagID then
+          raw = b:GetBagID()
+        end
+      end)
+      if raw ~= nil then
+        onBagToggle(raw, "bag-bar")
+      else
+        CallOrigToggle("ToggleBackpack")
+      end
+      return
+    end
     onBagToggle(BagIdFromButton(self or btn), "bag-bar")
   end
 end
 
+local function HookOneBackpackArm(btn)
+  if not btn or btn.BetterBackpackArmNative then
+    return false
+  end
+  local ok = pcall(function()
+    btn:HookScript("OnMouseDown", function()
+      if EnabledReplace() and BagBarNativeEnabled() then
+        ArmBackpackBarNative()
+      end
+    end)
+  end)
+  if ok then
+    btn.BetterBackpackArmNative = true
+  end
+  return ok
+end
+
+local function HookBackpackBarMouseDown()
+  local n = 0
+  if HookOneBackpackArm(_G.MainMenuBarBackpackButton) then
+    n = n + 1
+  end
+  if HookOneBackpackArm(_G.CharacterBag0Slot) then
+    n = n + 1
+  end
+  return n > 0
+end
+
 local function HookBagBarButtons()
+  if BagBarNativeEnabled() then
+    return 0
+  end
+  HookBackpackBarMouseDown()
   local hooked = 0
   local names = {
     "MainMenuBarBackpackButton",
@@ -629,7 +1566,9 @@ local function HookBagBarButtons()
     "MultiBag5",
   }
   for i = 1, #names do
-    if SafeHookOnClick(_G[names[i]], onBagBarClick(_G[names[i]])) then
+    local frameName = names[i]
+    local btn = frameName and _G[frameName]
+    if SafeHookOnClick(btn, onBagBarClick(btn)) then
       hooked = hooked + 1
     end
   end
@@ -653,200 +1592,125 @@ local function HookBagBarButtons()
   return hooked
 end
 
+local BAG_KEY_TOGGLES = { "ToggleAllBags", "ToggleBackpack" }
+
+local function ReplaceOpen(globalName, handler)
+  local orig = _G[globalName]
+  if type(orig) ~= "function" then
+    return false
+  end
+  if OpenClose["_replaced_" .. globalName] then
+    return true
+  end
+  OpenClose["_replaced_" .. globalName] = true
+  OpenClose["_orig_" .. globalName] = orig
+  _G[globalName] = function(...)
+    if not EnabledReplace() then
+      return orig(...)
+    end
+    local ok, err = pcall(handler, ...)
+    if not ok then
+      if BetterBackpack and BetterBackpack.RecordError then
+        BetterBackpack.RecordError(globalName, err)
+      elseif DEFAULT_CHAT_FRAME then
+        DEFAULT_CHAT_FRAME:AddMessage("|cffff5050BetterBackpack|r " .. tostring(globalName) .. ": " .. tostring(err))
+      end
+    end
+  end
+  return true
+end
+
+local function ApplyOpenAPIReplace()
+  CaptureBlizzardOpens()
+  ReplaceOpen("OpenAllBags", function()
+    onOpenIntent(nil)
+  end)
+  ReplaceOpen("OpenBag", function(bagID)
+    onOpenIntent(bagID)
+  end)
+end
+
+function OpenClose.OnMerchantShow()
+  if not EnabledReplace() then
+    return
+  end
+  if not (SessionOpen() or OursVisible()) then
+    return
+  end
+  local function tick()
+    if not (SessionOpen() or OursVisible()) then
+      return
+    end
+    pcall(CloseNativeCombinedBags)
+    pcall(BlackoutCombinedOnly)
+    pcall(ParkBlizzardForOverlay)
+    if Layout and Layout.Raise then
+      pcall(Layout.Raise)
+    end
+    if Layout and Layout.Relayout then
+      pcall(Layout.Relayout)
+    end
+  end
+  if C_Timer and C_Timer.After then
+    C_Timer.After(0, tick)
+  else
+    tick()
+  end
+end
+
+local function ApplyBagKeyReplace()
+  CaptureBlizzardToggles()
+  OpenClose.RestoreBlizzardToggles()
+  -- ToggleBag / ToggleKeyRing stay native — only B paths replaced (0.5.45 path).
+  ReplaceToggle("ToggleAllBags", function(...)
+    onBagKey("ToggleAllBags")
+  end)
+  ReplaceToggle("ToggleBackpack", onBackpackToggle)
+  ApplyOpenAPIReplace()
+end
+
+function OpenClose.EnsureBagKeyReplace()
+  pcall(ApplyBagKeyReplace)
+end
+
 function OpenClose.InstallHooks()
   if hooksInstalled then
     return
   end
-
-  -- Replace Toggle* (do not hooksecurefunc): post-hooks fight Open*/Close* inside the body.
-  ReplaceToggle("ToggleAllBags", onBagKey)
-  ReplaceToggle("ToggleBackpack", onBagKey)
-  ReplaceToggle("ToggleBag", function(id)
-    onBagToggle(id, "ToggleBag")
-  end)
-  ReplaceToggle("ToggleKeyRing", onKeyRingToggle)
-
-  if type(OpenAllBags) == "function" then
-    hooksecurefunc("OpenAllBags", function()
-      onOpenIntent(nil)
-    end)
-  end
-  if type(OpenBackpack) == "function" then
-    hooksecurefunc("OpenBackpack", function()
-      onOpenIntent(0)
-    end)
-  end
-  if type(OpenBag) == "function" then
-    hooksecurefunc("OpenBag", function(id)
-      LogBagPathOnce("OpenBag", id)
-      onOpenIntent(id)
-    end)
-  end
-  if type(CloseBag) == "function" then
-    hooksecurefunc("CloseBag", function()
-      onCloseIntent()
-    end)
-  end
-  if type(CloseAllBags) == "function" then
-    hooksecurefunc("CloseAllBags", function()
-      onCloseIntent()
-    end)
-  end
-  if type(CloseBackpack) == "function" then
-    hooksecurefunc("CloseBackpack", function()
-      onCloseIntent()
-    end)
-  end
-
-  local function hookCombined()
-    local f = ContainerFrameCombinedBags
-    if not f or f.BetterBackpackHooked then
-      return
-    end
-    f.BetterBackpackHooked = true
-
-    if type(f.Show) == "function" then
-      pcall(hooksecurefunc, f, "Show", function(self)
-        if EnabledReplace() or SessionOpen() or openBusy then
-          Blackout(self)
-        end
-      end)
-    end
-
-    pcall(function()
-      f:HookScript("OnShow", function(self)
-        if ignoringBagShow then
-          Blackout(self)
-          return
-        end
-        if not EnabledReplace() then
-          return
-        end
-        Blackout(self)
-        Park(self)
-        if SessionOpen() or openBusy then
-          PulsePark()
-          return
-        end
-        -- Defer: ToggleBackpack body Shows CombinedBags BEFORE hooksecurefunc
-        -- onBagKey. Opening here would let onBagKey XOR-close immediately (B crash).
-        local function afterToggle()
-          if ignoringBagShow or closeBusy or not EnabledReplace() then
-            return
-          end
-          if SessionOpen() or openBusy then
-            ParkAllShown()
-            PulsePark()
-            return
-          end
-          onOpenIntent(nil)
-        end
-        if C_Timer and C_Timer.After then
-          C_Timer.After(0, afterToggle)
-        else
-          afterToggle()
-        end
-      end)
-    end)
-  end
-
-  local function hookContainers()
-    for i = 1, 13 do
-      local f = _G["ContainerFrame" .. i]
-      if f and not f.BetterBackpackHooked then
-        f.BetterBackpackHooked = true
-        pcall(function()
-          f:HookScript("OnShow", function(self)
-            if ignoringBagShow or not EnabledReplace() then
-              return
-            end
-            Blackout(self)
-            Park(self)
-            if SessionOpen() or openBusy then
-              PulsePark()
-              return
-            end
-            local function afterToggle()
-              if ignoringBagShow or closeBusy or not EnabledReplace() then
-                return
-              end
-              if SessionOpen() or openBusy then
-                ParkAllShown()
-                PulsePark()
-                return
-              end
-              onOpenIntent(nil)
-            end
-            if C_Timer and C_Timer.After then
-              C_Timer.After(0, afterToggle)
-            else
-              afterToggle()
-            end
-          end)
-        end)
-      end
-    end
-  end
-
-  hookCombined()
-  hookContainers()
-  local nBag = HookBagBarButtons()
-  -- Forever BagsBar: some slots fire BagSlotOnClick / ToggleBag only — already hooked.
-  -- Re-run bag-bar hooks after BagsBar exists.
-  pcall(function()
-    if BagSlotButtonMixin and BagSlotButtonMixin.OnClick and not OpenClose._bagSlotHooked then
-      OpenClose._bagSlotHooked = true
-      hooksecurefunc(BagSlotButtonMixin, "OnClick", function(self)
-        if not EnabledReplace() then
-          return
-        end
-        onBagToggle(BagIdFromButton(self), "BagSlotMixin")
-      end)
-      nBag = (nBag or 0) + 1
-    end
-  end)
-
-  local guard = CreateFrame("Frame")
-  guard:SetScript("OnUpdate", function(_, elapsed)
-    if not EnabledReplace() or not SessionOpen() then
-      return
-    end
-    if openBusy or closeBusy or ignoringBagShow then
-      return
-    end
-    guardElapsed = guardElapsed + (elapsed or 0)
-    if guardElapsed < 0.2 then
-      return
-    end
-    guardElapsed = 0
-    if FrameVisible(ContainerFrameCombinedBags) then
-      ParkAllShown()
-    else
-      for i = 1, 13 do
-        if FrameVisible(_G["ContainerFrame" .. i]) then
-          ParkAllShown()
-          break
-        end
-      end
-    end
-  end)
-
   hooksInstalled = true
-  LogHooksOnce(string.format("Toggle* replaced · Open/Close hooks · bagBtns=%d", nBag or 0))
-
+  local ok, err = pcall(ApplyBagKeyReplace)
   if C_Timer and C_Timer.After then
+    C_Timer.After(0, function()
+      pcall(ApplyBagKeyReplace)
+    end)
     C_Timer.After(1, function()
-      hookCombined()
-      hookContainers()
-      HookBagBarButtons()
+      pcall(ApplyBagKeyReplace)
     end)
-    C_Timer.After(3, function()
-      hookCombined()
-      hookContainers()
-      HookBagBarButtons()
-    end)
+  end
+  if ok then
+    local n = 0
+    if OpenClose._replaced_ToggleAllBags then
+      n = n + 1
+    end
+    if OpenClose._replaced_ToggleBackpack then
+      n = n + 1
+    end
+    if OpenClose._replaced_OpenAllBags then
+      n = n + 1
+    end
+    if n > 0 then
+      LogHooksOnce(string.format(
+        "B/OpenAllBags → BB · %d toggles · OpenBag hooked",
+        n
+      ))
+    else
+      LogHooksOnce("bag-key toggles missing · /bb only")
+    end
+  elseif BetterBackpack and BetterBackpack.RecordError then
+    BetterBackpack.RecordError("hooks", err)
   end
 end
+
 
 function OpenClose.RunOpenCloseSelfTest()
   local pass, fail, notes = 0, 0, {}
@@ -873,6 +1737,29 @@ function OpenClose.RunOpenCloseSelfTest()
   ok(not OursVisible(), "frame still shown after close")
   OpenClose.ClearReplaceSuppress()
   return fail == 0, pass, fail, notes
+end
+
+function OpenClose.DumpOpenState()
+  local lockRem = math.max(0, toggleLockUntil - Now())
+  local supRem = math.max(0, suppressUntil - Now())
+  local kr = KeyRingNativeOpen() and "open" or "closed"
+  local krKey = tostring(BBKeyringBagIndex())
+  return string.format(
+    "open overlay=%s session=%s layout=%s · native sess=%s focus=%s ui=%s · keyring=%s idx=%s · lock=%.2fs suppress=%.2fs · busy o/c=%s/%s · bagBarNative=%s",
+    tostring(bagsOpen),
+    tostring(SessionOpen()),
+    tostring(OursVisible()),
+    tostring(nativeSession),
+    tostring(nativeFocusBag),
+    tostring(NativeContainersVisible()),
+    kr,
+    krKey,
+    lockRem,
+    supRem,
+    tostring(openBusy),
+    tostring(closeBusy),
+    tostring(BagBarNativeEnabled())
+  )
 end
 
 OpenClose.ForceCloseBlizzard = ForceCloseBlizzard

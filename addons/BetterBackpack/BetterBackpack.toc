@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: Category-lane bags with combat-safe RMB. Parks CombinedBags — never Hide.
+## Notes: 1.0.0 — category lanes, combat B, vendor bulk, auto-sell.
 ## Author: tuma
-## Version: 0.5.5
+## Version: 1.0.0
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled
@@ -12,13 +12,16 @@ Locale/enUS.lua
 Config.lua
 Modules/Slots.lua
 Modules/Context.lua
+Modules/VendorJunk.lua
 Modules/Search.lua
 Modules/Filter.lua
 Modules/CustomCategories.lua
+Modules/Trash.lua
 Modules/StackMerge.lua
 Modules/Pins.lua
 Modules/LayoutModes.lua
 Modules/Layout.lua
+Modules/BulkTransfer.lua
 Modules/OpenClose.lua
 Modules/Tidy.lua
 Modules/Settings.lua

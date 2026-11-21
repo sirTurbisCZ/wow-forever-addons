@@ -144,6 +144,28 @@ function Slots.AttrBagSlot(bag, slot)
   return SafeNum(bag, nil), s
 end
 
+-- Bag/slot tokens for C_Container.* (keep secret Enum bag indices).
+function Slots.ContainerAPI(bag, slot)
+  local s = SafeNum(slot, nil)
+  if s == nil and slot ~= nil then
+    s = slot
+  end
+  if s == nil then
+    return nil, nil
+  end
+  if Slots.IsKeyringBag(bag) then
+    return Slots.KeyringBagIndex() or bag, s
+  end
+  if Slots.IsReagentBag(bag) then
+    return Slots.ReagentBagIndex() or bag, s
+  end
+  local plain = SafeNum(bag, nil)
+  if plain ~= nil then
+    return plain, s
+  end
+  return bag, s
+end
+
 function Slots.NumSlotsForBag(bag)
   if C_Container and C_Container.GetContainerNumSlots then
     local ok, res = pcall(C_Container.GetContainerNumSlots, bag)
@@ -302,6 +324,39 @@ function Slots.BagRanges()
   return ranges
 end
 
+--- Item id for a bag slot (non-secret paths: container API, item link).
+function Slots.ItemIDForBagSlot(bag, slot)
+  if bag == nil or slot == nil then
+    return nil
+  end
+  if C_Container and C_Container.GetContainerItemID then
+    local ok, res = pcall(C_Container.GetContainerItemID, bag, slot)
+    if ok then
+      local id = SafeNum(res)
+      if id then
+        return id
+      end
+    end
+  end
+  if C_Container and C_Container.GetContainerItemInfo then
+    local ok, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
+    if ok and type(info) == "table" then
+      local id = SafeNum(info.itemID)
+      if id then
+        return id
+      end
+    end
+  end
+  local link = Slots.ItemLink(bag, slot)
+  if type(link) == "string" then
+    local fromLink = link:match("item:(%d+)")
+    if fromLink then
+      return tonumber(fromLink)
+    end
+  end
+  return nil
+end
+
 function Slots.SlotOccupied(bag, slot)
   if C_Container and C_Container.GetContainerItemID then
     local ok, res = pcall(C_Container.GetContainerItemID, bag, slot)
@@ -394,7 +449,7 @@ local function EnsureCountFs(btn)
   local fs = btn.Count
   if not fs then
     pcall(function()
-      fs = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+      fs = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
     end)
     if not fs then
       fs = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -402,24 +457,172 @@ local function EnsureCountFs(btn)
     btn.Count = fs
   end
   pcall(function()
+    -- Compact count: NumberFontNormalSmall white, RIGHT, BOTTOMRIGHT -3,2 (font shadow).
+    if NumberFontNormalSmall then
+      fs:SetFontObject(NumberFontNormalSmall)
+    elseif GameFontHighlightSmall then
+      fs:SetFontObject(GameFontHighlightSmall)
+    end
     fs:ClearAllPoints()
-    fs:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -1, 1)
+    fs:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -3, 2)
     fs:SetJustifyH("RIGHT")
-    -- Always white — never green/quality-tinted count.
     fs:SetTextColor(1, 1, 1, 1)
     if fs.SetDrawLayer then
       fs:SetDrawLayer("OVERLAY", 7)
     end
-    if fs.SetShadowOffset then
-      fs:SetShadowOffset(1, -1)
-    end
-    if NumberFontNormal then
-      fs:SetFontObject(NumberFontNormal)
-    elseif GameFontHighlightSmall then
-      fs:SetFontObject(GameFontHighlightSmall)
-    end
   end)
   return fs
+end
+
+--[[
+  ContainerFrameItemButton look = ItemButtonTemplate state art + bags-item-slot64 well.
+  Art is read once from a hidden ItemButtonTemplate (never guessed); fallbacks are the
+  classic ItemButtonTemplate files. Applied at creation only (OOC for secure buttons).
+]]
+local itemArt
+local ITEM_ART_FALLBACK = {
+  normal = { file = "Interface\\Buttons\\UI-Quickslot2", w = 64, h = 64, p = "CENTER", rp = "CENTER", x = 0, y = -1 },
+  pushed = { file = "Interface\\Buttons\\UI-Quickslot-Depress" },
+  highlight = { file = "Interface\\Buttons\\ButtonHilight-Square", blend = "ADD" },
+  border = { file = "Interface\\Common\\WhiteIconFrame", w = SLOT, h = SLOT, p = "CENTER", rp = "CENTER", x = 0, y = 0 },
+}
+
+local function GrabTex(tex, parent)
+  if not tex then
+    return nil
+  end
+  local d = {}
+  pcall(function()
+    local atlas = tex.GetAtlas and tex:GetAtlas()
+    if type(atlas) == "string" and atlas ~= "" and not IsSecret(atlas) then
+      d.atlas = atlas
+    end
+    local file = tex:GetTexture()
+    if file ~= nil and not IsSecret(file) then
+      d.file = file
+    end
+    local c = { tex:GetTexCoord() }
+    if #c == 8 and not IsSecret(c[1]) then
+      d.coords = c
+    end
+    if tex.GetBlendMode then
+      local b = tex:GetBlendMode()
+      if type(b) == "string" and not IsSecret(b) then
+        d.blend = b
+      end
+    end
+    local p, rel, rp, x, y = tex:GetPoint(1)
+    local w, h = tex:GetSize()
+    -- Only keep explicit geometry when the art is not simply stretched over the button.
+    if p and rel == parent and type(w) == "number" and w > 0 and math.abs(w - (parent:GetWidth() or w)) > 0.5 then
+      d.p, d.rp, d.x, d.y, d.w, d.h = p, rp, x or 0, y or 0, w, h
+    end
+  end)
+  if not d.atlas and not d.file then
+    return nil
+  end
+  return d
+end
+
+local function ReadItemArt()
+  if itemArt then
+    return itemArt
+  end
+  itemArt = {}
+  local ref
+  pcall(function()
+    ref = CreateFrame("ItemButton", nil, EnsureHost(), "ItemButtonTemplate")
+  end)
+  if not ref then
+    pcall(function()
+      ref = CreateFrame("Button", nil, EnsureHost(), "ItemButtonTemplate")
+    end)
+  end
+  if ref then
+    pcall(function()
+      ref:SetSize(SLOT, SLOT)
+      ref:Hide()
+      itemArt.normal = GrabTex(ref.GetNormalTexture and ref:GetNormalTexture(), ref)
+      itemArt.pushed = GrabTex(ref.GetPushedTexture and ref:GetPushedTexture(), ref)
+      itemArt.highlight = GrabTex(ref.GetHighlightTexture and ref:GetHighlightTexture(), ref)
+      itemArt.border = GrabTex(ref.IconBorder, ref)
+    end)
+  end
+  for k, v in pairs(ITEM_ART_FALLBACK) do
+    if not itemArt[k] then
+      itemArt[k] = v
+    end
+  end
+  return itemArt
+end
+
+local function PlaceArt(tex, btn, d)
+  if not tex or not d then
+    return
+  end
+  pcall(function()
+    tex:ClearAllPoints()
+    if d.w then
+      tex:SetSize(d.w, d.h)
+      tex:SetPoint(d.p or "CENTER", btn, d.rp or d.p or "CENTER", d.x or 0, d.y or 0)
+    else
+      tex:SetAllPoints(btn)
+    end
+  end)
+end
+
+local function PaintArt(tex, d)
+  if not tex or not d then
+    return
+  end
+  pcall(function()
+    if d.atlas then
+      tex:SetAtlas(d.atlas)
+    else
+      tex:SetTexture(d.file)
+      if d.coords then
+        tex:SetTexCoord(unpack(d.coords))
+      end
+    end
+    if d.blend and tex.SetBlendMode then
+      tex:SetBlendMode(d.blend)
+    end
+  end)
+end
+
+local function ApplyItemButtonArt(btn)
+  if not btn or btn._bbArt then
+    return
+  end
+  btn._bbArt = true
+  local art = ReadItemArt()
+  pcall(function()
+    btn:SetNormalTexture(art.normal.file or "Interface\\Buttons\\UI-Quickslot2")
+    PaintArt(btn:GetNormalTexture(), art.normal)
+    btn:SetPushedTexture(art.pushed.file or "Interface\\Buttons\\UI-Quickslot-Depress")
+    PaintArt(btn:GetPushedTexture(), art.pushed)
+    btn:SetHighlightTexture(art.highlight.file or "Interface\\Buttons\\ButtonHilight-Square", art.highlight.blend or "ADD")
+    PaintArt(btn:GetHighlightTexture(), art.highlight)
+  end)
+  pcall(function()
+    local border = btn.IconBorder
+    if not border then
+      border = btn:CreateTexture(nil, "OVERLAY")
+      btn.IconBorder = border
+      border:Hide()
+    end
+    PaintArt(border, art.border)
+  end)
+end
+
+local function PlaceItemButtonArt(btn)
+  local art = ReadItemArt()
+  pcall(function()
+    PlaceArt(btn.GetNormalTexture and btn:GetNormalTexture(), btn, art.normal)
+    PlaceArt(btn.GetPushedTexture and btn:GetPushedTexture(), btn, art.pushed)
+    PlaceArt(btn.GetHighlightTexture and btn:GetHighlightTexture(), btn, art.highlight)
+    PlaceArt(btn.IconBorder, btn, art.border)
+  end)
 end
 
 local function ResolveStackCount(info, bag, slot)
@@ -499,6 +702,27 @@ local function ResolveIconTexture(info, bag, slot)
     end
   end
   return nil
+end
+
+-- Baganator Blizzard skin: empty SlotBackground under icon (CombinedBags-like).
+-- Must stay above SyncVisual / Acquire / MakeVisualOnly (Lua 5.1 local scope).
+local function EnsureSlotBackground(btn)
+  if not btn or btn.SlotBackground then
+    return btn and btn.SlotBackground
+  end
+  local sb
+  pcall(function()
+    sb = btn:CreateTexture(nil, "BACKGROUND", nil, -1)
+    sb:SetAllPoints(btn)
+    local ok = pcall(sb.SetAtlas, sb, "bags-item-slot64")
+    if not ok then
+      sb:SetTexture("Interface\\Buttons\\UI-EmptySlot-Disabled")
+      sb:SetTexCoord(0.15, 0.85, 0.15, 0.85)
+    end
+    sb:SetAlpha(0.9)
+    btn.SlotBackground = sb
+  end)
+  return btn.SlotBackground
 end
 
 function Slots.SyncVisual(btn, bag, slot)
@@ -608,7 +832,10 @@ function Slots.SyncAttrs(btn, bag, slot)
     btn:SetAttribute("macrotext1", nil)
     btn:SetAttribute("*type1", nil)
     btn:SetAttribute("*macrotext1", nil)
-    if special then
+    -- Merchant/mail: clear type2 (Pickup RMB). Bank + normal: keep type2=item
+    -- so secure UseContainerItem deposits at bank (native CombinedBags path).
+    local insecure = special == "merchant" or special == "mail"
+    if insecure then
       btn:SetAttribute("type2", nil)
       btn:SetAttribute("*type2", nil)
       btn:SetAttribute("item2", nil)
@@ -707,6 +934,152 @@ local function ClearLmbUse(self)
   end)
 end
 
+-- Drag-teach: which bag slot / lane the item on the cursor was picked up from.
+local dragSrc
+
+local function CursorItemID()
+  if not GetCursorInfo then
+    return nil
+  end
+  local ok, kind, id = pcall(GetCursorInfo)
+  if ok and kind == "item" then
+    return Slots.SafeNum(id) or true
+  end
+  return nil
+end
+
+function Slots.GetDragSource()
+  return dragSrc
+end
+
+function Slots.ClearDragSource()
+  dragSrc = nil
+end
+
+function Slots.ItemLink(bag, slot)
+  local link
+  if C_Container and C_Container.GetContainerItemLink then
+    local ok, res = pcall(C_Container.GetContainerItemLink, bag, slot)
+    if ok then
+      link = res
+    end
+  elseif GetContainerItemLink then
+    local ok, res = pcall(GetContainerItemLink, bag, slot)
+    if ok then
+      link = res
+    end
+  end
+  if type(link) ~= "string" or IsSecret(link) then
+    return nil
+  end
+  return link
+end
+
+local function ChatEditActive()
+  if ChatEdit_GetActiveWindow then
+    local ok, eb = pcall(ChatEdit_GetActiveWindow)
+    if ok and eb then
+      return true
+    end
+  end
+  if ChatFrameUtil and ChatFrameUtil.GetActiveWindow then
+    local ok, eb = pcall(ChatFrameUtil.GetActiveWindow)
+    if ok and eb then
+      return true
+    end
+  end
+  return false
+end
+
+--- Shift / Ctrl link + dress-up, same path as ContainerFrameItemButton (chat box open or not).
+function Slots.InsertChatLink(link)
+  if type(link) ~= "string" then
+    return false
+  end
+  local fns = {
+    ChatEdit_InsertLink,
+    ChatFrameUtil and ChatFrameUtil.InsertLink,
+  }
+  for i = 1, #fns do
+    if type(fns[i]) == "function" then
+      local ok, res = pcall(fns[i], link)
+      if ok and res then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+local function Modified(kind, fallback)
+  if IsModifiedClick then
+    local ok, res = pcall(IsModifiedClick, kind)
+    if ok then
+      return res and true or false
+    end
+  end
+  return fallback and fallback() or false
+end
+
+local function SplitStack(self, b, s)
+  local info
+  if C_Container and C_Container.GetContainerItemInfo then
+    local ok, res = pcall(C_Container.GetContainerItemInfo, b, s)
+    info = ok and type(res) == "table" and res or nil
+  end
+  local count = SafeNum(info and info.stackCount)
+  if not count or count < 2 or (info and info.isLocked) then
+    return false
+  end
+  self.SplitStack = function(_, split)
+    if C_Container and C_Container.SplitContainerItem then
+      pcall(C_Container.SplitContainerItem, b, s, split)
+    elseif SplitContainerItem then
+      pcall(SplitContainerItem, b, s, split)
+    end
+    dragSrc = nil
+  end
+  if StackSplitFrame and StackSplitFrame.OpenStackSplitFrame then
+    return pcall(StackSplitFrame.OpenStackSplitFrame, StackSplitFrame, count, self, "BOTTOMRIGHT", "TOPRIGHT")
+  end
+  if OpenStackSplitFrame then
+    return pcall(OpenStackSplitFrame, count, self, "BOTTOMRIGHT", "TOPRIGHT")
+  end
+  return false
+end
+
+--- Modified LMB on a bag item. True = handled natively, do not pick the item up.
+local function HandleModifiedLmb(self)
+  local shift = IsShiftKeyDown and IsShiftKeyDown()
+  local ctrl = IsControlKeyDown and IsControlKeyDown()
+  local alt = IsAltKeyDown and IsAltKeyDown()
+  if not (shift or ctrl or alt) then
+    return false
+  end
+  local b, s = self._bbBag, self._bbSlot
+  if b == nil or s == nil then
+    return false
+  end
+  local link = Slots.ItemLink(b, s)
+  if link then
+    if Modified("CHATLINK", function() return shift end) and ChatEditActive() and Slots.InsertChatLink(link) then
+      return true
+    end
+    if HandleModifiedItemClick then
+      local ok, res = pcall(HandleModifiedItemClick, link)
+      if ok and res then
+        return true
+      end
+    end
+  end
+  if Modified("SPLITSTACK", function() return shift end) and not CursorItemID() then
+    if SplitStack(self, b, s) then
+      return true
+    end
+  end
+  return false
+end
+
 local function WireScripts(btn)
   if btn._bbWired then
     if not (InCombatLockdown and InCombatLockdown()) then
@@ -726,10 +1099,33 @@ local function WireScripts(btn)
     if not b or not s then
       return
     end
+    local Layout = BetterBackpack.Modules.Layout
+    local held = CursorItemID()
+    -- Our item dropped on an item in another lane = teach that lane, no swap.
+    if held and dragSrc and self._bbLane and dragSrc.lane ~= self._bbLane
+        and (held == true or held == dragSrc.itemID)
+        and Layout and Layout.DropOnLane and Layout.DropOnLane(self._bbLane)
+    then
+      return
+    end
+    local idBefore = Slots.ItemIDForBagSlot(b, s)
     if C_Container and C_Container.PickupContainerItem then
       pcall(C_Container.PickupContainerItem, b, s)
     elseif PickupContainerItem then
       pcall(PickupContainerItem, b, s)
+    end
+    local now = CursorItemID()
+    local itemID = idBefore
+    if not itemID and now and now ~= true then
+      itemID = now
+    end
+    if now or idBefore then
+      dragSrc = { bag = b, slot = s, lane = self._bbLane, itemID = itemID }
+    else
+      dragSrc = nil
+    end
+    if Layout and Layout.SetDropHints then
+      Layout.SetDropHints(dragSrc ~= nil)
     end
   end
   btn:RegisterForClicks("AnyUp", "AnyDown")
@@ -738,8 +1134,16 @@ local function WireScripts(btn)
   btn:SetScript("OnReceiveDrag", pickup)
   if btn.HookScript then
     btn:HookScript("OnMouseDown", function(self, button)
+      -- Flush waiting Trash stacks on click, but not while picking up (would fight the cursor).
+      if button == "LeftButton" and not CursorItemID() then
+        local Trash = BetterBackpack.Modules.Trash
+        if Trash and Trash.FlushOnClick and not (InCombatLockdown and InCombatLockdown()) then
+          Trash.FlushOnClick()
+        end
+      end
       local Context = BetterBackpack.Modules.Context
-      if button == "RightButton" and Context and Context.SpecialRmbContext and Context.SpecialRmbContext() then
+      -- Only merchant/mail clear type2. Bank keeps secure UseContainerItem.
+      if button == "RightButton" and Context and Context.NeedsInsecureSpecialRmb and Context.NeedsInsecureSpecialRmb() then
         Slots.ClearRmbUse(self)
         self._bbSpecialRmb = true
         return
@@ -756,7 +1160,7 @@ local function WireScripts(btn)
     btn:HookScript("OnMouseUp", function(self, button)
       local Context = BetterBackpack.Modules.Context
       if button == "RightButton" then
-        if self._bbSpecialRmb or (Context and Context.SpecialRmbContext and Context.SpecialRmbContext()) then
+        if self._bbSpecialRmb or (Context and Context.NeedsInsecureSpecialRmb and Context.NeedsInsecureSpecialRmb()) then
           if Context and Context.TrySpecialRmb then
             Context.TrySpecialRmb(self)
           end
@@ -775,7 +1179,7 @@ local function WireScripts(btn)
             ClearLmbUse(self)
             self._bbSpellTarget = nil
           end
-        else
+        elseif CursorItemID() or not HandleModifiedLmb(self) then
           pickup(self)
         end
       end
@@ -827,20 +1231,20 @@ local function MakeVisualOnly(name, parent)
     btn = CreateFrame("Button", name, parent)
     btn:SetSize(SLOT, SLOT)
     EnsureSlotBackground(btn)
-    local icon = btn:CreateTexture(nil, "ARTWORK")
+    local icon = btn:CreateTexture(nil, "BORDER")
     icon:SetAllPoints()
-    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     btn.icon = icon
     btn.Icon = icon
     local count
     pcall(function()
-      count = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+      count = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
     end)
     if not count then
       count = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     end
-    count:SetPoint("BOTTOMRIGHT", -2, 2)
+    count:SetPoint("BOTTOMRIGHT", -3, 2)
     btn.Count = count
+    ApplyItemButtonArt(btn)
   end
   EnsureCooldown(btn)
   btn._bbSecure = false
@@ -892,25 +1296,20 @@ function Slots.Acquire(bag, slot)
   else
     btn:SetSize(SLOT, SLOT)
     EnsureSlotBackground(btn)
-    local icon = btn:CreateTexture(nil, "ARTWORK")
+    local icon = btn:CreateTexture(nil, "BORDER")
     icon:SetAllPoints()
-    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     btn.icon = icon
     btn.Icon = icon
     local count
     pcall(function()
-      count = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+      count = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
     end)
     if not count then
       count = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     end
-    count:SetPoint("BOTTOMRIGHT", -2, 2)
+    count:SetPoint("BOTTOMRIGHT", -3, 2)
     btn.Count = count
-    local border = btn:CreateTexture(nil, "OVERLAY")
-    border:SetTexture([[Interface\Common\WhiteIconFrame]])
-    border:SetAllPoints()
-    border:Hide()
-    btn.IconBorder = border
+    ApplyItemButtonArt(btn)
     EnsureCooldown(btn)
   end
   btn._bbSecure = isSecure and true or false
@@ -975,26 +1374,6 @@ function Slots.IsPreCreated()
   return preCreated
 end
 
--- Baganator Blizzard skin: empty SlotBackground under icon (CombinedBags-like).
-local function EnsureSlotBackground(btn)
-  if not btn or btn.SlotBackground then
-    return btn and btn.SlotBackground
-  end
-  local sb
-  pcall(function()
-    sb = btn:CreateTexture(nil, "BACKGROUND", nil, -1)
-    sb:SetAllPoints(btn)
-    local ok = pcall(sb.SetAtlas, sb, "bags-item-slot64")
-    if not ok then
-      sb:SetTexture("Interface\\Buttons\\UI-EmptySlot-Disabled")
-      sb:SetTexCoord(0.15, 0.85, 0.15, 0.85)
-    end
-    sb:SetAlpha(0.9)
-    btn.SlotBackground = sb
-  end)
-  return btn.SlotBackground
-end
-
 -- One grid size for every category (ItemButtonTemplate / quality border drift).
 local function NormalizeSlotVisual(btn)
   if not btn then
@@ -1027,34 +1406,19 @@ local function NormalizeSlotVisual(btn)
       ic:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
       ic:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
       ic:SetSize(SLOT, SLOT)
-      ic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+      -- ItemButtonTemplate icon: full texture in BORDER (bevel NormalTexture draws over it).
+      ic:SetTexCoord(0, 1, 0, 1)
       if ic.SetDrawLayer then
-        ic:SetDrawLayer("ARTWORK", 0)
+        ic:SetDrawLayer("BORDER", 0)
       end
       ic:SetAlpha(1)
       ic:Show()
     end)
   end
-  pcall(function()
-    local nt = btn.GetNormalTexture and btn:GetNormalTexture()
-    if nt then
-      nt:ClearAllPoints()
-      nt:SetAllPoints(btn)
-      nt:SetSize(SLOT, SLOT)
-    end
-    local pt = btn.GetPushedTexture and btn:GetPushedTexture()
-    if pt then
-      pt:ClearAllPoints()
-      pt:SetAllPoints(btn)
-    end
-    local ht = btn.GetHighlightTexture and btn:GetHighlightTexture()
-    if ht then
-      ht:ClearAllPoints()
-      ht:SetAllPoints(btn)
-    end
-  end)
+  -- State art keeps ItemButtonTemplate geometry (64×64 bevel centered), never squashed to SLOT.
+  PlaceItemButtonArt(btn)
   -- Quality / overlay chrome must not inflate past SLOT.
-  for _, key in ipairs({ "IconBorder", "IconOverlay", "IconOverlay2", "IconQuestTexture", "flash" }) do
+  for _, key in ipairs({ "IconOverlay", "IconOverlay2", "IconQuestTexture", "flash" }) do
     local r = btn[key]
     if r and r.ClearAllPoints then
       pcall(function()
@@ -1069,7 +1433,7 @@ local function NormalizeSlotVisual(btn)
   if btn.Count then
     pcall(function()
       btn.Count:ClearAllPoints()
-      btn.Count:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -1, 1)
+      btn.Count:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -3, 2)
     end)
   end
   if btn.cooldown or btn.Cooldown then

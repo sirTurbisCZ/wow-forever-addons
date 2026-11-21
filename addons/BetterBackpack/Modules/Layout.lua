@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.5).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.27).
   Forever: never SetToplevel / SetFrameStrata (ADDON_ACTION_BLOCKED).
   Chrome metrics from Baganator Forever Blizzard skin + ContainerFrameCombinedBags:
     ButtonFrameOffset=6, Bg/TopTile @ (6,-21), NineSlice borders, Inset hidden.
@@ -20,18 +20,19 @@ local function Feat(name)
 end
 
 local SLOT = 37
-local PAD = 4
-local HEADER_H = 20
+local PAD = 2 -- dense grid (0.5.8)
+local HEADER_H = 18
 local HEADER_PAD = 2
-local SECTION_GAP = 8
+local SECTION_GAP = 4
 -- Baganator Forever Blizzard skin: ButtonFrameOffset=6, OffsetTop=2.
 local BF_OFFSET = 6
 local BF_OFFSET_TOP = 2
-local INSET_X = BF_OFFSET + 8 -- content left inside NineSlice (≈ CombinedBags feel)
+local INSET_X = BF_OFFSET + 8 -- content left/right inside NineSlice (symmetric, CombinedBags feel)
 local TOP_CHROME = 54 -- title + search row (Baganator search ≈ -28)
 local BOT_CHROME = 30 -- footer strip inside bottom border
 local FOOTER_H = 20
-local FRAME_RIGHT_PAD = BF_OFFSET + 22
+-- Narrowest grid that still fits title|broom|gear|X, search box and N/M + money footer.
+local MIN_COLS = 6
 local CHROME_BTN = 32
 local CLASSIC_BORDER = {
   "BotLeftCorner", "BotRightCorner", "BottomBorder", "LeftBorder", "RightBorder",
@@ -39,10 +40,13 @@ local CLASSIC_BORDER = {
 }
 
 local CATEGORY_ORDER = {
-  "junk", "consumable", "reagent", "gem", "gear", "quest", "keys", "container", "other",
+  "junk", "consumable", "reagent", "gem", "gear", "quest", "keys", "container", "trash", "other",
 }
 
+local TRASH = "trash"
+
 local CATEGORY_LABELS = {
+  trash = "Trash",
   junk = "Junk",
   consumable = "Consumables",
   reagent = "Materials",
@@ -73,6 +77,9 @@ function Layout.GetCategoryLabel(key)
       return custom
     end
   end
+  if key == TRASH then
+    return (CATEGORY_LABELS.trash or "Trash") .. "  |cffff6666(destroy)|r"
+  end
   return CATEGORY_LABELS[key] or key
 end
 
@@ -88,8 +95,10 @@ local layoutBusy = false
 local bagHoverHooked = false
 local bagBarHoverHooked = {}
 local focusBagID = nil
+local combatVisuallyHidden = false
 -- Forward decl: DoLayout runs before the definition body below (Lua 5.1 upvalue).
 local EnsureTitleChrome
+local ApplyCombinedBagsChrome
 local SetBagMatchHighlight
 local ClearBagMatchGlows
 
@@ -135,11 +144,15 @@ local function CategoryEnabled(key)
     return false
   end
   local cats = Profile().categories
+  if key == TRASH then
+    return type(cats) == "table" and cats[key] == true
+  end
   if not cats then
     return true
   end
   return cats[key] ~= false
 end
+Layout.CategoryEnabled = CategoryEnabled
 
 local function IsCollapsed(key)
   local c = Profile().collapsed
@@ -262,6 +275,41 @@ local function MapTypeString(itemType, itemSubType)
   return nil
 end
 
+-- Category from item class alone (no learned / custom rules).
+local function ClassifyNatural(bag, slot, info, itemID)
+  local quality = SafeNum(info.quality)
+  local classID, subClassID, itemType, itemSubType, equipLoc = InstantClass(itemID)
+  local mapped = MapClassID(classID, subClassID, quality)
+  if mapped then
+    return mapped
+  end
+  mapped = MapTypeString(itemType, itemSubType)
+  if mapped then
+    return mapped
+  end
+  if type(equipLoc) == "string" and equipLoc ~= "" then
+    local el = equipLoc:upper()
+    if el == "INVTYPE_FINGER" or el == "INVTYPE_NECK" or el == "INVTYPE_TRINKET"
+        or el == "INVTYPE_CLOAK" or el:find("WEAPON", 1, true)
+    then
+      return "gear"
+    end
+  end
+  if Slots.IsKeyringBag and Slots.IsKeyringBag(bag) then
+    return "keys"
+  end
+  if classID == CLASS.Key then
+    return "keys"
+  end
+  if quality == 0 and not Slots.IsReagentBag(bag) and not (Slots.IsKeyringBag and Slots.IsKeyringBag(bag)) then
+    return "junk"
+  end
+  if Slots.IsReagentBag(bag) then
+    return "reagent"
+  end
+  return "other"
+end
+
 function Layout.ClassifyBagSlot(bag, slot)
   if not C_Container or not C_Container.GetContainerItemInfo then
     return "other", nil
@@ -294,47 +342,225 @@ function Layout.ClassifyBagSlot(bag, slot)
       return rule, info
     end
   end
-  local quality = SafeNum(info.quality)
-  local classID, subClassID, itemType, itemSubType, equipLoc = InstantClass(itemID)
-  local mapped = MapClassID(classID, subClassID, quality)
-  if mapped then
-    return mapped, info
-  end
-  mapped = MapTypeString(itemType, itemSubType)
-  if mapped then
-    return mapped, info
-  end
-  if type(equipLoc) == "string" and equipLoc ~= "" then
-    local el = equipLoc:upper()
-    if el == "INVTYPE_FINGER" or el == "INVTYPE_NECK" or el == "INVTYPE_TRINKET"
-        or el == "INVTYPE_CLOAK" or el:find("WEAPON", 1, true)
-    then
-      return "gear", info
-    end
-  end
-  if Slots.IsKeyringBag and Slots.IsKeyringBag(bag) then
-    return "keys", info
-  end
-  if classID == CLASS.Key then
-    return "keys", info
-  end
-  if quality == 0 and not Slots.IsReagentBag(bag) and not (Slots.IsKeyringBag and Slots.IsKeyringBag(bag)) then
-    return "junk", info
-  end
-  if Slots.IsReagentBag(bag) then
-    return "reagent", info
-  end
-  return "other", info
+  return ClassifyNatural(bag, slot, info, itemID), info
 end
 
-local function CollectBuckets()
+--- Lane an item lands in with no learned rule (disabled built-in → Other).
+function Layout.NaturalLane(bag, slot)
+  if not C_Container or not C_Container.GetContainerItemInfo then
+    return "other"
+  end
+  local ok, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
+  if not ok or type(info) ~= "table" then
+    return "other"
+  end
+  local cat = ClassifyNatural(bag, slot, info, ResolveItemID(bag, slot, info)) or "other"
+  if cat == "weapon" or cat == "armor" then
+    cat = "gear"
+  end
+  if not CategoryEnabled(cat) then
+    cat = "other"
+  end
+  return cat
+end
+
+--- Natural lane for an itemID that may not be in the bags (Trash ghosts).
+function Layout.NaturalLaneForID(itemID)
+  local q
+  if C_Item and C_Item.GetItemQualityByID then
+    local ok, res = pcall(C_Item.GetItemQualityByID, itemID)
+    q = ok and SafeNum(res) or nil
+  end
+  if q == nil and GetItemInfo then
+    local ok, _, _, res = pcall(GetItemInfo, itemID)
+    q = ok and SafeNum(res) or nil
+  end
+  local cat = ClassifyNatural(0, 0, { quality = q }, itemID) or "other"
+  if cat == "weapon" or cat == "armor" then
+    cat = "gear"
+  end
+  if not CategoryEnabled(cat) then
+    cat = "other"
+  end
+  return cat
+end
+
+--[[
+  Drag-teach (0.5.17): an item picked up from our bag and dropped on a lane header, on an
+  item in another lane is not moved — its itemID is taught to that lane
+  (profile.itemRules) and the cursor is cleared, so the item stays in its bag slot.
+]]
+function Layout.SetDropHints(on)
+  for _, sf in pairs(sectionFrames) do
+    if sf.header and sf.header.dropHl then
+      sf.header.dropHl:SetShown(on and sf:IsShown() and true or false)
+    end
+  end
+  local Settings = Feat("Settings")
+  if Settings and Settings.SetDropHints then
+    pcall(Settings.SetDropHints, on)
+  end
+end
+
+local function CursorHoldingItem()
+  if not GetCursorInfo then
+    return false
+  end
+  local ok, kind = pcall(GetCursorInfo)
+  return ok and kind == "item"
+end
+
+local function HeldDragSource()
+  local src = Slots.GetDragSource and Slots.GetDragSource()
+  if not src or not GetCursorInfo then
+    return nil
+  end
+  local ok, kind, id = pcall(GetCursorInfo)
+  if not ok or kind ~= "item" then
+    return nil
+  end
+  if not src.itemID and src.bag ~= nil and src.slot ~= nil and Slots.ItemIDForBagSlot then
+    src.itemID = Slots.ItemIDForBagSlot(src.bag, src.slot)
+  end
+  if not src.itemID then
+    src.itemID = SafeNum(id)
+  end
+  if not src.itemID then
+    return nil
+  end
+  local held = SafeNum(id)
+  if held and held ~= src.itemID then
+    return nil
+  end
+  return src
+end
+
+local function EndDrag()
+  pcall(ClearCursor)
+  if Slots.ClearDragSource then
+    Slots.ClearDragSource()
+  end
+  Layout.SetDropHints(false)
+end
+
+function Layout.DropOnLane(key)
+  if type(key) ~= "string" then
+    return false
+  end
+  local src = HeldDragSource()
+  if not src then
+    return false
+  end
+  if key == TRASH then
+    local T = Feat("Trash")
+    if not T then
+      return false
+    end
+    -- Cursor keeps the item: Trash deletes it inside this click.
+    if Slots.ClearDragSource then
+      Slots.ClearDragSource()
+    end
+    Layout.SetDropHints(false)
+    T.HandleDrop(src)
+    return true
+  end
+  local CC = Feat("CustomCategories")
+  if not (CC and CC.Teach) then
+    return false
+  end
+  EndDrag()
+  CC.Teach(src.itemID, key, Layout.NaturalLane(src.bag, src.slot))
+  return true
+end
+
+function Layout.DropNewLane()
+  local src = HeldDragSource()
+  if not src then
+    return false
+  end
+  EndDrag()
+  local CC = Feat("CustomCategories")
+  if CC and CC.PromptNew then
+    CC.PromptNew(src.itemID)
+  end
+  return true
+end
+
+--- Lane key under the mouse, for the Trash ghost fake drag.
+function Layout.LaneUnderMouse()
+  local function Over(f)
+    return f and f:IsVisible() and f:IsMouseOver()
+  end
+  for key, sf in pairs(sectionFrames) do
+    if Over(sf) and Over(sf.header) then
+      return key
+    end
+  end
+  local hit
+  if Slots.ForEach then
+    Slots.ForEach(function(btn)
+      if not hit and btn._bbLane and (btn:GetAlpha() or 0) > 0 and Over(btn) then
+        local ok, on = pcall(btn.IsMouseEnabled, btn)
+        if not ok or on then
+          hit = btn._bbLane
+        end
+      end
+    end)
+  end
+  if hit then
+    return hit
+  end
+  local Settings = Feat("Settings")
+  if Settings and Settings.LaneUnderMouse then
+    return Settings.LaneUnderMouse()
+  end
+  return nil
+end
+
+local cursorWatch = CreateFrame("Frame")
+pcall(cursorWatch.RegisterEvent, cursorWatch, "CURSOR_CHANGED")
+pcall(cursorWatch.RegisterEvent, cursorWatch, "CURSOR_UPDATE")
+cursorWatch:SetScript("OnEvent", function()
+  local ok, kind = pcall(GetCursorInfo)
+  if not ok or kind ~= "item" then
+    if Slots.ClearDragSource then
+      Slots.ClearDragSource()
+    end
+    Layout.SetDropHints(false)
+  end
+end)
+
+-- While open the frame only grows (new loot); collapse / search / using items never shrink it.
+-- Reset on close, so the next open refits to the full unfiltered layout.
+local stickyCols, stickyH
+
+local function IsFiltering()
+  local S, F = Feat("Search"), Feat("Filter")
+  local q = S and S.GetQuery and S.GetQuery() or ""
+  local f = F and F.GetCategory and F.GetCategory()
+  return (type(q) == "string" and q ~= "") or f ~= nil
+end
+
+-- unfiltered=true ignores Search/Filter: used to size the frame so filtering never resizes it.
+local function BagsMatchForHighlight(a, b)
+  if a == nil or b == nil then
+    return false
+  end
+  if Slots.IsReagentBag(a) and Slots.IsReagentBag(b) then
+    return true
+  end
+  local na, nb = SafeNum(a, nil), SafeNum(b, nil)
+  return na ~= nil and nb ~= nil and na == nb
+end
+
+local function CollectBuckets(unfiltered)
   local order = Layout.GetCategoryOrder()
   local buckets = {}
   for i = 1, #order do
     buckets[order[i]] = {}
   end
-  local Search = Feat("Search")
-  local Filter = Feat("Filter")
+  local Search = not unfiltered and Feat("Search")
+  local Filter = not unfiltered and Feat("Filter")
   local ranges = Slots.BagRanges()
   for i = 1, #ranges do
     local bag, n = ranges[i].bag, ranges[i].slots
@@ -438,8 +664,8 @@ local function LogPlayerSlotsOnce(used, total, parts)
     used or 0,
     total or 0
   )
-  if DEFAULT_CHAT_FRAME then
-    DEFAULT_CHAT_FRAME:AddMessage(msg)
+  if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
+    pcall(DEFAULT_CHAT_FRAME.AddMessage, DEFAULT_CHAT_FRAME, msg)
   end
 end
 
@@ -474,11 +700,46 @@ local function UpdateFreeSpace()
     freeFs:Show()
     freeFs:ClearAllPoints()
     local footer = main.footer or freeFs:GetParent()
-    freeFs:SetPoint("LEFT", footer, "LEFT", 4, 0)
-    freeFs:SetPoint("TOP", footer, "TOP", 0, 0)
-    freeFs:SetPoint("BOTTOM", footer, "BOTTOM", 0, 0)
-    if freeFs.SetFontObject and NumberFontNormalSmall then
-      freeFs:SetFontObject(NumberFontNormalSmall)
+    -- Same font + baseline as the money text (copper button is always shown).
+    local moneyText
+    pcall(function()
+      local mname = main.moneyFrame and main.moneyFrame:GetName()
+      local gold = mname and _G[mname .. "CopperButton"]
+      moneyText = gold and gold.GetFontString and gold:GetFontString()
+    end)
+    local fontSet = false
+    if moneyText then
+      pcall(function()
+        local fo = moneyText:GetFontObject()
+        if fo then
+          freeFs:SetFontObject(fo)
+          fontSet = true
+        else
+          local f, sz, fl = moneyText:GetFont()
+          if f and sz then
+            freeFs:SetFont(f, sz, fl)
+            fontSet = true
+          end
+        end
+      end)
+    end
+    if not fontSet then
+      freeFs:SetFontObject(NumberFontNormalRight or NumberFontNormal)
+    end
+    local placed = false
+    if moneyText then
+      pcall(function()
+        local mb, fb = moneyText:GetBottom(), main:GetBottom()
+        if type(mb) == "number" and type(fb) == "number" and mb - fb >= 0 and mb - fb < 40 then
+          freeFs:SetPoint("BOTTOMLEFT", main, "BOTTOMLEFT", BF_OFFSET + 8, mb - fb)
+          placed = true
+        end
+      end)
+    end
+    if not placed then
+      freeFs:SetPoint("LEFT", footer, "LEFT", 4, 0)
+      freeFs:SetPoint("TOP", footer, "TOP", 0, 0)
+      freeFs:SetPoint("BOTTOM", footer, "BOTTOM", 0, 0)
     end
     freeFs:SetJustifyH("LEFT")
     freeFs:SetJustifyV("MIDDLE")
@@ -495,17 +756,6 @@ local function UpdateFreeSpace()
       freeFs:SetTextColor(0.95, 0.25, 0.20)
     end
   end)
-end
-
-local function BagsMatchForHighlight(a, b)
-  if a == nil or b == nil then
-    return false
-  end
-  if Slots.IsReagentBag(a) and Slots.IsReagentBag(b) then
-    return true
-  end
-  local na, nb = SafeNum(a, nil), SafeNum(b, nil)
-  return na ~= nil and nb ~= nil and na == nb
 end
 
 local function EnsureBagIndicator(btn)
@@ -571,7 +821,7 @@ ClearBagMatchGlows = function()
 end
 
 function Layout.SetBagFocus(bagID)
-  if type(bagID) == "number" then
+  if bagID ~= nil then
     focusBagID = bagID
   else
     focusBagID = nil
@@ -689,7 +939,7 @@ local function HookBagBarButtons()
 end
 
 local function InstallBagHoverHighlight()
-  HookBagBarButtons()
+  pcall(HookBagBarButtons)
   if bagHoverHooked then
     return
   end
@@ -752,23 +1002,102 @@ local function InstallBagHoverHighlight()
   end
 end
 
-local function EnsureSection(key)
-  local sf = sectionFrames[key]
-  if sf then
-    return sf
+local function HeaderShiftDown(header)
+  if IsShiftKeyDown and IsShiftKeyDown() then
+    return true
   end
-  sf = CreateFrame("Frame", nil, content)
-  sf:SetSize(100, HEADER_H)
-  sf:SetFrameLevel((content:GetFrameLevel() or 1) + 5)
-  local header = CreateFrame("Button", nil, sf)
-  header:SetPoint("TOPLEFT")
-  header:SetPoint("TOPRIGHT")
-  header:SetHeight(HEADER_H)
-  header:RegisterForClicks("LeftButtonUp")
-  local title = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-  title:SetPoint("LEFT", 4, 0)
-  header.title = title
-  header:SetScript("OnClick", function()
+  return header and header._bbShiftDown == true
+end
+
+local function HeaderInvokeBulkTransfer(header, laneKey)
+  header._bbShiftDown = nil
+  if BetterBackpack.Print then
+    BetterBackpack.Print("|cff88ccffBulk|r header Shift+RMB · lane=" .. tostring(laneKey))
+  end
+  local BT = BetterBackpack.Modules.BulkTransfer or Feat("BulkTransfer")
+  if BT and BT.TransferLane then
+    local ok, err = pcall(BT.TransferLane, laneKey)
+    if not ok and BetterBackpack.Print then
+      BetterBackpack.Print("|cff88ccffBulk|r TransferLane error · " .. tostring(err))
+    end
+  elseif BetterBackpack.Print then
+    BetterBackpack.Print("|cff88ccffBulk|r ERROR — BulkTransfer module not loaded (TOC/Core)")
+  end
+  return true
+end
+
+local function HeaderShiftRmb(header, laneKey)
+  if CursorHoldingItem() then
+    return false
+  end
+  if not HeaderShiftDown(header) then
+    return false
+  end
+  if Layout.DropOnLane(laneKey) then
+    header._bbShiftDown = nil
+    return true
+  end
+  return HeaderInvokeBulkTransfer(header, laneKey)
+end
+
+local function WireSectionHeader(key, header)
+  if not header then
+    return
+  end
+  header._bbLane = key
+  header:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+  header:SetScript("OnMouseDown", function(self, button)
+    if button == "RightButton" then
+      self._bbShiftDown = (IsShiftKeyDown and IsShiftKeyDown()) or false
+    elseif not (IsShiftKeyDown and IsShiftKeyDown()) then
+      self._bbShiftDown = nil
+    end
+  end)
+  header:SetScript("OnMouseUp", function(self, button)
+    if button == "LeftButton" and CursorHoldingItem() then
+      Layout.DropOnLane(key)
+      return
+    end
+    if button == "RightButton" then
+      local shift = HeaderShiftDown(self)
+      if shift and not CursorHoldingItem() then
+        if BetterBackpack.Print then
+          BetterBackpack.Print(string.format(
+            "|cff88ccffBulk|r header MouseUp · lane=%s shift=%s",
+            tostring(key),
+            tostring(shift)
+          ))
+        end
+        if Layout.DropOnLane(key) then
+          self._bbShiftDown = nil
+          self._bbBulkHandled = true
+          return
+        end
+        HeaderInvokeBulkTransfer(self, key)
+        self._bbBulkHandled = true
+      end
+    end
+  end)
+  header:SetScript("OnClick", function(self, button)
+    if button == "RightButton" then
+      if self._bbBulkHandled then
+        self._bbBulkHandled = nil
+        return
+      end
+      if HeaderShiftRmb(self, key) then
+        return
+      end
+    end
+    if Layout.DropOnLane(key) then
+      return
+    end
+    if CursorHoldingItem() then
+      return
+    end
+    local T = Feat("Trash")
+    if T and T.FlushOnClick then
+      T.FlushOnClick()
+    end
     local p = Profile()
     if type(p.collapsed) ~= "table" then
       p.collapsed = {}
@@ -776,9 +1105,131 @@ local function EnsureSection(key)
     p.collapsed[key] = not p.collapsed[key]
     Layout.Relayout()
   end)
+end
+
+local function EnsureSection(key)
+  local sf = sectionFrames[key]
+  if sf then
+    if sf.header then
+      WireSectionHeader(key, sf.header)
+    end
+    return sf
+  end
+  sf = CreateFrame("Frame", nil, content)
+  sf:SetSize(100, HEADER_H)
+  sf:SetFrameLevel((content:GetFrameLevel() or 1) + 5)
+  -- Baganator Forever category header: bag-arrow atlas (rotated) + GameFontNormalMed2 label.
+  local header = CreateFrame("Button", nil, sf)
+  header:SetPoint("TOPLEFT")
+  header:SetPoint("TOPRIGHT")
+  header:SetHeight(HEADER_H)
+  header:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+  header:RegisterForDrag("LeftButton")
+  header:EnableMouse(true)
+  local arrow = header:CreateTexture(nil, "ARTWORK")
+  arrow:SetSize(14, 14)
+  arrow:SetPoint("LEFT", 0, 0)
+  if pcall(arrow.SetAtlas, arrow, "bag-arrow") and arrow:GetAtlas() then
+    header.arrowAtlas = true
+  end
+  header.arrow = arrow
+  local title = header:CreateFontString(nil, "OVERLAY")
+  if not pcall(title.SetFontObject, title, GameFontNormalMed2 or GameFontNormal) then
+    title:SetFontObject(GameFontNormal)
+  end
+  title:SetPoint("LEFT", arrow, "RIGHT", 6, 0)
+  title:SetJustifyH("LEFT")
+  header.title = title
+  local countFs = header:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  countFs:SetPoint("LEFT", title, "RIGHT", 4, 0)
+  header.countFs = countFs
+  local dropHl = header:CreateTexture(nil, "BACKGROUND")
+  dropHl:SetAllPoints()
+  dropHl:SetColorTexture(1, 0.82, 0, 0.12)
+  dropHl:Hide()
+  header.dropHl = dropHl
+  header:SetScript("OnReceiveDrag", function()
+    Layout.DropOnLane(key)
+  end)
+  WireSectionHeader(key, header)
+  header:SetScript("OnEnter", function(self)
+    self.title:SetTextColor(1, 1, 1)
+    local BT = Feat("BulkTransfer")
+    local bulkLine = BT and BT.HeaderTooltipLine and BT.HeaderTooltipLine()
+    if bulkLine and GameTooltip then
+      GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+      GameTooltip:SetText(Layout.GetCategoryLabel(key))
+      GameTooltip:AddLine(bulkLine, 0.2, 1, 0.4, true)
+      GameTooltip:Show()
+    elseif key == TRASH and GameTooltip then
+      GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+      GameTooltip:SetText("Trash — destroys items")
+      GameTooltip:AddLine("Not the Junk lane (grey loot only sorts there).", 1, 0.82, 0, true)
+      GameTooltip:AddLine("Drop a white/grey stack here to destroy it and auto-destroy future loot.", 0.7, 0.7, 0.7, true)
+      GameTooltip:Show()
+    end
+  end)
+  header:SetScript("OnLeave", function(self)
+    local c = NORMAL_FONT_COLOR
+    if c and c.r then
+      self.title:SetTextColor(c.r, c.g, c.b)
+    else
+      self.title:SetTextColor(1, 0.82, 0)
+    end
+    if GameTooltip then
+      GameTooltip:Hide()
+    end
+  end)
   sf.header = header
   sectionFrames[key] = sf
   return sf
+end
+
+local function SetHeaderState(header, label, count, collapsed)
+  header.title:SetText(label)
+  header.countFs:SetText(string.format("(%d)", count))
+  local arrow = header.arrow
+  pcall(function()
+    if header.arrowAtlas then
+      -- Baganator: expanded = π/2 (points down), collapsed = -π (points right).
+      arrow:SetRotation(collapsed and -math.pi or math.pi / 2)
+    else
+      arrow:SetTexture(collapsed and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up")
+    end
+  end)
+end
+
+-- Filtered view keeps the unfiltered frame size; pad the space under the matches with
+-- empty bags-item-slot64 wells so the window reads as a bag, not a blank panel.
+local wellPool = {}
+local function FillEmptyWells(on, startY, contentH, cols)
+  local n = 0
+  if on then
+    local y = startY
+    while y + SLOT <= contentH + 0.5 do
+      for col = 0, cols - 1 do
+        n = n + 1
+        local w = wellPool[n]
+        if not w then
+          w = content:CreateTexture(nil, "BACKGROUND", nil, 1)
+          w:SetSize(SLOT, SLOT)
+          if not pcall(w.SetAtlas, w, "bags-item-slot64") or not w:GetAtlas() then
+            w:SetTexture("Interface\\Buttons\\UI-EmptySlot-Disabled")
+            w:SetTexCoord(0.15, 0.85, 0.15, 0.85)
+          end
+          w:SetAlpha(0.9)
+          wellPool[n] = w
+        end
+        w:ClearAllPoints()
+        w:SetPoint("TOPLEFT", content, "TOPLEFT", col * (SLOT + PAD), -y)
+        w:Show()
+      end
+      y = y + SLOT + PAD
+    end
+  end
+  for i = n + 1, #wellPool do
+    wellPool[i]:Hide()
+  end
 end
 
 local function DoLayout()
@@ -790,24 +1241,84 @@ local function DoLayout()
   end
   layoutBusy = true
   local ok, err = pcall(function()
-    local cols = Columns()
-    local buckets = CollectBuckets()
+    local maxCols = Columns()
     local used = {}
     local y = 0
-    -- BagShelves: content width = cols*(SLOT+PAD)+4 (CombinedBags feel).
-    local contentW = cols * (SLOT + PAD) + 4
     local any = false
     local order = Layout.GetCategoryOrder()
     local SM = Feat("StackMerge")
 
+    local function MergedLists(buckets)
+      local out = {}
+      for i = 1, #order do
+        local key = order[i]
+        if CategoryEnabled(key) then
+          local list = buckets[key] or {}
+          if SM and SM.Collapse then
+            list = SM.Collapse(list)
+          end
+          out[key] = list
+        end
+      end
+      return out
+    end
+
+    local lists = MergedLists(CollectBuckets(false))
+    -- Size from the unfiltered bag: search / filter / "No matches" keep the same frame.
+    -- Frame size = full bag, every lane expanded, no search/filter. Collapse and search
+    -- only change what is drawn inside; the window never resizes for them.
+    local filtering = IsFiltering()
+    local sizing = filtering and MergedLists(CollectBuckets(true)) or lists
+    -- Custom lanes and Trash are drop targets: drawn even when empty (header + "(0)"),
+    -- except while a search / filter hides lanes without matches.
+    local function IsCustom(key)
+      return key == TRASH or (type(key) == "string" and key:find("^custom_", 1) ~= nil)
+    end
+
+    -- Trash ghosts: one per taught itemID, UI-only (no bag slot), appended after real stacks.
+    local TrashMod = Feat("Trash")
+    local ghostIDs = {}
+    if TrashMod and lists[TRASH] and TrashMod.TaughtIDs then
+      ghostIDs = TrashMod.TaughtIDs()
+      local target = filtering and sizing or lists
+      if target[TRASH] then
+        for g = 1, #ghostIDs do
+          target[TRASH][#target[TRASH] + 1] = { ghost = ghostIDs[g] }
+        end
+      end
+    end
+    local ghostUsed = {}
+
+    -- Grid width = widest unfiltered lane (capped at maxCols), never narrower than this open's max.
+    local widest = 0
+    for _, list in pairs(sizing) do
+      if #list > widest then
+        widest = #list
+      end
+    end
+    local cols = math.max(math.min(widest, maxCols), math.min(MIN_COLS, maxCols))
+    if stickyCols and stickyCols > cols then
+      cols = math.min(stickyCols, maxCols)
+    end
+    local contentW = cols * SLOT + (cols - 1) * PAD
+
+    local lanesH = 0
+    for i = 1, #order do
+      local list = sizing[order[i]]
+      if list and (#list > 0 or IsCustom(order[i])) then
+        lanesH = lanesH + HEADER_H + HEADER_PAD
+        if #list > 0 then
+          lanesH = lanesH + math.ceil(#list / cols) * (SLOT + PAD) - PAD
+        end
+        lanesH = lanesH + SECTION_GAP
+      end
+    end
+
     for i = 1, #order do
       local key = order[i]
       if CategoryEnabled(key) then
-        local list = buckets[key] or {}
-        if SM and SM.Collapse then
-          list = SM.Collapse(list)
-        end
-        if #list > 0 then
+        local list = lists[key] or {}
+        if #list > 0 or (IsCustom(key) and not filtering) then
           any = true
           local sf = EnsureSection(key)
           sf:ClearAllPoints()
@@ -815,29 +1326,38 @@ local function DoLayout()
           sf:SetWidth(contentW)
           sf:Show()
           local collapsed = IsCollapsed(key)
-          sf.header.title:SetText(string.format(
-            "%s%s (%d)",
-            collapsed and "[+] " or "[-] ",
-            Layout.GetCategoryLabel(key),
-            #list
-          ))
+          local shownCount = #list
+          if key == TRASH and not filtering then
+            shownCount = #ghostIDs
+          end
+          SetHeaderState(sf.header, Layout.GetCategoryLabel(key), shownCount, collapsed)
           y = y + HEADER_H + HEADER_PAD
-          if not collapsed then
+          if not collapsed and #list > 0 then
             local col, row = 0, 0
             local rows = math.ceil(#list / cols)
             -- Parent to main (absolute), not content — content sat under Inset.Bg.
             local parentFrame = main or content
             for j = 1, #list do
               local entry = list[j]
-              local bag, slot = entry.bag, entry.slot
-              local btn = Slots.Acquire(bag, slot)
-              if btn then
-                used[btn] = true
-                local px = INSET_X + col * (SLOT + PAD)
-                local py = TOP_CHROME + y + row * (SLOT + PAD)
-                Slots.Place(btn, parentFrame, px, py, true)
-                if SM and SM.ApplyDisplayCount then
-                  SM.ApplyDisplayCount(btn, entry)
+              local px = INSET_X + col * (SLOT + PAD)
+              local py = TOP_CHROME + y + row * (SLOT + PAD)
+              if entry.ghost then
+                if TrashMod and TrashMod.PlaceGhost then
+                  TrashMod.PlaceGhost(entry.ghost, parentFrame, px, py)
+                  ghostUsed[entry.ghost] = true
+                end
+              else
+                local btn = Slots.Acquire(entry.bag, entry.slot)
+                if btn then
+                  used[btn] = true
+                  btn._bbLane = key
+                  Slots.Place(btn, parentFrame, px, py, true)
+                  if SM and SM.ApplyDisplayCount then
+                    SM.ApplyDisplayCount(btn, entry)
+                  end
+                  if TrashMod and TrashMod.SetPendingVeil then
+                    TrashMod.SetPendingVeil(btn, key == TRASH)
+                  end
                 end
               end
               col = col + 1
@@ -846,7 +1366,7 @@ local function DoLayout()
                 row = row + 1
               end
             end
-            y = y + rows * (SLOT + PAD)
+            y = y + rows * (SLOT + PAD) - PAD
           end
           -- Even gap after every section (trimmed once at end).
           y = y + SECTION_GAP
@@ -872,12 +1392,17 @@ local function DoLayout()
       end
     end
 
+    if TrashMod and TrashMod.HideGhosts then
+      TrashMod.HideGhosts(ghostUsed)
+    end
+
     local PinsMod = Feat("Pins")
     if PinsMod and PinsMod.Layout then
       local pinH = PinsMod.Layout(content, y, cols) or 0
       if pinH > 0 then
         any = true
         y = y + pinH + SECTION_GAP
+        lanesH = lanesH + pinH + SECTION_GAP
       end
     end
 
@@ -903,15 +1428,24 @@ local function DoLayout()
     if y >= SECTION_GAP then
       y = y - SECTION_GAP
     end
-    local contentH = math.max(y, 40)
-    -- BagShelves ApplyFrameSize: outer = contentW + INSET_X + 28.
-    local width = contentW + INSET_X + FRAME_RIGHT_PAD
+    if lanesH >= SECTION_GAP then
+      lanesH = lanesH - SECTION_GAP
+    end
+    local contentH = math.max(y, lanesH, 40)
+    local width = INSET_X + contentW + INSET_X
     local height = TOP_CHROME + contentH + BOT_CHROME
+    if stickyH and stickyH > height then
+      height = stickyH
+      contentH = height - TOP_CHROME - BOT_CHROME
+    end
+    stickyCols, stickyH = cols, height
     content:ClearAllPoints()
     -- Always from main (not Inset) — Inset stretch left empty black below Other.
     content:SetPoint("TOPLEFT", main, "TOPLEFT", INSET_X, -TOP_CHROME)
     content:SetSize(contentW, contentH)
     content:Show()
+    -- Space freed by collapse / search (frame stays full size) → empty wells.
+    FillEmptyWells(Profile().fillEmptyWells == true, y + SECTION_GAP, contentH, cols)
     -- Content above Bg; Inset stays hidden (Baganator). NineSlice draws borders.
     local mainLvl = main:GetFrameLevel() or 200
     pcall(function()
@@ -930,6 +1464,22 @@ local function DoLayout()
       main.footer:SetPoint("BOTTOMLEFT", main, "BOTTOMLEFT", BF_OFFSET + 4, 6)
       main.footer:SetPoint("BOTTOMRIGHT", main, "BOTTOMRIGHT", -(BF_OFFSET + 4), 6)
       main.footer:SetFrameLevel(mainLvl + 5)
+      -- Hairline between grid and footer (N/M + money).
+      local line = main.footer.hairline
+      if not line then
+        line = main.footer:CreateTexture(nil, "ARTWORK")
+        line:SetColorTexture(1, 1, 1, 0.14)
+        main.footer.hairline = line
+      end
+      line:ClearAllPoints()
+      line:SetPoint("BOTTOMLEFT", main.footer, "TOPLEFT", 0, 1)
+      line:SetPoint("BOTTOMRIGHT", main.footer, "TOPRIGHT", 0, 1)
+      if PixelUtil and PixelUtil.SetHeight then
+        PixelUtil.SetHeight(line, 1)
+      else
+        line:SetHeight(1)
+      end
+      line:Show()
     end
     if main.moneyFrame then
       main.moneyFrame:ClearAllPoints()
@@ -938,8 +1488,8 @@ local function DoLayout()
         main.moneyFrame:SetFrameLevel(mainLvl + 6)
       end)
     end
-    ApplyCombinedBagsChrome(main)
-    EnsureTitleChrome(main)
+    pcall(ApplyCombinedBagsChrome, main)
+    pcall(EnsureTitleChrome, main)
     local SearchChrome = Feat("Search")
     if SearchChrome and SearchChrome.EnsureChrome then
       pcall(SearchChrome.EnsureChrome, main)
@@ -1078,8 +1628,9 @@ end
 --[[
   Legit CombinedBags / Baganator Forever Blizzard chrome:
   NineSlice borders, TopTileStreaks, solid Bg inset (6,-21), Inset hidden.
+  Assigns the forward-declared upvalue (DoLayout calls it) — not `local function`.
 ]]
-local function ApplyCombinedBagsChrome(frame)
+ApplyCombinedBagsChrome = function(frame)
   if not frame then
     return
   end
@@ -1194,12 +1745,12 @@ local function ApplyCombinedBagsChrome(frame)
   end)
 end
 
-local function CreateBagPanel()
+local function CreateChromedFrame(globalName)
   -- Named frame persists across failed EnsureMain — always reuse, never double-create.
   -- Prefer ButtonFrameTemplate (CombinedBags-class chrome: TitleContainer, Close, Inset, Bg).
   -- Forever may fire ADDON_ACTION_BLOCKED on template SetFrameStrata — that is an *event*,
   -- not a hard abort when CreateFrame is pcall'd. Never call SetFrameStrata ourselves.
-  local frame = _G.BetterBackpackFrame
+  local frame = _G[globalName]
   if not frame then
     local templates = {
       "ButtonFrameTemplate",
@@ -1209,9 +1760,9 @@ local function CreateBagPanel()
     for i = 1, #templates do
       local tmpl = templates[i]
       local ok, f = pcall(function()
-        return CreateFrame("Frame", "BetterBackpackFrame", UIParent, tmpl)
+        return CreateFrame("Frame", globalName, UIParent, tmpl)
       end)
-      frame = _G.BetterBackpackFrame
+      frame = _G[globalName]
       if not frame and ok and f then
         frame = f
       end
@@ -1222,7 +1773,7 @@ local function CreateBagPanel()
     end
   end
   if not frame then
-    frame = CreateFrame("Frame", "BetterBackpackFrame", UIParent)
+    frame = CreateFrame("Frame", globalName, UIParent)
     frame._bbTemplate = "plain"
   end
   pcall(function()
@@ -1253,6 +1804,20 @@ local function CreateBagPanel()
   return frame
 end
 
+local function CreateBagPanel()
+  return CreateChromedFrame("BetterBackpackFrame")
+end
+
+--- Same CombinedBags chrome as the bag (Settings panel).
+function Layout.CreateChromedPanel(globalName)
+  return CreateChromedFrame(globalName)
+end
+
+function Layout.ApplyChrome(frame)
+  KillPortrait(frame)
+  ApplyCombinedBagsChrome(frame)
+end
+
 local function DestroyHalfBuilt()
   -- Keep parent UIParent — SetParent(nil) left a shell that Show() could not revive.
   if main then
@@ -1277,10 +1842,9 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local CHROME_VER = 21 -- Baganator Forever metrics + CombinedBags NineSlice/Bg/TopTile
+local CHROME_VER = 33 -- 0.5.27: broom Close-twin size sync every layout
 local chromeLogged = false
 local customChromeHidden = false
-local nativeSortReleased = false
 
 --[[
   0.4.2: twin BagItemAutoSortButton style for BOTH title buttons.
@@ -1317,30 +1881,15 @@ local function HideLegacyChromeOnce()
   end
 end
 
-local function ReleaseNativeAutoSortOnce(frame)
-  if nativeSortReleased then
-    return
+local function CloseButtonSize(close)
+  if not close then
+    return MeasureAutoSortSize()
   end
-  nativeSortReleased = true
-  local sortNative = _G.BagItemAutoSortButton
-  if not sortNative then
-    return
+  local cw, ch = close:GetWidth(), close:GetHeight()
+  if type(cw) == "number" and cw >= 8 and type(ch) == "number" and ch >= 8 then
+    return cw, ch
   end
-  pcall(function()
-    local parent = sortNative:GetParent()
-    if parent == frame then
-      local combined = ContainerFrameCombinedBags
-      if combined then
-        sortNative:SetParent(combined)
-        sortNative:ClearAllPoints()
-        sortNative:SetPoint("TOPRIGHT", combined, "TOPRIGHT", -40, -4)
-        sortNative:Hide()
-      else
-        sortNative:SetParent(UIParent)
-        sortNative:Hide()
-      end
-    end
-  end)
+  return MeasureAutoSortSize()
 end
 
 local function MeasureAutoSortSize()
@@ -1384,98 +1933,339 @@ local function LogChromeOnce(tidy, gear, close)
     wh(close),
     CHROME_VER
   )
-  if DEFAULT_CHAT_FRAME then
-    DEFAULT_CHAT_FRAME:AddMessage(msg)
+  if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
+    pcall(DEFAULT_CHAT_FRAME.AddMessage, DEFAULT_CHAT_FRAME, msg)
   end
 end
 
--- AutoSort twin: SetNormalAtlas / SetPushedAtlas, exact AutoSort size, NO glow highlight.
-local function StyleAutoSortTwin(btn, kind, w, h)
-  btn:SetSize(w, h)
-  btn:SetWidth(w)
-  btn:SetHeight(h)
-  -- Clear any leftover CreateTexture / ADD hilight from older chrome.
-  pcall(function()
-    btn:SetNormalTexture(nil)
-    btn:SetPushedTexture(nil)
-    btn:SetHighlightTexture(nil)
-    btn:SetDisabledTexture(nil)
-  end)
-  if kind == "tidy" then
-    local ok = pcall(function()
-      btn:SetNormalAtlas("bags-button-autosort-up")
-      btn:SetPushedAtlas("bags-button-autosort-down")
-    end)
-    if not ok then
-      pcall(function()
-        btn:SetNormalTexture("Interface\\Buttons\\UI-RefreshButton")
-      end)
-    end
-    pcall(function()
-      local nt = btn:GetNormalTexture()
-      if nt then
-        nt:ClearAllPoints()
-        nt:SetAllPoints()
-      end
-      local pt = btn:GetPushedTexture()
-      if pt then
-        pt:ClearAllPoints()
-        pt:SetAllPoints()
-      end
-    end)
+local function AtlasExists(atlas)
+  if type(atlas) ~= "string" or not (C_Texture and C_Texture.GetAtlasInfo) then
+    return false
+  end
+  local ok, info = pcall(C_Texture.GetAtlasInfo, atlas)
+  return ok and info ~= nil
+end
+
+-- Read a native button state texture (atlas preferred, + own size if not stretched).
+local function NativeArt(tex, owner)
+  if not tex then
+    return nil
+  end
+  local d
+  local atlas = SafeAtlas(tex)
+  if atlas then
+    d = { atlas = atlas }
   else
-    -- Settings twin: same Set*Atlas path + size as broom. Prefer flat Gear atlas.
-    local ok = false
-    for _, atlas in ipairs({ "Gear", "OptionsIcon-Brown", "bags-icon-equipment" }) do
-      if not ok then
-        ok = pcall(function()
-          btn:SetNormalAtlas(atlas)
-          btn:SetPushedAtlas(atlas)
-        end)
+    local file = SafeTexture(tex)
+    if not file then
+      return nil
+    end
+    d = { file = file }
+    pcall(function()
+      local c = { tex:GetTexCoord() }
+      if #c == 8 and not IsSecret(c[1]) then
+        d.coords = c
+      end
+    end)
+  end
+  pcall(function()
+    local b = tex:GetBlendMode()
+    if type(b) == "string" and not IsSecret(b) then
+      d.blend = b
+    end
+    if owner then
+      local w, h = tex:GetSize()
+      local ow = owner:GetWidth()
+      if type(w) == "number" and w > 0 and type(ow) == "number" and math.abs(w - ow) > 0.5 then
+        local p, _, rp, x, y = tex:GetPoint(1)
+        d.w, d.h, d.p, d.rp, d.x, d.y = w, h, p or "CENTER", rp or p or "CENTER", x or 0, y or 0
       end
     end
-    if not ok then
-      -- Last resort: OptionsButton cropped flat, never ADD-blended.
-      pcall(function()
-        btn:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
-        local nt = btn:GetNormalTexture()
-        if nt then
-          nt:ClearAllPoints()
-          nt:SetAllPoints()
-          nt:SetTexCoord(0.15, 0.85, 0.15, 0.85)
-          nt:SetVertexColor(0.9, 0.9, 0.9)
-        end
-        btn:SetPushedTexture("Interface\\Buttons\\UI-OptionsButton")
-        local pt = btn:GetPushedTexture()
-        if pt then
-          pt:ClearAllPoints()
-          pt:SetPoint("CENTER", 1, -1)
-          pt:SetSize(w - 2, h - 2)
-          pt:SetTexCoord(0.15, 0.85, 0.15, 0.85)
-          pt:SetVertexColor(0.7, 0.7, 0.7)
-        end
-      end)
+  end)
+  return d
+end
+
+local function SetStateArt(btn, which, d)
+  pcall(function()
+    if not d then
+      btn["Set" .. which .. "Texture"](btn, nil)
+      return
+    end
+    local setAtlas = btn["Set" .. which .. "Atlas"]
+    if d.atlas and setAtlas then
+      if which == "Highlight" then
+        setAtlas(btn, d.atlas, d.blend or "ADD")
+      else
+        setAtlas(btn, d.atlas)
+      end
+    elseif which == "Highlight" then
+      btn:SetHighlightTexture(d.file, d.blend or "ADD")
     else
+      btn["Set" .. which .. "Texture"](btn, d.file)
+    end
+    local t = btn["Get" .. which .. "Texture"](btn)
+    if t then
+      if d.file and d.coords then
+        t:SetTexCoord(unpack(d.coords))
+      end
+      t:ClearAllPoints()
+      if d.w and btn._bbCloseRef then
+        t:SetAllPoints(btn)
+      elseif d.w then
+        t:SetSize(d.w, d.h)
+        t:SetPoint(d.p, btn, d.rp, d.x, d.y)
+      else
+        t:SetAllPoints(btn)
+      end
+    end
+  end)
+end
+
+-- ContainerFrame.xml BagItemAutoSortButton: 25×23, highlight 21×20 centered.
+local SQUARE_HILIGHT = {
+  file = "Interface\\Buttons\\ButtonHilight-Square",
+  blend = "ADD",
+  w = 21,
+  h = 20,
+  p = "CENTER",
+  rp = "CENTER",
+  x = 0,
+  y = 0,
+}
+local GEAR_ATLASES = { "questlog-icon-setting", "GM-icon-settings", "OptionsIcon-Brown", "Gear" }
+
+--[[
+  Title buttons like CombinedBags: broom = 1:1 copy of the live BagItemAutoSortButton
+  state art + size; gear = same size, flat gear icon (verified atlas), same square
+  highlight, 1px press offset. Atlases are checked with C_Texture.GetAtlasInfo —
+  SetNormalAtlas does not error on unknown names, so pcall alone never fell back.
+]]
+local function StretchButtonStateArt(btn)
+  for _, which in ipairs({ "Normal", "Pushed", "Highlight" }) do
+    local t = btn["Get" .. which .. "Texture"] and btn["Get" .. which .. "Texture"](btn)
+    if t then
       pcall(function()
-        local nt = btn:GetNormalTexture()
-        if nt then
-          nt:ClearAllPoints()
-          nt:SetAllPoints()
-        end
-        local pt = btn:GetPushedTexture()
-        if pt then
-          pt:ClearAllPoints()
-          pt:SetPoint("CENTER", 1, -1)
-          pt:SetSize(w, h)
-          pt:SetVertexColor(0.8, 0.8, 0.8)
-        end
+        t:ClearAllPoints()
+        t:SetAllPoints(btn)
       end)
     end
   end
-  -- No glow (UI-Common-MouseHilight ADD was the shiny ring).
+end
+
+local function StyleAutoSortTwin(btn, kind, w, h)
+  btn:SetSize(w, h)
   pcall(function()
-    btn:SetHighlightTexture(nil)
+    btn:SetDisabledTexture(nil)
   end)
+  local native = _G.BagItemAutoSortButton
+  local nativeHl = native and NativeArt(native.GetHighlightTexture and native:GetHighlightTexture(), native)
+  if kind == "tidy" then
+    local n = native and NativeArt(native:GetNormalTexture(), native)
+    local p = native and NativeArt(native:GetPushedTexture(), native)
+    if not n and AtlasExists("bags-button-autosort-up") then
+      n = { atlas = "bags-button-autosort-up" }
+    end
+    if not p and AtlasExists("bags-button-autosort-down") then
+      p = { atlas = "bags-button-autosort-down" }
+    end
+    n = n or { file = "Interface\\Buttons\\UI-RefreshButton" }
+    SetStateArt(btn, "Normal", n)
+    SetStateArt(btn, "Pushed", p or n)
+    SetStateArt(btn, "Highlight", nativeHl or SQUARE_HILIGHT)
+    StretchButtonStateArt(btn)
+  else
+    -- Flat options gear, no plate (CombinedBags has no native gear).
+    SetStateArt(btn, "Normal", nil)
+    SetStateArt(btn, "Pushed", nil)
+    SetStateArt(btn, "Highlight", nativeHl or SQUARE_HILIGHT)
+    if btn._bbFill then
+      btn._bbFill:Hide()
+    end
+    btn._bbPlateFill = nil
+
+    local icon = btn._bbIcon
+    if not icon then
+      icon = btn:CreateTexture(nil, "OVERLAY")
+      btn._bbIcon = icon
+      btn:HookScript("OnMouseDown", function(self)
+        if self._bbIcon then
+          self._bbIcon:SetPoint("CENTER", self, "CENTER", 1, -1)
+        end
+      end)
+      btn:HookScript("OnMouseUp", function(self)
+        if self._bbIcon then
+          self._bbIcon:SetPoint("CENTER", self, "CENTER", 0, 0)
+        end
+      end)
+    end
+    local size = math.floor(math.min(w, h) - 4)
+    icon:ClearAllPoints()
+    icon:SetPoint("CENTER", btn, "CENTER", 0, 0)
+    icon:SetSize(size, size)
+    local done = false
+    for _, atlas in ipairs(GEAR_ATLASES) do
+      if not done and AtlasExists(atlas) then
+        done = pcall(icon.SetAtlas, icon, atlas)
+      end
+    end
+    if not done then
+      icon:SetTexture("Interface\\Buttons\\UI-OptionsButton")
+      icon:SetTexCoord(0.15, 0.85, 0.15, 0.85)
+    end
+    icon:SetVertexColor(1, 1, 1)
+    icon:Show()
+  end
+  btn._bbChromeStyled = true
+end
+
+--[[
+  broom | gear in the Close button's own chrome (0.5.15): plate = Close normal / pushed /
+  highlight art read live (same atlas or file, same size). Its X is covered by a patch of
+  the same plate's interior (top-middle band, clear of the X arms); a gold glyph sits on
+  top. Broom glyph = autosort atlas cropped inside its bevel, drawn ADD so its dark plate
+  drops out and only the gold broom remains. No foreign plates, no BagItemAutoSortButton reparent.
+]]
+local function TexRegion(tex)
+  if not tex then
+    return nil
+  end
+  local atlas = SafeAtlas(tex)
+  if atlas then
+    if not (C_Texture and C_Texture.GetAtlasInfo) then
+      return nil
+    end
+    local ok, info = pcall(C_Texture.GetAtlasInfo, atlas)
+    local file = ok and info and (info.file or info.filename)
+    if file and info.leftTexCoord then
+      return file, info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord
+    end
+    return nil
+  end
+  local file = SafeTexture(tex)
+  if not file then
+    return nil
+  end
+  local ok, ulx, uly, _, _, _, _, lrx, lry = pcall(tex.GetTexCoord, tex)
+  if not ok or type(ulx) ~= "number" or IsSecret(ulx) or type(lry) ~= "number" then
+    ulx, uly, lrx, lry = 0, 0, 1, 1
+  end
+  return file, ulx, lrx, uly, lry
+end
+
+local function SubRegion(t, file, l, r, top, b, u0, u1, v0, v1)
+  t:SetTexture(file)
+  t:SetTexCoord(l + (r - l) * u0, l + (r - l) * u1, top + (b - top) * v0, top + (b - top) * v1)
+end
+
+local function PaintCover(btn, pushed)
+  local close, cover = btn._bbCloseRef, btn._bbCover
+  if not (close and cover) then
+    return
+  end
+  local file, l, r, t, b = TexRegion(pushed and close:GetPushedTexture() or close:GetNormalTexture())
+  if not file then
+    file, l, r, t, b = TexRegion(close:GetNormalTexture())
+  end
+  if file then
+    SubRegion(cover, file, l, r, t, b, 0.44, 0.56, 0.20, 0.30)
+    cover:Show()
+  else
+    cover:Hide()
+  end
+end
+
+local function PaintGlyph(icon, kind, w, h)
+  icon:SetBlendMode("BLEND")
+  icon:SetDesaturated(false)
+  icon:SetVertexColor(1, 1, 1)
+  icon:SetTexCoord(0, 1, 0, 1)
+  local m = math.min(w, h)
+  if kind == "tidy" then
+    -- Same glyph footprint as gear; crop autosort atlas padding so broom fills the bevel.
+    icon:SetSize(math.floor(m * 0.62 + 0.5), math.floor(m * 0.62 + 0.5))
+    local ok, info = false, nil
+    if C_Texture and C_Texture.GetAtlasInfo then
+      ok, info = pcall(C_Texture.GetAtlasInfo, "bags-button-autosort-up")
+    end
+    local file = ok and info and (info.file or info.filename)
+    if file and info.leftTexCoord then
+      SubRegion(icon, file, info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord,
+        0.28, 0.72, 0.28, 0.72)
+      icon:SetBlendMode("ADD")
+      icon:SetDesaturated(true)
+      icon:SetVertexColor(1, 0.82, 0.18)
+    else
+      icon:SetTexture("Interface\\Buttons\\UI-RefreshButton")
+    end
+    return
+  end
+  icon:SetSize(math.floor(m * 0.62 + 0.5), math.floor(m * 0.62 + 0.5))
+  for _, atlas in ipairs(GEAR_ATLASES) do
+    if AtlasExists(atlas) and pcall(icon.SetAtlas, icon, atlas) then
+      icon:SetDesaturated(true)
+      icon:SetVertexColor(1, 0.82, 0.18)
+      return
+    end
+  end
+  icon:SetTexture("Interface\\Buttons\\UI-OptionsButton")
+  icon:SetTexCoord(0.15, 0.85, 0.15, 0.85)
+end
+
+local function StyleCloseTwin(btn, kind, close, w, h)
+  btn:SetSize(w, h)
+  pcall(function()
+    btn:SetDisabledTexture(nil)
+  end)
+  local n = NativeArt(close:GetNormalTexture(), close)
+  local p = NativeArt(close:GetPushedTexture(), close)
+  local hl = NativeArt(close.GetHighlightTexture and close:GetHighlightTexture(), close)
+  SetStateArt(btn, "Normal", n)
+  SetStateArt(btn, "Pushed", p or n)
+  SetStateArt(btn, "Highlight", hl or SQUARE_HILIGHT)
+  btn._bbCloseRef = close
+
+  if btn._bbFill then
+    btn._bbFill:Hide()
+  end
+  local cover = btn._bbCover
+  if not cover then
+    cover = btn:CreateTexture(nil, "ARTWORK", nil, 7)
+    btn._bbCover = cover
+  end
+  local inset = math.floor(math.min(w, h) * 0.18 + 0.5)
+  cover:ClearAllPoints()
+  cover:SetPoint("TOPLEFT", btn, "TOPLEFT", inset, -inset)
+  cover:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -inset, inset)
+  PaintCover(btn, false)
+
+  local icon = btn._bbIcon
+  if not icon then
+    icon = btn:CreateTexture(nil, "OVERLAY")
+    btn._bbIcon = icon
+  end
+  if not btn._bbCloseHooks then
+    btn._bbCloseHooks = true
+    btn:HookScript("OnMouseDown", function(self)
+      if self._bbCloseRef then
+        PaintCover(self, true)
+      end
+      if self._bbIcon then
+        self._bbIcon:SetPoint("CENTER", self, "CENTER", 1, -1)
+      end
+    end)
+    btn:HookScript("OnMouseUp", function(self)
+      if self._bbCloseRef then
+        PaintCover(self, false)
+      end
+      if self._bbIcon then
+        self._bbIcon:SetPoint("CENTER", self, "CENTER", 0, 0)
+      end
+    end)
+  end
+  icon:ClearAllPoints()
+  icon:SetPoint("CENTER", btn, "CENTER", 0, 0)
+  PaintGlyph(icon, kind, w, h)
+  icon:Show()
   btn._bbChromeStyled = true
 end
 
@@ -1499,11 +2289,22 @@ local function EnsureChromeButton(existing, globalName, frame)
   return btn
 end
 
+local function ApplyCloseTwinSize(btn, close, w, h)
+  if not btn then
+    return
+  end
+  btn:SetSize(w, h)
+  pcall(function()
+    btn:SetWidth(w)
+    btn:SetHeight(h)
+  end)
+end
+
 local function EnsureBagShelvesTitleChrome(frame, close)
   HideLegacyChromeOnce()
-  ReleaseNativeAutoSortOnce(frame)
 
-  local w, h = MeasureAutoSortSize()
+  -- broom | gear | X: live Close GetWidth/GetHeight every layout (never native 25×23).
+  local w, h = CloseButtonSize(close)
   local level = (close and close:GetFrameLevel()) or ((frame:GetFrameLevel() or 1) + 520)
   local gap = 2
 
@@ -1520,14 +2321,19 @@ local function EnsureBagShelvesTitleChrome(frame, close)
     gear:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -32, -4)
   end
   gear:SetFrameLevel(level)
-  StyleAutoSortTwin(gear, "settings", w, h)
+  ApplyCloseTwinSize(gear, close, w, h)
+  if close then
+    StyleCloseTwin(gear, "settings", close, w, h)
+  else
+    StyleAutoSortTwin(gear, "settings", w, h)
+  end
   if not gear._bbChromeWired then
     gear._bbChromeWired = true
     gear:SetScript("OnEnter", function(self)
       if GameTooltip then
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("Nastavení")
-        GameTooltip:AddLine("Kategorie zapnout / vypnout.", 0.7, 0.7, 0.7, true)
+        GameTooltip:SetText("Settings")
+        GameTooltip:AddLine("Lanes on/off, custom lanes, learned items.", 0.7, 0.7, 0.7, true)
         GameTooltip:Show()
       end
     end)
@@ -1556,14 +2362,19 @@ local function EnsureBagShelvesTitleChrome(frame, close)
   tidy:ClearAllPoints()
   tidy:SetPoint("RIGHT", gear, "LEFT", -gap, 0)
   tidy:SetFrameLevel(level)
-  StyleAutoSortTwin(tidy, "tidy", w, h)
+  ApplyCloseTwinSize(tidy, close, w, h)
+  if close then
+    StyleCloseTwin(tidy, "tidy", close, w, h)
+  else
+    StyleAutoSortTwin(tidy, "tidy", w, h)
+  end
   if not tidy._bbChromeWired then
     tidy._bbChromeWired = true
     tidy:SetScript("OnEnter", function(self)
       if GameTooltip then
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("Úklid")
-        GameTooltip:AddLine("SortBags + stack. Mimo boj.", 0.7, 0.7, 0.7, true)
+        GameTooltip:SetText("Tidy")
+        GameTooltip:AddLine("SortBags + stack merge. Out of combat only.", 0.7, 0.7, 0.7, true)
         GameTooltip:Show()
       end
     end)
@@ -1588,6 +2399,28 @@ local function EnsureBagShelvesTitleChrome(frame, close)
   return tidy, gear
 end
 
+local function WireCloseButton(frame)
+  if not frame then
+    return
+  end
+  local close = frame.CloseButton
+  if not close then
+    return
+  end
+  if close._bbCloseWired then
+    return
+  end
+  close._bbCloseWired = true
+  close:SetScript("OnClick", function()
+    local OC = BetterBackpack.Modules.OpenClose
+    if OC and OC.CloseOurs then
+      OC.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
+    elseif frame.Hide then
+      frame:Hide()
+    end
+  end)
+end
+
 --[[
   Assign into forward-declared EnsureTitleChrome (must NOT use `local function` here).
 ]]
@@ -1595,22 +2428,23 @@ EnsureTitleChrome = function(frame)
   if not frame then
     return
   end
-  local close = frame.CloseButton
-  if not close then
-    pcall(function()
+  if InCombatLockdown and InCombatLockdown() then
+    return
+  end
+  local ok, err = pcall(function()
+    local close = frame.CloseButton
+    if not close then
       close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
       frame.CloseButton = close
-    end)
-  end
-  if close then
-    close:ClearAllPoints()
-    -- BagShelves: TOPRIGHT 2,1
-    close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 2, 1)
-    close:SetFrameLevel((frame:GetFrameLevel() or 1) + 520)
-    close:Show()
-  end
+    end
+    if close then
+      close:ClearAllPoints()
+      close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 2, 1)
+      close:SetFrameLevel((frame:GetFrameLevel() or 1) + 520)
+      close:Show()
+      WireCloseButton(frame)
+    end
 
-  pcall(function()
     local title = CombinedBagTitle()
     if frame.SetTitle then
       frame:SetTitle(title)
@@ -1621,7 +2455,6 @@ EnsureTitleChrome = function(frame)
     if tt then
       tt:ClearAllPoints()
       local anchor = frame.TitleContainer or frame
-      -- Forever ButtonFrameOffsetTop≈2; leave room for broom|gear|X.
       tt:SetPoint("LEFT", anchor, "LEFT", BF_OFFSET + 4, BF_OFFSET_TOP > 0 and 0 or 0)
       tt:SetPoint("RIGHT", frame, "RIGHT", -110, 0)
       if tt.SetJustifyH then
@@ -1633,18 +2466,16 @@ EnsureTitleChrome = function(frame)
       tt:SetText(title)
       tt:Show()
     end
-  end)
 
-  local tidy, gear = EnsureBagShelvesTitleChrome(frame, close)
-  sortBtn = tidy
-  settingsBtn = gear
+    local tidy, gear = EnsureBagShelvesTitleChrome(frame, close)
+    sortBtn = tidy
+    settingsBtn = gear
 
-  if frame._bbChrome then
-    pcall(frame._bbChrome.Hide, frame._bbChrome)
-  end
-  frame._bbChromeVer = CHROME_VER
+    if frame._bbChrome then
+      pcall(frame._bbChrome.Hide, frame._bbChrome)
+    end
+    frame._bbChromeVer = CHROME_VER
 
-  pcall(function()
     if frame.TitleContainer then
       local need = (frame:GetFrameLevel() or 1) + 50
       if (frame.TitleContainer:GetFrameLevel() or 1) >= need then
@@ -1652,12 +2483,36 @@ EnsureTitleChrome = function(frame)
       end
     end
   end)
+  if not ok and BetterBackpack and BetterBackpack.RecordError then
+    BetterBackpack.RecordError("EnsureTitleChrome", err)
+  end
 end
 
 function Layout.EnsureMain()
   -- Recover half-built frame (error mid-EnsureMain left empty chrome).
   if main and not content then
     DestroyHalfBuilt()
+  end
+  if main and content and main._bbBuilt then
+    pcall(function()
+      if main:GetParent() ~= UIParent then
+        main:SetParent(UIParent)
+      end
+    end)
+    return main
+  end
+  local inCombat = InCombatLockdown and InCombatLockdown()
+  if inCombat then
+    local orphan = _G.BetterBackpackFrame
+    if orphan and orphan._bbBuilt and orphan._bbContent then
+      main = orphan
+      content = orphan._bbContent
+      freeFs = orphan.freeFs or freeFs
+      moneyFs = orphan._bbMoneyFs or moneyFs
+      emptyLabel = orphan._bbEmpty or emptyLabel
+      return main
+    end
+    return nil
   end
   if not main then
     local orphan = _G.BetterBackpackFrame
@@ -1674,7 +2529,7 @@ function Layout.EnsureMain()
       end
     end)
     KillPortrait(main)
-    ApplyCombinedBagsChrome(main)
+    pcall(ApplyCombinedBagsChrome, main)
     pcall(EnsureTitleChrome, main)
     pcall(InstallBagHoverHighlight)
     return main
@@ -1719,7 +2574,7 @@ function Layout.EnsureMain()
   end)
   built:SetScript("OnShow", function(self)
     KillPortrait(self)
-    ApplyCombinedBagsChrome(self)
+    pcall(ApplyCombinedBagsChrome, self)
     local title = CombinedBagTitle()
     if self.SetTitle then
       pcall(self.SetTitle, self, title)
@@ -1775,18 +2630,11 @@ function Layout.EnsureMain()
     end)
   end
   if close then
-    close:SetScript("OnClick", function()
-      local OpenClose = BetterBackpack.Modules.OpenClose
-      if OpenClose and OpenClose.CloseOurs then
-        OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
-      else
-        built:Hide()
-      end
-    end)
+    WireCloseButton(built)
   end
 
   -- Native CombinedBags chrome (AutoSort + gear).
-  EnsureTitleChrome(built)
+  pcall(EnsureTitleChrome, built)
 
   -- Footer = CombinedBags CountContainer strip (free left, money right).
   local footer = CreateFrame("Frame", nil, built)
@@ -1889,11 +2737,282 @@ function Layout.EnsureMain()
   return main
 end
 
+local function FrameAlpha(f)
+  if not f or not f.GetAlpha then
+    return 0
+  end
+  local a = 1
+  pcall(function()
+    a = f:GetAlpha() or 1
+  end)
+  return a
+end
+
+-- Open for B XOR: combat uses alpha + flag (Show may fail in lockdown).
+function Layout.IsBagFrameVisible()
+  if combatVisuallyHidden then
+    return false
+  end
+  local f = main or _G.BetterBackpackFrame
+  if not f then
+    return false
+  end
+  if FrameAlpha(f) < 0.05 then
+    return false
+  end
+  if InCombatLockdown and InCombatLockdown() then
+    return f._bbBuilt and true or false
+  end
+  if not f.IsShown or not f:IsShown() then
+    return false
+  end
+  return true
+end
+
 function Layout.IsShown()
-  return main and main:IsShown() and true or false
+  return Layout.IsBagFrameVisible()
+end
+
+--- Reuse prebuilt UI for lockdown — no CreateFrame / EnsureTitleChrome / DoLayout.
+function Layout.CombatAttachMain()
+  if main and (main._bbBuilt or main._bbContent) then
+    if not content and main._bbContent then
+      content = main._bbContent
+    end
+    return main
+  end
+  local orphan = _G.BetterBackpackFrame
+  if orphan then
+    main = orphan
+    content = orphan._bbContent or content
+    freeFs = orphan.freeFs or freeFs
+    moneyFs = orphan._bbMoneyFs or moneyFs
+    emptyLabel = orphan._bbEmpty or emptyLabel
+    return main
+  end
+  return main
+end
+
+-- OOC only: PreCreate + EnsureMain shell (_bbBuilt). No DoLayout (safe load).
+function Layout.EnsureCombatShell()
+  if InCombatLockdown and InCombatLockdown() then
+    return false
+  end
+  local f = main or _G.BetterBackpackFrame
+  if f and f._bbBuilt then
+    if not BetterBackpack._bbLayoutWarm then
+      pcall(PlaceOnScreen)
+      pcall(DoLayout)
+      BetterBackpack._bbLayoutWarm = true
+    end
+    BetterBackpack._bbKeepShown = true
+    combatVisuallyHidden = true
+    pcall(function()
+      f:Show()
+      f:SetAlpha(0)
+      f:EnableMouse(false)
+    end)
+    return true
+  end
+  if Slots and Slots.PreCreate then
+    pcall(Slots.PreCreate)
+  end
+  pcall(Layout.EnsureMain)
+  f = main or _G.BetterBackpackFrame
+  if not f or not f._bbBuilt then
+    return false
+  end
+  pcall(PlaceOnScreen)
+  if not BetterBackpack._bbLayoutWarm then
+    pcall(DoLayout)
+    BetterBackpack._bbLayoutWarm = true
+  end
+  BetterBackpack._bbKeepShown = true
+  combatVisuallyHidden = true
+  pcall(function()
+    f:Show()
+    f:SetAlpha(0)
+    f:EnableMouse(false)
+  end)
+  return true
+end
+
+local function CombatPlaceFrame(frame)
+  pcall(function()
+    frame:ClearAllPoints()
+    frame:SetPoint("CENTER", UIParent, "CENTER", 180, 60)
+  end)
+end
+
+local function DumpCombatFrameMetrics(frame)
+  local OC = BetterBackpack.Modules and BetterBackpack.Modules.OpenClose
+  if not OC or not OC.CombatTraceOnce or not frame then
+    return
+  end
+  local w, h, a, sh, l, b, r, t, sc, parName, cw, ch
+  pcall(function()
+    w = frame:GetWidth()
+    h = frame:GetHeight()
+    a = frame:GetAlpha()
+    sh = frame:IsShown() and 1 or 0
+    l = frame:GetLeft()
+    b = frame:GetBottom()
+    r = frame:GetRight()
+    t = frame:GetTop()
+    sc = frame:GetScale()
+    local par = frame:GetParent()
+    parName = par and par.GetName and par:GetName() or "?"
+  end)
+  local c = frame._bbContent or content
+  if c then
+    pcall(function()
+      cw = c:GetWidth()
+      ch = c:GetHeight()
+    end)
+  end
+  OC.CombatTraceOnce("metrics", string.format(
+    "w=%.0f h=%.0f a=%.2f shown=%s L=%.0f B=%.0f R=%.0f T=%.0f scale=%.2f parent=%s cw=%.0f ch=%.0f warm=%s keep=%s",
+    tonumber(w) or 0,
+    tonumber(h) or 0,
+    tonumber(a) or 0,
+    tostring(sh),
+    tonumber(l) or -9999,
+    tonumber(b) or -9999,
+    tonumber(r) or -9999,
+    tonumber(t) or -9999,
+    tonumber(sc) or 1,
+    tostring(parName),
+    tonumber(cw) or 0,
+    tonumber(ch) or 0,
+    tostring(BetterBackpack._bbLayoutWarm),
+    tostring(BetterBackpack._bbKeepShown)
+  ))
+end
+
+local function CombatPresentFrame(frame)
+  if not frame then
+    return false
+  end
+  main = frame
+  if frame._bbContent then
+    content = frame._bbContent
+  end
+  combatVisuallyHidden = false
+  pcall(function()
+    if frame.GetParent and frame:GetParent() ~= UIParent then
+      frame:SetParent(UIParent)
+    end
+    frame:SetFrameLevel(500)
+    if frame.SetScale then
+      frame:SetScale(1)
+    end
+  end)
+  CombatPlaceFrame(frame)
+  pcall(function()
+    local fw = frame:GetWidth() or 0
+    local fh = frame:GetHeight() or 0
+    local targetW = (stickyH and stickyCols) and (INSET_X * 2 + stickyCols * SLOT + math.max(0, stickyCols - 1) * PAD) or nil
+    local targetH = stickyH
+    if fw < 100 or fh < 100 then
+      frame:SetSize(targetW or 456, targetH or 360)
+    elseif targetH and targetH > fh then
+      frame:SetSize(fw, targetH)
+    end
+  end)
+  local inCombat = InCombatLockdown and InCombatLockdown()
+  pcall(function()
+    if inCombat then
+      frame:SetAlpha(1)
+      frame:EnableMouse(true)
+    else
+      frame:Show()
+      frame:SetAlpha(1)
+      frame:EnableMouse(true)
+    end
+  end)
+  if content then
+    pcall(function()
+      if not inCombat and content.Show then
+        content:Show()
+      end
+      content:SetAlpha(1)
+      content:EnableMouse(true)
+    end)
+  end
+  pcall(Layout.Raise)
+  pcall(ApplyCombinedBagsChrome, frame)
+  pcall(RefreshCooldowns)
+  UpdateFreeSpace()
+  UpdateMoney()
+  DumpCombatFrameMetrics(frame)
+  local left
+  pcall(function()
+    left = frame:GetLeft()
+  end)
+  if left ~= nil and left < -200 then
+    CombatPlaceFrame(frame)
+    pcall(function()
+      if (frame:GetWidth() or 0) < 100 then
+        frame:SetSize(456, 360)
+      end
+    end)
+  end
+  return Layout.IsBagFrameVisible()
+end
+
+-- Combat open: alpha 1 (no DoLayout in lockdown).
+function Layout.CombatShow()
+  local frame = Layout.CombatAttachMain() or _G.BetterBackpackFrame
+  if not frame or not frame._bbBuilt then
+    return Layout.ShowCombatMinimal()
+  end
+  return CombatPresentFrame(frame)
+end
+
+-- Combat close: alpha 0 only (never Hide in lockdown).
+function Layout.CombatHide()
+  combatVisuallyHidden = true
+  local frame = main or _G.BetterBackpackFrame
+  if not frame then
+    return true
+  end
+  pcall(function()
+    frame:SetAlpha(0)
+    frame:EnableMouse(false)
+  end)
+  return not Layout.IsBagFrameVisible()
+end
+
+function Layout.ForceCombatShow()
+  return Layout.CombatShow()
+end
+
+function Layout.ShowCombatMinimal()
+  local p = Profile()
+  if not p.enabled or p.safeMode then
+    local OC = BetterBackpack.Modules and BetterBackpack.Modules.OpenClose
+    if OC and OC.CombatTraceOnce then
+      OC.CombatTraceOnce("ShowCombatMinimal", string.format("disabled enabled=%s safe=%s", tostring(p.enabled), tostring(p.safeMode)))
+    end
+    return false
+  end
+  local frame = Layout.CombatAttachMain() or _G.BetterBackpackFrame
+  if not frame then
+    local OC = BetterBackpack.Modules and BetterBackpack.Modules.OpenClose
+    if OC and OC.CombatTraceOnce then
+      OC.CombatTraceOnce("ShowCombatMinimal", "no BetterBackpackFrame")
+    end
+    return false
+  end
+  return CombatPresentFrame(frame)
 end
 
 function Layout.Show()
+  local inCombat = InCombatLockdown and InCombatLockdown()
+  if inCombat then
+    return Layout.ShowCombatMinimal()
+  end
+
   local okEns = pcall(Layout.EnsureMain)
   if not okEns or not main then
     if BetterBackpack.RecordError then
@@ -1906,6 +3025,7 @@ function Layout.Show()
     return false
   end
 
+  combatVisuallyHidden = false
   pcall(function()
     if main:GetParent() ~= UIParent then
       main:SetParent(UIParent)
@@ -1940,6 +3060,10 @@ function Layout.Show()
   if SearchChrome and SearchChrome.EnsureChrome then
     pcall(SearchChrome.EnsureChrome, main)
   end
+  local orphan = _G.BetterBackpackNewLaneBtn
+  if orphan and orphan.Hide then
+    orphan:Hide()
+  end
   UpdateFreeSpace()
   UpdateMoney()
   pcall(Layout.Raise)
@@ -1953,14 +3077,53 @@ end
 
 function Layout.Hide()
   focusBagID = nil
+  stickyCols, stickyH = nil, nil
+  Layout.SetDropHints(false)
   ClearBagMatchGlows()
+  local T = Feat("Trash")
+  if T and T.OnBagHide then
+    pcall(T.OnBagHide)
+  end
   local S = BetterBackpack.Modules.Settings
   if S and S.Hide then
     S.Hide()
   end
-  if main then
-    main:Hide()
+  if BetterBackpack._bbKeepShown or (InCombatLockdown and InCombatLockdown()) then
+    Layout.CombatHide()
+    return
   end
+  combatVisuallyHidden = false
+  if main then
+    pcall(function()
+      main:Hide()
+    end)
+  end
+end
+
+function Layout.ForceHidden()
+  Layout.Hide()
+  if BetterBackpack._bbKeepShown then
+    return
+  end
+  local g = _G.BetterBackpackFrame
+  if g and g.Hide and (not main or g ~= main) then
+    pcall(function()
+      g:Hide()
+    end)
+  end
+end
+
+-- Exported for BulkTransfer / VendorJunk lane bulk (resolve Layout at call time).
+function Layout.ListLaneSlots(laneKey, unfiltered)
+  if not laneKey then
+    return {}
+  end
+  local buckets = CollectBuckets(unfiltered == true)
+  local list = buckets[laneKey]
+  if not list then
+    return {}
+  end
+  return list
 end
 
 function Layout.Relayout()
@@ -2046,8 +3209,8 @@ function Layout.DebugState()
     h = h,
     strata = strata,
     parent = main:GetParent() and main:GetParent():GetName() or "?",
-    uklid = tidyOn and true or false,
-    nastaveni = gearOn and true or false,
+    tidy = tidyOn and true or false,
+    settings = gearOn and true or false,
     chromeVer = chromeVer,
     ver = Config.VERSION,
   }

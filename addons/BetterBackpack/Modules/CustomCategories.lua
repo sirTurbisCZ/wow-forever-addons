@@ -16,6 +16,21 @@ local function Profile()
   return Config.GetProfile()
 end
 
+local function Changed()
+  local Layout = BetterBackpack.Modules.Layout
+  if Layout and Layout.Relayout then
+    Layout.Relayout()
+  end
+  local Settings = BetterBackpack.Modules.Settings
+  if Settings and Settings.Refresh then
+    Settings.Refresh()
+  end
+  local Trash = BetterBackpack.Modules.Trash
+  if Trash and Trash.RulesChanged then
+    Trash.RulesChanged()
+  end
+end
+
 local function EnsureTables()
   local p = Profile()
   if type(p.customCategories) ~= "table" then
@@ -59,10 +74,7 @@ function CustomCategories.SetDefaultHidden(key, hidden)
       p.categories[key] = true
     end
   end
-  local Layout = BetterBackpack.Modules.Layout
-  if Layout and Layout.Relayout then
-    Layout.Relayout()
-  end
+  Changed()
 end
 
 local function NormalizeId(id)
@@ -79,7 +91,12 @@ function CustomCategories.Add(name)
   if name == "" then
     return nil
   end
-  local id = "custom_" .. tostring((GetTime and math.floor(GetTime() * 1000)) or (#p.customCategories + 1))
+  local base = "custom_" .. tostring((GetTime and math.floor(GetTime() * 1000)) or (#p.customCategories + 1))
+  local id, n = base, 1
+  while CustomCategories.Label(id) do
+    n = n + 1
+    id = base .. "_" .. n
+  end
   local entry = { id = id, name = name, itemIDs = {} }
   p.customCategories[#p.customCategories + 1] = entry
   return entry
@@ -99,10 +116,7 @@ function CustomCategories.Remove(id)
       break
     end
   end
-  local Layout = BetterBackpack.Modules.Layout
-  if Layout and Layout.Relayout then
-    Layout.Relayout()
-  end
+  Changed()
 end
 
 function CustomCategories.AssignItem(itemID, categoryId)
@@ -115,6 +129,7 @@ function CustomCategories.AssignItem(itemID, categoryId)
     p.itemRules[itemID] = nil
     p.itemRules[tostring(itemID)] = nil
   else
+    p.itemRules[tostring(itemID)] = nil
     p.itemRules[itemID] = categoryId
   end
   -- Also stash on the custom cat table for Settings UI.
@@ -129,10 +144,7 @@ function CustomCategories.AssignItem(itemID, categoryId)
       c.itemIDs[itemID] = nil
     end
   end
-  local Layout = BetterBackpack.Modules.Layout
-  if Layout and Layout.Relayout then
-    Layout.Relayout()
-  end
+  Changed()
 end
 
 --- Before default classify: return custom category id/key or nil.
@@ -166,15 +178,18 @@ function CustomCategories.Label(key)
   return nil
 end
 
---- Extended order: defaults (minus hidden) + custom + other last.
+--- Extended order: defaults (minus hidden) + custom + trash + other last.
 function CustomCategories.ExtendOrder(baseOrder)
   local p = EnsureTables()
   local out = {}
   local seen = {}
+  local hasTrash = false
   for i = 1, #baseOrder do
     local key = baseOrder[i]
     if key == "other" then
       -- defer
+    elseif key == "trash" then
+      hasTrash = not CustomCategories.IsDefaultHidden(key)
     elseif not CustomCategories.IsDefaultHidden(key) then
       out[#out + 1] = key
       seen[key] = true
@@ -187,6 +202,206 @@ function CustomCategories.ExtendOrder(baseOrder)
       seen[id] = true
     end
   end
+  if hasTrash then
+    out[#out + 1] = "trash"
+  end
   out[#out + 1] = "other"
   return out
+end
+
+function CustomCategories.Rename(id, name)
+  name = type(name) == "string" and name:match("^%s*(.-)%s*$") or ""
+  if name == "" then
+    return
+  end
+  local p = EnsureTables()
+  for i = 1, #p.customCategories do
+    if p.customCategories[i].id == id then
+      p.customCategories[i].name = name
+    end
+  end
+  Changed()
+end
+
+--- Drag-teach: send itemID to laneKey from now on. Dropping on the lane the item would
+--- land in anyway (its natural lane) clears the rule instead of storing a redundant one.
+function CustomCategories.Teach(itemID, laneKey, naturalKey)
+  if not NormalizeId(itemID) or type(laneKey) ~= "string" then
+    return
+  end
+  if laneKey == naturalKey then
+    CustomCategories.AssignItem(itemID, nil)
+  else
+    CustomCategories.AssignItem(itemID, laneKey)
+  end
+end
+
+function CustomCategories.CountRules()
+  local n = 0
+  for _, rule in pairs(EnsureTables().itemRules) do
+    if type(rule) == "string" and rule ~= "" then
+      n = n + 1
+    end
+  end
+  return n
+end
+
+function CustomCategories.CountLaneRules(laneKey)
+  local n = 0
+  for _, rule in pairs(EnsureTables().itemRules) do
+    if rule == laneKey then
+      n = n + 1
+    end
+  end
+  return n
+end
+
+function CustomCategories.ForgetAll()
+  local p = EnsureTables()
+  p.itemRules = {}
+  for i = 1, #p.customCategories do
+    p.customCategories[i].itemIDs = {}
+  end
+  Changed()
+end
+
+function CustomCategories.CreateLane(name, itemID)
+  local entry = CustomCategories.Add(name)
+  if not entry then
+    return nil
+  end
+  if NormalizeId(itemID) then
+    CustomCategories.AssignItem(itemID, entry.id)
+  else
+    Changed()
+  end
+  return entry
+end
+
+-- StaticPopup edit box key differs across clients (editBox → EditBox / GetEditBox).
+local function PopupEdit(dialog)
+  if not dialog then
+    return nil
+  end
+  return dialog.editBox or dialog.EditBox or (dialog.GetEditBox and dialog:GetEditBox())
+end
+
+local function PopupData(self)
+  if self and self.data ~= nil then
+    return self.data
+  end
+  local parent = self and self.GetParent and self:GetParent()
+  return parent and parent.data
+end
+
+local popupsReady = false
+local function EnsurePopups()
+  if popupsReady or not StaticPopupDialogs then
+    return popupsReady
+  end
+  popupsReady = true
+  StaticPopupDialogs.BETTERBACKPACK_NEW_LANE = {
+    text = "New lane name:",
+    button1 = ACCEPT or "Accept",
+    button2 = CANCEL or "Cancel",
+    hasEditBox = true,
+    maxLetters = 32,
+    OnAccept = function(self, data)
+      local eb = PopupEdit(self)
+      CustomCategories.CreateLane(eb and eb:GetText(), data or PopupData(self))
+    end,
+    EditBoxOnEnterPressed = function(self, data)
+      local dialog = self:GetParent()
+      CustomCategories.CreateLane(self:GetText(), data or PopupData(dialog))
+      dialog:Hide()
+    end,
+    EditBoxOnEscapePressed = function(self)
+      self:GetParent():Hide()
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    preferredIndex = 3,
+  }
+  StaticPopupDialogs.BETTERBACKPACK_RENAME_LANE = {
+    text = "Rename lane:",
+    button1 = ACCEPT or "Accept",
+    button2 = CANCEL or "Cancel",
+    hasEditBox = true,
+    maxLetters = 32,
+    OnAccept = function(self, data)
+      local eb = PopupEdit(self)
+      CustomCategories.Rename(data or PopupData(self), eb and eb:GetText())
+    end,
+    EditBoxOnEnterPressed = function(self, data)
+      local dialog = self:GetParent()
+      CustomCategories.Rename(data or PopupData(dialog), self:GetText())
+      dialog:Hide()
+    end,
+    EditBoxOnEscapePressed = function(self)
+      self:GetParent():Hide()
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    preferredIndex = 3,
+  }
+  StaticPopupDialogs.BETTERBACKPACK_DELETE_LANE = {
+    text = "Delete lane \"%s\"? Its items go back to their default lanes.",
+    button1 = DELETE or "Delete",
+    button2 = CANCEL or "Cancel",
+    OnAccept = function(self, data)
+      CustomCategories.Remove(data or PopupData(self))
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    showAlert = true,
+    preferredIndex = 3,
+  }
+  StaticPopupDialogs.BETTERBACKPACK_FORGET_RULES = {
+    text = "Forget every item you taught by dragging? Items return to their default lanes.",
+    button1 = YES or "Yes",
+    button2 = NO or "No",
+    OnAccept = function()
+      CustomCategories.ForgetAll()
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    preferredIndex = 3,
+  }
+  return true
+end
+
+local function ShowPopup(which, textArg, data, prefill)
+  if not EnsurePopups() or not StaticPopup_Show then
+    return
+  end
+  local dialog = StaticPopup_Show(which, textArg, nil, data)
+  if dialog then
+    dialog.data = data
+    local eb = PopupEdit(dialog)
+    if eb then
+      eb:SetText(prefill or "")
+      eb:HighlightText()
+      eb:SetFocus()
+    end
+  end
+end
+
+function CustomCategories.PromptNew(itemID)
+  ShowPopup("BETTERBACKPACK_NEW_LANE", nil, NormalizeId(itemID), "")
+end
+
+function CustomCategories.PromptRename(id)
+  ShowPopup("BETTERBACKPACK_RENAME_LANE", nil, id, CustomCategories.Label(id) or "")
+end
+
+function CustomCategories.PromptDelete(id)
+  ShowPopup("BETTERBACKPACK_DELETE_LANE", CustomCategories.Label(id) or id, id)
+end
+
+function CustomCategories.PromptForgetAll()
+  ShowPopup("BETTERBACKPACK_FORGET_RULES", nil, nil)
 end

@@ -1,11 +1,18 @@
-# Playtest brief — BetterBackpack 0.5.5
+# Playtest brief — BetterBackpack 1.0.0
 
-**Chrome (CombinedBags + Baganator Forever Blizzard skin)**
-- NineSlice kit from CombinedBags; Bg/TopTile @ (6,-21); Inset hidden
-- Title GameFontNormal; search @ TOPLEFT 11,-28
-- Slots: empty `SlotBackground` (bags-item-slot64)
-- Footer free/money inside BF_OFFSET border
+Release gate — combat, vendor bulk, auto-sell, English UI.
 
-**Keep:** Toggle* replace (B stable) — do not regress OpenClose.
+**1.0.0**
+- Version **1.0.0**; docs and UI English-only.
+- Combat **B** (keep-shown shell).
+- Vendor **Shift+RMB** lane bulk + `sold N/M`.
+- Vendor **OpenAllBags** → BetterBackpack.
+- Optional grey **auto-sell** at merchant.
 
-**Done when:** `/reload` → `v0.5.5` → B open/stay/close · borders+title+slot wells+footer look native.
+**Smoke**
+1. `/reload` → v1.0.0 + BulkTransfer ok.
+2. Combat B open/close.
+3. Vendor + Shift+RMB lane → sells + chat summary.
+4. Tooltips: **Tidy** / **Settings** (English).
+
+Prior 0.5.x notes archived in `addons/BetterBackpack/Docs/CHANGELOG.md`.

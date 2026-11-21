@@ -13,9 +13,13 @@ local Config = BetterBackpack.Config
 local Slots = BetterBackpack.Modules.Slots
 local Layout = BetterBackpack.Modules.Layout
 local Context = BetterBackpack.Modules.Context
+local BulkTransfer = BetterBackpack.Modules.BulkTransfer
 -- Resolve modules at call time too — load errors must not leave a nil upvalue forever.
 local function OC()
   return BetterBackpack.Modules and BetterBackpack.Modules.OpenClose
+end
+local function BT()
+  return BetterBackpack.Modules and BetterBackpack.Modules.BulkTransfer
 end
 local OpenClose = BetterBackpack.Modules.OpenClose
 local Tidy = BetterBackpack.Modules.Tidy
@@ -105,6 +109,21 @@ local function ModuleWanted()
   return p.enabled and not p.safeMode
 end
 
+local function WarmCombatShell(tag)
+  if not ModuleWanted() then
+    return
+  end
+  if InCombatLockdown and InCombatLockdown() then
+    return
+  end
+  if Layout and Layout.EnsureCombatShell then
+    SafeCall("shell:" .. tostring(tag or "?"), Layout.EnsureCombatShell)
+    return
+  end
+  SafeCall("precreate:" .. tostring(tag or "?"), Slots.PreCreate)
+  SafeCall("ensure:" .. tostring(tag or "?"), Layout.EnsureMain)
+end
+
 local bagRefreshToken = 0
 local function QueueBagRefresh()
   if InCombatLockdown and InCombatLockdown() then
@@ -164,6 +183,9 @@ local function DumpRing()
     tostring(Config.VERSION),
     tostring(OpenClose and OpenClose.BagsOpen and OpenClose.BagsOpen())
   ))
+  if OpenClose and OpenClose.DumpOpenState then
+    Print("|cffaaaaaa" .. OpenClose.DumpOpenState() .. "|r")
+  end
   if db.lastSelftest and db.lastSelftest.card then
     print("|cffaaaaaa" .. tostring(db.lastSelftest.card) .. "|r")
   end
@@ -211,12 +233,20 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
       return
     end
     EnsureDB()
+    BulkTransfer = BT()
+    if not BulkTransfer or not BulkTransfer.TransferLane then
+      Print("ERROR: BulkTransfer failed to load — check FrameXML.log / TOC")
+    end
     return
   end
 
   if event == "PLAYER_LOGIN" then
     EnsureDB()
     OpenClose = OC() or OpenClose
+    BulkTransfer = BT() or BulkTransfer
+    if BulkTransfer and BulkTransfer.TransferLane then
+      Print("BulkTransfer ok · Shift+RMB lane header at vendor/mail/bank")
+    end
     if ModuleWanted() then
       if OpenClose and OpenClose.InstallHooks then
         SafeCall("hooks", OpenClose.InstallHooks)
@@ -225,13 +255,10 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
       end
       if C_Timer and C_Timer.After then
         C_Timer.After(0, function()
-          SafeCall("precreate", Slots.PreCreate)
-          if not (InCombatLockdown and InCombatLockdown()) then
-            SafeCall("warmup:ensure", Layout.EnsureMain)
-          end
+          WarmCombatShell("login")
         end)
       else
-        SafeCall("precreate", Slots.PreCreate)
+        WarmCombatShell("login")
       end
     end
     Print(string.format(L.LOADED or "loaded v%s · /bb", tostring(Config.VERSION)))
@@ -271,8 +298,16 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
     if Context then
       Context.SyncSpecialMode()
     end
+    OpenClose = OC() or OpenClose
+    if OpenClose and OpenClose.OnMerchantShow then
+      SafeCall("merchantBags", OpenClose.OnMerchantShow)
+    end
     if Layout and Layout.IsShown and Layout.IsShown() and Layout.UpdateMoney then
       Layout.UpdateMoney()
+    end
+    local VJ = BetterBackpack.Modules.VendorJunk
+    if VJ and VJ.OnMerchantShow then
+      SafeCall("vendorJunk", VJ.OnMerchantShow)
     end
     return
   end
@@ -280,6 +315,12 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
   if event == "MERCHANT_CLOSED" or event == "MAIL_CLOSED" or event == "BANKFRAME_CLOSED" then
     if Context and Context.ForceRestoreDeferred then
       Context.ForceRestoreDeferred()
+    end
+    if event == "MERCHANT_CLOSED" then
+      local VJ = BetterBackpack.Modules.VendorJunk
+      if VJ and VJ.OnMerchantClosed then
+        VJ.OnMerchantClosed()
+      end
     end
     return
   end
@@ -304,6 +345,7 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
     end
     SafeCall("regen:precreate", Slots.PreCreate)
     SafeCall("regen:attrs", Slots.SyncAllAttrs)
+    WarmCombatShell("regen")
     if Layout and Layout.IsShown and Layout.IsShown() and Layout.Refresh then
       SafeCall("regen:layout", Layout.Refresh)
     end
@@ -433,6 +475,16 @@ SlashCmdList.BETTERBACKPACK = function(msg)
     return
   end
 
+  if cmd == "trashtest" then
+    local Trash = BetterBackpack.Modules.Trash
+    if Trash and Trash.RunTest then
+      SafeCall("trashtest", Trash.RunTest, rest)
+    else
+      Print("Trash module not loaded")
+    end
+    return
+  end
+
   if cmd == "pin" then
     local Pins = BetterBackpack.Modules.Pins
     if not Pins then
@@ -550,7 +602,7 @@ SlashCmdList.BETTERBACKPACK = function(msg)
     return
   end
 
-  if cmd == "sort" or cmd == "tidy" or cmd == "uklid" then
+  if cmd == "sort" or cmd == "tidy" then
     SafeCall("sort", Tidy.SortBags)
     return
   end
@@ -609,14 +661,14 @@ SlashCmdList.BETTERBACKPACK = function(msg)
   if cmd == "frame" or cmd == "debugopen" then
     local d = Layout.DebugState and Layout.DebugState() or {}
     Print(string.format(
-      "frame ver=%s exists=%s shown=%s w=%s h=%s uklid=%s nastav=%s chrome=%s session=%s",
+      "frame ver=%s exists=%s shown=%s w=%s h=%s tidy=%s settings=%s chrome=%s session=%s",
       tostring(d.ver or Config.VERSION),
       tostring(d.exists),
       tostring(d.shown),
       tostring(d.w),
       tostring(d.h),
-      tostring(d.uklid),
-      tostring(d.nastaveni),
+      tostring(d.tidy),
+      tostring(d.settings),
       tostring(d.chromeVer),
       tostring(OpenClose.SessionOpen and OpenClose.SessionOpen())
     ))
