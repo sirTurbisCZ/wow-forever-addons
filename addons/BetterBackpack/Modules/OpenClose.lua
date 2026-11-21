@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.OpenClose — B + /bb (0.5.57)
+  BetterBackpack.OpenClose — B + /bb (0.5.58)
 
   B + ToggleBackpack/ToggleAllBags → onBagKey XOR (0.5.50). Main backpack icon → same combined path.
   Bag-bar slots → native ToggleBag when bagBarNative, else BB bag-focus. Keyring → native only.
@@ -54,6 +54,7 @@ local InvokeNativeKeyRing
 local onKeyRingToggle
 local OpenForeverKeyringIndividual
 OpenClose._keyRingInnerOpen = false
+OpenClose._mainPackClickAt = 0
 
 local function Now()
   return (GetTime and GetTime()) or 0
@@ -1444,6 +1445,14 @@ local function onToggleBagRoute(bagID, ...)
     onKeyRingToggle("ToggleBag")
     return
   end
+  if EnabledReplace() and (Now() - (OpenClose._mainPackClickAt or 0)) < 0.2 then
+    local Slots = BetterBackpack.Modules.Slots
+    local p = Slots and Slots.SafeNum and Slots.SafeNum(bagID, nil)
+    if p == 0 then
+      BagKeyChat("skip", "ToggleBag(0) after main-pack combined")
+      return
+    end
+  end
   if not EnabledReplace() or not BagBarNativeEnabled() then
     CallOrigToggle("ToggleBag", bagID, ...)
     return
@@ -1738,6 +1747,27 @@ local KEYRING_BAR_NAMES = {
   "MainMenuBarKeyRingButton",
 }
 
+local function HookMainBackpackCombined()
+  local btn = _G.MainMenuBarBackpackButton
+  if not btn or btn.BetterBackpackMainPackHooked then
+    return false
+  end
+  local hookOk = pcall(function()
+    btn:HookScript("OnClick", function()
+      if not EnabledReplace() then
+        return
+      end
+      OpenClose._mainPackClickAt = Now()
+      BagKeyChat("main-pack", "MainMenuBarBackpack OnClick")
+      onBagKey("MainMenuBarBackpackButton")
+    end)
+  end)
+  if hookOk then
+    btn.BetterBackpackMainPackHooked = true
+  end
+  return hookOk
+end
+
 local function HookKeyRingBarButtons()
   local hooked = 0
   for i = 1, #KEYRING_BAR_NAMES do
@@ -1782,6 +1812,7 @@ end
 
 local function HookBagBarButtons()
   pcall(HookKeyRingBarButtons)
+  pcall(HookMainBackpackCombined)
   if BagBarNativeEnabled() then
     return 0
   end
@@ -1870,13 +1901,16 @@ function OpenClose.InstallHooks()
     end)
   end
   pcall(HookKeyRingBarButtons)
+  pcall(HookMainBackpackCombined)
   if C_Timer and C_Timer.After then
     C_Timer.After(0, function()
       pcall(HookKeyRingBarButtons)
+      pcall(HookMainBackpackCombined)
       pcall(HookBagBarButtons)
     end)
     C_Timer.After(1, function()
       pcall(HookKeyRingBarButtons)
+      pcall(HookMainBackpackCombined)
     end)
   else
     pcall(HookBagBarButtons)

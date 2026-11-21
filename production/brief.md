@@ -1,4 +1,8 @@
-# Playtest brief — BetterBackpack 0.5.57 (keyring re-entry)
+# Playtest brief — BetterBackpack 0.5.58 (main backpack)
+
+**0.5.58**
+- `MainMenuBarBackpackButton` OnClick → **onBagKey** (combined), including `bagBarNative`. Swallow twin `ToggleBag(0)` for 200ms after main-pack click.
+- Keyring path unchanged (0.5.57).
 
 **0.5.57**
 - Fix `ToggleBag busy`: inner open calls **`_orig_ToggleBag`** via `CallBlizzardToggleBag`; removed keyring debounce/busy gates.
