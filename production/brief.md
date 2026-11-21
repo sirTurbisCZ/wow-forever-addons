@@ -1,5 +1,5 @@
-# Playtest brief — BetterBackpack 0.2.0
+# Playtest brief — BetterBackpack 0.2.1
 
-**Goal:** Visible Úklid button + Settings gear to enable/disable categories.
+**Goal:** Big visible Úklid + Nastavení left of title X (not covered by TitleContainer).
 
-**Done when:** `/reload` → `loaded v0.2.0` · title bar shows Úklid + ⚙ · Settings toggles hide/show category lanes · Úklid still sorts.
+**Done when:** `/reload` → `loaded v0.2.1` · title shows Úklid | Nastav. | X · both clickable.

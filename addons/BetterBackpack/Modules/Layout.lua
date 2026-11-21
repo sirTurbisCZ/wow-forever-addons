@@ -1,7 +1,7 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.2.0).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.2.1).
   Forever: never SetToplevel (ADDON_ACTION_BLOCKED).
-  Visible Úklid + Settings gear (category toggles).
+  Title chrome: high-level strip LEFT of close (Úklid + Nastavení) — not under TitleContainer.
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -689,10 +689,7 @@ local function DoLayout()
     if main.footer then
       main.footer:SetFrameLevel((main:GetFrameLevel() or 1) + 5)
     end
-    if sortBtn then
-      sortBtn:Show()
-      sortBtn:SetFrameLevel((main:GetFrameLevel() or 1) + 30)
-    end
+    EnsureTitleChrome(main)
     UpdateFreeSpace()
     UpdateMoney()
   end)
@@ -930,68 +927,170 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local function StyleIconChromeButton(btn, atlasName, texturePath, size)
-  size = size or 28
-  local iconSize = size - 4
-  btn:SetSize(size, size)
-  pcall(function()
-    btn:SetNormalTexture(texturePath or "Interface\\Buttons\\UI-RefreshButton")
-    local nt = btn:GetNormalTexture()
-    if nt then
-      if atlasName and nt.SetAtlas then
-        pcall(nt.SetAtlas, nt, atlasName, false)
-      end
-      nt:ClearAllPoints()
-      nt:SetPoint("CENTER")
-      nt:SetSize(iconSize, iconSize)
-    end
-  end)
-  pcall(function()
-    btn:SetPushedTexture(texturePath or "Interface\\Buttons\\UI-RefreshButton")
-    local pt = btn:GetPushedTexture()
-    if pt then
-      if atlasName and pt.SetAtlas then
-        pcall(pt.SetAtlas, pt, atlasName, false)
-      end
-      pt:ClearAllPoints()
-      pt:SetPoint("CENTER", 1, -1)
-      pt:SetSize(iconSize, iconSize)
-    end
-  end)
+local CHROME_VER = 3
+
+local function StyleLabeledChromeButton(btn, label, atlasName, texturePath)
+  btn:SetSize(92, 26)
+  if not btn._bbBg then
+    local bg = btn:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    btn._bbBg = bg
+  end
+  btn._bbBg:SetColorTexture(0.16, 0.15, 0.12, 0.95)
+  if not btn._bbIcon then
+    local icon = btn:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(18, 18)
+    icon:SetPoint("LEFT", 5, 0)
+    btn._bbIcon = icon
+  end
+  local icon = btn._bbIcon
+  local ok = false
+  if atlasName then
+    ok = pcall(icon.SetAtlas, icon, atlasName, false)
+  end
+  if not ok then
+    icon:SetTexture(texturePath or "Interface\\Buttons\\UI-RefreshButton")
+  end
+  if not btn._bbLabel then
+    local fs = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    fs:SetPoint("LEFT", icon, "RIGHT", 4, 0)
+    fs:SetPoint("RIGHT", -4, 0)
+    fs:SetJustifyH("LEFT")
+    btn._bbLabel = fs
+  end
+  btn._bbLabel:SetText(label)
   pcall(function()
     btn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
-    local hl = btn:GetHighlightTexture()
-    if hl then
-      hl:ClearAllPoints()
-      hl:SetPoint("CENTER")
-      hl:SetSize(iconSize + 4, iconSize + 4)
-    end
   end)
+  btn:EnableMouse(true)
+  btn:Show()
 end
 
--- Wide visible Úklid: broom + label (not icon-only).
-local function StyleUklidButton(btn)
-  btn:SetSize(78, 28)
-  local bg = btn:CreateTexture(nil, "BACKGROUND")
-  bg:SetAllPoints()
-  bg:SetColorTexture(0.12, 0.12, 0.14, 0.92)
-  btn._bbBg = bg
-  local icon = btn:CreateTexture(nil, "ARTWORK")
-  icon:SetSize(20, 20)
-  icon:SetPoint("LEFT", 6, 0)
-  local ok = pcall(icon.SetAtlas, icon, "bags-button-autosort-up", false)
-  if not ok then
-    icon:SetTexture("Interface\\Buttons\\UI-RefreshButton")
+--[[
+  Title chrome strip ABOVE TitleContainer — always re-asserted on Show.
+  Parent = main frame, frameLevel +500, anchored LEFT of CloseButton.
+]]
+local function EnsureTitleChrome(frame)
+  if not frame then
+    return
   end
-  btn._bbIcon = icon
-  local fs = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-  fs:SetPoint("LEFT", icon, "RIGHT", 4, 0)
-  fs:SetPoint("RIGHT", -6, 0)
-  fs:SetJustifyH("LEFT")
-  fs:SetText("Úklid")
-  btn._bbLabel = fs
+  local close = frame.CloseButton
+  if not close then
+    pcall(function()
+      close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+      frame.CloseButton = close
+    end)
+  end
+  if close then
+    close:ClearAllPoints()
+    close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 2, 1)
+    close:SetFrameLevel((frame:GetFrameLevel() or 1) + 520)
+    close:Show()
+  end
+
+  local strip = frame._bbChrome
+  if not strip or frame._bbChromeVer ~= CHROME_VER then
+    if strip then
+      pcall(strip.Hide, strip)
+    end
+    strip = CreateFrame("Frame", "BetterBackpackTitleChrome", frame)
+    frame._bbChrome = strip
+    frame._bbChromeVer = CHROME_VER
+  end
+  strip:SetParent(frame)
+  strip:ClearAllPoints()
+  if close then
+    strip:SetPoint("TOPRIGHT", close, "TOPLEFT", -4, -2)
+  else
+    strip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -28, -4)
+  end
+  strip:SetSize(200, 28)
+  strip:SetFrameStrata(frame:GetFrameStrata() or "DIALOG")
+  strip:SetFrameLevel((frame:GetFrameLevel() or 1) + 500)
+  strip:EnableMouse(true)
+  strip:Show()
+
+  -- Settings (right of strip = closer to X)
+  local gear = frame.settingsBtn or strip.settingsBtn
+  if not gear then
+    gear = CreateFrame("Button", "BetterBackpackSettingsButton", strip)
+  end
+  gear:SetParent(strip)
+  gear:ClearAllPoints()
+  gear:SetPoint("RIGHT", strip, "RIGHT", 0, 0)
+  StyleLabeledChromeButton(gear, "Nastav.", nil, "Interface\\Buttons\\UI-OptionsButton")
+  gear:SetSize(86, 26)
+  gear:SetFrameLevel(strip:GetFrameLevel() + 2)
+  gear:SetScript("OnEnter", function(self)
+    if GameTooltip then
+      GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+      GameTooltip:SetText("Nastavení")
+      GameTooltip:AddLine("Zapnout / vypnout kategorie.", 0.7, 0.7, 0.7, true)
+      GameTooltip:Show()
+    end
+  end)
+  gear:SetScript("OnLeave", function()
+    if GameTooltip then
+      GameTooltip:Hide()
+    end
+  end)
+  gear:SetScript("OnClick", function()
+    local S = BetterBackpack.Modules.Settings
+    if S and S.Toggle then
+      S.Toggle()
+    end
+  end)
+  gear:Show()
+  strip.settingsBtn = gear
+  frame.settingsBtn = gear
+  frame.gear = gear
+  settingsBtn = gear
+
+  -- Úklid (left of Settings)
+  local tidy = frame.sortBtn or strip.sortBtn
+  if not tidy then
+    tidy = CreateFrame("Button", "BetterBackpackSortButton", strip)
+  end
+  tidy:SetParent(strip)
+  tidy:ClearAllPoints()
+  tidy:SetPoint("RIGHT", gear, "LEFT", -4, 0)
+  StyleLabeledChromeButton(tidy, "Úklid", "bags-button-autosort-up", "Interface\\Buttons\\UI-RefreshButton")
+  tidy:SetSize(78, 26)
+  tidy:SetFrameLevel(strip:GetFrameLevel() + 2)
+  tidy:SetScript("OnEnter", function(self)
+    if GameTooltip then
+      GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+      GameTooltip:SetText("Úklid")
+      GameTooltip:AddLine("SortBags + stack. Mimo boj.", 0.7, 0.7, 0.7, true)
+      GameTooltip:Show()
+    end
+  end)
+  tidy:SetScript("OnLeave", function()
+    if GameTooltip then
+      GameTooltip:Hide()
+    end
+  end)
+  tidy:SetScript("OnClick", function()
+    local Tidy = BetterBackpack.Modules.Tidy
+    if Tidy and Tidy.SortBags then
+      Tidy.SortBags()
+    end
+  end)
+  tidy:Show()
+  strip.sortBtn = tidy
+  frame.sortBtn = tidy
+  frame.tidy = tidy
+  sortBtn = tidy
+
+  -- Lift TitleContainer below our strip so it cannot cover buttons.
   pcall(function()
-    btn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+    if frame.TitleContainer then
+      local tl = frame.TitleContainer:GetFrameLevel() or 1
+      local need = (frame:GetFrameLevel() or 1) + 50
+      if tl >= need then
+        frame.TitleContainer:SetFrameLevel(need)
+      end
+    end
   end)
 end
 
@@ -1003,15 +1102,8 @@ function Layout.EnsureMain()
   if main then
     KillPortrait(main)
     ApplyCombinedBagsChrome(main)
+    EnsureTitleChrome(main)
     InstallBagHoverHighlight()
-    if sortBtn then
-      sortBtn:Show()
-      sortBtn:SetFrameLevel((main:GetFrameLevel() or 1) + 30)
-    end
-    if settingsBtn then
-      settingsBtn:Show()
-      settingsBtn:SetFrameLevel((main:GetFrameLevel() or 1) + 30)
-    end
     return main
   end
 
@@ -1023,8 +1115,7 @@ function Layout.EnsureMain()
     freeFs = built.freeFs
     moneyFs = built._bbMoneyFs
     emptyLabel = built._bbEmpty
-    sortBtn = built.sortBtn or built.tidy
-    settingsBtn = built.settingsBtn or built.gear
+    EnsureTitleChrome(main)
     InstallBagHoverHighlight()
     return main
   end
@@ -1092,11 +1183,10 @@ function Layout.EnsureMain()
   if not close then
     pcall(function()
       close = CreateFrame("Button", nil, built, "UIPanelCloseButton")
+      built.CloseButton = close
     end)
   end
   if close then
-    close:ClearAllPoints()
-    close:SetPoint("TOPRIGHT", 2, 1)
     close:SetScript("OnClick", function()
       local OpenClose = BetterBackpack.Modules.OpenClose
       if OpenClose and OpenClose.CloseOurs then
@@ -1107,61 +1197,8 @@ function Layout.EnsureMain()
     end)
   end
 
-  -- Settings gear (category enable/disable).
-  local gear = CreateFrame("Button", "BetterBackpackSettingsButton", built)
-  StyleIconChromeButton(gear, nil, "Interface\\Buttons\\UI-OptionsButton", 28)
-  if close then
-    gear:SetPoint("RIGHT", close, "LEFT", -2, 0)
-  else
-    gear:SetPoint("TOPRIGHT", -28, -4)
-  end
-  gear:SetFrameLevel((built:GetFrameLevel() or 1) + 30)
-  gear:SetScript("OnEnter", function(self)
-    if GameTooltip then
-      GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-      GameTooltip:SetText("Nastavení")
-      GameTooltip:AddLine("Zapnout / vypnout kategorie.", 0.7, 0.7, 0.7, true)
-      GameTooltip:Show()
-    end
-  end)
-  gear:SetScript("OnLeave", function()
-    if GameTooltip then
-      GameTooltip:Hide()
-    end
-  end)
-  gear:SetScript("OnClick", function()
-    local S = BetterBackpack.Modules.Settings
-    if S and S.Toggle then
-      S.Toggle()
-    end
-  end)
-  gear:Show()
-
-  -- Visible Úklid (broom + label).
-  local tidy = CreateFrame("Button", "BetterBackpackSortButton", built)
-  StyleUklidButton(tidy)
-  tidy:SetPoint("RIGHT", gear, "LEFT", -4, 0)
-  tidy:SetFrameLevel((built:GetFrameLevel() or 1) + 30)
-  tidy:SetScript("OnEnter", function(self)
-    if GameTooltip then
-      GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-      GameTooltip:SetText("Úklid")
-      GameTooltip:AddLine("SortBags + stack. Mimo boj.", 0.7, 0.7, 0.7, true)
-      GameTooltip:Show()
-    end
-  end)
-  tidy:SetScript("OnLeave", function()
-    if GameTooltip then
-      GameTooltip:Hide()
-    end
-  end)
-  tidy:SetScript("OnClick", function()
-    local Tidy = BetterBackpack.Modules.Tidy
-    if Tidy and Tidy.SortBags then
-      Tidy.SortBags()
-    end
-  end)
-  tidy:Show()
+  -- Big Úklid + Nastavení left of X (high frame level strip).
+  EnsureTitleChrome(built)
 
   -- Footer on main (not Inset) — stable when main:SetSize runs.
   local footer = CreateFrame("Frame", nil, built)
@@ -1232,19 +1269,14 @@ function Layout.EnsureMain()
   freeFs = fs
   moneyFs = moneyFallback
   emptyLabel = empty
-  sortBtn = tidy
-  settingsBtn = gear
   main.footer = footer
   main.freeFs = freeFs
   main.moneyFrame = moneyFrame
-  main.sortBtn = tidy
-  main.tidy = tidy
-  main.settingsBtn = gear
-  main.gear = gear
   main._bbContent = contentFrame
   main._bbEmpty = empty
   main._bbMoneyFs = moneyFallback
   main._bbBuilt = true
+  EnsureTitleChrome(main)
 
   InstallBagHoverHighlight()
   PlaceOnScreen()
@@ -1277,15 +1309,8 @@ function Layout.Show()
   PlaceOnScreen()
   KillPortrait(main)
   ApplyCombinedBagsChrome(main)
+  EnsureTitleChrome(main)
   InstallBagHoverHighlight()
-  if sortBtn then
-    sortBtn:Show()
-    sortBtn:SetFrameLevel((main:GetFrameLevel() or 1) + 30)
-  end
-  if settingsBtn then
-    settingsBtn:Show()
-    settingsBtn:SetFrameLevel((main:GetFrameLevel() or 1) + 30)
-  end
   main:Show()
   pcall(function()
     main:Raise()
@@ -1295,10 +1320,13 @@ function Layout.Show()
   main:Show()
   PlaceOnScreen()
   ApplyCombinedBagsChrome(main)
+  EnsureTitleChrome(main)
   UpdateMoney()
   pcall(function()
     main:Raise()
   end)
+  -- Re-raise chrome after Raise() so TitleContainer cannot bury it.
+  EnsureTitleChrome(main)
   return main:IsShown() and true or false
 end
 
@@ -1379,6 +1407,9 @@ function Layout.DebugState()
     h = main:GetHeight()
     strata = main:GetFrameStrata()
   end)
+  local tidyOn = sortBtn and sortBtn:IsShown()
+  local gearOn = settingsBtn and settingsBtn:IsShown()
+  local chromeVer = main._bbChromeVer
   return {
     exists = true,
     shown = main:IsShown() and true or false,
@@ -1389,6 +1420,10 @@ function Layout.DebugState()
     h = h,
     strata = strata,
     parent = main:GetParent() and main:GetParent():GetName() or "?",
+    uklid = tidyOn and true or false,
+    nastaveni = gearOn and true or false,
+    chromeVer = chromeVer,
+    ver = Config.VERSION,
   }
 end
 
