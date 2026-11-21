@@ -6,7 +6,7 @@ Category-lane bags for **World of Warcraft Forever** (Interface 16001) with comb
 
 1. Put this folder in `Interface/AddOns/BetterBackpack/` (or symlink via `./scripts/link-addon.sh BetterBackpack`).
 2. Enable at character select if needed.
-3. `/reload` in game — chat should show `loaded v0.5.26` (B = overlay; bag-bar = native bag; broom = Close size).
+3. `/reload` in game — chat should show `loaded v0.5.27` (all bag-bar ids native; broom = Close plate size).
 
 Categories open expanded with item icons; click a category header (arrow) to collapse or expand it. The window is sized for the whole bag with every category expanded (as wide as the largest category, never narrower than 6 slots), so collapsing, searching or filtering never resizes it. Categories with no matches are hidden; the freed space stays plain (set `fillEmptyWells` in the profile to show empty slot wells there instead).
 

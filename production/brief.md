@@ -1,4 +1,8 @@
-# Playtest brief — BetterBackpack 0.5.26 (native bag-bar + broom size)
+# Playtest brief — BetterBackpack 0.5.27 (all bag icons + broom size)
+
+**0.5.27**
+- Every bag-bar icon (`0`–`NUM_BAG_SLOTS`, reagent, keyring) opens native `ContainerFrame`. Backpack icon uses `ToggleBackpack` → bag 0 (not combined). **B** = combined only (`ToggleAllBags`).
+- Broom/gear/X: same Close `GetWidth/Height` every layout (`StyleCloseTwin` + glyph crop).
 
 **0.5.26**
 - **B** = BetterBackpack combined overlay (all lanes). **Bag-bar / per-bag icon** = native Blizzard `ContainerFrame` (or keyring) — not overlay. Toggle same icon closes; another icon switches native bag. Settings → Features → *Bag bar opens native Blizzard bag* (default on; off = overlay + slot highlight).

@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.26).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.27).
   Forever: never SetToplevel / SetFrameStrata (ADDON_ACTION_BLOCKED).
   Chrome metrics from Baganator Forever Blizzard skin + ContainerFrameCombinedBags:
     ButtonFrameOffset=6, Bg/TopTile @ (6,-21), NineSlice borders, Inset hidden.
@@ -1748,7 +1748,7 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local CHROME_VER = 32 -- 0.5.18: empty custom lanes drawn as drop targets
+local CHROME_VER = 33 -- 0.5.27: broom Close-twin size sync every layout
 local chromeLogged = false
 local customChromeHidden = false
 
@@ -1785,6 +1785,17 @@ local function HideLegacyChromeOnce()
       end)
     end
   end
+end
+
+local function CloseButtonSize(close)
+  if not close then
+    return MeasureAutoSortSize()
+  end
+  local cw, ch = close:GetWidth(), close:GetHeight()
+  if type(cw) == "number" and cw >= 8 and type(ch) == "number" and ch >= 8 then
+    return cw, ch
+  end
+  return MeasureAutoSortSize()
 end
 
 local function MeasureAutoSortSize()
@@ -1904,7 +1915,9 @@ local function SetStateArt(btn, which, d)
         t:SetTexCoord(unpack(d.coords))
       end
       t:ClearAllPoints()
-      if d.w then
+      if d.w and btn._bbCloseRef then
+        t:SetAllPoints(btn)
+      elseif d.w then
         t:SetSize(d.w, d.h)
         t:SetPoint(d.p, btn, d.rp, d.x, d.y)
       else
@@ -2074,9 +2087,8 @@ local function PaintGlyph(icon, kind, w, h)
   icon:SetTexCoord(0, 1, 0, 1)
   local m = math.min(w, h)
   if kind == "tidy" then
-    -- Crop well inside the autosort bevel: its silver frame and brown fill, drawn ADD,
-    -- tinted the whole Close plate orange. Same footprint + gold tint as the gear.
-    icon:SetSize(math.floor(m * 0.66 + 0.5), math.floor(m * 0.66 + 0.5))
+    -- Same glyph footprint as gear; crop autosort atlas padding so broom fills the bevel.
+    icon:SetSize(math.floor(m * 0.62 + 0.5), math.floor(m * 0.62 + 0.5))
     local ok, info = false, nil
     if C_Texture and C_Texture.GetAtlasInfo then
       ok, info = pcall(C_Texture.GetAtlasInfo, "bags-button-autosort-up")
@@ -2084,7 +2096,7 @@ local function PaintGlyph(icon, kind, w, h)
     local file = ok and info and (info.file or info.filename)
     if file and info.leftTexCoord then
       SubRegion(icon, file, info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord,
-        0.24, 0.76, 0.24, 0.76)
+        0.28, 0.72, 0.28, 0.72)
       icon:SetBlendMode("ADD")
       icon:SetDesaturated(true)
       icon:SetVertexColor(1, 0.82, 0.18)
@@ -2183,17 +2195,22 @@ local function EnsureChromeButton(existing, globalName, frame)
   return btn
 end
 
+local function ApplyCloseTwinSize(btn, close, w, h)
+  if not btn then
+    return
+  end
+  btn:SetSize(w, h)
+  pcall(function()
+    btn:SetWidth(w)
+    btn:SetHeight(h)
+  end)
+end
+
 local function EnsureBagShelvesTitleChrome(frame, close)
   HideLegacyChromeOnce()
 
-  -- broom | gear | X: all three exactly the Close button's size, even gap, one row.
-  local w, h = MeasureAutoSortSize()
-  if close then
-    local cw, ch = close:GetWidth(), close:GetHeight()
-    if type(cw) == "number" and cw >= 8 and type(ch) == "number" and ch >= 8 then
-      w, h = cw, ch
-    end
-  end
+  -- broom | gear | X: live Close GetWidth/GetHeight every layout (never native 25×23).
+  local w, h = CloseButtonSize(close)
   local level = (close and close:GetFrameLevel()) or ((frame:GetFrameLevel() or 1) + 520)
   local gap = 2
 
@@ -2210,6 +2227,7 @@ local function EnsureBagShelvesTitleChrome(frame, close)
     gear:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -32, -4)
   end
   gear:SetFrameLevel(level)
+  ApplyCloseTwinSize(gear, close, w, h)
   if close then
     StyleCloseTwin(gear, "settings", close, w, h)
   else
@@ -2250,8 +2268,12 @@ local function EnsureBagShelvesTitleChrome(frame, close)
   tidy:ClearAllPoints()
   tidy:SetPoint("RIGHT", gear, "LEFT", -gap, 0)
   tidy:SetFrameLevel(level)
-  -- Native AutoSort plate + gold broom (Close-twin cover tinted the plate orange/red).
-  StyleAutoSortTwin(tidy, "tidy", w, h)
+  ApplyCloseTwinSize(tidy, close, w, h)
+  if close then
+    StyleCloseTwin(tidy, "tidy", close, w, h)
+  else
+    StyleAutoSortTwin(tidy, "tidy", w, h)
+  end
   if not tidy._bbChromeWired then
     tidy._bbChromeWired = true
     tidy:SetScript("OnEnter", function(self)
