@@ -1,6 +1,6 @@
 # Plateband
 
-Shared harmful / DoT icons grouped with native nameplate debuffs **above** the health bar. Feels like Blizzard forgot one native row — not a plate replacement.
+Companion for Forever nameplate auras. **Looks like Blizzard DebuffList.** Solo personal DoTs stay 100% native. Later versions only **add party/nearby DoTs** that the client does not already show on that same band — never covering the name, health, or cast bar.
 
 ## Install
 
