@@ -1667,7 +1667,7 @@ end
 
 local function ApplyBagKeyReplace()
   CaptureBlizzardToggles()
-  OpenClose.RestoreBlizzardToggles()
+  -- No RestoreBlizzardToggles here: InstallHooks re-runs via C_Timer; restore + _replaced_* skips re-hook (B dead after reload).
   -- ToggleBag / ToggleKeyRing stay native — only B paths replaced (0.5.45 path).
   ReplaceToggle("ToggleAllBags", function(...)
     onBagKey("ToggleAllBags")
