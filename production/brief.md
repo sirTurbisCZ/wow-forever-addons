@@ -1,4 +1,7 @@
-# Playtest brief — BetterBackpack 0.5.34 (combat B trace)
+# Playtest brief — BetterBackpack 0.5.35 (keyring nil fix)
+
+**0.5.35**
+- FElog `OpenClose.lua:191`: forward-decl `NormalizeBagID`; `ToggleBag -1` → keyring path; `CallOrigToggle` guards missing Blizzard orig.
 
 **0.5.34**
 - Combat **B**: `ForceCombatShow` when `BetterBackpackFrame` exists; chat lines `combat B · …` once per branch (busy/replace/xor/no frame/show fail). Paste traces if still dead.
