@@ -159,7 +159,7 @@ function Settings.Ensure()
   tip:SetPoint("TOPLEFT", 14, -34)
   tip:SetWidth(270)
   tip:SetJustifyH("LEFT")
-  tip:SetText("Uncheck a category to hide its lane (items stay in bags).")
+  tip:SetText("Uncheck = hide that lane. Those items still appear under Other (nothing is hidden from the bag).")
 
   local host = CreateFrame("Frame", nil, panel)
   host:SetPoint("TOPLEFT", 14, -56)

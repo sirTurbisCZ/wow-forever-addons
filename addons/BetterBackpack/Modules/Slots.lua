@@ -237,6 +237,60 @@ function Slots.SyncCooldown(btn, bag, slot)
   end
 end
 
+local function EnsureCountFs(btn)
+  if not btn then
+    return nil
+  end
+  local fs = btn.Count
+  if not fs then
+    pcall(function()
+      fs = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+    end)
+    if not fs then
+      fs = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    end
+    btn.Count = fs
+  end
+  pcall(function()
+    fs:ClearAllPoints()
+    fs:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -2, 2)
+    fs:SetJustifyH("RIGHT")
+    fs:SetTextColor(1, 1, 1, 1)
+    if fs.SetDrawLayer then
+      fs:SetDrawLayer("OVERLAY", 7)
+    end
+    -- Prefer NumberFontNormal; fall back if missing on Forever.
+    if NumberFontNormal then
+      fs:SetFontObject(NumberFontNormal)
+    elseif GameFontHighlightSmall then
+      fs:SetFontObject(GameFontHighlightSmall)
+    end
+  end)
+  return fs
+end
+
+local function ResolveStackCount(info, bag, slot)
+  if type(info) == "table" then
+    for _, key in ipairs({ "stackCount", "Count", "quantity", "stack" }) do
+      local c = SafeNum(info[key], nil)
+      if c and c >= 1 then
+        return c
+      end
+    end
+  end
+  -- Some Forever builds expose count only via GetContainerItemInfo return unpack / legacy.
+  if GetContainerItemInfo then
+    local ok, texture, itemCount = pcall(GetContainerItemInfo, bag, slot)
+    if ok then
+      local c = SafeNum(itemCount, nil)
+      if c and c >= 1 then
+        return c
+      end
+    end
+  end
+  return 1
+end
+
 function Slots.SyncVisual(btn, bag, slot)
   if not btn or not C_Container or not C_Container.GetContainerItemInfo then
     return
@@ -248,8 +302,10 @@ function Slots.SyncVisual(btn, bag, slot)
       if icon then
         icon:SetTexture(nil)
       end
-      if btn.Count and btn.Count.SetText then
-        btn.Count:SetText("")
+      local fs = EnsureCountFs(btn)
+      if fs then
+        fs:SetText("")
+        fs:Hide()
       end
       Slots.SyncCooldown(btn, bag, slot)
       return
@@ -260,30 +316,16 @@ function Slots.SyncVisual(btn, bag, slot)
     elseif icon and not info.iconFileID then
       icon:SetTexture(nil)
     end
-    local count = SafeNum(info.stackCount or info.Count, nil)
-    if count == nil then
-      count = 1
-    end
-    if not btn.Count then
-      local fs
-      pcall(function()
-        fs = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
-      end)
-      if not fs then
-        fs = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-      end
-      fs:SetPoint("BOTTOMRIGHT", -2, 2)
-      btn.Count = fs
-    end
-    if SetItemButtonCount then
-      pcall(SetItemButtonCount, btn, count)
-    end
-    if btn.Count and btn.Count.SetText then
+    local count = ResolveStackCount(info, bag, slot)
+    local fs = EnsureCountFs(btn)
+    -- Never rely solely on SetItemButtonCount (SecureActionButton has no ItemButton mixin).
+    if fs then
       if count > 1 then
-        btn.Count:SetText(tostring(count))
-        btn.Count:Show()
+        fs:SetText(tostring(count))
+        fs:Show()
       else
-        btn.Count:SetText("")
+        fs:SetText("")
+        fs:Hide()
       end
     end
     if SetItemButtonQuality and type(info.quality) == "number" and not IsSecret(info.quality) then

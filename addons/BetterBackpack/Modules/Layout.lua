@@ -1,7 +1,7 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.2.1).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.2.2).
   Forever: never SetToplevel (ADDON_ACTION_BLOCKED).
-  Title chrome: high-level strip LEFT of close (Úklid + Nastavení) — not under TitleContainer.
+  Text chrome Úklid/Nastavení; disabled categories → Other; N/M footer; stacks via Slots.
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -265,6 +265,7 @@ local function CollectBuckets()
     local bag, n = ranges[i].bag, ranges[i].slots
     for slot = 1, n do
       if Slots.SlotOccupied(bag, slot) then
+        -- Disabled category → Other (items always visible somewhere).
         local cat = Layout.ClassifyBagSlot(bag, slot)
         if not cat or not CategoryEnabled(cat) then
           cat = "other"
@@ -340,33 +341,44 @@ end
 
 -- Occupied/total only — no "Free N" label.
 local function UpdateFreeSpace()
+  -- Rebind in case EnsureMain reattach left a stale upvalue.
+  freeFs = (main and main.freeFs) or freeFs
   if not freeFs then
     return
   end
   local free, total = 0, 0
-  local ranges = Slots.BagRanges()
-  for i = 1, #ranges do
-    local bag, n = ranges[i].bag, ranges[i].slots
-    total = total + n
-    for slot = 1, n do
-      if not Slots.SlotOccupied(bag, slot) then
-        free = free + 1
+  local okRanges, ranges = pcall(function()
+    return Slots.BagRanges()
+  end)
+  if okRanges and type(ranges) == "table" then
+    for i = 1, #ranges do
+      local bag, n = ranges[i].bag, ranges[i].slots
+      n = tonumber(n) or 0
+      total = total + n
+      for slot = 1, n do
+        if not Slots.SlotOccupied(bag, slot) then
+          free = free + 1
+        end
       end
     end
   end
   local used = total - free
-  freeFs:SetText(string.format("%d/%d", used, total))
-  -- used/total: ≤50% green, ≤75% yellow, <100% orange, only 100% red
-  local ratio = (total > 0) and (used / total) or 0
-  if ratio <= 0.50 then
-    freeFs:SetTextColor(0.25, 0.85, 0.35) -- green
-  elseif ratio <= 0.75 then
-    freeFs:SetTextColor(0.95, 0.85, 0.20) -- yellow
-  elseif ratio < 1 then
-    freeFs:SetTextColor(1.0, 0.55, 0.15) -- orange
-  else
-    freeFs:SetTextColor(0.95, 0.25, 0.20) -- red (full only)
-  end
+  pcall(function()
+    freeFs:Show()
+    freeFs:SetDrawLayer("OVERLAY", 7)
+    freeFs:SetText(string.format("%d/%d", used, total))
+    -- ≤50% green, ≤75% yellow, <100% orange, only 100% red
+    local ratio = (total > 0) and (used / total) or 0
+    if ratio <= 0.50 then
+      freeFs:SetTextColor(0.25, 0.85, 0.35)
+    elseif ratio <= 0.75 then
+      freeFs:SetTextColor(0.95, 0.85, 0.20)
+    elseif ratio < 1 then
+      freeFs:SetTextColor(1.0, 0.55, 0.15)
+    else
+      freeFs:SetTextColor(0.95, 0.25, 0.20)
+    end
+  end)
 end
 
 local function BagsMatchForHighlight(a, b)
@@ -927,38 +939,34 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local CHROME_VER = 3
+local CHROME_VER = 4
 
-local function StyleLabeledChromeButton(btn, label, atlasName, texturePath)
-  btn:SetSize(92, 26)
+-- Plain text buttons — no mismatched bag/gear icons.
+local function StyleTextChromeButton(btn, label, width)
+  btn:SetSize(width or 84, 26)
+  if btn._bbIcon then
+    btn._bbIcon:Hide()
+  end
   if not btn._bbBg then
     local bg = btn:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     btn._bbBg = bg
   end
-  btn._bbBg:SetColorTexture(0.16, 0.15, 0.12, 0.95)
-  if not btn._bbIcon then
-    local icon = btn:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(18, 18)
-    icon:SetPoint("LEFT", 5, 0)
-    btn._bbIcon = icon
-  end
-  local icon = btn._bbIcon
-  local ok = false
-  if atlasName then
-    ok = pcall(icon.SetAtlas, icon, atlasName, false)
-  end
-  if not ok then
-    icon:SetTexture(texturePath or "Interface\\Buttons\\UI-RefreshButton")
-  end
+  btn._bbBg:SetColorTexture(0.18, 0.16, 0.12, 0.96)
+  btn._bbBg:Show()
   if not btn._bbLabel then
     local fs = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    fs:SetPoint("LEFT", icon, "RIGHT", 4, 0)
-    fs:SetPoint("RIGHT", -4, 0)
-    fs:SetJustifyH("LEFT")
+    fs:SetPoint("CENTER", 0, 0)
     btn._bbLabel = fs
   end
+  btn._bbLabel:ClearAllPoints()
+  btn._bbLabel:SetPoint("CENTER", 0, 0)
   btn._bbLabel:SetText(label)
+  btn._bbLabel:SetTextColor(1, 0.82, 0.2)
+  pcall(function()
+    btn:SetNormalTexture(nil)
+    btn:SetPushedTexture(nil)
+  end)
   pcall(function()
     btn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
   end)
@@ -1004,7 +1012,7 @@ local function EnsureTitleChrome(frame)
   else
     strip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -28, -4)
   end
-  strip:SetSize(200, 28)
+  strip:SetSize(180, 28)
   strip:SetFrameStrata(frame:GetFrameStrata() or "DIALOG")
   strip:SetFrameLevel((frame:GetFrameLevel() or 1) + 500)
   strip:EnableMouse(true)
@@ -1018,14 +1026,14 @@ local function EnsureTitleChrome(frame)
   gear:SetParent(strip)
   gear:ClearAllPoints()
   gear:SetPoint("RIGHT", strip, "RIGHT", 0, 0)
-  StyleLabeledChromeButton(gear, "Nastav.", nil, "Interface\\Buttons\\UI-OptionsButton")
-  gear:SetSize(86, 26)
+  StyleTextChromeButton(gear, "Nastavení", 90)
   gear:SetFrameLevel(strip:GetFrameLevel() + 2)
   gear:SetScript("OnEnter", function(self)
     if GameTooltip then
       GameTooltip:SetOwner(self, "ANCHOR_LEFT")
       GameTooltip:SetText("Nastavení")
       GameTooltip:AddLine("Zapnout / vypnout kategorie.", 0.7, 0.7, 0.7, true)
+      GameTooltip:AddLine("Skrytá kategorie → položky do Other.", 0.7, 0.7, 0.7, true)
       GameTooltip:Show()
     end
   end)
@@ -1054,8 +1062,7 @@ local function EnsureTitleChrome(frame)
   tidy:SetParent(strip)
   tidy:ClearAllPoints()
   tidy:SetPoint("RIGHT", gear, "LEFT", -4, 0)
-  StyleLabeledChromeButton(tidy, "Úklid", "bags-button-autosort-up", "Interface\\Buttons\\UI-RefreshButton")
-  tidy:SetSize(78, 26)
+  StyleTextChromeButton(tidy, "Úklid", 70)
   tidy:SetFrameLevel(strip:GetFrameLevel() + 2)
   tidy:SetScript("OnEnter", function(self)
     if GameTooltip then
@@ -1222,7 +1229,9 @@ function Layout.EnsureMain()
   fs:SetJustifyH("LEFT")
   fs:SetJustifyV("MIDDLE")
   fs:SetWidth(80)
-  fs:SetText("—/—")
+  fs:SetText("0/0")
+  fs:SetTextColor(0.25, 0.85, 0.35)
+  fs:SetDrawLayer("OVERLAY", 7)
 
   local moneyFrame
   pcall(function()
@@ -1321,12 +1330,14 @@ function Layout.Show()
   PlaceOnScreen()
   ApplyCombinedBagsChrome(main)
   EnsureTitleChrome(main)
+  UpdateFreeSpace()
   UpdateMoney()
   pcall(function()
     main:Raise()
   end)
   -- Re-raise chrome after Raise() so TitleContainer cannot bury it.
   EnsureTitleChrome(main)
+  UpdateFreeSpace()
   return main:IsShown() and true or false
 end
 
