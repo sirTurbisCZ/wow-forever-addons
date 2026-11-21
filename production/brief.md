@@ -1,4 +1,7 @@
-# Playtest brief — BetterBackpack 0.5.38 (nuclear bar restore)
+# Playtest brief — BetterBackpack 0.5.39 (0.5.38 crash fix)
+
+**0.5.39**
+- 0.5.38 crash/loop: snapshot Blizzard toggles at install; no CombinedBags→onOpenIntent; reentrancy guards on B path.
 
 **0.5.38**
 - Only **ToggleAllBags** → BetterBackpack. Bag bar + keyring = vanilla Blizzard (globals restored, no bar hooks).
