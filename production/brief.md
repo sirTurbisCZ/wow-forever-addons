@@ -1,4 +1,8 @@
-# Playtest brief — BetterBackpack 0.5.58 (main backpack)
+# Playtest brief — BetterBackpack 0.5.59 (native anchor)
+
+**0.5.59**
+- Fix `OpenClose.lua:174` nil — `local BBKeyringBagIndex` forward decl; safe frame names for secret `KEYRING_CONTAINER`.
+- Native bar bags: **one shared center anchor**; opening bag N hides other native containers (keyring separate XOR).
 
 **0.5.58**
 - `MainMenuBarBackpackButton` OnClick → **onBagKey** (combined), including `bagBarNative`. Swallow twin `ToggleBag(0)` for 200ms after main-pack click.
