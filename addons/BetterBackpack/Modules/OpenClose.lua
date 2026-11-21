@@ -1862,12 +1862,23 @@ function OpenClose.DiagnoseBagKey()
   local db = (Config and Config.EnsureDB and Config.EnsureDB()) or BetterBackpackDB
   local hk = db and db.bagKeyHook
   if hk then
-  lines[#lines + 1] = string.format(
+    lines[#lines + 1] = string.format(
       "bagKeyHook t=%s tb_ours=%s ta_ours=%s openBP=%s",
       tostring(hk.t),
       tostring(hk.toggleBackpack and hk.toggleBackpack.ours),
       tostring(hk.toggleAllBags and hk.toggleAllBags.ours),
       tostring(hk.openBackpack)
+    )
+  end
+  local esc = db and db.bagEsc
+  if esc then
+    lines[#lines + 1] = string.format(
+      "bagEsc alpha=%.2f inUISF=%s wantEsc=%s combatHide=%s keepShown=%s",
+      tonumber(esc.alpha) or -1,
+      tostring(esc.inUISpecialFrames),
+      tostring(esc.wantEscClose),
+      tostring(esc.combatHide),
+      tostring(esc.keepShown)
     )
   end
   local tr = db and db.bagKeyTrace

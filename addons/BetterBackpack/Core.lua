@@ -285,10 +285,25 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
           SafeCall("conflict", OpenClose.WarnBagConflicts)
         end
       end
+      if Layout and Layout.InstallEscGuard then
+        SafeCall("esc", Layout.InstallEscGuard)
+      end
       if C_Timer and C_Timer.After then
         C_Timer.After(0, function()
           WarmCombatShell("login")
         end)
+        C_Timer.After(0.1, function()
+          if Layout and Layout.SyncBagUISpecialFrame then
+            SafeCall("esc", Layout.SyncBagUISpecialFrame)
+          end
+        end)
+        for _, delay in ipairs({ 0.5, 2, 5, 15 }) do
+          C_Timer.After(delay, function()
+            if Layout and Layout.SyncBagUISpecialFrame then
+              SafeCall("esc", Layout.SyncBagUISpecialFrame)
+            end
+          end)
+        end
       else
         WarmCombatShell("login")
       end

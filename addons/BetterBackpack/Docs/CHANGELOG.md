@@ -1,5 +1,9 @@
 # BetterBackpack changelog
 
+## 1.1.2
+
+- **ESC:** hard-strip `BetterBackpackFrame` from `UISpecialFrames` when alpha under 0.05 or parked; `CloseSpecialWindows` pre-hook; `bagEsc` SV snapshot; login sync retries. Combat `IsBagFrameVisible` requires alpha at least 0.05.
+
 ## 1.1.1
 
 - **ESC:** `UISpecialFrames` for `BetterBackpackFrame` only while bags are user-visible — keep-shown combat shell (alpha 0, `Show()`) no longer blocks UIParent ESC.

@@ -2595,7 +2595,9 @@ function Layout.EnsureMain()
     if OpenClose and OpenClose.NotifyHidden then
       OpenClose.NotifyHidden()
     end
-    SyncBagUISpecialFrame()
+    if Layout.SyncBagUISpecialFrame then
+      Layout.SyncBagUISpecialFrame()
+    end
   end)
 
   local titleText = CombinedBagTitle()
@@ -2750,7 +2752,7 @@ function Layout.IsBagFrameVisible()
     return false
   end
   if InCombatLockdown and InCombatLockdown() then
-    return f._bbBuilt and true or false
+    return f._bbBuilt and FrameAlpha(f) >= 0.05 and true or false
   end
   if not f.IsShown or not f:IsShown() then
     return false
@@ -2763,20 +2765,84 @@ function Layout.IsShown()
 end
 
 local BAG_SPECIAL_FRAME = "BetterBackpackFrame"
+local ALPHA_ESC_MIN = 0.05
 
--- Only register for ESC when user-visible (not keep-shown alpha=0 shell).
-local function SyncBagUISpecialFrame()
+local function BagFrameListedInUISpecial()
+  if not UISpecialFrames then
+    return false
+  end
+  for i = 1, #UISpecialFrames do
+    if UISpecialFrames[i] == BAG_SPECIAL_FRAME then
+      return true
+    end
+  end
+  return false
+end
+
+-- Always purge BB from UISpecialFrames first (hard-remove when alpha 0 / parked).
+function Layout.StripBagSpecialFrame()
   if not UISpecialFrames then
     return
   end
-  local want = Layout.IsBagFrameVisible()
   for i = #UISpecialFrames, 1, -1 do
     if UISpecialFrames[i] == BAG_SPECIAL_FRAME then
       table.remove(UISpecialFrames, i)
     end
   end
-  if want then
+end
+
+function Layout.SyncBagUISpecialFrame()
+  if not UISpecialFrames then
+    return
+  end
+  local f = main or _G.BetterBackpackFrame
+  local alpha = f and FrameAlpha(f) or 0
+  Layout.StripBagSpecialFrame()
+  local want = false
+  if alpha >= ALPHA_ESC_MIN and not combatVisuallyHidden then
+    want = Layout.IsBagFrameVisible()
+  end
+  if want and f and FrameAlpha(f) >= ALPHA_ESC_MIN and not combatVisuallyHidden then
     table.insert(UISpecialFrames, BAG_SPECIAL_FRAME)
+  end
+  local db = Config and Config.EnsureDB and Config.EnsureDB()
+  if db then
+    db.bagEsc = {
+      t = (time and time()) or 0,
+      ver = Config.VERSION,
+      alpha = alpha,
+      combatHide = combatVisuallyHidden,
+      keepShown = BetterBackpack._bbKeepShown and true or false,
+      frameShown = f and f.IsShown and f:IsShown() and true or false,
+      inUISpecialFrames = BagFrameListedInUISpecial(),
+      wantEscClose = want,
+    }
+  end
+end
+
+local function SyncBagUISpecialFrame()
+  Layout.SyncBagUISpecialFrame()
+end
+
+function Layout.InstallEscGuard()
+  if Layout._escGuardInstalled then
+    return
+  end
+  if type(CloseSpecialWindows) ~= "function" then
+    return
+  end
+  Layout._escGuardInstalled = true
+  local orig = CloseSpecialWindows
+  CloseSpecialWindows = function(...)
+    Layout.StripBagSpecialFrame()
+    local f = main or _G.BetterBackpackFrame
+    local a = f and FrameAlpha(f) or 0
+    if a < ALPHA_ESC_MIN or combatVisuallyHidden then
+      -- parked shell must not participate in CloseSpecialWindows
+    else
+      Layout.SyncBagUISpecialFrame()
+    end
+    return orig(...)
   end
 end
 
