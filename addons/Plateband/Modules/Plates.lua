@@ -402,8 +402,10 @@ local function CountShownAuraKids(frame)
   end
   for i = 1, #kids do
     local child = kids[i]
-    if child and (child.icon or child.Icon) and SafeShown(child) then
-      n = n + 1
+    if child and SafeShown(child) then
+      if child.icon or child.Icon or child.GetAuraInstance then
+        n = n + 1
+      end
     end
   end
   return n
@@ -495,47 +497,63 @@ local function MaxIcons()
 end
 
 local function InitAuraButton(button, size)
-  button:SetSize(size, size)
-  button:EnableMouse(true)
-  if button.SetMouseMotionEnabled then
-    button:SetMouseMotionEnabled(true)
-  end
-  if button.SetMouseClickEnabled then
-    button:SetMouseClickEnabled(false)
-  end
+  -- Forever aura icons are often masked: SetTexCoord → FE flood
+  -- "Texture:SetTextCoord(): Cannot set tex coords when texture has mask"
+  -- and broken initializeFrame leaves AuraContainer empty (ac=0).
+  pcall(function()
+    button:SetSize(size, size)
+  end)
+  pcall(function()
+    button:EnableMouse(true)
+    if button.SetMouseMotionEnabled then
+      button:SetMouseMotionEnabled(true)
+    end
+    if button.SetMouseClickEnabled then
+      button:SetMouseClickEnabled(false)
+    end
+  end)
 
-  local icon = button:CreateTexture(nil, "ARTWORK")
-  icon:SetAllPoints(button)
-  icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-  button.icon = icon
+  local icon = button.icon or button.Icon
+  if not icon then
+    icon = button:CreateTexture(nil, "ARTWORK")
+    icon:SetAllPoints(button)
+    button.icon = icon
+  end
+  -- Do NOT SetTexCoord on Forever (masked FileDataIDs).
   if button.SetIcon then
     pcall(button.SetIcon, button, icon)
   end
 
-  local cd = CreateFrame("Cooldown", nil, button, "CooldownFrameTemplate")
-  cd:SetAllPoints(button)
-  cd:EnableMouse(false)
-  cd:SetDrawBling(false)
-  cd:SetReverse(true)
-  cd:SetDrawSwipe(true)
-  cd:SetSwipeColor(0, 0, 0, 0.5)
-  cd:SetHideCountdownNumbers(false)
-  button.cooldown = cd
-  if button.SetDurationCooldown then
-    pcall(button.SetDurationCooldown, button, cd)
+  if not button.cooldown then
+    local cd = CreateFrame("Cooldown", nil, button, "CooldownFrameTemplate")
+    cd:SetAllPoints(button)
+    cd:EnableMouse(false)
+    pcall(cd.SetDrawBling, cd, false)
+    pcall(cd.SetReverse, cd, true)
+    pcall(cd.SetDrawSwipe, cd, true)
+    -- Neutral dark swipe only — no orange/sepia tint.
+    pcall(cd.SetSwipeColor, cd, 0, 0, 0, 0.5)
+    pcall(cd.SetHideCountdownNumbers, cd, false)
+    button.cooldown = cd
+    if button.SetDurationCooldown then
+      pcall(button.SetDurationCooldown, button, cd)
+    end
   end
 
-  local count = button:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
-  count:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 0, 0)
-  button.count = count
-  if button.SetApplicationCount then
-    pcall(button.SetApplicationCount, button, count)
+  if not button.count then
+    local count = button:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+    count:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 0, 0)
+    button.count = count
+    if button.SetApplicationCount then
+      pcall(button.SetApplicationCount, button, count)
+    end
   end
 
-  local dur = button:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
-  dur:SetPoint("CENTER", button, "CENTER", 0, 1)
-  if button.SetDurationText then
+  if button.SetDurationText and not button._pbDur then
+    local dur = button:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+    dur:SetPoint("CENTER", button, "CENTER", 0, 1)
     pcall(button.SetDurationText, button, dur)
+    button._pbDur = dur
   end
 end
 
@@ -573,13 +591,10 @@ local function CreateBandContainer(parent, size)
 
   local groupOpts = {
     maxFrameCount = maxN,
-    candidateFilters = {
-      isFromPlayerOrPlayerPet = true,
-    },
     sortMethod = AuraContainerSortMethod and AuraContainerSortMethod.Expiration or nil,
     sortDirection = AuraContainerSortDirection and AuraContainerSortDirection.Normal or nil,
     initializeFrame = function(button)
-      InitAuraButton(button, size)
+      pcall(InitAuraButton, button, size)
     end,
     layout = {
       elementWidth = size,
@@ -588,6 +603,8 @@ local function CreateBandContainer(parent, size)
     },
   }
 
+  -- Prefer player/pet filter; Forever may reject it — fall back to plain HARMFUL.
+  groupOpts.candidateFilters = { isFromPlayerOrPlayerPet = true }
   local okAdd = pcall(container.AddAuraGroup, container, AC_GROUP, "HARMFUL", groupOpts)
   if not okAdd then
     groupOpts.candidateFilters = nil
@@ -605,17 +622,8 @@ local function CreateBandContainer(parent, size)
   return container
 end
 
-local function SetNativeParked(plate, park)
-  local list = NativeDebuffList(plate)
-  if not list then
-    return
-  end
-  pcall(function()
-    if list.SetAlpha then
-      list:SetAlpha(park and 0 or 1)
-    end
-  end)
-end
+-- Intentionally no native DebuffList alpha park / SetVertexColor / WorldFrame chrome.
+-- Aura icons only. Native list stays visible (avoid dual-row flicker later if needed).
 
 local function AnchorBand(container, unit, plate)
   plate = plate or PlateFor(unit)
@@ -700,10 +708,6 @@ end
 
 local function ClearOverlay(unit)
   local holder = overlays[unit]
-  local plate = unit and PlateFor(unit)
-  if plate then
-    SetNativeParked(plate, false)
-  end
   if not holder then
     return
   end
@@ -763,12 +767,18 @@ local function UpdateOverlay(unit, plate)
     return
   end
 
-  BindUnit(holder, unit)
+  -- Enable before bind so Forever AuraContainer actually populates.
   pcall(holder.SetEnabled, holder, true)
-  holder:Show()
+  BindUnit(holder, unit)
+  pcall(holder.UpdateAllAuras, holder)
 
   local painted = CountShownAuraKids(holder)
-  SetNativeParked(plate, painted > 0)
+  if painted > 0 then
+    holder:Show()
+  else
+    -- Empty band must not sit on the plate (no phantom chrome / tint risk).
+    holder:Hide()
+  end
 end
 
 -- Forward decl for auto-diag after RefreshAll
@@ -1089,7 +1099,14 @@ local function OnEvent(_, event, arg1)
 end
 
 function Mod.Start()
+  -- Retry AuraContainer after SetTexCoord fix / prior init failures.
+  acCreateFailed = false
   if started then
+    -- Drop stale holders so buttons re-init without SetTexCoord.
+    for unit in pairs(overlays) do
+      ClearOverlay(unit)
+      overlays[unit] = nil
+    end
     RefreshAll()
     EnsureTicker()
     EnsureWatchTicker()

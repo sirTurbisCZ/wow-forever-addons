@@ -2,7 +2,7 @@
 
 Plateband = Plateband or {}
 
-local CURRENT_SCHEMA = 2
+local CURRENT_SCHEMA = 3
 local MAX_ERRORS = 40
 local MAX_MSG = 2000
 
@@ -12,7 +12,7 @@ local Config = Plateband.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.1.1"
+Config.VERSION = "0.1.2"
 
 local function ProfileDefaults()
   return {
@@ -24,7 +24,8 @@ local function ProfileDefaults()
     watchOn = false,
     watchInterval = 2,
     autoDiag = true,
-    chatOnChange = true,
+    -- Quiet by default: sessionLog still records; chat only on /pb watch.
+    chatOnChange = false,
   }
 end
 
@@ -97,11 +98,18 @@ function Config.EnsureDB()
   if from < 2 then
     EnsureSessionLog(db)
     EnsureProfile(db)
-    -- Migrate lastDiag → lastDiagnose
     if db.lastDiagnose == nil and db.lastDiag ~= nil then
       db.lastDiagnose = db.lastDiag
     end
     db.schemaVersion = 2
+    from = 2
+  end
+
+  if from < 3 then
+    EnsureProfile(db)
+    -- Kill chat flood from v0.1.1 chatOnChange=true default.
+    db.profile.chatOnChange = false
+    db.schemaVersion = 3
   end
 
   EnsureProfile(db)
