@@ -1,10 +1,10 @@
 --[[
-  BetterBackpack.OpenClose — B + bag-bar ownership (0.2.5)
+  BetterBackpack.OpenClose — B + bag-bar ownership (0.3.2)
 
   B / ToggleAllBags / ToggleBackpack / ToggleBag / bag-bar OnClick = XOR.
   OpenAllBags / OpenBackpack / OpenBag = open (+ bag focus). CloseBag /
   CloseAllBags = close ours when session open. CombinedBags OnShow: park;
-  open ours only if still closed after Toggle*.
+  deferred open only if still closed AFTER Toggle* hooks (else B XOR-closes).
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -163,6 +163,23 @@ local function PulsePark()
   end
 end
 
+local function UnblackoutBlizzard()
+  pcall(function()
+    local f = ContainerFrameCombinedBags
+    if f then
+      f:SetAlpha(1)
+      f:EnableMouse(true)
+    end
+    for i = 1, 13 do
+      local cf = _G["ContainerFrame" .. i]
+      if cf then
+        cf:SetAlpha(1)
+        cf:EnableMouse(true)
+      end
+    end
+  end)
+end
+
 OpenOurs = function()
   if openBusy or closeBusy then
     return SessionOpen()
@@ -178,15 +195,38 @@ OpenOurs = function()
   BlackoutAll()
   ParkAllShown()
 
-  local ok, shown = pcall(function()
-    return Layout.Show and Layout.Show()
-  end)
-  if not ok or not shown or not OursVisible() then
+  local function tryShow()
+    local ok, shown = pcall(function()
+      return Layout.Show and Layout.Show()
+    end)
+    if OursVisible() then
+      return true, ok, shown
+    end
+    return (ok and shown) and true or false, ok, shown
+  end
+
+  local okShow, ok, shown = tryShow()
+  if not okShow then
+    pcall(function()
+      if Layout and Layout.EnsureMain then
+        Layout.EnsureMain()
+      end
+    end)
+    okShow, ok, shown = tryShow()
+  end
+
+  if not okShow or not OursVisible() then
     bagsOpen = false
     openBusy = false
-    ForceCloseBlizzard()
+    pcall(function()
+      if Layout and Layout.Hide then
+        Layout.Hide()
+      end
+    end)
+    -- Do not leave bags blacked-out with nothing shown (B feels like a crash).
+    UnblackoutBlizzard()
     if BetterBackpack.RecordError then
-      BetterBackpack.RecordError("OpenOurs", tostring(shown))
+      BetterBackpack.RecordError("OpenOurs", ok and tostring(shown) or tostring(shown))
     end
     return false
   end
@@ -642,9 +682,25 @@ function OpenClose.InstallHooks()
         Park(self)
         if SessionOpen() or openBusy then
           PulsePark()
-        else
-          -- Fallback when bag-bar Shows CombinedBags without ToggleBag.
+          return
+        end
+        -- Defer: ToggleBackpack body Shows CombinedBags BEFORE hooksecurefunc
+        -- onBagKey. Opening here would let onBagKey XOR-close immediately (B crash).
+        local function afterToggle()
+          if ignoringBagShow or closeBusy or not EnabledReplace() then
+            return
+          end
+          if SessionOpen() or openBusy then
+            ParkAllShown()
+            PulsePark()
+            return
+          end
           onOpenIntent(nil)
+        end
+        if C_Timer and C_Timer.After then
+          C_Timer.After(0, afterToggle)
+        else
+          afterToggle()
         end
       end)
     end)
@@ -664,8 +720,23 @@ function OpenClose.InstallHooks()
             Park(self)
             if SessionOpen() or openBusy then
               PulsePark()
-            else
+              return
+            end
+            local function afterToggle()
+              if ignoringBagShow or closeBusy or not EnabledReplace() then
+                return
+              end
+              if SessionOpen() or openBusy then
+                ParkAllShown()
+                PulsePark()
+                return
+              end
               onOpenIntent(nil)
+            end
+            if C_Timer and C_Timer.After then
+              C_Timer.After(0, afterToggle)
+            else
+              afterToggle()
             end
           end)
         end)

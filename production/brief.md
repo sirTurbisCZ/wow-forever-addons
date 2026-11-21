@@ -1,7 +1,7 @@
-# Playtest brief — BetterBackpack 0.3.1
+# Playtest brief — BetterBackpack 0.3.2 hotfix
 
-**Bug:** gear+broom tiny vs huge Close (X); sat on lower row (-34).
+**Bug:** B crash — CombinedBags OnShow opened BB before ToggleBackpack hooksecurefunc XOR, so B immediately closed; OpenOurs false left bags blacked out.
 
-**Fix:** both sized from Close (`GetSize`, fallback 32) and anchored on the title-bar row left of X.
+**Fix:** defer OnShow open one tick; OpenOurs retry + unblackout on fail; chrome sizes from Close GetWidth/Height (no button recreate).
 
-**Done when:** `/reload` → `loaded v0.3.1` · gear = broom = X size, same title row.
+**Done when:** `/reload` → `loaded v0.3.2` · B opens and stays open · second B closes.
