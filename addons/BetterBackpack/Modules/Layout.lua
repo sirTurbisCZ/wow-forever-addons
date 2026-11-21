@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.6).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.7).
   Forever: never SetToplevel / SetFrameStrata (ADDON_ACTION_BLOCKED).
   Chrome metrics from Baganator Forever Blizzard skin + ContainerFrameCombinedBags:
     ButtonFrameOffset=6, Bg/TopTile @ (6,-21), NineSlice borders, Inset hidden.
@@ -329,14 +329,22 @@ function Layout.ClassifyBagSlot(bag, slot)
   return "other", info
 end
 
-local function CollectBuckets()
+local function IsFiltering()
+  local S, F = Feat("Search"), Feat("Filter")
+  local q = S and S.GetQuery and S.GetQuery() or ""
+  local f = F and F.GetCategory and F.GetCategory()
+  return (type(q) == "string" and q ~= "") or f ~= nil
+end
+
+-- unfiltered=true ignores Search/Filter: used to size the frame so filtering never resizes it.
+local function CollectBuckets(unfiltered)
   local order = Layout.GetCategoryOrder()
   local buckets = {}
   for i = 1, #order do
     buckets[order[i]] = {}
   end
-  local Search = Feat("Search")
-  local Filter = Feat("Filter")
+  local Search = not unfiltered and Feat("Search")
+  local Filter = not unfiltered and Feat("Filter")
   local ranges = Slots.BagRanges()
   for i = 1, #ranges do
     local bag, n = ranges[i].bag, ranges[i].slots
@@ -762,14 +770,40 @@ local function EnsureSection(key)
   sf = CreateFrame("Frame", nil, content)
   sf:SetSize(100, HEADER_H)
   sf:SetFrameLevel((content:GetFrameLevel() or 1) + 5)
+  -- Baganator Forever category header: bag-arrow atlas (rotated) + GameFontNormalMed2 label.
   local header = CreateFrame("Button", nil, sf)
   header:SetPoint("TOPLEFT")
   header:SetPoint("TOPRIGHT")
   header:SetHeight(HEADER_H)
   header:RegisterForClicks("LeftButtonUp")
-  local title = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-  title:SetPoint("LEFT", 4, 0)
+  local arrow = header:CreateTexture(nil, "ARTWORK")
+  arrow:SetSize(14, 14)
+  arrow:SetPoint("LEFT", 0, 0)
+  if pcall(arrow.SetAtlas, arrow, "bag-arrow") and arrow:GetAtlas() then
+    header.arrowAtlas = true
+  end
+  header.arrow = arrow
+  local title = header:CreateFontString(nil, "OVERLAY")
+  if not pcall(title.SetFontObject, title, GameFontNormalMed2 or GameFontNormal) then
+    title:SetFontObject(GameFontNormal)
+  end
+  title:SetPoint("LEFT", arrow, "RIGHT", 6, 0)
+  title:SetJustifyH("LEFT")
   header.title = title
+  local countFs = header:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  countFs:SetPoint("LEFT", title, "RIGHT", 4, 0)
+  header.countFs = countFs
+  header:SetScript("OnEnter", function(self)
+    self.title:SetTextColor(1, 1, 1)
+  end)
+  header:SetScript("OnLeave", function(self)
+    local c = NORMAL_FONT_COLOR
+    if c and c.r then
+      self.title:SetTextColor(c.r, c.g, c.b)
+    else
+      self.title:SetTextColor(1, 0.82, 0)
+    end
+  end)
   header:SetScript("OnClick", function()
     local p = Profile()
     if type(p.collapsed) ~= "table" then
@@ -783,6 +817,20 @@ local function EnsureSection(key)
   return sf
 end
 
+local function SetHeaderState(header, label, count, collapsed)
+  header.title:SetText(label)
+  header.countFs:SetText(string.format("(%d)", count))
+  local arrow = header.arrow
+  pcall(function()
+    if header.arrowAtlas then
+      -- Baganator: expanded = π/2 (points down), collapsed = -π (points right).
+      arrow:SetRotation(collapsed and -math.pi or math.pi / 2)
+    else
+      arrow:SetTexture(collapsed and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up")
+    end
+  end)
+end
+
 local function DoLayout()
   if not main or not content then
     return
@@ -793,31 +841,52 @@ local function DoLayout()
   layoutBusy = true
   local ok, err = pcall(function()
     local maxCols = Columns()
-    local buckets = CollectBuckets()
     local used = {}
     local y = 0
     local any = false
     local order = Layout.GetCategoryOrder()
     local SM = Feat("StackMerge")
 
+    local function MergedLists(buckets)
+      local out = {}
+      for i = 1, #order do
+        local key = order[i]
+        if CategoryEnabled(key) then
+          local list = buckets[key] or {}
+          if SM and SM.Collapse then
+            list = SM.Collapse(list)
+          end
+          out[key] = list
+        end
+      end
+      return out
+    end
+
+    local lists = MergedLists(CollectBuckets(false))
+    -- Size from the unfiltered bag: search / filter / "No matches" keep the same frame.
+    local sizing = IsFiltering() and MergedLists(CollectBuckets(true)) or lists
+
     -- Hug content: grid is as wide as the widest expanded lane (capped at maxCols).
-    local lists = {}
     local widest = 0
-    for i = 1, #order do
-      local key = order[i]
-      if CategoryEnabled(key) then
-        local list = buckets[key] or {}
-        if SM and SM.Collapse then
-          list = SM.Collapse(list)
-        end
-        lists[key] = list
-        if not IsCollapsed(key) and #list > widest then
-          widest = #list
-        end
+    for key, list in pairs(sizing) do
+      if not IsCollapsed(key) and #list > widest then
+        widest = #list
       end
     end
     local cols = math.max(math.min(widest, maxCols), math.min(MIN_COLS, maxCols))
     local contentW = cols * SLOT + (cols - 1) * PAD
+
+    local lanesH = 0
+    for i = 1, #order do
+      local list = sizing[order[i]]
+      if list and #list > 0 then
+        lanesH = lanesH + HEADER_H + HEADER_PAD
+        if not IsCollapsed(order[i]) then
+          lanesH = lanesH + math.ceil(#list / cols) * (SLOT + PAD) - PAD
+        end
+        lanesH = lanesH + SECTION_GAP
+      end
+    end
 
     for i = 1, #order do
       local key = order[i]
@@ -831,12 +900,7 @@ local function DoLayout()
           sf:SetWidth(contentW)
           sf:Show()
           local collapsed = IsCollapsed(key)
-          sf.header.title:SetText(string.format(
-            "%s%s (%d)",
-            collapsed and "[+] " or "[-] ",
-            Layout.GetCategoryLabel(key),
-            #list
-          ))
+          SetHeaderState(sf.header, Layout.GetCategoryLabel(key), #list, collapsed)
           y = y + HEADER_H + HEADER_PAD
           if not collapsed then
             local col, row = 0, 0
@@ -894,6 +958,7 @@ local function DoLayout()
       if pinH > 0 then
         any = true
         y = y + pinH + SECTION_GAP
+        lanesH = lanesH + pinH + SECTION_GAP
       end
     end
 
@@ -919,7 +984,10 @@ local function DoLayout()
     if y >= SECTION_GAP then
       y = y - SECTION_GAP
     end
-    local contentH = math.max(y, 40)
+    if lanesH >= SECTION_GAP then
+      lanesH = lanesH - SECTION_GAP
+    end
+    local contentH = math.max(y, lanesH, 40)
     local width = INSET_X + contentW + INSET_X
     local height = TOP_CHROME + contentH + BOT_CHROME
     content:ClearAllPoints()
@@ -1293,7 +1361,7 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local CHROME_VER = 22 -- 0.5.6: chrome actually applied in DoLayout; hug-width grid
+local CHROME_VER = 23 -- 0.5.7: bag-arrow headers; ItemButtonTemplate slot art; NumberFontNormal counts
 local chromeLogged = false
 local customChromeHidden = false
 local nativeSortReleased = false

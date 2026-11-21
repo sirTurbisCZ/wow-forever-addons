@@ -1,13 +1,13 @@
-# Playtest brief — BetterBackpack 0.5.6
+# Playtest brief — BetterBackpack 0.5.7
 
-**Regression fixed (0.5.4/0.5.5):** `ApplyCombinedBagsChrome` (Layout) and `EnsureSlotBackground` (Slots) were called before their `local` declaration → nil global → DoLayout aborted on the first item. Result: empty lanes, players collapsed every header `[+]`, frame stuck at 456×360 (empty right side), chrome refresh skipped.
+**0.5.6 (fixed):** helpers called before `local` decl → DoLayout aborted (empty lanes, all `[+]`, stuck 456×360). Confirmed in SV: `Slots.lua:894` / `Layout.lua:941` nil-call errors from the 0.5.5 session.
 
-**0.5.6**
-- Both helpers declared before use; chrome (NineSlice / Bg / TopTile @ 6,-21, Inset hidden) actually runs each layout
-- Slot wells: `SlotBackground` (bags-item-slot64) under every icon
-- Categories default expanded; schema 3 wipes stuck `collapsed` once
-- Hug width: cols = clamp(widest expanded lane, 6, Columns()); symmetric INSET_X 14
+**0.5.7 (iteration 2 — look + stable size)**
+- Stack counts: `NumberFontNormal` white, BOTTOMRIGHT −5,2 (StackMerge cyan removed)
+- Headers: Baganator Forever `bag-arrow` (rotated) + `GameFontNormalMed2` label + grey `(n)`; no `[+]/[-]` text
+- Slots: ItemButtonTemplate Normal/Pushed/Highlight/IconBorder read at runtime; full-texcoord icon in BORDER; `bags-item-slot64` well
+- Frame size pinned to the unfiltered bag: search / filter / "No matches" never shrink the window
 
 **Keep:** Toggle* replace (B stable) — OpenClose untouched.
 
-**Done when:** `/reload` → `v0.5.6` → B opens with all lanes `[-]` + icons · window hugs grid (no empty right strip) · B closes · no new `layout` error in `/bb dump`.
+**Done when:** `/reload` → `v0.5.7` → B: arrows + gold headers, white counts, Blizzard-like slots · type a no-match search → window size unchanged · clear search → same layout · B closes.

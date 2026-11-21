@@ -402,24 +402,172 @@ local function EnsureCountFs(btn)
     btn.Count = fs
   end
   pcall(function()
-    fs:ClearAllPoints()
-    fs:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -1, 1)
-    fs:SetJustifyH("RIGHT")
-    -- Always white — never green/quality-tinted count.
-    fs:SetTextColor(1, 1, 1, 1)
-    if fs.SetDrawLayer then
-      fs:SetDrawLayer("OVERLAY", 7)
-    end
-    if fs.SetShadowOffset then
-      fs:SetShadowOffset(1, -1)
-    end
+    -- ItemButtonTemplate Count: NumberFontNormal, RIGHT, BOTTOMRIGHT -5,2, font's own white + shadow.
     if NumberFontNormal then
       fs:SetFontObject(NumberFontNormal)
     elseif GameFontHighlightSmall then
       fs:SetFontObject(GameFontHighlightSmall)
     end
+    fs:ClearAllPoints()
+    fs:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -5, 2)
+    fs:SetJustifyH("RIGHT")
+    fs:SetTextColor(1, 1, 1, 1)
+    if fs.SetDrawLayer then
+      fs:SetDrawLayer("OVERLAY", 7)
+    end
   end)
   return fs
+end
+
+--[[
+  ContainerFrameItemButton look = ItemButtonTemplate state art + bags-item-slot64 well.
+  Art is read once from a hidden ItemButtonTemplate (never guessed); fallbacks are the
+  classic ItemButtonTemplate files. Applied at creation only (OOC for secure buttons).
+]]
+local itemArt
+local ITEM_ART_FALLBACK = {
+  normal = { file = "Interface\\Buttons\\UI-Quickslot2", w = 64, h = 64, p = "CENTER", rp = "CENTER", x = 0, y = -1 },
+  pushed = { file = "Interface\\Buttons\\UI-Quickslot-Depress" },
+  highlight = { file = "Interface\\Buttons\\ButtonHilight-Square", blend = "ADD" },
+  border = { file = "Interface\\Common\\WhiteIconFrame", w = SLOT, h = SLOT, p = "CENTER", rp = "CENTER", x = 0, y = 0 },
+}
+
+local function GrabTex(tex, parent)
+  if not tex then
+    return nil
+  end
+  local d = {}
+  pcall(function()
+    local atlas = tex.GetAtlas and tex:GetAtlas()
+    if type(atlas) == "string" and atlas ~= "" and not IsSecret(atlas) then
+      d.atlas = atlas
+    end
+    local file = tex:GetTexture()
+    if file ~= nil and not IsSecret(file) then
+      d.file = file
+    end
+    local c = { tex:GetTexCoord() }
+    if #c == 8 and not IsSecret(c[1]) then
+      d.coords = c
+    end
+    if tex.GetBlendMode then
+      local b = tex:GetBlendMode()
+      if type(b) == "string" and not IsSecret(b) then
+        d.blend = b
+      end
+    end
+    local p, rel, rp, x, y = tex:GetPoint(1)
+    local w, h = tex:GetSize()
+    -- Only keep explicit geometry when the art is not simply stretched over the button.
+    if p and rel == parent and type(w) == "number" and w > 0 and math.abs(w - (parent:GetWidth() or w)) > 0.5 then
+      d.p, d.rp, d.x, d.y, d.w, d.h = p, rp, x or 0, y or 0, w, h
+    end
+  end)
+  if not d.atlas and not d.file then
+    return nil
+  end
+  return d
+end
+
+local function ReadItemArt()
+  if itemArt then
+    return itemArt
+  end
+  itemArt = {}
+  local ref
+  pcall(function()
+    ref = CreateFrame("ItemButton", nil, EnsureHost(), "ItemButtonTemplate")
+  end)
+  if not ref then
+    pcall(function()
+      ref = CreateFrame("Button", nil, EnsureHost(), "ItemButtonTemplate")
+    end)
+  end
+  if ref then
+    pcall(function()
+      ref:SetSize(SLOT, SLOT)
+      ref:Hide()
+      itemArt.normal = GrabTex(ref.GetNormalTexture and ref:GetNormalTexture(), ref)
+      itemArt.pushed = GrabTex(ref.GetPushedTexture and ref:GetPushedTexture(), ref)
+      itemArt.highlight = GrabTex(ref.GetHighlightTexture and ref:GetHighlightTexture(), ref)
+      itemArt.border = GrabTex(ref.IconBorder, ref)
+    end)
+  end
+  for k, v in pairs(ITEM_ART_FALLBACK) do
+    if not itemArt[k] then
+      itemArt[k] = v
+    end
+  end
+  return itemArt
+end
+
+local function PlaceArt(tex, btn, d)
+  if not tex or not d then
+    return
+  end
+  pcall(function()
+    tex:ClearAllPoints()
+    if d.w then
+      tex:SetSize(d.w, d.h)
+      tex:SetPoint(d.p or "CENTER", btn, d.rp or d.p or "CENTER", d.x or 0, d.y or 0)
+    else
+      tex:SetAllPoints(btn)
+    end
+  end)
+end
+
+local function PaintArt(tex, d)
+  if not tex or not d then
+    return
+  end
+  pcall(function()
+    if d.atlas then
+      tex:SetAtlas(d.atlas)
+    else
+      tex:SetTexture(d.file)
+      if d.coords then
+        tex:SetTexCoord(unpack(d.coords))
+      end
+    end
+    if d.blend and tex.SetBlendMode then
+      tex:SetBlendMode(d.blend)
+    end
+  end)
+end
+
+local function ApplyItemButtonArt(btn)
+  if not btn or btn._bbArt then
+    return
+  end
+  btn._bbArt = true
+  local art = ReadItemArt()
+  pcall(function()
+    btn:SetNormalTexture(art.normal.file or "Interface\\Buttons\\UI-Quickslot2")
+    PaintArt(btn:GetNormalTexture(), art.normal)
+    btn:SetPushedTexture(art.pushed.file or "Interface\\Buttons\\UI-Quickslot-Depress")
+    PaintArt(btn:GetPushedTexture(), art.pushed)
+    btn:SetHighlightTexture(art.highlight.file or "Interface\\Buttons\\ButtonHilight-Square", art.highlight.blend or "ADD")
+    PaintArt(btn:GetHighlightTexture(), art.highlight)
+  end)
+  pcall(function()
+    local border = btn.IconBorder
+    if not border then
+      border = btn:CreateTexture(nil, "OVERLAY")
+      btn.IconBorder = border
+      border:Hide()
+    end
+    PaintArt(border, art.border)
+  end)
+end
+
+local function PlaceItemButtonArt(btn)
+  local art = ReadItemArt()
+  pcall(function()
+    PlaceArt(btn.GetNormalTexture and btn:GetNormalTexture(), btn, art.normal)
+    PlaceArt(btn.GetPushedTexture and btn:GetPushedTexture(), btn, art.pushed)
+    PlaceArt(btn.GetHighlightTexture and btn:GetHighlightTexture(), btn, art.highlight)
+    PlaceArt(btn.IconBorder, btn, art.border)
+  end)
 end
 
 local function ResolveStackCount(info, bag, slot)
@@ -848,9 +996,8 @@ local function MakeVisualOnly(name, parent)
     btn = CreateFrame("Button", name, parent)
     btn:SetSize(SLOT, SLOT)
     EnsureSlotBackground(btn)
-    local icon = btn:CreateTexture(nil, "ARTWORK")
+    local icon = btn:CreateTexture(nil, "BORDER")
     icon:SetAllPoints()
-    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     btn.icon = icon
     btn.Icon = icon
     local count
@@ -860,8 +1007,9 @@ local function MakeVisualOnly(name, parent)
     if not count then
       count = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     end
-    count:SetPoint("BOTTOMRIGHT", -2, 2)
+    count:SetPoint("BOTTOMRIGHT", -5, 2)
     btn.Count = count
+    ApplyItemButtonArt(btn)
   end
   EnsureCooldown(btn)
   btn._bbSecure = false
@@ -913,9 +1061,8 @@ function Slots.Acquire(bag, slot)
   else
     btn:SetSize(SLOT, SLOT)
     EnsureSlotBackground(btn)
-    local icon = btn:CreateTexture(nil, "ARTWORK")
+    local icon = btn:CreateTexture(nil, "BORDER")
     icon:SetAllPoints()
-    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     btn.icon = icon
     btn.Icon = icon
     local count
@@ -925,13 +1072,9 @@ function Slots.Acquire(bag, slot)
     if not count then
       count = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     end
-    count:SetPoint("BOTTOMRIGHT", -2, 2)
+    count:SetPoint("BOTTOMRIGHT", -5, 2)
     btn.Count = count
-    local border = btn:CreateTexture(nil, "OVERLAY")
-    border:SetTexture([[Interface\Common\WhiteIconFrame]])
-    border:SetAllPoints()
-    border:Hide()
-    btn.IconBorder = border
+    ApplyItemButtonArt(btn)
     EnsureCooldown(btn)
   end
   btn._bbSecure = isSecure and true or false
@@ -1028,34 +1171,19 @@ local function NormalizeSlotVisual(btn)
       ic:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
       ic:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
       ic:SetSize(SLOT, SLOT)
-      ic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+      -- ItemButtonTemplate icon: full texture in BORDER (bevel NormalTexture draws over it).
+      ic:SetTexCoord(0, 1, 0, 1)
       if ic.SetDrawLayer then
-        ic:SetDrawLayer("ARTWORK", 0)
+        ic:SetDrawLayer("BORDER", 0)
       end
       ic:SetAlpha(1)
       ic:Show()
     end)
   end
-  pcall(function()
-    local nt = btn.GetNormalTexture and btn:GetNormalTexture()
-    if nt then
-      nt:ClearAllPoints()
-      nt:SetAllPoints(btn)
-      nt:SetSize(SLOT, SLOT)
-    end
-    local pt = btn.GetPushedTexture and btn:GetPushedTexture()
-    if pt then
-      pt:ClearAllPoints()
-      pt:SetAllPoints(btn)
-    end
-    local ht = btn.GetHighlightTexture and btn:GetHighlightTexture()
-    if ht then
-      ht:ClearAllPoints()
-      ht:SetAllPoints(btn)
-    end
-  end)
+  -- State art keeps ItemButtonTemplate geometry (64×64 bevel centered), never squashed to SLOT.
+  PlaceItemButtonArt(btn)
   -- Quality / overlay chrome must not inflate past SLOT.
-  for _, key in ipairs({ "IconBorder", "IconOverlay", "IconOverlay2", "IconQuestTexture", "flash" }) do
+  for _, key in ipairs({ "IconOverlay", "IconOverlay2", "IconQuestTexture", "flash" }) do
     local r = btn[key]
     if r and r.ClearAllPoints then
       pcall(function()
@@ -1070,7 +1198,7 @@ local function NormalizeSlotVisual(btn)
   if btn.Count then
     pcall(function()
       btn.Count:ClearAllPoints()
-      btn.Count:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -1, 1)
+      btn.Count:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -5, 2)
     end)
   end
   if btn.cooldown or btn.Cooldown then
