@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 0.5.73 combat B: OOC DoLayout in shell; CombatPresentFrame on screen.
+## Notes: 0.5.74 combat metrics dump; force CENTER if offscreen/zero size.
 ## Author: tuma
-## Version: 0.5.73
+## Version: 0.5.74
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled

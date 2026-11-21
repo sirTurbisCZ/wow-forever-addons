@@ -1,4 +1,7 @@
-# Playtest brief — BetterBackpack 0.5.73
+# Playtest brief — BetterBackpack 0.5.74
+
+**0.5.74**
+- Combat open: force CENTER (not saved offscreen pos); fix w/h<100; one chat `combat B · metrics · w=…`.
 
 **0.5.73**
 - Shell warmup runs **one OOC DoLayout** (`_bbLayoutWarm`) so combat has slots.

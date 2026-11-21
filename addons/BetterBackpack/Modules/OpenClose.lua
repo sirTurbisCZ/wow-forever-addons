@@ -1,4 +1,4 @@
----- BetterBackpack.OpenClose — B + /bb (0.5.62 — same as 0.5.60)---- ToggleAllBags + ToggleBackpack → onBagKey XOR (same handler). ToggleBag / ToggleKeyRing = Blizzard.-- Bag-bar native: never park/blackout ContainerFrame*; RestoreNativeBagFrames on close only.-- (not hooksecurefunc). Forever Toggle* bodies call Open*/Close* first; a-- post-hook XOR then closed what we just opened (or reopened after close) —-- open/close thrash that froze the client on B.---- OpenAllBags / OpenBackpack / OpenBag = open (+ bag focus). Close* close-- ours when session open. CombinedBags OnShow: park; deferred open only if-- still closed after Toggle* (covers non-Toggle Open* paths).--
+-- BetterBackpack.OpenClose - B + /bb (stable base).
 
 BetterBackpack = BetterBackpack or {}
 BetterBackpack.Modules = BetterBackpack.Modules or {}

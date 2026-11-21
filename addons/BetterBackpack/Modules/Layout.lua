@@ -2745,6 +2745,57 @@ function Layout.EnsureCombatShell()
   return true
 end
 
+local function CombatPlaceFrame(frame)
+  pcall(function()
+    frame:ClearAllPoints()
+    frame:SetPoint("CENTER", UIParent, "CENTER", 180, 60)
+  end)
+end
+
+local function DumpCombatFrameMetrics(frame)
+  local OC = BetterBackpack.Modules and BetterBackpack.Modules.OpenClose
+  if not OC or not OC.CombatTraceOnce or not frame then
+    return
+  end
+  local w, h, a, sh, l, b, r, t, sc, parName, cw, ch
+  pcall(function()
+    w = frame:GetWidth()
+    h = frame:GetHeight()
+    a = frame:GetAlpha()
+    sh = frame:IsShown() and 1 or 0
+    l = frame:GetLeft()
+    b = frame:GetBottom()
+    r = frame:GetRight()
+    t = frame:GetTop()
+    sc = frame:GetScale()
+    local par = frame:GetParent()
+    parName = par and par.GetName and par:GetName() or "?"
+  end)
+  local c = frame._bbContent or content
+  if c then
+    pcall(function()
+      cw = c:GetWidth()
+      ch = c:GetHeight()
+    end)
+  end
+  OC.CombatTraceOnce("metrics", string.format(
+    "w=%.0f h=%.0f a=%.2f shown=%s L=%.0f B=%.0f R=%.0f T=%.0f scale=%.2f parent=%s cw=%.0f ch=%.0f warm=%s",
+    tonumber(w) or 0,
+    tonumber(h) or 0,
+    tonumber(a) or 0,
+    tostring(sh),
+    tonumber(l) or -9999,
+    tonumber(b) or -9999,
+    tonumber(r) or -9999,
+    tonumber(t) or -9999,
+    tonumber(sc) or 1,
+    tostring(parName),
+    tonumber(cw) or 0,
+    tonumber(ch) or 0,
+    tostring(BetterBackpack._bbLayoutWarm)
+  ))
+end
+
 local function CombatPresentFrame(frame)
   if not frame then
     return false
@@ -2759,11 +2810,20 @@ local function CombatPresentFrame(frame)
       frame:SetParent(UIParent)
     end
     frame:SetFrameLevel(500)
+    if frame.SetScale then
+      frame:SetScale(1)
+    end
   end)
-  pcall(PlaceOnScreen)
+  CombatPlaceFrame(frame)
   pcall(function()
-    if not frame.GetWidth or not frame:GetWidth() or frame:GetWidth() < 100 then
-      frame:SetSize(456, 360)
+    local fw = frame:GetWidth() or 0
+    local fh = frame:GetHeight() or 0
+    local targetW = (stickyH and stickyCols) and (INSET_X * 2 + stickyCols * SLOT + math.max(0, stickyCols - 1) * PAD) or nil
+    local targetH = stickyH
+    if fw < 100 or fh < 100 then
+      frame:SetSize(targetW or 456, targetH or 360)
+    elseif targetH and targetH > fh then
+      frame:SetSize(fw, targetH)
     end
   end)
   pcall(function()
@@ -2782,6 +2842,19 @@ local function CombatPresentFrame(frame)
   pcall(RefreshCooldowns)
   UpdateFreeSpace()
   UpdateMoney()
+  DumpCombatFrameMetrics(frame)
+  local left
+  pcall(function()
+    left = frame:GetLeft()
+  end)
+  if left ~= nil and left < -200 then
+    CombatPlaceFrame(frame)
+    pcall(function()
+      if (frame:GetWidth() or 0) < 100 then
+        frame:SetSize(456, 360)
+      end
+    end)
+  end
   return Layout.IsBagFrameVisible()
 end
 
