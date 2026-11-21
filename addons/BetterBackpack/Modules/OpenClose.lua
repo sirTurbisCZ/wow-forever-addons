@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.OpenClose — B + /bb (0.5.56)
+  BetterBackpack.OpenClose — B + /bb (0.5.57)
 
   B + ToggleBackpack/ToggleAllBags → onBagKey XOR (0.5.50). Main backpack icon → same combined path.
   Bag-bar slots → native ToggleBag when bagBarNative, else BB bag-focus. Keyring → native only.
@@ -53,9 +53,7 @@ local OpenOurs
 local InvokeNativeKeyRing
 local onKeyRingToggle
 local OpenForeverKeyringIndividual
-local KEYRING_DEBOUNCE = 0.22
-local lastKeyRingToggleAt = 0
-local inKeyRingToggle = false
+OpenClose._keyRingInnerOpen = false
 
 local function Now()
   return (GetTime and GetTime()) or 0
@@ -310,6 +308,24 @@ local function CallOrigToggle(name, ...)
     return false
   end
   return pcall(orig, ...)
+end
+
+local function CallBlizzardToggleBag(bagID, ...)
+  local orig = OpenClose["_orig_ToggleBag"] or OpenClose["_blizzard_ToggleBag"]
+  if type(orig) ~= "function" then
+    return false
+  end
+  OpenClose._keyRingInnerOpen = true
+  local ok, err = pcall(orig, bagID, ...)
+  OpenClose._keyRingInnerOpen = false
+  if not ok and BetterBackpack.RecordError then
+    BetterBackpack.RecordError("ToggleBag", err)
+  end
+  return ok
+end
+
+function OpenClose.ResetKeyRingGate()
+  OpenClose._keyRingInnerOpen = false
 end
 
 local function BlackoutCombinedOnly()
@@ -1277,7 +1293,7 @@ local function CloseForeverKeyring()
       frame:Hide()
     end)
   elseif bag ~= nil then
-    CallOrigToggle("ToggleBag", bag)
+    CallBlizzardToggleBag(bag)
   end
   EndNativeSession()
 end
@@ -1302,7 +1318,7 @@ OpenForeverKeyringIndividual = function()
   end
   local frame, shown = FindKeyringContainerFrame()
   if not shown and bag ~= nil then
-    CallOrigToggle("ToggleBag", bag)
+    CallBlizzardToggleBag(bag)
     frame, shown = FindKeyringContainerFrame()
   end
   if frame then
@@ -1405,17 +1421,6 @@ end
 
 onKeyRingToggle = function(src)
   src = src or "ToggleKeyRing"
-  local t = Now()
-  if inKeyRingToggle then
-    KeyRingChat("skip", src .. " busy")
-    return
-  end
-  if (t - lastKeyRingToggleAt) < KEYRING_DEBOUNCE then
-    KeyRingChat("skip", string.format("%s debounce %.0fms", src, (t - lastKeyRingToggleAt) * 1000))
-    return
-  end
-  inKeyRingToggle = true
-  lastKeyRingToggleAt = t
   KeyRingChat("toggle", src)
   if SessionOpen() or OursVisible() then
     OpenClose.CloseOurs({ closeBlizzard = false, suppress = 0.05 })
@@ -1423,17 +1428,19 @@ onKeyRingToggle = function(src)
   if KeyRingNativeOpen() then
     KeyRingChat("close", src)
     CloseForeverKeyring()
-    inKeyRingToggle = false
     return
   end
   KeyRingChat("open", src)
   BeginNativeSession(BBKeyringBagIndex())
   pcall(InvokeNativeKeyRing)
-  inKeyRingToggle = false
 end
 
 local function onToggleBagRoute(bagID, ...)
   if IsForeverKeyringBag(bagID) then
+    if OpenClose._keyRingInnerOpen then
+      CallBlizzardToggleBag(bagID, ...)
+      return
+    end
     onKeyRingToggle("ToggleBag")
     return
   end

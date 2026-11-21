@@ -1,4 +1,7 @@
-# Playtest brief — BetterBackpack 0.5.56 (Forever keyring)
+# Playtest brief — BetterBackpack 0.5.57 (keyring re-entry)
+
+**0.5.57**
+- Fix `ToggleBag busy`: inner open calls **`_orig_ToggleBag`** via `CallBlizzardToggleBag`; removed keyring debounce/busy gates.
 
 **0.5.56**
 - Forever: keyring = `ToggleBag(KEYRING_CONTAINER)` not `ToggleKeyRing`. `OpenBag(-1, true)` individual container; intercept only keyring bag id on `ToggleBag`. 220ms debounce (fix ×4 OnClick).
