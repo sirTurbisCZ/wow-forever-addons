@@ -1,8 +1,12 @@
 # BetterBackpack changelog
 
+## 1.0.3
+
+- **Bag bar:** move `NormalizeBagID`, `BBKeyringBagIndex`, and `BagIdFromButton` above first use (Lua scope — fixes live FELog 1137/160 nil calls).
+
 ## 1.0.2
 
-- **Bag bar:** forward-declare `BagIdFromButton` (nil call in `IsKeyringBarButton` when hooks run).
+- **Bag bar:** forward-declare `BagIdFromButton` (insufficient for defs-after-use in same chunk).
 
 ## 1.0.1
 

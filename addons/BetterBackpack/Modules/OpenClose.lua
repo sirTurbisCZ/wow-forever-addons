@@ -37,7 +37,6 @@ local ClearFocusBag
 local ClearCategoryFilter
 local OpenOurs
 local InvokeNativeKeyRing
-local BagIdFromButton
 
 local function InCombat()
   return InCombatLockdown and InCombatLockdown() and true or false
@@ -87,6 +86,51 @@ local function RestoreFrameInteractive(f)
     f:SetAlpha(1)
     f:EnableMouse(true)
   end)
+end
+
+NormalizeBagID = function(bagID)
+  local Slots = BetterBackpack.Modules.Slots
+  if Slots and Slots.SafeNum then
+    local plain = Slots.SafeNum(bagID, nil)
+    if plain ~= nil then
+      return plain
+    end
+  end
+  if type(bagID) == "number" then
+    if Slots and Slots.SafeNum and Slots.SafeNum(bagID, nil) == nil then
+      return bagID
+    end
+    return bagID
+  end
+  if type(bagID) == "string" then
+    local n = tonumber(bagID)
+    if n then
+      return n
+    end
+  end
+  return nil
+end
+
+local function BBKeyringBagIndex()
+  local Slots = BetterBackpack.Modules.Slots
+  if Slots and type(Slots.KeyringBagIndex) == "function" then
+    local raw = Slots.KeyringBagIndex()
+    if type(NormalizeBagID) == "function" then
+      local k = NormalizeBagID(raw)
+      if k ~= nil then
+        return k
+      end
+    elseif raw ~= nil then
+      return raw
+    end
+  end
+  if KEYRING_CONTAINER ~= nil then
+    if type(NormalizeBagID) == "function" then
+      return NormalizeBagID(KEYRING_CONTAINER)
+    end
+    return KEYRING_CONTAINER
+  end
+  return -2
 end
 
 local function RestoreNativeBagFrames()
@@ -220,28 +264,6 @@ local function NativeKeyRingVisible()
     end
   end
   return false
-end
-
-local function BBKeyringBagIndex()
-  local Slots = BetterBackpack.Modules.Slots
-  if Slots and type(Slots.KeyringBagIndex) == "function" then
-    local raw = Slots.KeyringBagIndex()
-    if type(NormalizeBagID) == "function" then
-      local k = NormalizeBagID(raw)
-      if k ~= nil then
-        return k
-      end
-    elseif raw ~= nil then
-      return raw
-    end
-  end
-  if KEYRING_CONTAINER ~= nil then
-    if type(NormalizeBagID) == "function" then
-      return NormalizeBagID(KEYRING_CONTAINER)
-    end
-    return KEYRING_CONTAINER
-  end
-  return -2
 end
 
 local function RestoreShownNativeBags()
@@ -1047,30 +1069,6 @@ ClearCategoryFilter = function()
   end
 end
 
-NormalizeBagID = function(bagID)
-  local Slots = BetterBackpack.Modules.Slots
-  if Slots and Slots.SafeNum then
-    local plain = Slots.SafeNum(bagID, nil)
-    if plain ~= nil then
-      return plain
-    end
-  end
-  if type(bagID) == "number" then
-    if Slots and Slots.SafeNum and Slots.SafeNum(bagID, nil) == nil then
-      -- Forever secret bag index — keep opaque value for Blizzard ToggleBag/OpenBag.
-      return bagID
-    end
-    return bagID
-  end
-  if type(bagID) == "string" then
-    local n = tonumber(bagID)
-    if n then
-      return n
-    end
-  end
-  return nil
-end
-
 --- Plain number when possible; otherwise raw bag token (incl. secret Enum indices).
 local function BagIDForNative(bagID)
   local plain = NormalizeBagID(bagID)
@@ -1121,6 +1119,27 @@ local function BagIdFromButtonName(btn)
     return BBKeyringBagIndex()
   end
   return nil
+end
+
+local function BagIdFromButton(btn)
+  if not btn then
+    return nil
+  end
+  local bagID
+  pcall(function()
+    if btn.GetBagID then
+      bagID = btn:GetBagID()
+    elseif btn.bagID ~= nil then
+      bagID = btn.bagID
+    elseif btn.id ~= nil then
+      bagID = btn.id
+    end
+  end)
+  local fromApi = NormalizeBagID(bagID)
+  if fromApi ~= nil then
+    return fromApi
+  end
+  return NormalizeBagID(BagIdFromButtonName(btn))
 end
 
 local function IsKeyringBarButton(btn)
@@ -1447,6 +1466,7 @@ local function SafeHookOnClick(btn, handler)
     return false
   end
   if not FrameSupportsOnClick(btn) then
+  -- Secure/bar templates often reject OnClick hook; ToggleBag replace handles those.
     return false
   end
   local ok = pcall(function()
@@ -1456,27 +1476,6 @@ local function SafeHookOnClick(btn, handler)
     btn.BetterBackpackClickHooked = true
   end
   return ok
-end
-
-BagIdFromButton = function(btn)
-  if not btn then
-    return nil
-  end
-  local bagID
-  pcall(function()
-    if btn.GetBagID then
-      bagID = btn:GetBagID()
-    elseif btn.bagID ~= nil then
-      bagID = btn.bagID
-    elseif btn.id ~= nil then
-      bagID = btn.id
-    end
-  end)
-  local fromApi = NormalizeBagID(bagID)
-  if fromApi ~= nil then
-    return fromApi
-  end
-  return NormalizeBagID(BagIdFromButtonName(btn))
 end
 
 local function onBagBarClick(btn)
