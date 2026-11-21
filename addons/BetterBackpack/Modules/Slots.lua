@@ -39,6 +39,37 @@ function Slots.ReagentBagIndex()
   return 5
 end
 
+function Slots.KeyringBagIndex()
+  if Enum and Enum.BagIndex and Enum.BagIndex.Keyring ~= nil then
+    return Enum.BagIndex.Keyring
+  end
+  if KEYRING_CONTAINER ~= nil then
+    return KEYRING_CONTAINER
+  end
+  return -2
+end
+
+function Slots.IsKeyringBag(bag)
+  if bag == nil then
+    return false
+  end
+  local key = Slots.KeyringBagIndex()
+  local match = false
+  pcall(function()
+    if bag == key then
+      match = true
+    end
+  end)
+  if match then
+    return true
+  end
+  local plain = SafeNum(key, nil)
+  if plain ~= nil then
+    return SafeNum(bag, nil) == plain
+  end
+  return SafeNum(bag, nil) == -2
+end
+
 function Slots.IsReagentBag(bag)
   if bag == nil then
     return false
@@ -65,7 +96,9 @@ end
 
 function Slots.BagSlotKey(bag, slot)
   local b
-  if Slots.IsReagentBag(bag) then
+  if Slots.IsKeyringBag(bag) then
+    b = "K"
+  elseif Slots.IsReagentBag(bag) then
     b = "R"
   else
     b = SafeNum(bag, nil)
@@ -99,6 +132,10 @@ function Slots.AttrBagSlot(bag, slot)
   if s == nil then
     return nil, nil
   end
+  if Slots.IsKeyringBag(bag) then
+    local b = SafeNum(Slots.KeyringBagIndex(), nil) or SafeNum(bag, nil) or -2
+    return b, s
+  end
   if Slots.IsReagentBag(bag) then
     local b = SafeNum(Slots.ReagentBagIndex(), nil) or SafeNum(bag, nil) or 5
     return b, s
@@ -115,9 +152,15 @@ function Slots.NumSlotsForBag(bag)
     if Slots.IsReagentBag(bag) then
       return 36
     end
+    if Slots.IsKeyringBag(bag) then
+      return 32
+    end
     return 0
   end
   if IsSecret(res) then
+    if Slots.IsKeyringBag(bag) then
+      return 32
+    end
     return 36
   end
   return res > 0 and res or 0
@@ -126,7 +169,8 @@ end
 function Slots.BagRanges()
   local ranges = {}
   local reb = Slots.ReagentBagIndex()
-  local bags = { 0, 1, 2, 3, 4, reb }
+  local key = Slots.KeyringBagIndex()
+  local bags = { 0, 1, 2, 3, 4, reb, key }
   if not Slots.IsReagentBag(5) then
     bags[#bags + 1] = 5
   end
@@ -140,7 +184,10 @@ function Slots.BagRanges()
           match = true
         end
       end)
-      if match or (Slots.IsReagentBag(ranges[j].bag) and Slots.IsReagentBag(bag)) then
+      if match
+          or (Slots.IsReagentBag(ranges[j].bag) and Slots.IsReagentBag(bag))
+          or (Slots.IsKeyringBag(ranges[j].bag) and Slots.IsKeyringBag(bag))
+      then
         already = true
         break
       end
@@ -152,6 +199,7 @@ function Slots.BagRanges()
           bag = bag,
           slots = n,
           reagent = Slots.IsReagentBag(bag),
+          keyring = Slots.IsKeyringBag(bag),
         }
       end
     end
@@ -739,13 +787,14 @@ function Slots.PreCreate()
     return false
   end
   EnsureHost()
-  local bags = { 0, 1, 2, 3, 4, Slots.ReagentBagIndex() }
+  local bags = { 0, 1, 2, 3, 4, Slots.ReagentBagIndex(), Slots.KeyringBagIndex() }
   if not Slots.IsReagentBag(5) then
     bags[#bags + 1] = 5
   end
   for i = 1, #bags do
     local bag = bags[i]
-    for slot = 1, 36 do
+    local maxSlots = Slots.IsKeyringBag(bag) and 32 or 36
+    for slot = 1, maxSlots do
       local btn = Slots.Acquire(bag, slot)
       Slots.SyncAttrs(btn, bag, slot)
     end

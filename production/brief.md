@@ -1,7 +1,5 @@
-# Playtest brief — BetterBackpack 0.2.3
+# Playtest brief — BetterBackpack 0.2.4
 
-**Goal:** Fix layout nil (EnsureTitleChrome); compact Úklid|Nastavení left of X; white stack counts >1.
+**Bugs fixed:** bag-bar/OpenBag click opens BB; Keys/keyring lane; N/M centered in footer; hug-content layout polish.
 
-**Evidence:** FElog `Layout.lua: attempt to call a nil value` — forward decl never assigned (`local function` shadowed).
-
-**Done when:** `/reload` → `loaded v0.2.3` · bags open without layout error · chrome tight L of X · stacks>1 white · Settings Other tip.
+**Done when:** `/reload` → `loaded v0.2.4` · click bag icons opens UI · Keys section if keyring has items · N/M centered · no empty black under Other.

@@ -1,7 +1,7 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.2.3).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.2.4).
   Forever: never SetToplevel (ADDON_ACTION_BLOCKED).
-  EnsureTitleChrome assigned to forward decl (Lua 5.1). Compact title chrome L of X.
+  Hug-content height; even section gaps; title LEFT + chrome LEFT of X.
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -15,14 +15,16 @@ local Slots = BetterBackpack.Modules.Slots
 
 local SLOT = 37
 local PAD = 4
-local HEADER_H = 20
-local INSET_X = 14
-local TOP_CHROME = 42
-local BOT_CHROME = 32
-local FOOTER_H = 22
+local HEADER_H = 18
+local HEADER_PAD = 2
+local SECTION_GAP = 4 -- even gap after every section (incl. last trimmed)
+local INSET_X = 12
+local TOP_CHROME = 34 -- title band; content starts below
+local BOT_CHROME = 26 -- N/M + money strip
+local FOOTER_H = 20
 
 local CATEGORY_ORDER = {
-  "junk", "consumable", "reagent", "gem", "gear", "quest", "container", "other",
+  "junk", "consumable", "reagent", "gem", "gear", "quest", "keys", "container", "other",
 }
 
 local CATEGORY_LABELS = {
@@ -32,6 +34,7 @@ local CATEGORY_LABELS = {
   gem = "Gems",
   gear = "Gear",
   quest = "Quest",
+  keys = "Keys",
   container = "Bags",
   other = "Other",
 }
@@ -163,6 +166,9 @@ local function MapClassID(classID, subClassID, quality)
   if eq(EC and EC.Gem, CLASS.Gem) then
     return "gem"
   end
+  if eq(EC and EC.Key, CLASS.Key) or classID == CLASS.Key then
+    return "keys"
+  end
   if eq(EC and EC.Armor, CLASS.Armor) or eq(EC and EC.Weapon, CLASS.Weapon) then
     return "gear"
   end
@@ -248,7 +254,13 @@ function Layout.ClassifyBagSlot(bag, slot)
       return "gear", info
     end
   end
-  if quality == 0 and not Slots.IsReagentBag(bag) then
+  if Slots.IsKeyringBag and Slots.IsKeyringBag(bag) then
+    return "keys", info
+  end
+  if classID == CLASS.Key then
+    return "keys", info
+  end
+  if quality == 0 and not Slots.IsReagentBag(bag) and not (Slots.IsKeyringBag and Slots.IsKeyringBag(bag)) then
     return "junk", info
   end
   if Slots.IsReagentBag(bag) then
@@ -367,6 +379,12 @@ local function UpdateFreeSpace()
   local used = total - free
   pcall(function()
     freeFs:Show()
+    freeFs:ClearAllPoints()
+    freeFs:SetPoint("LEFT", main.footer or freeFs:GetParent(), "LEFT", 4, 0)
+    freeFs:SetPoint("TOP", main.footer or freeFs:GetParent(), "TOP", 0, 0)
+    freeFs:SetPoint("BOTTOM", main.footer or freeFs:GetParent(), "BOTTOM", 0, 0)
+    freeFs:SetJustifyH("LEFT")
+    freeFs:SetJustifyV("MIDDLE")
     freeFs:SetDrawLayer("OVERLAY", 7)
     freeFs:SetText(string.format("%d/%d", used, total))
     -- ≤50% green, ≤75% yellow, <100% orange, only 100% red
@@ -654,9 +672,10 @@ local function DoLayout()
             CATEGORY_LABELS[key] or key,
             #list
           ))
-          y = y + HEADER_H + 2
+          y = y + HEADER_H + HEADER_PAD
           if not collapsed then
             local col, row = 0, 0
+            local rows = math.ceil(#list / cols)
             for j = 1, #list do
               local bag, slot = list[j].bag, list[j].slot
               local btn = Slots.Acquire(bag, slot)
@@ -668,12 +687,16 @@ local function DoLayout()
                 row = row + 1
               end
             end
-            y = y + math.ceil(#list / cols) * (SLOT + PAD) + 6
+            y = y + rows * (SLOT + PAD)
           end
+          -- Even gap after every section (trimmed once at end).
+          y = y + SECTION_GAP
           sf:SetHeight(HEADER_H)
         elseif sectionFrames[key] then
           sectionFrames[key]:Hide()
         end
+      elseif sectionFrames[key] then
+        sectionFrames[key]:Hide()
       end
     end
 
@@ -685,24 +708,41 @@ local function DoLayout()
       else
         emptyLabel:SetText("Bags empty")
         emptyLabel:Show()
-        y = math.max(y, 40)
+        y = math.max(y, 36)
       end
     end
 
-    local width = math.max(maxW + INSET_X * 2, 360)
-    local height = math.max(y + TOP_CHROME + BOT_CHROME + 8, 180)
-    -- TOPLEFT + size only — dual BOTTOMRIGHT+SetSize collapsed the panel.
-    content:ClearAllPoints()
-    if main.Inset then
-      content:SetPoint("TOPLEFT", main.Inset, "TOPLEFT", 4, -4)
-    else
-      content:SetPoint("TOPLEFT", main, "TOPLEFT", INSET_X, -TOP_CHROME)
+    -- Drop trailing section gap so footer sits under last row (no empty black).
+    if y >= SECTION_GAP then
+      y = y - SECTION_GAP
     end
-    content:SetSize(maxW, math.max(y, 20))
+    local contentH = math.max(y, 1)
+    local width = math.max(maxW + INSET_X * 2, 320)
+    -- Hug content: no min-180, no +8 fluff.
+    local height = TOP_CHROME + contentH + BOT_CHROME
+    content:ClearAllPoints()
+    -- Always from main (not Inset) — Inset stretch left empty black below Other.
+    content:SetPoint("TOPLEFT", main, "TOPLEFT", INSET_X, -TOP_CHROME)
+    content:SetSize(maxW, contentH)
     main:SetSize(width, height)
     if main.footer then
+      main.footer:ClearAllPoints()
+      main.footer:SetPoint("BOTTOMLEFT", main, "BOTTOMLEFT", 10, 6)
+      main.footer:SetPoint("BOTTOMRIGHT", main, "BOTTOMRIGHT", -10, 6)
       main.footer:SetFrameLevel((main:GetFrameLevel() or 1) + 5)
     end
+    if main.moneyFrame then
+      main.moneyFrame:ClearAllPoints()
+      main.moneyFrame:SetPoint("BOTTOMRIGHT", main, "BOTTOMRIGHT", -4, 6)
+    end
+    -- Shrink Inset so its Bg does not paint empty under content.
+    pcall(function()
+      if main.Inset then
+        main.Inset:ClearAllPoints()
+        main.Inset:SetPoint("TOPLEFT", main, "TOPLEFT", 4, -(TOP_CHROME - 6))
+        main.Inset:SetPoint("BOTTOMRIGHT", main, "BOTTOMRIGHT", -4, BOT_CHROME - 4)
+      end
+    end)
     EnsureTitleChrome(main)
     UpdateFreeSpace()
     UpdateMoney()
@@ -941,8 +981,8 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local CHROME_VER = 5
-local CHROME_BTN_W, CHROME_BTN_H = 72, 22
+local CHROME_VER = 6
+local CHROME_BTN_W, CHROME_BTN_H = 70, 20
 
 -- Compact text buttons, same size — no icons.
 local function StyleTextChromeButton(btn, label)
@@ -994,10 +1034,31 @@ EnsureTitleChrome = function(frame)
   end
   if close then
     close:ClearAllPoints()
-    close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 2, 1)
+    close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 1, -1)
     close:SetFrameLevel((frame:GetFrameLevel() or 1) + 520)
     close:Show()
   end
+
+  -- Title LEFT in title band (CombinedBags-like); leave room for chrome+X on right.
+  pcall(function()
+    local title = CombinedBagTitle()
+    if frame.SetTitle then
+      frame:SetTitle(title)
+    end
+    local tt = frame.TitleText
+      or (frame.TitleContainer and frame.TitleContainer.TitleText)
+      or frame.title
+    if tt then
+      tt:ClearAllPoints()
+      local anchor = frame.TitleContainer or frame
+      tt:SetPoint("LEFT", anchor, "LEFT", 10, 0)
+      tt:SetPoint("RIGHT", frame, "RIGHT", -(CHROME_BTN_W * 2 + 40), 0)
+      if tt.SetJustifyH then
+        tt:SetJustifyH("LEFT")
+      end
+      tt:SetText(title)
+    end
+  end)
 
   local strip = frame._bbChrome
   if not strip or frame._bbChromeVer ~= CHROME_VER then
@@ -1010,13 +1071,13 @@ EnsureTitleChrome = function(frame)
   end
   strip:SetParent(frame)
   strip:ClearAllPoints()
-  -- Sit in title bar: immediately left of X, vertically centered with close.
+  -- Top-right title band: LEFT of X, TOP-aligned (not floating mid-panel).
   if close then
-    strip:SetPoint("RIGHT", close, "LEFT", -2, 0)
+    strip:SetPoint("TOPRIGHT", close, "TOPLEFT", -2, -4)
   else
-    strip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -28, -4)
+    strip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -28, -6)
   end
-  strip:SetSize(CHROME_BTN_W * 2 + 6, CHROME_BTN_H + 2)
+  strip:SetSize(CHROME_BTN_W * 2 + 4, CHROME_BTN_H)
   strip:SetFrameStrata(frame:GetFrameStrata() or "DIALOG")
   strip:SetFrameLevel((frame:GetFrameLevel() or 1) + 500)
   strip:EnableMouse(true)
@@ -1213,8 +1274,8 @@ function Layout.EnsureMain()
   local footer = CreateFrame("Frame", nil, built)
   footer:SetHeight(FOOTER_H)
   footer:EnableMouse(false)
-  footer:SetPoint("BOTTOMLEFT", built, "BOTTOMLEFT", 14, 10)
-  footer:SetPoint("BOTTOMRIGHT", built, "BOTTOMRIGHT", -14, 10)
+  footer:SetPoint("BOTTOMLEFT", built, "BOTTOMLEFT", 10, 6)
+  footer:SetPoint("BOTTOMRIGHT", built, "BOTTOMRIGHT", -10, 6)
   footer:SetFrameLevel((built:GetFrameLevel() or 1) + 5)
 
   local fs
@@ -1227,10 +1288,14 @@ function Layout.EnsureMain()
       fs:SetFontObject(GameFontHighlight)
     end)
   end
-  fs:SetPoint("LEFT", footer, "LEFT", 0, 1)
+  -- Center N/M in footer strip (vertical + sit on left).
+  fs:ClearAllPoints()
+  fs:SetPoint("LEFT", footer, "LEFT", 4, 0)
+  fs:SetPoint("TOP", footer, "TOP", 0, 0)
+  fs:SetPoint("BOTTOM", footer, "BOTTOM", 0, 0)
   fs:SetJustifyH("LEFT")
   fs:SetJustifyV("MIDDLE")
-  fs:SetWidth(80)
+  fs:SetWidth(72)
   fs:SetText("0/0")
   fs:SetTextColor(0.25, 0.85, 0.35)
   fs:SetDrawLayer("OVERLAY", 7)
@@ -1241,7 +1306,7 @@ function Layout.EnsureMain()
   end)
   if moneyFrame then
     moneyFrame:ClearAllPoints()
-    moneyFrame:SetPoint("BOTTOMRIGHT", built, "BOTTOMRIGHT", -6, 10)
+    moneyFrame:SetPoint("BOTTOMRIGHT", built, "BOTTOMRIGHT", -4, 6)
     pcall(function()
       if MoneyFrame_SetType then
         MoneyFrame_SetType(moneyFrame, "STATIC")

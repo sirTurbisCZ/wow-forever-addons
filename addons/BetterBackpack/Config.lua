@@ -12,7 +12,7 @@ local Config = BetterBackpack.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.2.3"
+Config.VERSION = "0.2.4"
 
 local function ProfileDefaults()
   return {
@@ -30,6 +30,7 @@ local function ProfileDefaults()
       gem = true,
       gear = true,
       quest = true,
+      keys = true,
       container = true,
       other = true,
     },
