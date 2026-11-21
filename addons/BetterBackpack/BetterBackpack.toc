@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 0.5.81 ContainerAPI sell; ListLaneSlots fix; bulk probe.
+## Notes: 0.5.82 header MouseUp bulk wire; Core BulkTransfer check.
 ## Author: tuma
-## Version: 0.5.81
+## Version: 0.5.82
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled

@@ -13,9 +13,13 @@ local Config = BetterBackpack.Config
 local Slots = BetterBackpack.Modules.Slots
 local Layout = BetterBackpack.Modules.Layout
 local Context = BetterBackpack.Modules.Context
+local BulkTransfer = BetterBackpack.Modules.BulkTransfer
 -- Resolve modules at call time too — load errors must not leave a nil upvalue forever.
 local function OC()
   return BetterBackpack.Modules and BetterBackpack.Modules.OpenClose
+end
+local function BT()
+  return BetterBackpack.Modules and BetterBackpack.Modules.BulkTransfer
 end
 local OpenClose = BetterBackpack.Modules.OpenClose
 local Tidy = BetterBackpack.Modules.Tidy
@@ -229,12 +233,20 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
       return
     end
     EnsureDB()
+    BulkTransfer = BT()
+    if not BulkTransfer or not BulkTransfer.TransferLane then
+      Print("ERROR: BulkTransfer failed to load — check FrameXML.log / TOC")
+    end
     return
   end
 
   if event == "PLAYER_LOGIN" then
     EnsureDB()
     OpenClose = OC() or OpenClose
+    BulkTransfer = BT() or BulkTransfer
+    if BulkTransfer and BulkTransfer.TransferLane then
+      Print("BulkTransfer ok · Shift+RMB lane header at vendor/mail/bank")
+    end
     if ModuleWanted() then
       if OpenClose and OpenClose.InstallHooks then
         SafeCall("hooks", OpenClose.InstallHooks)

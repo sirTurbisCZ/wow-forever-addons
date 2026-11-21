@@ -1009,7 +1009,24 @@ local function HeaderShiftDown(header)
   return header and header._bbShiftDown == true
 end
 
-local function TryHeaderBulkTransfer(header, laneKey)
+local function HeaderInvokeBulkTransfer(header, laneKey)
+  header._bbShiftDown = nil
+  if BetterBackpack.Print then
+    BetterBackpack.Print("|cff88ccffBulk|r header Shift+RMB · lane=" .. tostring(laneKey))
+  end
+  local BT = BetterBackpack.Modules.BulkTransfer or Feat("BulkTransfer")
+  if BT and BT.TransferLane then
+    local ok, err = pcall(BT.TransferLane, laneKey)
+    if not ok and BetterBackpack.Print then
+      BetterBackpack.Print("|cff88ccffBulk|r TransferLane error · " .. tostring(err))
+    end
+  elseif BetterBackpack.Print then
+    BetterBackpack.Print("|cff88ccffBulk|r ERROR — BulkTransfer module not loaded (TOC/Core)")
+  end
+  return true
+end
+
+local function HeaderShiftRmb(header, laneKey)
   if CursorHoldingItem() then
     return false
   end
@@ -1020,17 +1037,82 @@ local function TryHeaderBulkTransfer(header, laneKey)
     header._bbShiftDown = nil
     return true
   end
-  local BT = Feat("BulkTransfer")
-  if BT and BT.TransferLane then
-    BT.TransferLane(laneKey)
+  return HeaderInvokeBulkTransfer(header, laneKey)
+end
+
+local function WireSectionHeader(key, header)
+  if not header then
+    return
   end
-  header._bbShiftDown = nil
-  return true
+  header._bbLane = key
+  header:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+  header:SetScript("OnMouseDown", function(self, button)
+    if button == "RightButton" then
+      self._bbShiftDown = (IsShiftKeyDown and IsShiftKeyDown()) or false
+    elseif not (IsShiftKeyDown and IsShiftKeyDown()) then
+      self._bbShiftDown = nil
+    end
+  end)
+  header:SetScript("OnMouseUp", function(self, button)
+    if button == "LeftButton" and CursorHoldingItem() then
+      Layout.DropOnLane(key)
+      return
+    end
+    if button == "RightButton" then
+      local shift = HeaderShiftDown(self)
+      if shift and not CursorHoldingItem() then
+        if BetterBackpack.Print then
+          BetterBackpack.Print(string.format(
+            "|cff88ccffBulk|r header MouseUp · lane=%s shift=%s",
+            tostring(key),
+            tostring(shift)
+          ))
+        end
+        if Layout.DropOnLane(key) then
+          self._bbShiftDown = nil
+          self._bbBulkHandled = true
+          return
+        end
+        HeaderInvokeBulkTransfer(self, key)
+        self._bbBulkHandled = true
+      end
+    end
+  end)
+  header:SetScript("OnClick", function(self, button)
+    if button == "RightButton" then
+      if self._bbBulkHandled then
+        self._bbBulkHandled = nil
+        return
+      end
+      if HeaderShiftRmb(self, key) then
+        return
+      end
+    end
+    if Layout.DropOnLane(key) then
+      return
+    end
+    if CursorHoldingItem() then
+      return
+    end
+    local T = Feat("Trash")
+    if T and T.FlushOnClick then
+      T.FlushOnClick()
+    end
+    local p = Profile()
+    if type(p.collapsed) ~= "table" then
+      p.collapsed = {}
+    end
+    p.collapsed[key] = not p.collapsed[key]
+    Layout.Relayout()
+  end)
 end
 
 local function EnsureSection(key)
   local sf = sectionFrames[key]
   if sf then
+    if sf.header then
+      WireSectionHeader(key, sf.header)
+    end
     return sf
   end
   sf = CreateFrame("Frame", nil, content)
@@ -1069,23 +1151,7 @@ local function EnsureSection(key)
   header:SetScript("OnReceiveDrag", function()
     Layout.DropOnLane(key)
   end)
-  header:SetScript("OnMouseDown", function(self, button)
-    if button == "RightButton" then
-      self._bbShiftDown = (IsShiftKeyDown and IsShiftKeyDown()) or false
-    else
-      self._bbShiftDown = nil
-    end
-  end)
-  header:SetScript("OnMouseUp", function(self, button)
-    if button == "LeftButton" and CursorHoldingItem() then
-      Layout.DropOnLane(key)
-      return
-    end
-    if button == "RightButton" and TryHeaderBulkTransfer(self, key) then
-      self._bbBulkHandled = true
-    end
-  end)
-  header._bbLane = key
+  WireSectionHeader(key, header)
   header:SetScript("OnEnter", function(self)
     self.title:SetTextColor(1, 1, 1)
     local BT = Feat("BulkTransfer")
@@ -1113,33 +1179,6 @@ local function EnsureSection(key)
     if GameTooltip then
       GameTooltip:Hide()
     end
-  end)
-  header:SetScript("OnClick", function(self, button)
-    if button == "RightButton" then
-      if self._bbBulkHandled then
-        self._bbBulkHandled = nil
-        return
-      end
-      if TryHeaderBulkTransfer(self, key) then
-        return
-      end
-    end
-    if Layout.DropOnLane(key) then
-      return
-    end
-    if CursorHoldingItem() then
-      return
-    end
-    local T = Feat("Trash")
-    if T and T.FlushOnClick then
-      T.FlushOnClick()
-    end
-    local p = Profile()
-    if type(p.collapsed) ~= "table" then
-      p.collapsed = {}
-    end
-    p.collapsed[key] = not p.collapsed[key]
-    Layout.Relayout()
   end)
   sf.header = header
   sectionFrames[key] = sf

@@ -1,4 +1,8 @@
-# Playtest brief — BetterBackpack 0.5.81
+# Playtest brief — BetterBackpack 0.5.82
+
+**0.5.82**
+- Login: `BulkTransfer ok · …` or ERROR if module missing.
+- Shift+RMB header: chat `header MouseUp` + `TransferLane enter` (then sold N/M).
 
 **0.5.81**
 - Lane bulk: `Slots.ContainerAPI` for Forever bag enums; Pickup+Sell first.

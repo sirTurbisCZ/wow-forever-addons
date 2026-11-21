@@ -439,6 +439,9 @@ local function MerchantProbe(first)
 end
 
 function BulkTransfer.TransferLane(laneKey)
+  if BetterBackpack.Print then
+    BetterBackpack.Print("|cff88ccffBulk|r TransferLane enter · " .. tostring(laneKey))
+  end
   local ctx = Context and Context.SpecialRmbContext and Context.SpecialRmbContext()
   if not OOC() or not laneKey or laneKey == TRASH then
     return false
