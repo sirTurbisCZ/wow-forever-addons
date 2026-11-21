@@ -145,22 +145,43 @@ function Slots.AttrBagSlot(bag, slot)
 end
 
 function Slots.NumSlotsForBag(bag)
-  if not (C_Container and C_Container.GetContainerNumSlots) then
-    return 0
+  if C_Container and C_Container.GetContainerNumSlots then
+    local ok, res = pcall(C_Container.GetContainerNumSlots, bag)
+    if ok and type(res) == "number" and not IsSecret(res) and res > 0 and res <= 96 then
+      return res
+    end
   end
-  local ok, res = pcall(C_Container.GetContainerNumSlots, bag)
-  if not ok or type(res) ~= "number" or IsSecret(res) then
-    -- Never invent 36/32/120 — footer and layout must not fake capacity.
-    return 0
+  -- Reagent bag on Forever may secret GetContainerNumSlots — recover via free+occupied.
+  if Slots.IsReagentBag(bag) then
+    local free
+    if C_Container and C_Container.GetContainerNumFreeSlots then
+      local ok, f = pcall(C_Container.GetContainerNumFreeSlots, bag)
+      if ok and type(f) == "number" and not IsSecret(f) and f >= 0 then
+        free = f
+      end
+    end
+    local occ = 0
+    local maxOcc = 0
+    for slot = 1, 36 do
+      if Slots.SlotOccupied(bag, slot) then
+        occ = occ + 1
+        maxOcc = slot
+      end
+    end
+    if free ~= nil then
+      local total = occ + free
+      if total > 0 and total <= 98 then
+        return total
+      end
+    end
+    if maxOcc > 0 then
+      return maxOcc
+    end
   end
-  if res <= 0 or res > 96 then
-    return 0
-  end
-  return res
+  return 0
 end
 
--- Player bags only: 0 .. NUM_BAG_SLOTS (backpack + worn bags). No bank/keyring/warband.
--- Ondřej: total MUST be GetContainerNumSlots(0)+…+(NUM_BAG_SLOTS). 102 was 70+32 invented keyring.
+-- Backpack + worn bags: 0 .. NUM_BAG_SLOTS. No bank/keyring.
 function Slots.PlayerBagLastIndex()
   local last = NUM_BAG_SLOTS
   if type(last) ~= "number" or last < 0 or last > 12 then
@@ -184,14 +205,7 @@ function Slots.PlayerBagRanges()
   local ranges = {}
   local last = Slots.PlayerBagLastIndex()
   for bag = 0, last do
-    -- Only real API count — never invent.
-    local n = 0
-    if C_Container and C_Container.GetContainerNumSlots then
-      local ok, res = pcall(C_Container.GetContainerNumSlots, bag)
-      if ok and type(res) == "number" and not IsSecret(res) and res > 0 and res <= 96 then
-        n = res
-      end
-    end
+    local n = Slots.NumSlotsForBag(bag)
     if n > 0 then
       ranges[#ranges + 1] = {
         bag = bag,
@@ -204,14 +218,47 @@ function Slots.PlayerBagRanges()
   return ranges
 end
 
--- Footer audit: used/total + per-bag GetContainerNumSlots(0..NUM_BAG_SLOTS).
+-- Footer + Materials: player bags 0..NUM_BAG_SLOTS + reagent. Never keyring invent.
+function Slots.InventoryBagRanges()
+  local ranges = Slots.PlayerBagRanges()
+  local seen = {}
+  for i = 1, #ranges do
+    seen[ranges[i].bag] = true
+  end
+  local reb = Slots.ReagentBagIndex()
+  local already = false
+  for i = 1, #ranges do
+    if ranges[i].reagent or (reb ~= nil and ranges[i].bag == reb) or Slots.IsReagentBag(ranges[i].bag) then
+      already = true
+      break
+    end
+  end
+  if not already and reb ~= nil then
+    local n = Slots.NumSlotsForBag(reb)
+    if n > 0 then
+      ranges[#ranges + 1] = {
+        bag = reb,
+        slots = n,
+        reagent = true,
+        keyring = false,
+      }
+    end
+  end
+  return ranges
+end
+
+-- Footer used/total (player + reagent). Chat parts include R=n.
 function Slots.CountPlayerSlots()
   local parts = {}
   local total, free = 0, 0
-  local ranges = Slots.PlayerBagRanges()
+  local ranges = Slots.InventoryBagRanges()
   for i = 1, #ranges do
     local bag, n = ranges[i].bag, ranges[i].slots
-    parts[#parts + 1] = string.format("%d=%d", bag, n)
+    if ranges[i].reagent then
+      parts[#parts + 1] = string.format("R=%d", n)
+    else
+      parts[#parts + 1] = string.format("%d=%d", bag, n)
+    end
     total = total + n
     for slot = 1, n do
       if not Slots.SlotOccupied(bag, slot) then
@@ -226,27 +273,30 @@ function Slots.CountPlayerSlots()
   return used, total, free, table.concat(parts, " ")
 end
 
--- Layout lanes: player bags + real reagent/keyring when API reports slots (still no invent).
+-- Layout lanes: inventory (player+reagent) + keyring when real API reports slots.
 function Slots.BagRanges()
-  local ranges = Slots.PlayerBagRanges()
+  local ranges = Slots.InventoryBagRanges()
   local seen = {}
   for i = 1, #ranges do
     seen[ranges[i].bag] = true
   end
-  local extras = { Slots.ReagentBagIndex(), Slots.KeyringBagIndex() }
-  for i = 1, #extras do
-    local bag = extras[i]
-    if bag ~= nil and not seen[bag] and not Slots.IsPlayerBagIndex(bag) then
-      local n = Slots.NumSlotsForBag(bag)
-      if n > 0 then
-        ranges[#ranges + 1] = {
-          bag = bag,
-          slots = n,
-          reagent = Slots.IsReagentBag(bag),
-          keyring = Slots.IsKeyringBag(bag),
-        }
-        seen[bag] = true
+  local key = Slots.KeyringBagIndex()
+  if key ~= nil and not seen[key] then
+    -- only add keyring if GetContainerNumSlots returns real (no probe invent)
+    local n = 0
+    if C_Container and C_Container.GetContainerNumSlots then
+      local ok, res = pcall(C_Container.GetContainerNumSlots, key)
+      if ok and type(res) == "number" and not IsSecret(res) and res > 0 and res <= 96 then
+        n = res
       end
+    end
+    if n > 0 then
+      ranges[#ranges + 1] = {
+        bag = key,
+        slots = n,
+        reagent = false,
+        keyring = true,
+      }
     end
   end
   return ranges

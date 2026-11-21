@@ -1,7 +1,7 @@
-# Playtest brief — BetterBackpack 0.3.7
+# Playtest brief — BetterBackpack 0.3.8
 
-**Where 102 came from:** footer used BagRanges + invented keyring 32 when API secret/failed → 70 + 32 = 102.
+**Bug:** footer 51/62 missing reagents; Materials empty. 62+8 reagent = 70.
 
-**Fix:** `CountPlayerSlots` = only `GetContainerNumSlots(0..NUM_BAG_SLOTS)`; never invent; chat once `slots 0=… 1=… → used/total=N/70`.
+**Fix:** `InventoryBagRanges` = bags 0..NUM_BAG_SLOTS + reagent (API or free+occupied probe). Footer + CollectBuckets both use it. Chat: `… R=8 → used/total=N/70`.
 
-**Done when:** `/reload` → footer **/70** · chat breakdown sums to 70.
+**Done when:** `/reload` → footer **/70** · Materials shows reagent-bag items.

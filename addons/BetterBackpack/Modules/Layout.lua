@@ -367,7 +367,7 @@ local function LogPlayerSlotsOnce(used, total, parts)
   end
   freeSpaceLogged = true
   local msg = string.format(
-    "|cff88ff88BetterBackpack|r slots %s → used/total=%d/%d (no keyring/bank)",
+    "|cff88ff88BetterBackpack|r slots %s → used/total=%d/%d (player+reagent, no keyring/bank)",
     tostring(parts or "?"),
     used or 0,
     total or 0
@@ -1661,22 +1661,20 @@ function Layout.DiagnoseBags()
       filled = filled + 1
     end
   end
-  local ranges = Slots.PlayerBagRanges and Slots.PlayerBagRanges() or Slots.BagRanges()
+  local ranges = (Slots.InventoryBagRanges and Slots.InventoryBagRanges())
+    or (Slots.PlayerBagRanges and Slots.PlayerBagRanges())
+    or Slots.BagRanges()
   local total, free = 0, 0
+  local hasReb = false
   for i = 1, #ranges do
     total = total + ranges[i].slots
+    if ranges[i].reagent then
+      hasReb = true
+    end
     for s = 1, ranges[i].slots do
       if not Slots.SlotOccupied(ranges[i].bag, s) then
         free = free + 1
       end
-    end
-  end
-  local all = Slots.BagRanges()
-  local hasReb = false
-  for i = 1, #all do
-    if all[i].reagent then
-      hasReb = true
-      break
     end
   end
   return {
