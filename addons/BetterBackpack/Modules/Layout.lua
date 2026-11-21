@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.10).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.11).
   Forever: never SetToplevel / SetFrameStrata (ADDON_ACTION_BLOCKED).
   Chrome metrics from Baganator Forever Blizzard skin + ContainerFrameCombinedBags:
     ButtonFrameOffset=6, Bg/TopTile @ (6,-21), NineSlice borders, Inset hidden.
@@ -1447,7 +1447,7 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local CHROME_VER = 26 -- 0.5.10: adopted native BagItemAutoSortButton; footer hairline
+local CHROME_VER = 27 -- 0.5.11: gear on native broom plate; SearchBoxTemplate search
 local chromeLogged = false
 local customChromeHidden = false
 
@@ -1694,7 +1694,17 @@ function Layout.ReleaseNativeAutoSort()
   adoptingSort = false
 end
 
-local SQUARE_HILIGHT = { file = "Interface\\Buttons\\ButtonHilight-Square", blend = "ADD" }
+-- ContainerFrame.xml BagItemAutoSortButton: 25×23, highlight 21×20 centered.
+local SQUARE_HILIGHT = {
+  file = "Interface\\Buttons\\ButtonHilight-Square",
+  blend = "ADD",
+  w = 21,
+  h = 20,
+  p = "CENTER",
+  rp = "CENTER",
+  x = 0,
+  y = 0,
+}
 local GEAR_ATLASES = { "questlog-icon-setting", "GM-icon-settings", "OptionsIcon-Brown", "Gear" }
 
 --[[
@@ -1724,25 +1734,74 @@ local function StyleAutoSortTwin(btn, kind, w, h)
     SetStateArt(btn, "Pushed", p or n)
     SetStateArt(btn, "Highlight", nativeHl or SQUARE_HILIGHT)
   else
-    SetStateArt(btn, "Normal", nil)
-    SetStateArt(btn, "Pushed", nil)
+    -- Gear plate = the native broom plate: same up/down atlas, broom glyph covered by a
+    -- patch of that atlas' own fill (sampled inside the top-left bevel). No native gear exists.
+    local upA = (native and SafeAtlas(native:GetNormalTexture())) or "bags-button-autosort-up"
+    local downA = (native and SafeAtlas(native:GetPushedTexture())) or "bags-button-autosort-down"
+    if not AtlasExists(downA) then
+      downA = upA
+    end
+    local plated = AtlasExists(upA)
+    SetStateArt(btn, "Normal", plated and { atlas = upA } or nil)
+    SetStateArt(btn, "Pushed", plated and { atlas = downA } or nil)
     SetStateArt(btn, "Highlight", nativeHl or SQUARE_HILIGHT)
+
+    local fill = btn._bbFill
+    if not fill then
+      fill = btn:CreateTexture(nil, "ARTWORK", nil, 6)
+      btn._bbFill = fill
+    end
+    local function PlateFill(atlas)
+      local ok, info = pcall(C_Texture.GetAtlasInfo, atlas)
+      local file = ok and info and (info.file or info.filename)
+      if not file or not info.leftTexCoord then
+        return false
+      end
+      local du = (info.rightTexCoord - info.leftTexCoord)
+      local dv = (info.bottomTexCoord - info.topTexCoord)
+      fill:SetTexture(file)
+      fill:SetTexCoord(
+        info.leftTexCoord + du * 0.22,
+        info.leftTexCoord + du * 0.26,
+        info.topTexCoord + dv * 0.22,
+        info.topTexCoord + dv * 0.26
+      )
+      return true
+    end
+    btn._bbPlateFill = plated and PlateFill or nil
+    if plated and PlateFill(upA) then
+      local inset = math.max(3, math.floor(math.min(w, h) * 0.16))
+      fill:ClearAllPoints()
+      fill:SetPoint("TOPLEFT", btn, "TOPLEFT", inset, -inset)
+      fill:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -inset, inset)
+      fill:Show()
+    else
+      fill:Hide()
+    end
+    btn._bbPlateUp, btn._bbPlateDown = upA, downA
+
     local icon = btn._bbIcon
     if not icon then
-      icon = btn:CreateTexture(nil, "ARTWORK")
+      icon = btn:CreateTexture(nil, "OVERLAY")
       btn._bbIcon = icon
       btn:HookScript("OnMouseDown", function(self)
         if self._bbIcon then
           self._bbIcon:SetPoint("CENTER", self, "CENTER", 1, -1)
+        end
+        if self._bbPlateFill then
+          self._bbPlateFill(self._bbPlateDown)
         end
       end)
       btn:HookScript("OnMouseUp", function(self)
         if self._bbIcon then
           self._bbIcon:SetPoint("CENTER", self, "CENTER", 0, 0)
         end
+        if self._bbPlateFill then
+          self._bbPlateFill(self._bbPlateUp)
+        end
       end)
     end
-    local size = math.floor(math.min(w, h) - 5)
+    local size = math.floor(math.min(w, h) - (plated and 9 or 5))
     icon:ClearAllPoints()
     icon:SetPoint("CENTER", btn, "CENTER", 0, 0)
     icon:SetSize(size, size)
