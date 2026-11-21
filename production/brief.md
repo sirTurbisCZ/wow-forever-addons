@@ -1,4 +1,7 @@
-# Playtest brief — BetterBackpack 0.5.55 (KEYRING container)
+# Playtest brief — BetterBackpack 0.5.56 (Forever keyring)
+
+**0.5.56**
+- Forever: keyring = `ToggleBag(KEYRING_CONTAINER)` not `ToggleKeyRing`. `OpenBag(-1, true)` individual container; intercept only keyring bag id on `ToggleBag`. 220ms debounce (fix ×4 OnClick).
 
 **0.5.55**
 - Keyring: chat trace `keyring · OnClick` on KeyRingButton; `ForceKeyRingContainerFrame` opens `ContainerFrame-{KEYRING_CONTAINER}` + `OpenBag(KEYRING_CONTAINER)`.
