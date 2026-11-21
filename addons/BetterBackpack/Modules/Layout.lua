@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.5).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.6).
   Forever: never SetToplevel / SetFrameStrata (ADDON_ACTION_BLOCKED).
   Chrome metrics from Baganator Forever Blizzard skin + ContainerFrameCombinedBags:
     ButtonFrameOffset=6, Bg/TopTile @ (6,-21), NineSlice borders, Inset hidden.
@@ -27,11 +27,12 @@ local SECTION_GAP = 8
 -- Baganator Forever Blizzard skin: ButtonFrameOffset=6, OffsetTop=2.
 local BF_OFFSET = 6
 local BF_OFFSET_TOP = 2
-local INSET_X = BF_OFFSET + 8 -- content left inside NineSlice (≈ CombinedBags feel)
+local INSET_X = BF_OFFSET + 8 -- content left/right inside NineSlice (symmetric, CombinedBags feel)
 local TOP_CHROME = 54 -- title + search row (Baganator search ≈ -28)
 local BOT_CHROME = 30 -- footer strip inside bottom border
 local FOOTER_H = 20
-local FRAME_RIGHT_PAD = BF_OFFSET + 22
+-- Narrowest grid that still fits title|broom|gear|X, search box and N/M + money footer.
+local MIN_COLS = 6
 local CHROME_BTN = 32
 local CLASSIC_BORDER = {
   "BotLeftCorner", "BotRightCorner", "BottomBorder", "LeftBorder", "RightBorder",
@@ -90,6 +91,7 @@ local bagBarHoverHooked = {}
 local focusBagID = nil
 -- Forward decl: DoLayout runs before the definition body below (Lua 5.1 upvalue).
 local EnsureTitleChrome
+local ApplyCombinedBagsChrome
 local SetBagMatchHighlight
 local ClearBagMatchGlows
 
@@ -790,16 +792,17 @@ local function DoLayout()
   end
   layoutBusy = true
   local ok, err = pcall(function()
-    local cols = Columns()
+    local maxCols = Columns()
     local buckets = CollectBuckets()
     local used = {}
     local y = 0
-    -- BagShelves: content width = cols*(SLOT+PAD)+4 (CombinedBags feel).
-    local contentW = cols * (SLOT + PAD) + 4
     local any = false
     local order = Layout.GetCategoryOrder()
     local SM = Feat("StackMerge")
 
+    -- Hug content: grid is as wide as the widest expanded lane (capped at maxCols).
+    local lists = {}
+    local widest = 0
     for i = 1, #order do
       local key = order[i]
       if CategoryEnabled(key) then
@@ -807,6 +810,19 @@ local function DoLayout()
         if SM and SM.Collapse then
           list = SM.Collapse(list)
         end
+        lists[key] = list
+        if not IsCollapsed(key) and #list > widest then
+          widest = #list
+        end
+      end
+    end
+    local cols = math.max(math.min(widest, maxCols), math.min(MIN_COLS, maxCols))
+    local contentW = cols * SLOT + (cols - 1) * PAD
+
+    for i = 1, #order do
+      local key = order[i]
+      if CategoryEnabled(key) then
+        local list = lists[key] or {}
         if #list > 0 then
           any = true
           local sf = EnsureSection(key)
@@ -846,7 +862,7 @@ local function DoLayout()
                 row = row + 1
               end
             end
-            y = y + rows * (SLOT + PAD)
+            y = y + rows * (SLOT + PAD) - PAD
           end
           -- Even gap after every section (trimmed once at end).
           y = y + SECTION_GAP
@@ -904,8 +920,7 @@ local function DoLayout()
       y = y - SECTION_GAP
     end
     local contentH = math.max(y, 40)
-    -- BagShelves ApplyFrameSize: outer = contentW + INSET_X + 28.
-    local width = contentW + INSET_X + FRAME_RIGHT_PAD
+    local width = INSET_X + contentW + INSET_X
     local height = TOP_CHROME + contentH + BOT_CHROME
     content:ClearAllPoints()
     -- Always from main (not Inset) — Inset stretch left empty black below Other.
@@ -1078,8 +1093,9 @@ end
 --[[
   Legit CombinedBags / Baganator Forever Blizzard chrome:
   NineSlice borders, TopTileStreaks, solid Bg inset (6,-21), Inset hidden.
+  Assigns the forward-declared upvalue (DoLayout calls it) — not `local function`.
 ]]
-local function ApplyCombinedBagsChrome(frame)
+ApplyCombinedBagsChrome = function(frame)
   if not frame then
     return
   end
@@ -1277,7 +1293,7 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local CHROME_VER = 21 -- Baganator Forever metrics + CombinedBags NineSlice/Bg/TopTile
+local CHROME_VER = 22 -- 0.5.6: chrome actually applied in DoLayout; hug-width grid
 local chromeLogged = false
 local customChromeHidden = false
 local nativeSortReleased = false

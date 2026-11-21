@@ -2,7 +2,7 @@
 
 BetterBackpack = BetterBackpack or {}
 
-local CURRENT_SCHEMA = 2
+local CURRENT_SCHEMA = 3
 local MAX_ERRORS = 40
 local MAX_MSG = 2000
 
@@ -12,7 +12,7 @@ local Config = BetterBackpack.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.5.5"
+Config.VERSION = "0.5.6"
 
 local function ProfileDefaults()
   return {
@@ -108,6 +108,17 @@ function Config.EnsureDB()
     end
     db.schemaVersion = 2
     from = 2
+  end
+
+  -- 0.5.6: 0.5.4/0.5.5 lanes rendered empty, so players clicked every header shut.
+  -- Categories default expanded; drop that stuck collapse state once.
+  if from < 3 then
+    EnsureProfile(db)
+    if type(db.profile) == "table" then
+      db.profile.collapsed = {}
+    end
+    db.schemaVersion = 3
+    from = 3
   end
 
   EnsureProfile(db)

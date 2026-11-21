@@ -501,6 +501,27 @@ local function ResolveIconTexture(info, bag, slot)
   return nil
 end
 
+-- Baganator Blizzard skin: empty SlotBackground under icon (CombinedBags-like).
+-- Must stay above SyncVisual / Acquire / MakeVisualOnly (Lua 5.1 local scope).
+local function EnsureSlotBackground(btn)
+  if not btn or btn.SlotBackground then
+    return btn and btn.SlotBackground
+  end
+  local sb
+  pcall(function()
+    sb = btn:CreateTexture(nil, "BACKGROUND", nil, -1)
+    sb:SetAllPoints(btn)
+    local ok = pcall(sb.SetAtlas, sb, "bags-item-slot64")
+    if not ok then
+      sb:SetTexture("Interface\\Buttons\\UI-EmptySlot-Disabled")
+      sb:SetTexCoord(0.15, 0.85, 0.15, 0.85)
+    end
+    sb:SetAlpha(0.9)
+    btn.SlotBackground = sb
+  end)
+  return btn.SlotBackground
+end
+
 function Slots.SyncVisual(btn, bag, slot)
   if not btn then
     return
@@ -973,26 +994,6 @@ end
 
 function Slots.IsPreCreated()
   return preCreated
-end
-
--- Baganator Blizzard skin: empty SlotBackground under icon (CombinedBags-like).
-local function EnsureSlotBackground(btn)
-  if not btn or btn.SlotBackground then
-    return btn and btn.SlotBackground
-  end
-  local sb
-  pcall(function()
-    sb = btn:CreateTexture(nil, "BACKGROUND", nil, -1)
-    sb:SetAllPoints(btn)
-    local ok = pcall(sb.SetAtlas, sb, "bags-item-slot64")
-    if not ok then
-      sb:SetTexture("Interface\\Buttons\\UI-EmptySlot-Disabled")
-      sb:SetTexCoord(0.15, 0.85, 0.15, 0.85)
-    end
-    sb:SetAlpha(0.9)
-    btn.SlotBackground = sb
-  end)
-  return btn.SlotBackground
 end
 
 -- One grid size for every category (ItemButtonTemplate / quality border drift).
