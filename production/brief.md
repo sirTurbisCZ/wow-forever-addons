@@ -1,4 +1,7 @@
-# Playtest brief — BetterBackpack 0.5.36 (native all bags)
+# Playtest brief — BetterBackpack 0.5.37 (simplified open)
+
+**0.5.37**
+- OpenClose reset: B = overlay XOR only; bag bar = orig Blizzard toggles (raw bag id, secrets OK); no ContainerFrame park when `bagBarNativeBag`.
 
 **0.5.36**
 - Bag bar: backpack 0, bags 1–4, reagent, keyring — `ToggleBag` secret indices pass through to Blizzard (fix post-0.5.35 early return).
