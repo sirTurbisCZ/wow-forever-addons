@@ -397,14 +397,19 @@ local function PaintTrash(y)
   row:ClearAllPoints()
   row:SetPoint("TOPLEFT", panel.host, "TOPLEFT", 0, -y)
   row:Show()
-  row.label:SetText("Ask before the first destroy of each item")
+  row.label:SetText("Don't ask again (skip all destroy confirms)")
   row.label:SetTextColor(1, 1, 1)
   row.extra:SetText("")
   row.check:Enable()
-  row.check:SetChecked(T.ConfirmEnabled())
+  row.check:SetChecked(T.DontAskAgain and T.DontAskAgain() or false)
   row.check:SetScript("OnClick", function(self)
     local raw = self:GetChecked()
-    T.SetConfirm(raw == true or raw == 1)
+    local dontAsk = raw == true or raw == 1
+    if T.SetDontAskAgain then
+      T.SetDontAskAgain(dontAsk)
+    else
+      T.SetConfirm(not dontAsk)
+    end
   end)
   y = y + ROW_H
   local ids = T.TaughtIDs()

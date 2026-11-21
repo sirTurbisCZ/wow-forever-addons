@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.Trash — auto-destroy lane (0.5.21).
+  BetterBackpack.Trash — auto-destroy lane (0.5.22).
   Drop a stack on the Trash lane → destroyed now (first time per item asks), itemID taught
   to "trash" (profile.itemRules). Its grey ghost stays in the lane (0 bag slots); drag the
   ghost to another lane, or click it → Keep / Move to, to stop destroying it.
@@ -62,7 +62,58 @@ local function TrashDB()
       t[k] = {}
     end
   end
+  -- SV round-trip stringifies numeric keys — normalize so once-per-itemID sticks after /reload.
+  if not t._confirmedNorm then
+    for k, v in pairs(t.confirmed) do
+      if v then
+        local n = tonumber(k)
+        if n then
+          t.confirmed[n] = true
+        end
+      end
+    end
+    t._confirmedNorm = true
+  end
   return t
+end
+
+local function NormalizeItemID(itemID)
+  return tonumber(itemID)
+end
+
+function Trash.IsItemConfirmed(itemID)
+  local id = NormalizeItemID(itemID)
+  if not id then
+    return false
+  end
+  local c = TrashDB().confirmed
+  return c[id] == true or c[tostring(id)] == true
+end
+
+function Trash.MarkItemConfirmed(itemID)
+  local id = NormalizeItemID(itemID)
+  if not id then
+    return
+  end
+  TrashDB().confirmed[id] = true
+end
+
+function Trash.ClearItemConfirmed(itemID)
+  local id = NormalizeItemID(itemID)
+  if not id then
+    return
+  end
+  local c = TrashDB().confirmed
+  c[id] = nil
+  c[tostring(id)] = nil
+end
+
+--- Per-item first-time prompt unless Settings turned confirm off entirely.
+function Trash.ShouldConfirm(itemID)
+  if TrashDB().confirm == false then
+    return false
+  end
+  return not Trash.IsItemConfirmed(itemID)
 end
 
 local function Rules()
@@ -101,12 +152,21 @@ function Trash.DestroyedCount(itemID)
   return TrashDB().destroyed[itemID] or 0
 end
 
+--- true = show confirm (per item first time); false = Settings "Don't ask again".
 function Trash.ConfirmEnabled()
   return TrashDB().confirm ~= false
 end
 
 function Trash.SetConfirm(on)
   TrashDB().confirm = on and true or false
+end
+
+function Trash.SetDontAskAgain(dontAsk)
+  TrashDB().confirm = dontAsk and false or true
+end
+
+function Trash.DontAskAgain()
+  return TrashDB().confirm == false
 end
 
 -- Item helpers ------------------------------------------------------------------------
@@ -384,12 +444,16 @@ local function EnsurePopup()
   end
   popupReady = true
   StaticPopupDialogs.BETTERBACKPACK_TRASH_CONFIRM = {
-    text = "Destroy %s?\n\nEvery stack of it you loot later is destroyed too. This is permanent.",
+    text = "Destroy %s?\n\nEvery stack of it you loot later is destroyed too. You won't be asked again for this item. This is permanent.",
     button1 = "Destroy",
     button2 = CANCEL or "Cancel",
     showAlert = true,
     OnAccept = function(self, data)
-      Trash.ConfirmAccepted(data or (self and self.data))
+      data = data or (self and self.data)
+      if type(data) == "table" and data.itemID then
+        Trash.MarkItemConfirmed(data.itemID)
+      end
+      Trash.ConfirmAccepted(data)
     end,
     timeout = 0,
     whileDead = true,
@@ -420,7 +484,7 @@ function Trash.ConfirmAccepted(src)
     Print("Not destroyed — try again after combat.")
     return
   end
-  TrashDB().confirmed[src.itemID] = true
+  Trash.MarkItemConfirmed(src.itemID)
   if SlotItemID(src.bag, src.slot) ~= src.itemID then
     src.bag, src.slot = FindStack(src.itemID)
   end
@@ -464,8 +528,7 @@ function Trash.HandleDrop(src)
     Print(string.format("Won't destroy %s: %s.", Slots.ItemLink(src.bag, src.slot) or Trash.ItemLabel(id), why))
     return
   end
-  local t = TrashDB()
-  if t.confirm ~= false and not t.confirmed[id] then
+  if Trash.ShouldConfirm(id) then
     pcall(ClearCursor)
     if EnsurePopup() and StaticPopup_Show then
       local label = string.format("%s x%d", Slots.ItemLink(src.bag, src.slot) or Trash.ItemLabel(id),
@@ -475,6 +538,10 @@ function Trash.HandleDrop(src)
       if dialog then
         dialog.data = data
       end
+    else
+      Print("Destroy confirm unavailable — destroying now.")
+      Trash.MarkItemConfirmed(id)
+      DestroyAndTeach(src)
     end
     return
   end
@@ -493,6 +560,7 @@ function Trash.Forget(itemID)
   if CC and CC.AssignItem then
     CC.AssignItem(itemID, nil)
   end
+  Trash.ClearItemConfirmed(itemID)
   Print(Trash.ItemLabel(itemID) .. " is kept again (back in its default lane).")
 end
 
