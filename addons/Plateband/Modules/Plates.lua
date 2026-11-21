@@ -1,8 +1,9 @@
 --[[
-  Plateband.Modules.Plates — above-plate aura companion (solo = native-first).
-  Blizzard DebuffList stays fully visible. Plateband does NOT cover it.
-  Solo personal DoTs: prefer native only (no overlay paint / no park).
-  Later: only add auras native does not show (party). No CLEU / no HP recolor.
+  Plateband.Modules.Plates — native DebuffList stays fully visible.
+  Solo personal DoTs: leave 100% native (no duplicate paint).
+  Merge: when target has others' harmful auras Blizzard omits, append those
+  icons beside the native band (never cover name/HP/cast; never park native).
+  No CLEU / no HP recolor.
 ]]
 
 Plateband = Plateband or {}
@@ -883,100 +884,254 @@ local function CollectAuraTextures(root, out, maxN)
   end
 end
 
-local function PaintFallback(unit, plate)
+--- Public texture key for dedupe — nil when secret / unkeyable (skip paint to avoid dups).
+local function PublicTexKey(t)
+  local key
+  pcall(function()
+    if type(t) == "number" or type(t) == "string" then
+      if not IsSecret(t) then
+        key = tostring(t)
+      end
+    elseif type(t) == "table" or type(t) == "userdata" then
+      if t.GetTexture then
+        local file = t:GetTexture()
+        if (type(file) == "number" or type(file) == "string") and not IsSecret(file) then
+          key = tostring(file)
+        end
+      end
+    end
+  end)
+  return key
+end
+
+local function NativeKeySet(plate)
+  local keys = {}
+  local texes = {}
+  CollectAuraTextures(NativeDebuffList(plate), texes, MaxIcons())
+  for i = 1, #texes do
+    local k = PublicTexKey(texes[i])
+    if k then
+      keys[k] = true
+    end
+  end
+  return keys
+end
+
+--- Rightmost shown native aura button (or DebuffListFrame) — merge anchors beside it.
+local function NativeBandRightAnchor(plate)
+  local list = NativeDebuffList(plate)
+  if not list then
+    return nil
+  end
+  local rightmost, bestRight
+  local ok, kids = pcall(function()
+    return { list:GetChildren() }
+  end)
+  if ok and type(kids) == "table" then
+    for i = 1, #kids do
+      local child = kids[i]
+      if child and SafeShown(child) and (child.Icon or child.icon or child.GetAuraInstance) then
+        local r
+        pcall(function()
+          r = child:GetRight()
+        end)
+        if type(r) == "number" and not IsSecret(r) then
+          if not bestRight or r > bestRight then
+            bestRight = r
+            rightmost = child
+          end
+        elseif not rightmost then
+          rightmost = child
+        end
+      end
+    end
+  end
+  if rightmost then
+    return rightmost
+  end
+  if SafeShown(list) then
+    return list
+  end
+  return list
+end
+
+local function IsTargetPlate(unit, plate)
+  if not HasTarget() then
+    return false
+  end
+  if SameUnit(unit, "target") then
+    return true
+  end
+  local tu = NameplateUnitFor("target")
+  if tu and tu == unit then
+    return true
+  end
+  if plate and PlateFor("target") == plate then
+    return true
+  end
+  return false
+end
+
+--- Prefer non-player harmful icons from C_UnitAuras (secret-safe).
+local function CollectUnitAuraMissing(unitToken, nativeKeys, out, maxN)
+  if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
+    return
+  end
+  for i = 1, 40 do
+    if #out >= maxN then
+      return
+    end
+    local data
+    local ok = pcall(function()
+      data = C_UnitAuras.GetAuraDataByIndex(unitToken, i, "HARMFUL")
+    end)
+    if not ok or not data then
+      break
+    end
+
+    -- Skip clearly player-owned — native DebuffList owns those.
+    local skipPlayer = false
+    pcall(function()
+      local owned = data.isFromPlayerOrPlayerPet
+      if not IsSecret(owned) and owned then
+        skipPlayer = true
+      end
+      local src = data.sourceUnit
+      if not skipPlayer and type(src) == "string" and not IsSecret(src) then
+        if SameUnit(src, "player") or SameUnit(src, "pet") then
+          skipPlayer = true
+        end
+      end
+    end)
+    if not skipPlayer then
+      local icon = data.icon
+      local key = PublicTexKey(icon)
+      -- Only paint when we have a public key not already on native (avoids secret dups).
+      if key and not nativeKeys[key] then
+        out[#out + 1] = icon
+        nativeKeys[key] = true -- mark so TF pass won't re-add
+      end
+    end
+  end
+end
+
+--- TargetFrame often shows the full harmful set (incl. others) while plate DebuffList omits.
+local function CollectTargetFrameMissing(nativeKeys, out, maxN)
+  local texes = {}
+  CollectAuraTextures(GetTargetAuraContainer(), texes, maxN)
+  for i = 1, #texes do
+    if #out >= maxN then
+      return
+    end
+    local t = texes[i]
+    local key = PublicTexKey(t)
+    if key and not nativeKeys[key] then
+      out[#out + 1] = t
+      nativeKeys[key] = true
+    end
+  end
+end
+
+local function SetIconTexture(icon, t)
+  local okSet = false
+  pcall(function()
+    if type(t) == "table" or type(t) == "userdata" then
+      if t.GetTexture then
+        icon:SetTexture(t:GetTexture())
+        okSet = true
+      end
+    else
+      icon:SetTexture(t)
+      okSet = true
+    end
+  end)
+  return okSet
+end
+
+--- Paint only missing (others') icons beside native DebuffList — never replace native.
+local function PaintMergeMissing(unit, plate)
   local uf = plate and plate.UnitFrame
   local parent = uf or plate
   if not parent then
     return 0
   end
-  local fb = EnsureFallback(unit, parent)
-  local sz = IconSize()
+
+  EnsureNativeVisible(plate)
+
+  local nativeKeys = NativeKeySet(plate)
   local maxN = MaxIcons()
-  local texes = {}
+  local missing = {}
 
-  -- Solo: personal icons from native plate DebuffList (party-share scrape later).
-  local native = NativeDebuffList(plate)
-  CollectAuraTextures(native, texes, maxN)
-
-  -- TargetFrame personal harmful when this plate is the current target (solo OK).
-  if #texes == 0 and HasTarget()
-    and (SameUnit(unit, "target") or unit == NameplateUnitFor("target")) then
-    CollectAuraTextures(GetTargetAuraContainer(), texes, maxN)
+  -- Target plate: merge TF + unit auras Blizzard omitted from DebuffList.
+  if IsTargetPlate(unit, plate) then
+    CollectUnitAuraMissing("target", nativeKeys, missing, maxN)
+    CollectTargetFrameMissing(nativeKeys, missing, maxN)
+    -- Also try nameplate token if distinct.
+    if type(unit) == "string" and unit ~= "target" then
+      CollectUnitAuraMissing(unit, nativeKeys, missing, maxN)
+    end
+  else
+    -- Non-target: only unit API missing (no TF). Often empty on Forever — OK.
+    CollectUnitAuraMissing(unit, nativeKeys, missing, maxN)
   end
 
-  -- Dedupe only public string/number keys; secrets always kept once each by index.
+  if #missing == 0 then
+    ClearFallback(unit)
+    return 0
+  end
+
+  local fb = EnsureFallback(unit, parent)
+  local sz = IconSize()
   local painted = 0
-  local seen = {}
-  for i = 1, #texes do
+  for i = 1, #missing do
     if painted >= maxN then
       break
     end
-    local t = texes[i]
-    local key
-    pcall(function()
-      if type(t) == "number" or type(t) == "string" then
-        if not IsSecret(t) then
-          key = tostring(t)
-        end
-      end
-    end)
-    if key and seen[key] then
-      -- skip dup
+    painted = painted + 1
+    local icon = fb.icons[painted]
+    icon:ClearAllPoints()
+    icon:SetSize(sz, sz)
+    icon:SetPoint("LEFT", fb, "LEFT", (painted - 1) * (sz + OVERLAY_PAD), 0)
+    if SetIconTexture(icon, missing[i]) then
+      icon:Show()
     else
-      if key then
-        seen[key] = true
-      end
-      painted = painted + 1
-      local icon = fb.icons[painted]
-      icon:ClearAllPoints()
-      icon:SetSize(sz, sz)
-      icon:SetPoint("LEFT", fb, "LEFT", (painted - 1) * (sz + OVERLAY_PAD), 0)
-      -- SetTexture accepts secret FileIDs and Texture objects.
-      local okSet = false
-      pcall(function()
-        if type(t) == "table" or (type(t) == "userdata") then
-          -- Texture widget — copy its texture.
-          if t.GetTexture then
-            icon:SetTexture(t:GetTexture())
-            okSet = true
-          end
-        else
-          icon:SetTexture(t)
-          okSet = true
-        end
-      end)
-      if okSet then
-        icon:Show()
-      else
-        icon:Hide()
-        painted = painted - 1
-      end
+      icon:Hide()
+      painted = painted - 1
     end
   end
   for i = painted + 1, #fb.icons do
     fb.icons[i]:Hide()
   end
 
+  if painted == 0 then
+    fb:Hide()
+    fb._painted = 0
+    return 0
+  end
+
   fb:ClearAllPoints()
-  local bar = HealthBar(plate)
-  -- Same above-bar slot as native (native gets alpha-parked when we paint).
-  if bar then
-    fb:SetPoint("BOTTOM", bar, "TOP", 0, OVERLAY_GAP_ABOVE)
+  local anchor = NativeBandRightAnchor(plate)
+  if anchor then
+    -- Same row as native DebuffList — extend to the right, never over name/HP.
+    fb:SetPoint("LEFT", anchor, "RIGHT", OVERLAY_PAD, 0)
   else
-    fb:SetPoint("BOTTOM", plate, "TOP", 0, OVERLAY_GAP_ABOVE)
+    local bar = HealthBar(plate)
+    if bar then
+      fb:SetPoint("BOTTOM", bar, "TOP", 0, OVERLAY_GAP_ABOVE)
+    else
+      fb:SetPoint("BOTTOM", plate, "TOP", 0, OVERLAY_GAP_ABOVE)
+    end
   end
   fb:SetSize(math.max(1, painted * (sz + OVERLAY_PAD)), sz)
   fb:SetFrameStrata("MEDIUM")
   local lvl = 50
   pcall(function()
-    lvl = (parent:GetFrameLevel() or 1) + 25
+    lvl = (parent:GetFrameLevel() or 1) + 15
   end)
   fb:SetFrameLevel(lvl)
-
-  -- Solo native-first: never show fallback that copies native icons.
-  fb:Hide()
-  fb._painted = 0
-  return 0
+  fb:Show()
+  fb._painted = painted
+  return painted
 end
 
 local function UpdateOverlay(unit, plate)
@@ -990,18 +1145,24 @@ local function UpdateOverlay(unit, plate)
   end
 
   overlayUpdates = overlayUpdates + 1
-  -- Solo v0.1.5: NEVER paint AC/fallback. Native DebuffList owns the above-plate
-  -- row (Serpent Sting + Hunter's Mark look). Overlay was covering name/health.
-  -- Party "add missing auras beside native" comes later — paint stays off until then.
   EnsureNativeVisible(plate)
+
+  -- Never use full AC overlay paint (duplicates personal / covers name).
   local holder = overlays[unit]
   if holder then
     pcall(holder.SetEnabled, holder, false)
     holder:Hide()
     holder:ClearAllPoints()
   end
-  ClearFallback(unit)
-  -- Do not EnsureOverlay / CreateBandContainer / Show — zero chrome on plate.
+
+  local p = Profile()
+  -- paintOverlay=false: do not replace native. mergeMissing: append others' omitted DoTs.
+  if p.mergeMissing == false then
+    ClearFallback(unit)
+    return
+  end
+
+  PaintMergeMissing(unit, plate)
 end
 
 -- Forward decl for auto-diag after RefreshAll

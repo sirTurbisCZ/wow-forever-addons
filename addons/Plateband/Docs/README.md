@@ -1,6 +1,10 @@
 # Plateband
 
-Companion for Forever nameplate auras. **Looks like Blizzard DebuffList.** Solo personal DoTs stay 100% native. Later versions only **add party/nearby DoTs** that the client does not already show on that same band — never covering the name, health, or cast bar.
+Companion for Forever nameplate auras. **Looks like Blizzard DebuffList.**
+
+- **Your** personal DoTs stay 100% native (no Plateband overlay).
+- When you **target** a mob others are attacking, Plateband appends **only** harmful icons Blizzard omitted — beside the native DebuffList band.
+- Never covers name / health / cast. Never parks or hides native.
 
 ## Install
 

@@ -2,7 +2,7 @@
 
 Plateband = Plateband or {}
 
-local CURRENT_SCHEMA = 4
+local CURRENT_SCHEMA = 5
 local MAX_ERRORS = 40
 local MAX_MSG = 2000
 
@@ -12,7 +12,7 @@ local Config = Plateband.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.1.5"
+Config.VERSION = "0.1.6"
 
 local function ProfileDefaults()
   return {
@@ -21,8 +21,10 @@ local function ProfileDefaults()
     iconSize = 18,
     maxIcons = 12,
     showBand = true,
-    -- Solo: no overlay paint (native DebuffList only). Party fill-in later.
+    -- Never replace/park native DebuffList (personal = Blizzard only).
     paintOverlay = false,
+    -- Append others' harmful icons Blizzard omitted beside native band.
+    mergeMissing = true,
     watchOn = false,
     watchInterval = 2,
     autoDiag = true,
@@ -119,6 +121,14 @@ function Config.EnsureDB()
     -- Solo native-first: never cover name/health with overlay paint.
     db.profile.paintOverlay = false
     db.schemaVersion = 4
+    from = 4
+  end
+
+  if from < 5 then
+    EnsureProfile(db)
+    db.profile.paintOverlay = false
+    db.profile.mergeMissing = true
+    db.schemaVersion = 5
   end
 
   EnsureProfile(db)
