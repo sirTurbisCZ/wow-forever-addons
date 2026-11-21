@@ -353,8 +353,19 @@ local function UpdateFreeSpace()
       end
     end
   end
-  freeFs:SetTextColor(0.85, 0.85, 0.85)
-  freeFs:SetText(string.format("%d/%d", total - free, total))
+  local used = total - free
+  freeFs:SetText(string.format("%d/%d", used, total))
+  -- used/total: ≤50% green, ≤75% yellow, ≤90% orange, else red
+  local ratio = (total > 0) and (used / total) or 0
+  if ratio <= 0.50 then
+    freeFs:SetTextColor(0.25, 0.85, 0.35) -- green
+  elseif ratio <= 0.75 then
+    freeFs:SetTextColor(0.95, 0.85, 0.20) -- yellow
+  elseif ratio <= 0.90 then
+    freeFs:SetTextColor(1.0, 0.55, 0.15) -- orange
+  else
+    freeFs:SetTextColor(0.95, 0.25, 0.20) -- red
+  end
 end
 
 local function BagsMatchForHighlight(a, b)

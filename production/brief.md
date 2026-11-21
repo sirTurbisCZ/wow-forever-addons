@@ -1,5 +1,5 @@
-# Playtest brief — BetterBackpack 0.1.5
+# Playtest brief — BetterBackpack 0.1.6
 
-**Goal:** Classic coin money; slots `N/M` only; Sort visible; bag-icon hover highlights that bag’s items.
+**Goal:** N/M slot text colored by used/total (≤50% green, ≤75% yellow, ≤90% orange, else red).
 
-**Done when:** `/reload` → `loaded v0.1.5` · money shows coin icons · bottom-left `64/70` style · Sort works · hover bag bar glows matching items · one B close still OK.
+**Done when:** `/reload` → `loaded v0.1.6` · N/M color matches fill bands.

@@ -1,7 +1,7 @@
 # BetterBackpack — smyčky a grafy
 
 **Kód:** `Core.lua`, `Modules/{Slots,Layout,Context,OpenClose,Tidy}.lua`  
-**Verze reference:** 0.1.5  
+**Verze reference:** 0.1.6  
 **Stabilita:** Project `docs/bag-addon-brief.md` + Scenario Maps `docs/scenarios/BetterBackpack/`  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never path C harvest).
 
@@ -32,7 +32,7 @@ flowchart TD
 - CombinedBags stays `IsShown`+parked while ours open — **ne** `:Hide()` mid-session.
 - `SuppressReplace`; OnShow nesmí ClearSuppress→OpenOurs.
 - Grace ≠ `toggleLockUntil`; OpenAllBags while open must not extend lock.
-- Chrome: CombinedBags NineSlice + `PANEL_BACKGROUND_COLOR`; money = `SmallMoneyFrameTemplate` coins; slots = `N/M` (no Free); Sort button; bag-bar hover → `bags-glow-white` on that bag’s items.
+- Chrome: CombinedBags NineSlice + `PANEL_BACKGROUND_COLOR`; money = `SmallMoneyFrameTemplate` coins; slots = `N/M` color by fill (≤50% green / ≤75% yellow / ≤90% orange / else red); Sort; bag-bar hover glow.
 
 ---
 
