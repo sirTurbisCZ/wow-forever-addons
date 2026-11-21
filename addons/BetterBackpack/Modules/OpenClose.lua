@@ -477,14 +477,13 @@ OpenOurs = function()
     end
     return SessionOpen()
   end
-  if not EnabledReplace() then
+  if not OverlayAllowed() then
     if InCombat() then
       local p = Profile()
       CombatTraceOnce("OpenOurs", string.format(
-        "replace off enabled=%s safe=%s replace=%s",
+        "off enabled=%s safe=%s",
         tostring(p.enabled),
-        tostring(p.safeMode),
-        tostring(p.replaceBlizzard)
+        tostring(p.safeMode)
       ))
     end
     return false
