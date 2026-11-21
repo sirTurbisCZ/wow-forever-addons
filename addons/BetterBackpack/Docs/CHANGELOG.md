@@ -1,8 +1,12 @@
 # BetterBackpack changelog
 
+## 1.1.5
+
+- **Combat B (fix):** restore **1.1.2 keep-shown** warm shell (`EnsureCombatShell` → `Show`+alpha 0). 1.1.4 parked with **`Hide()`** so combat could not `Show()` under lockdown → B dead. ESC: still strip `UISpecialFrames` when alpha 0 / `combatVisuallyHidden`; full `Hide()` only when `_bbKeepShown` is off (user had real open). **`CloseOurs`** reparks shell OOC. Removed ineffective `OnCombatEnter`/`OnCombatExit`. Debug: `/bb debug on` → `combat-diag` + `combatBagTrace` SV.
+
 ## 1.1.4
 
-- **Combat B + ESC:** dual path — OOC `Hide()` after warm (ESC safe); `OnCombatEnter` on `PLAYER_REGEN_DISABLED` (Show+alpha0 in lockdown only); combat open/close = alpha 1/0; `OnCombatExit` syncs real `Hide()` if user closed in combat.
+- **Combat B + ESC (failed live):** OOC `Hide()` after warm; `OnCombatEnter` on `PLAYER_REGEN_DISABLED` — combat B still broken (frame not `IsShown` in lockdown).
 
 ## 1.1.3
 

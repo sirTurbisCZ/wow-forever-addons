@@ -392,6 +392,35 @@ end
 
 local BAG_KEY_TRACE_MAX = 16
 
+local function BagCombatDiag(phase)
+  local p = Profile()
+  if not (p and p.debug) then
+    return
+  end
+  local f = _G.BetterBackpackFrame
+  local a, sh, built, keep = "?", "?", "?", tostring(BetterBackpack._bbKeepShown)
+  if f then
+    pcall(function()
+      a = string.format("%.2f", f:GetAlpha() or 0)
+      sh = f:IsShown() and "1" or "0"
+      built = tostring(f._bbBuilt)
+    end)
+  end
+  local ic = InCombat() and "1" or "0"
+  local vis = OursVisible() and "1" or "0"
+  BagKeyTrace("combat-diag", string.format(
+    "%s ic=%s vis=%s a=%s shown=%s built=%s keep=%s path=%s",
+    tostring(phase or "?"),
+    ic,
+    vis,
+    a,
+    sh,
+    built,
+    keep,
+    InCombat() and "alpha" or "show-hide"
+  ))
+end
+
 local function BagKeyTrace(branch, detail)
   local p = Profile()
   if not (p and p.debug) then
@@ -502,6 +531,22 @@ local function CombatTraceOnce(tag, detail)
     BetterBackpack.Print(line)
   elseif DEFAULT_CHAT_FRAME then
     DEFAULT_CHAT_FRAME:AddMessage("|cffc9a227BetterBackpack|r " .. line)
+  end
+  local p = Profile()
+  if p and p.debug then
+    local db = (Config and Config.EnsureDB and Config.EnsureDB()) or BetterBackpackDB
+    if db then
+      db.combatBagTrace = db.combatBagTrace or {}
+      db.combatBagTrace[#db.combatBagTrace + 1] = {
+        t = Now(),
+        tag = tostring(tag or "?"),
+        detail = detail and tostring(detail) or "",
+      }
+      while #db.combatBagTrace > 16 do
+        table.remove(db.combatBagTrace, 1)
+      end
+    end
+    BagCombatDiag(tag)
   end
 end
 
@@ -652,6 +697,7 @@ local function OpenOurs()
   ParkBlizzardForOverlay()
 
   if InCombat() then
+    BagCombatDiag("OpenOurs-combat")
     local shown = false
     if Layout and Layout.CombatShow then
       shown = Layout.CombatShow() and true or false
@@ -811,6 +857,10 @@ function OpenClose.CloseOurs(opts)
       pcall(RestoreNativeBagFrames)
     end
     ResetOverlaySessionState()
+    if not InCombat() and Layout and Layout.EnsureCombatShell then
+      pcall(Layout.EnsureCombatShell)
+    end
+    BagCombatDiag("CloseOurs-done")
   end)
   closeBusy = false
   if not ok and BetterBackpack.RecordError then
@@ -904,6 +954,7 @@ local function onBagKey(src)
   OpenClose.ClearReplaceSuppress()
   lastBagKeyHandledAt = t
   local visible = SessionOpen()
+  BagCombatDiag("onBagKey:" .. tostring(src))
   BagKeyTrace("enter", string.format(
     "%s visible=%s busy=%s/%s lock=%.2f",
     src,

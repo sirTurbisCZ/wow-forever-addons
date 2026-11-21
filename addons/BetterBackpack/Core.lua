@@ -388,16 +388,10 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
 
   if event == "PLAYER_REGEN_DISABLED" then
     BetterBackpack._combatFrozen = true
-    if Layout and Layout.OnCombatEnter then
-      SafeCall("regen:enter", Layout.OnCombatEnter)
-    end
     return
   end
 
   if event == "PLAYER_REGEN_ENABLED" then
-    if Layout and Layout.OnCombatExit then
-      SafeCall("regen:exit", Layout.OnCombatExit)
-    end
     BetterBackpack._combatFrozen = false
     OpenClose = OC() or OpenClose
     if OpenClose and OpenClose.ClearReplaceSuppress then
