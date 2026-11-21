@@ -12,7 +12,7 @@ L.HELP_LINES = {
   "/bb — toggle bags",
   "/bb help — this help",
   "/bb on|off — enable / restore Blizzard bags",
-  "/bb sort — OOC SortBags tidy",
+  "/bb sort — OOC Úklid (SortBags)",
   "/bb dump — status + recent errors",
   "/bb safe — safe mode (release to Blizzard)",
   "/bb reset — restore defaults",

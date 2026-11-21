@@ -1,7 +1,7 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.1.5).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.1.8).
   Forever: never SetToplevel (ADDON_ACTION_BLOCKED).
-  Money: SmallMoneyFrameTemplate coins. Slots: N/M only. Bag-bar hover glow.
+  Money coins · N/M footer strip · Úklid = bags-button-autosort · bag-bar hover.
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -18,7 +18,8 @@ local PAD = 4
 local HEADER_H = 20
 local INSET_X = 14
 local TOP_CHROME = 42
-local BOT_CHROME = 28
+local BOT_CHROME = 32
+local FOOTER_H = 22
 
 local CATEGORY_ORDER = {
   "junk", "consumable", "reagent", "gem", "gear", "quest", "container", "other",
@@ -975,52 +976,96 @@ function Layout.EnsureMain()
     end)
   end
 
-  -- Sort (title bar) — always create, template optional.
-  pcall(function()
-    sortBtn = CreateFrame("Button", "BetterBackpackSortButton", main, "UIPanelButtonTemplate")
-  end)
-  if not sortBtn then
-    sortBtn = CreateFrame("Button", "BetterBackpackSortButton", main)
-    sortBtn:SetSize(56, 22)
-    local fs = sortBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetPoint("CENTER")
-    fs:SetText("Sort")
-    sortBtn:SetFontString(fs)
-    local bg = sortBtn:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    bg:SetColorTexture(0.15, 0.15, 0.18, 0.9)
-  end
-  sortBtn:SetSize(56, 22)
+  -- Úklid = CombinedBags broom (bags-button-autosort-up), title chrome next to close.
+  local cw, ch = 28, 28
+  local iconSize = 26
+  sortBtn = CreateFrame("Button", "BetterBackpackSortButton", main)
+  sortBtn:SetSize(cw, ch)
   if close then
-    sortBtn:SetPoint("TOPRIGHT", close, "TOPLEFT", -6, -6)
+    sortBtn:SetPoint("RIGHT", close, "LEFT", -2, 0)
+    sortBtn:SetFrameLevel((close:GetFrameLevel() or 100) + 1)
   else
-    sortBtn:SetPoint("TOPRIGHT", -28, -8)
+    sortBtn:SetPoint("TOPRIGHT", -28, -4)
+    sortBtn:SetFrameLevel((main:GetFrameLevel() or 1) + 20)
   end
-  sortBtn:SetText("Sort")
-  sortBtn:SetFrameLevel((main:GetFrameLevel() or 1) + 20)
-  sortBtn:Show()
+  do
+    local function MakeTex(layer, dx, dy)
+      local tex = sortBtn:CreateTexture(nil, layer)
+      tex:SetSize(iconSize, iconSize)
+      tex:SetPoint("CENTER", dx or 0, dy or 0)
+      local ok = pcall(tex.SetAtlas, tex, "bags-button-autosort-up", false)
+      if not ok then
+        pcall(tex.SetTexture, tex, "Interface\\Buttons\\UI-RefreshButton")
+      end
+      return tex
+    end
+    sortBtn:SetNormalTexture(MakeTex("ARTWORK", 0, 0))
+    sortBtn:SetPushedTexture(MakeTex("ARTWORK", 1, -1))
+    pcall(function()
+      sortBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+      local hl = sortBtn:GetHighlightTexture()
+      if hl then
+        hl:ClearAllPoints()
+        hl:SetPoint("CENTER")
+        hl:SetSize(iconSize + 4, iconSize + 4)
+      end
+    end)
+  end
+  sortBtn:SetScript("OnEnter", function(self)
+    if GameTooltip then
+      GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+      GameTooltip:SetText("Úklid")
+      GameTooltip:AddLine("Blizzard SortBags. Mimo boj.", 0.7, 0.7, 0.7, true)
+      GameTooltip:Show()
+    end
+  end)
+  sortBtn:SetScript("OnLeave", function()
+    if GameTooltip then
+      GameTooltip:Hide()
+    end
+  end)
   sortBtn:SetScript("OnClick", function()
     local Tidy = BetterBackpack.Modules.Tidy
     if Tidy and Tidy.SortBags then
       Tidy.SortBags()
     end
   end)
+  sortBtn:Show()
   main.sortBtn = sortBtn
+  main.tidy = sortBtn
 
-  -- Occupied/total (left) — no "Free N"
-  freeFs = main:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  freeFs:SetPoint("BOTTOMLEFT", 14, 12)
+  -- Footer strip: N/M left + coin money right, shared baseline.
+  local footer = CreateFrame("Frame", nil, main)
+  footer:SetHeight(FOOTER_H)
+  footer:EnableMouse(false)
+  if main.Inset then
+    footer:SetPoint("BOTTOMLEFT", main.Inset, "BOTTOMLEFT", 6, 4)
+    footer:SetPoint("BOTTOMRIGHT", main.Inset, "BOTTOMRIGHT", -6, 4)
+  else
+    footer:SetPoint("BOTTOMLEFT", 12, 8)
+    footer:SetPoint("BOTTOMRIGHT", -12, 8)
+  end
+  main.footer = footer
+
+  freeFs = footer:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+  if not freeFs then
+    freeFs = footer:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  end
+  freeFs:SetPoint("LEFT", footer, "LEFT", 0, 0)
   freeFs:SetJustifyH("LEFT")
+  freeFs:SetJustifyV("MIDDLE")
+  freeFs:SetWidth(72)
   freeFs:SetText("—/—")
   main.freeFs = freeFs
 
-  -- Classic coin money (right)
   local moneyFrame
   pcall(function()
-    moneyFrame = CreateFrame("Frame", "BetterBackpackMoneyFrame", main, "SmallMoneyFrameTemplate")
+    moneyFrame = CreateFrame("Frame", "BetterBackpackMoneyFrame", footer, "SmallMoneyFrameTemplate")
   end)
   if moneyFrame then
-    moneyFrame:SetPoint("BOTTOMRIGHT", main, "BOTTOMRIGHT", -8, 10)
+    -- SmallMoneyFrameTemplate: right-edge coins; nudge to match N/M midline.
+    moneyFrame:ClearAllPoints()
+    moneyFrame:SetPoint("RIGHT", footer, "RIGHT", 8, 0)
     pcall(function()
       if MoneyFrame_SetType then
         MoneyFrame_SetType(moneyFrame, "STATIC")
@@ -1028,18 +1073,20 @@ function Layout.EnsureMain()
     end)
     main.moneyFrame = moneyFrame
   else
-    moneyFs = main:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    moneyFs:SetPoint("BOTTOMRIGHT", -14, 12)
+    moneyFs = footer:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    moneyFs:SetPoint("RIGHT", footer, "RIGHT", 0, 0)
+    moneyFs:SetJustifyH("RIGHT")
+    moneyFs:SetJustifyV("MIDDLE")
   end
 
   content = CreateFrame("Frame", nil, main)
   content:EnableMouse(false)
   if main.Inset then
     content:SetPoint("TOPLEFT", main.Inset, "TOPLEFT", 4, -4)
-    content:SetPoint("BOTTOMRIGHT", main.Inset, "BOTTOMRIGHT", -4, 24)
+    content:SetPoint("BOTTOMRIGHT", main.Inset, "BOTTOMRIGHT", -4, FOOTER_H + 6)
   else
     content:SetPoint("TOPLEFT", INSET_X, -TOP_CHROME)
-    content:SetSize(100, 100)
+    content:SetPoint("BOTTOMRIGHT", -INSET_X, BOT_CHROME)
   end
 
   emptyLabel = content:CreateFontString(nil, "OVERLAY", "GameFontHighlight")

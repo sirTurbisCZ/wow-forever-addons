@@ -1,5 +1,5 @@
-# Playtest brief — BetterBackpack 0.1.7
+# Playtest brief — BetterBackpack 0.1.8
 
-**Goal:** N/M color bands: ≤50% green, ≤75% yellow, <100% orange, only 100% red (64/70 ≈ orange).
+**Goal:** Aligned N/M + money footer; visible CombinedBags-style Úklid (broom) button.
 
-**Done when:** `/reload` → `loaded v0.1.7` · 64/70 orange, not red.
+**Done when:** `/reload` → `loaded v0.1.8` · footer N/M and coins share baseline · broom next to close with tooltip Úklid · click sorts OOC.
