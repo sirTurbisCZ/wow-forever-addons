@@ -1,4 +1,7 @@
-# Playtest brief — BetterBackpack 0.5.45 (B beats CombinedBags)
+# Playtest brief — BetterBackpack 0.5.46 (native bag bar)
+
+**0.5.46**
+- **B** unchanged (ToggleAllBags+ToggleBackpack). **ToggleBag never replaced.** Native bar: no ContainerFrame park/blackout; restore alpha after overlay. Backpack icon: mouse-down arm → bag 0. Combat **B** → `ForceCombatShow`.
 
 **0.5.45**
 - **B** binds often hit **`ToggleBackpack`** — replace **Both** `ToggleAllBags` + `ToggleBackpack` (re-apply 0s/1s after login). `OpenOurs` / `onBagKey` call **`CloseNativeCombinedBags`** (park + Hide). Chat: `2/2 toggles`.
