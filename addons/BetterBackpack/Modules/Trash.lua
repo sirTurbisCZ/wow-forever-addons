@@ -1,10 +1,10 @@
 --[[
-  BetterBackpack.Trash — auto-destroy lane (0.5.19).
+  BetterBackpack.Trash — auto-destroy lane (0.5.20).
   Drop a stack on the Trash lane → destroyed now (first time per item asks), itemID taught
   to "trash" (profile.itemRules). Its grey ghost stays in the lane (0 bag slots); drag the
   ghost to another lane, or click it → Keep / Move to, to stop destroying it.
-  Future loot of taught items: destroyed on arrival when /bb trashtest showed Forever allows
-  DeleteCursorItem outside a click, otherwise on the next click in the bag. Never in combat.
+  Future loot of taught items waits in Trash (red) and is destroyed on the next click in the
+  bag — Forever allows DeleteCursorItem only inside a hardware event. Never in combat.
   Design: docs/auto-destroy-lane.md (v2).
 ]]
 
@@ -805,7 +805,7 @@ function Trash.HideGhosts(keep)
   end
 end
 
---- Red veil on a real stack waiting in the Trash lane (destroyed on arrival / next click).
+--- Red veil on a real stack waiting in the Trash lane (destroyed on the next click).
 function Trash.SetPendingVeil(btn, on)
   if not btn then
     return
@@ -829,9 +829,11 @@ function Trash.OnBagHide()
 end
 
 -- Future loot --------------------------------------------------------------------------
+-- Forever blocks DeleteCursorItem outside a hardware event (trashtest 0.5.19: timer and
+-- BAG_UPDATE_DELAYED both "Interface action failed"). Events only count waiting stacks;
+-- deletes run solely inside the player's clicks.
 
 local pending = 0
-local autoFailed = false
 local busy = false
 
 local function Scan()
@@ -857,30 +859,23 @@ function Trash.TestResult()
   return type(db.trashTest) == "table" and db.trashTest or nil
 end
 
---- "auto" = destroy on arrival; "click" = on next click in the bag.
 function Trash.LootMode()
-  local r = Trash.TestResult()
-  if not autoFailed and r and (r.timer == true or r.event == true) then
-    return "auto"
-  end
   return "click"
 end
 
---- Destroy every waiting stack. Returns destroyed, failedReason.
-local function Flush(fromClick)
-  if busy or InCombat() or not Trash.Enabled() then
-    return 0
+--- Called from our click handlers (hardware event): destroys every waiting stack.
+function Trash.FlushOnClick()
+  if pending <= 0 or busy or InCombat() or not Trash.Enabled() then
+    return
   end
   busy = true
   local list = Scan()
-  local done, parts, fail = 0, {}, nil
+  local done, parts = 0, {}
   for i = 1, #list do
     local e = list[i]
     local count = StackCount(e.bag, e.slot)
     local link = Slots.ItemLink(e.bag, e.slot) or Trash.ItemLabel(e.itemID)
-    local ok, why = DeleteStack(e.bag, e.slot, e.itemID)
-    if not ok then
-      fail = why
+    if not DeleteStack(e.bag, e.slot, e.itemID) then
       break
     end
     Record(e.itemID, count)
@@ -895,53 +890,26 @@ local function Flush(fromClick)
     Print("Trash destroyed: " .. table.concat(parts, ", ") .. (done > #parts and (" +" .. (done - #parts)) or ""))
     Changed()
   end
-  if fail and not fromClick and fail ~= "busy" then
-    autoFailed = true
-    Print("Forever wants a click to destroy — waiting Trash items go on your next click in the bag.")
-  end
-  return done, fail
-end
-
---- Called from our click handlers (hardware event): destroys anything waiting.
-function Trash.FlushOnClick()
-  if pending <= 0 then
-    return
-  end
-  Flush(true)
 end
 
 function Trash.PendingCount()
   return pending
 end
 
-local function OnBagsChanged(fromEvent)
-  if InCombat() or not Trash.Enabled() then
+local function Recount()
+  if InCombat() then
     return
   end
   pending = #Scan()
-  if pending == 0 or Trash.LootMode() ~= "auto" then
-    return
-  end
-  local r = Trash.TestResult()
-  if fromEvent and r and r.event == true then
-    Flush(false)
-  elseif C_Timer and C_Timer.After then
-    C_Timer.After(0.2, function()
-      Flush(false)
-    end)
-  end
 end
 
 function Trash.RulesChanged()
-  OnBagsChanged(false)
+  Recount()
 end
 
--- Phase 0: /bb trashtest ---------------------------------------------------------------
+-- /bb trashtest: click-only probe (the slash command runs inside the Enter key press) -----
 
-local test
-
-local function TestCandidates(itemID)
-  local out = {}
+local function TestCandidate(itemID)
   local ranges = Slots.BagRanges()
   for i = 1, #ranges do
     local bag, n = ranges[i].bag, ranges[i].slots
@@ -959,91 +927,26 @@ local function TestCandidates(itemID)
         if match and not (info and info.isLocked) and not IsQuestSlot(bag, slot)
             and ItemClassID(id) ~= 12
         then
-          out[#out + 1] = { bag = bag, slot = slot, itemID = id, link = Slots.ItemLink(bag, slot) }
+          return { bag = bag, slot = slot, itemID = id, link = Slots.ItemLink(bag, slot) }
         end
       end
     end
   end
-  return out
-end
-
-local function TestOne(name, c)
-  if not c then
-    test.res[name] = "skipped"
-    return
-  end
-  if CursorItem() then
-    test.res[name] = "skipped (cursor busy)"
-    return
-  end
-  test.current = name
-  local ok, why = DeleteStack(c.bag, c.slot, c.itemID)
-  test.current = nil
-  test.res[name] = ok and "sent" or ("failed: " .. tostring(why))
-  test.cands[name] = c
-end
-
-local function Verdict(name)
-  local res = test.res[name]
-  local c = test.cands[name]
-  if res ~= "sent" or not c then
-    return false, res or "not run"
-  end
-  if test.blocked[name] then
-    return false, "blocked (" .. test.blocked[name] .. ")"
-  end
-  if SlotItemID(c.bag, c.slot) == c.itemID then
-    return false, "item still there"
-  end
-  return true, "OK"
-end
-
-local function FinishTest()
-  if not test then
-    return
-  end
-  local db = Config.EnsureDB()
-  local out = { at = time and time() or 0, ver = Config.VERSION }
-  local line = {}
-  for _, name in ipairs({ "click", "timer", "event" }) do
-    local ok, txt = Verdict(name)
-    out[name] = ok
-    line[#line + 1] = name .. "=" .. (ok and "|cff40ff40OK|r" or ("|cffff5050" .. txt .. "|r"))
-  end
-  out.combat = test.combat
-  out.hardware = out.click
-  db.trashTest = out
-  test = nil
-  Print("trashtest v" .. tostring(Config.VERSION) .. (out.combat and " (in combat)" or "") .. ": " .. table.concat(line, " · "))
-  if not out.click then
-    Print("Destroy on drop is NOT allowed on this client — Trash lane can't work. Send this line to tuma.")
-  elseif out.timer or out.event then
-    Print("→ Trash loot is destroyed on arrival.")
-  else
-    Print("→ Trash loot waits (red) and is destroyed on your next click in the bag.")
-  end
+  return nil
 end
 
 function Trash.RunTest(arg)
   arg = (arg or ""):lower():match("^%s*(.-)%s*$") or ""
-  if test then
-    Print("trashtest already running…")
-    return
-  end
   local itemID = tonumber(arg)
-  local cands = TestCandidates(itemID)
+  local c = TestCandidate(itemID)
   if arg == "" then
-    Print("/bb trashtest go — destroys up to 3 grey stacks to learn what Forever allows "
-      .. "(click / timer / event). /bb trashtest <itemID> — use stacks of that white or grey item instead.")
-    local shown = {}
-    for i = 1, math.min(3, #cands) do
-      shown[#shown + 1] = cands[i].link or Trash.ItemLabel(cands[i].itemID)
-    end
-    Print(#shown > 0 and ("Would destroy: " .. table.concat(shown, ", ")) or "No grey items in bags to test with.")
+    Print("/bb trashtest go — destroys 1 grey stack from this key press to check Forever still allows "
+      .. "click destroy. /bb trashtest <itemID> — use a white or grey stack of that item.")
+    Print(c and ("Would destroy: " .. (c.link or Trash.ItemLabel(c.itemID))) or "No grey items in bags to test with.")
     local r = Trash.TestResult()
     if r then
-      Print(string.format("Last result (v%s): click=%s timer=%s event=%s → loot mode: %s",
-        tostring(r.ver), tostring(r.click), tostring(r.timer), tostring(r.event), Trash.LootMode()))
+      Print(string.format("Last result (v%s): click=%s · loot is destroyed on your next click in the bag.",
+        tostring(r.ver), tostring(r.click)))
     end
     return
   end
@@ -1051,57 +954,33 @@ function Trash.RunTest(arg)
     Print("Usage: /bb trashtest [go|<itemID>]")
     return
   end
-  if #cands == 0 then
+  if not c then
     Print(itemID and "No white/grey stacks of that item in bags." or "No grey items in bags to test with.")
     return
   end
-  test = { res = {}, cands = {}, blocked = {}, combat = InCombat() }
-  -- (a) this slash command runs inside the Enter key press = hardware event.
-  TestOne("click", cands[1])
-  -- (c) next BAG_UPDATE_DELAYED (from (a)) runs the event test.
-  test.eventCand = cands[3]
-  if not cands[3] then
-    test.res.event = "skipped (need 3 stacks)"
+  if CursorItem() then
+    Print("Empty your cursor first.")
+    return
   end
-  -- (b) plain timer, no hardware event.
+  local ok, why = DeleteStack(c.bag, c.slot, c.itemID)
+  local function Finish()
+    local gone = ok and SlotItemID(c.bag, c.slot) ~= c.itemID
+    Config.EnsureDB().trashTest = { at = time and time() or 0, ver = Config.VERSION, click = gone and true or false }
+    if gone then
+      Print("trashtest v" .. tostring(Config.VERSION) .. ": click=|cff40ff40OK|r — Trash works (click-only on Forever).")
+    else
+      Print("trashtest v" .. tostring(Config.VERSION) .. ": click=|cffff5050" .. tostring(why or "item still there")
+        .. "|r — Trash can't destroy on this client. Send this line to tuma.")
+    end
+  end
   if C_Timer and C_Timer.After then
-    C_Timer.After(0.6, function()
-      if test then
-        TestOne("timer", cands[2])
-      end
-    end)
-    C_Timer.After(2.5, function()
-      if test and test.eventCand then
-        test.res.event = "no BAG_UPDATE_DELAYED"
-        test.eventCand = nil
-      end
-      C_Timer.After(1.0, FinishTest)
-    end)
+    C_Timer.After(1.5, Finish)
   else
-    FinishTest()
+    Finish()
   end
 end
 
 local ev = CreateFrame("Frame")
 pcall(ev.RegisterEvent, ev, "BAG_UPDATE_DELAYED")
 pcall(ev.RegisterEvent, ev, "PLAYER_REGEN_ENABLED")
-pcall(ev.RegisterEvent, ev, "ADDON_ACTION_BLOCKED")
-pcall(ev.RegisterEvent, ev, "ADDON_ACTION_FORBIDDEN")
-ev:SetScript("OnEvent", function(_, event, a1, a2)
-  if event == "ADDON_ACTION_BLOCKED" or event == "ADDON_ACTION_FORBIDDEN" then
-    if test and test.current and tostring(a1 or ""):lower():find("betterbackpack", 1, true) then
-      test.blocked[test.current] = tostring(a2 or event)
-    end
-    return
-  end
-  if event == "BAG_UPDATE_DELAYED" and test and test.eventCand then
-    local c = test.eventCand
-    test.eventCand = nil
-    TestOne("event", c)
-    return
-  end
-  if test then
-    return
-  end
-  OnBagsChanged(event == "BAG_UPDATE_DELAYED")
-end)
+ev:SetScript("OnEvent", Recount)

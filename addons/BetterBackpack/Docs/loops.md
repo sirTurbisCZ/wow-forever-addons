@@ -1,7 +1,7 @@
 # BetterBackpack — smyčky a grafy
 
 **Kód:** `Core.lua`, `Modules/{Slots,Layout,Context,OpenClose,Tidy,Settings,Search,Filter,CustomCategories,Trash,StackMerge,Pins,LayoutModes}.lua`  
-**Verze reference:** 0.5.19 (Trash lane auto-destroy + ghosts + `/bb trashtest` · Shift/Ctrl+LMB = nativní link / dress-up / split · prázdné custom lanes kreslené jako drop target · drag-teach lanes · custom lanes v Settings · Settings v chrome bagu · broom = stejná plate jako gear/X · sticky velikost okna · broom/gear v chrome Close · bank RMB secure type2=item · SearchBoxTemplate search · gear na nativní broom plate · nativní AutoSort reparent · footer hairline · pevná velikost = plný rozbalený bag · dense grid PAD 2 · NumberFontNormalSmall counts · broom/gear jako CombinedBags · footer N/M = font peněz · fill wells default off)  
+**Verze reference:** 0.5.20 (Trash jen click-only destroy · 0.5.19 Trash lane auto-destroy + ghosts + `/bb trashtest` · Shift/Ctrl+LMB = nativní link / dress-up / split · prázdné custom lanes kreslené jako drop target · drag-teach lanes · custom lanes v Settings · Settings v chrome bagu · broom = stejná plate jako gear/X · sticky velikost okna · broom/gear v chrome Close · bank RMB secure type2=item · SearchBoxTemplate search · gear na nativní broom plate · nativní AutoSort reparent · footer hairline · pevná velikost = plný rozbalený bag · dense grid PAD 2 · NumberFontNormalSmall counts · broom/gear jako CombinedBags · footer N/M = font peněz · fill wells default off)  
 **Stabilita:** Project `docs/bag-addon-brief.md` + Scenario Maps `docs/scenarios/BetterBackpack/`  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never path C harvest).
 
@@ -203,11 +203,8 @@ flowchart TD
   Del --> Teach[itemRules id = trash · destroyed id += N · log 20]
   Teach --> Ghost[Relayout: šedý ghost id v Trash lane · 0 slotů · xN]
 
-  Loot[BAG_UPDATE_DELAYED / REGEN_ENABLED / změna pravidel] --> Scan[Scan: stacky s pravidlem trash, prošlé Refuse]
-  Scan --> Mode{LootMode: trashtest timer/event OK?}
-  Mode -->|auto| Auto[Flush hned · event / timer 0.2s]
-  Auto -->|blocked| Fall[autoFailed = click režim do /reload]
-  Mode -->|click| Wait[stack v Trash lane s červeným veilem]
+  Loot[BAG_UPDATE_DELAYED / REGEN_ENABLED / změna pravidel] --> Scan[Recount: stacky s pravidlem trash, prošlé Refuse · NIKDY delete]
+  Scan --> Wait[stack v Trash lane s červeným veilem]
   Wait --> Next[další klik v bagu: slot OnMouseDown · header · ghost → FlushOnClick]
   Next --> Flush[Pickup + DeleteCursorItem pro každý · nikdy když kurzor drží jiný item]
 
@@ -218,9 +215,9 @@ flowchart TD
   Menu --> Move
 ```
 
-- `/bb trashtest` (bez argumentu = co by zničil + poslední výsledek; `go` = až 3 šedé stacky; `<itemID>` = bílý/šedý item). Testy: **click** (slash = Enter = hardware event), **timer** (`C_Timer.After 0.6`), **event** (první `BAG_UPDATE_DELAYED`). Verdikt po ~3.5 s podle toho, zda slot zmizel. Uloženo v `BetterBackpackDB.trashTest` (account, mimo profil). `click = false` → Trash na klientu nejde.
-- Loot režim: `auto` jen když `timer` nebo `event` OK a v této session nic neselhalo; jinak `click`. V boji nikdy (`PLAYER_REGEN_ENABLED` → rescan).
-- Jedno pravidlo = celý itemID: další stacky téhož itemu v bagu jdou hned taky (auto) nebo čekají červeně (click).
+- **Forever = click-only (0.5.20, natrvalo).** Ondřejův trashtest 0.5.19: `click=OK · timer=blocked · event=blocked` → `DeleteCursorItem` mimo hardware event = „Interface action failed“. Timer / event delete cesty jsou z kódu pryč; eventy jen přepočítají čekající stacky. Delete běží výhradně v: drop na Trash, Accept popupu, další klik v bagu (slot / header / ghost), `/bb trashtest go` (Enter).
+- `/bb trashtest` (bez argumentu = co by zničil + poslední výsledek; `go` = 1 šedý stack z klávesy Enter; `<itemID>` = bílý/šedý item) = jen kontrola, že click destroy pořád jde. Uloženo v `BetterBackpackDB.trashTest`. `click = false` → Trash na klientu nejde.
+- V boji nikdy (`PLAYER_REGEN_ENABLED` → přepočet). Jedno pravidlo = celý itemID: další stacky téhož itemu čekají červeně do dalšího kliku.
 - Ghost: `Button` mimo SAB, `RegisterForDrag`, ikona desaturovaná α0.45 + pass X; Shift-klik s otevřeným chatem = link itemu. Ghosty se počítají do pevné velikosti okna jako sloty (sizing lists); při search / filter se nekreslí.
-- Destroy proběhne jen uvnitř kliku hráče (drop, Accept, další klik) nebo v `auto` režimu; žádné `SetFrameStrata`, menu + plovoucí ikona jen přes frame level.
+- Destroy proběhne jen uvnitř kliku / klávesy hráče; žádné `SetFrameStrata`, menu + plovoucí ikona jen přes frame level.
 

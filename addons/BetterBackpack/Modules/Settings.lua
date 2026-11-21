@@ -378,16 +378,10 @@ end
 
 local function TrashStatus(T)
   local r = T.TestResult and T.TestResult()
-  if not r then
-    return "Loot: destroyed on your next click in the bag. Run |cffffffff/bb trashtest go|r once to check if Forever allows it on arrival."
-  end
-  if not r.click then
+  if r and r.click == false then
     return "|cffff5050/bb trashtest: this client blocks destroying — Trash can't work.|r"
   end
-  if T.LootMode() == "auto" then
-    return "Loot: destroyed as soon as it lands in your bags (out of combat)."
-  end
-  return "Loot: waits in Trash (red) and is destroyed on your next click in the bag."
+  return "New loot of a Trash item waits in Trash (red) and is destroyed on your next click in the bag."
 end
 
 local function PaintTrash(y)

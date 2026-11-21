@@ -20,7 +20,7 @@ L.HELP_LINES = {
   "/bb custom add <name> — new custom category",
   "/bb custom del <id> — remove custom category",
   "/bb assign <itemID> <cat|clear> — item → category rule",
-  "/bb trashtest [go|<itemID>] — test which destroy triggers Forever allows (Trash lane)",
+  "/bb trashtest [go|<itemID>] — check click destroy still works (destroys 1 grey stack)",
   "/bb layout [lanes|dense] — layout mode toggle",
   "/bb merge [on|off] — visual stack merge",
   "/bb dump — status + recent errors",

@@ -6,7 +6,7 @@ Category-lane bags for **World of Warcraft Forever** (Interface 16001) with comb
 
 1. Put this folder in `Interface/AddOns/BetterBackpack/` (or symlink via `./scripts/link-addon.sh BetterBackpack`).
 2. Enable at character select if needed.
-3. `/reload` in game — chat should show `loaded v0.5.19` (Toggle* stable; CombinedBags/Baganator chrome; NTH).
+3. `/reload` in game — chat should show `loaded v0.5.20` (Toggle* stable; CombinedBags/Baganator chrome; NTH).
 
 Categories open expanded with item icons; click a category header (arrow) to collapse or expand it. The window is sized for the whole bag with every category expanded (as wide as the largest category, never narrower than 6 slots), so collapsing, searching or filtering never resizes it. Categories with no matches are hidden; the freed space stays plain (set `fillEmptyWells` in the profile to show empty slot wells there instead).
 
@@ -26,7 +26,8 @@ Categories open expanded with item icons; click a category header (arrow) to col
 - From then on every stack of that item you loot is destroyed too. A grey **ghost** icon of it stays in the Trash lane (no bag slot) with how many were destroyed.
 - **To keep it again:** drag the ghost onto another lane (header, an item in it, + Lane, or a lane row in Settings), or click the ghost → *Keep* / *Keep in …*. Settings → Trash lists every Trash item with **Keep**.
 - Never destroyed: quest items, green or better, locked items, the hearthstone. Nothing happens in combat.
-- `/bb trashtest go` (destroys up to 3 grey stacks; `/bb trashtest` alone shows which) checks what Forever allows. If it allows destroying outside a click, new loot is destroyed as it lands; otherwise it waits in Trash with a red veil and goes on your next click in the bag.
+- New loot of a Trash item waits in Trash with a red veil and is destroyed on your next click in the bag. Forever only allows destroying inside a click or key press (0.5.20: timer / event destroy removed).
+- `/bb trashtest go` destroys 1 grey stack from the key press to check click destroy still works (`/bb trashtest` alone shows which).
 
 ## Slash
 
@@ -42,7 +43,7 @@ Categories open expanded with item icons; click a category header (arrow) to col
 | `/bb custom add <name>` | New custom category |
 | `/bb custom del <id>` | Remove custom category |
 | `/bb assign <itemID> <cat\|clear>` | Item → category rule |
-| `/bb trashtest [go\|<itemID>]` | Test which destroy triggers Forever allows (Trash lane) |
+| `/bb trashtest [go\|<itemID>]` | Check click destroy still works (destroys 1 grey stack) |
 | `/bb layout [lanes\|dense]` | Layout mode |
 | `/bb merge [on\|off]` | Visual stack merge |
 | `/bb dump` | Status + error ring |
