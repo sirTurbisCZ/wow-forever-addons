@@ -1,7 +1,7 @@
 # BetterBackpack — workflows and diagrams
 
 **Code:** `Core.lua`, `Modules/{Slots,Layout,Context,BulkTransfer,VendorJunk,OpenClose,Tidy,Settings,Search,Filter,CustomCategories,Trash,StackMerge,Pins,LayoutModes}.lua`  
-**Version reference:** 1.2.0 (quest starter bang · combat keep-shown warm shell · ESC re-arm · vendor bulk · auto-sell)  
+**Version reference:** 1.2.1 (stack merge lock split · quest bang · combat B/ESC · vendor bulk)  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never harvest CombinedBags items).
 
 ---
@@ -45,7 +45,7 @@ flowchart TD
   L --> Class[ClassifyBagSlot + CustomCategories.Resolve]
   Class --> Buckets[CollectBuckets]
   Buckets --> SF[Search.Passes + Filter.Passes]
-  SF --> Merge[StackMerge.Collapse per lane]
+  SF --> Merge[StackMerge.Collapse per lane<br/>key = itemID + isLocked]
   Merge --> Place[Slots.Acquire + Place]
   Place --> Visual[SyncVisual + quest bang if questID and not isActive]
   Visual --> Attrs{OOC?}

@@ -1,5 +1,9 @@
 # BetterBackpack changelog
 
+## 1.2.1 — stack merge + lock state
+
+- **StackMerge:** merge key is **`itemID` + `isLocked`** — locked and unlocked copies of the same item (e.g. lockboxes) show as **separate** visual stacks instead of one misleading icon.
+
 ## 1.2.0 — quest starter bang
 
 - **Slots:** yellow **!** on bag slots when `C_Container.GetContainerItemQuestInfo` reports **`questID` and not `isActive`** (item begins a quest; not yet accepted). Uses Blizzard bang texture / `QuestBang` atlas; not shown for plain `isQuestItem` objectives.
