@@ -6,7 +6,7 @@ Category-lane bags for **World of Warcraft Forever** (Interface 16001) with comb
 
 1. Put this folder in `Interface/AddOns/BetterBackpack/` (or symlink via `./scripts/link-addon.sh BetterBackpack`).
 2. Enable at character select if needed.
-3. `/reload` in game — chat should show `loaded v0.5.18` (Toggle* stable; CombinedBags/Baganator chrome; NTH).
+3. `/reload` in game — chat should show `loaded v0.5.19` (Toggle* stable; CombinedBags/Baganator chrome; NTH).
 
 Categories open expanded with item icons; click a category header (arrow) to collapse or expand it. The window is sized for the whole bag with every category expanded (as wide as the largest category, never narrower than 6 slots), so collapsing, searching or filtering never resizes it. Categories with no matches are hidden; the freed space stays plain (set `fillEmptyWells` in the profile to show empty slot wells there instead).
 
@@ -17,6 +17,16 @@ Categories open expanded with item icons; click a category header (arrow) to col
 - **+ Lane** (right of the search box): click to name a new empty lane, or drop an item on it to create a lane with that item in it.
 - **Settings (gear):** same chrome as the bag. *Lanes* — built-in lanes on/off (unchecked lanes spill into Other, never hidden), with each lane's taught-item count. *Custom lanes* — Rename / Delete per lane, New lane. *Learned items* — count + Forget all. *Features* — visual stack merge, dense layout.
 - Rules live in SavedVariables (`profile.itemRules`, `profile.customCategories`). Deleting a lane sends its items back to their default lanes. Drag-teach is out of combat only (bag pickup is disabled in combat).
+- **Shift / Ctrl + LMB** on a bag item works like the Blizzard bag: Shift links it into the open chat or whisper box (Shift with no chat box = split stack), Ctrl = dress-up.
+
+## Trash lane — auto-destroy (0.5.19)
+
+- Off by default: Settings → Lanes → check **Trash**. Unchecked = nothing is ever destroyed, Trash rules wait.
+- Drop a grey or white stack on the Trash header (or on an item / ghost in Trash): it is destroyed right away. The first time per item a popup asks (Settings → Trash → "Ask before the first destroy" turns that off).
+- From then on every stack of that item you loot is destroyed too. A grey **ghost** icon of it stays in the Trash lane (no bag slot) with how many were destroyed.
+- **To keep it again:** drag the ghost onto another lane (header, an item in it, + Lane, or a lane row in Settings), or click the ghost → *Keep* / *Keep in …*. Settings → Trash lists every Trash item with **Keep**.
+- Never destroyed: quest items, green or better, locked items, the hearthstone. Nothing happens in combat.
+- `/bb trashtest go` (destroys up to 3 grey stacks; `/bb trashtest` alone shows which) checks what Forever allows. If it allows destroying outside a click, new loot is destroyed as it lands; otherwise it waits in Trash with a red veil and goes on your next click in the bag.
 
 ## Slash
 
@@ -32,6 +42,7 @@ Categories open expanded with item icons; click a category header (arrow) to col
 | `/bb custom add <name>` | New custom category |
 | `/bb custom del <id>` | Remove custom category |
 | `/bb assign <itemID> <cat\|clear>` | Item → category rule |
+| `/bb trashtest [go\|<itemID>]` | Test which destroy triggers Forever allows (Trash lane) |
 | `/bb layout [lanes\|dense]` | Layout mode |
 | `/bb merge [on\|off]` | Visual stack merge |
 | `/bb dump` | Status + error ring |
@@ -49,6 +60,7 @@ Also `/betterbackpack`. Úklid / Nastavení stay Czech on chrome.
 | `Modules/Search.lua` | Search box + match |
 | `Modules/Filter.lua` | Category filter |
 | `Modules/CustomCategories.lua` | Custom lanes, hide defaults, drag-teach rules, name / rename / delete popups |
+| `Modules/Trash.lua` | Trash lane: destroy on drop, ghosts, keep menu / fake drag, loot auto-destroy, `/bb trashtest` |
 | `Modules/Settings.lua` | Settings panel (CombinedBags chrome) |
 | `Modules/StackMerge.lua` | Visual same-itemID merge |
 | `Modules/Pins.lua` | Red ghost for unowned pins |

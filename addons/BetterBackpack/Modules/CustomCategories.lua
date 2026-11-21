@@ -25,6 +25,10 @@ local function Changed()
   if Settings and Settings.Refresh then
     Settings.Refresh()
   end
+  local Trash = BetterBackpack.Modules.Trash
+  if Trash and Trash.RulesChanged then
+    Trash.RulesChanged()
+  end
 end
 
 local function EnsureTables()
@@ -174,15 +178,18 @@ function CustomCategories.Label(key)
   return nil
 end
 
---- Extended order: defaults (minus hidden) + custom + other last.
+--- Extended order: defaults (minus hidden) + custom + trash + other last.
 function CustomCategories.ExtendOrder(baseOrder)
   local p = EnsureTables()
   local out = {}
   local seen = {}
+  local hasTrash = false
   for i = 1, #baseOrder do
     local key = baseOrder[i]
     if key == "other" then
       -- defer
+    elseif key == "trash" then
+      hasTrash = not CustomCategories.IsDefaultHidden(key)
     elseif not CustomCategories.IsDefaultHidden(key) then
       out[#out + 1] = key
       seen[key] = true
@@ -194,6 +201,9 @@ function CustomCategories.ExtendOrder(baseOrder)
       out[#out + 1] = id
       seen[id] = true
     end
+  end
+  if hasTrash then
+    out[#out + 1] = "trash"
   end
   out[#out + 1] = "other"
   return out

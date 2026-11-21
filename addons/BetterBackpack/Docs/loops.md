@@ -1,7 +1,7 @@
 # BetterBackpack — smyčky a grafy
 
-**Kód:** `Core.lua`, `Modules/{Slots,Layout,Context,OpenClose,Tidy,Settings,Search,Filter,CustomCategories,StackMerge,Pins,LayoutModes}.lua`  
-**Verze reference:** 0.5.18 (prázdné custom lanes kreslené jako drop target · drag-teach lanes · custom lanes v Settings · Settings v chrome bagu · broom = stejná plate jako gear/X · sticky velikost okna · broom/gear v chrome Close · bank RMB secure type2=item · SearchBoxTemplate search · gear na nativní broom plate · nativní AutoSort reparent · footer hairline · pevná velikost = plný rozbalený bag · dense grid PAD 2 · NumberFontNormalSmall counts · broom/gear jako CombinedBags · footer N/M = font peněz · fill wells default off)  
+**Kód:** `Core.lua`, `Modules/{Slots,Layout,Context,OpenClose,Tidy,Settings,Search,Filter,CustomCategories,Trash,StackMerge,Pins,LayoutModes}.lua`  
+**Verze reference:** 0.5.19 (Trash lane auto-destroy + ghosts + `/bb trashtest` · Shift/Ctrl+LMB = nativní link / dress-up / split · prázdné custom lanes kreslené jako drop target · drag-teach lanes · custom lanes v Settings · Settings v chrome bagu · broom = stejná plate jako gear/X · sticky velikost okna · broom/gear v chrome Close · bank RMB secure type2=item · SearchBoxTemplate search · gear na nativní broom plate · nativní AutoSort reparent · footer hairline · pevná velikost = plný rozbalený bag · dense grid PAD 2 · NumberFontNormalSmall counts · broom/gear jako CombinedBags · footer N/M = font peněz · fill wells default off)  
 **Stabilita:** Project `docs/bag-addon-brief.md` + Scenario Maps `docs/scenarios/BetterBackpack/`  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never path C harvest).
 
@@ -70,7 +70,7 @@ flowchart TD
   Col -->|ne| HideH[hide header]
   Col -->|ano| Coll{collapsed?}
   Coll -->|ano| Hdr[header only · bag-arrow −π]
-  Coll -->|ne default| Place[Slots.Acquire + Place on main · SlotBackground well · ApplyDisplayCount]
+  Coll -->|ne default| Place[Slots.Acquire + Place on main · SlotBackground well · ApplyDisplayCount · Trash lane: red veil + ghosts]
   Hdr --> Pins
   HideH --> Pins
   Place --> Pins[Pins.Layout ghosts for missing · same cols]
@@ -149,9 +149,15 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-  Pick[LMB / drag item in bag OOC] --> P[Slots pickup: PickupContainerItem]
+  Click[LMB up on bag item OOC] --> Mod{Shift / Ctrl / Alt and cursor empty?}
+  Mod -->|ano| Native[chat box open → ChatEdit_InsertLink · else HandleModifiedItemClick · Shift → StackSplitFrame]
+  Native -->|handled| Done[no pickup]
+  Native -->|not handled| P
+  Mod -->|ne| P
+  Pick[drag item in bag OOC] --> P[Slots pickup: PickupContainerItem]
   P --> Src[dragSrc = bag, slot, lane, itemID · SetDropHints on]
   Src --> Where{drop target?}
+  Where -->|Trash header / item / ghost| TR[Trash.HandleDrop — see §7]
   Where -->|item in another lane| T[Layout.DropOnLane lane]
   Where -->|lane header click / OnReceiveDrag| T
   Where -->|custom lane row in Settings| T
@@ -173,5 +179,48 @@ flowchart TD
 - **Custom lane se kreslí vždy** (0.5.18), i prázdná: jen header `(0)`, počítá se do pevné velikosti okna (`HEADER_H + HEADER_PAD + SECTION_GAP`). Výjimka: při search / filter se lanes bez shody skryjí jako ostatní. Řádky custom lanes v Settings jsou také drop target (`OnReceiveDrag` / `OnMouseUp` → `DropOnLane`, zlatý `dropHl` přes `Settings.SetDropHints`).
 - Každé tlačítko v lane nese `btn._bbLane` (DoLayout). Header má `dropHl` (zlatý pruh) během tažení; `+ Lane` `LockHighlight`.
 - V boji pickup z bagu nefunguje (`pickup` bail) → drag-teach jen mimo boj; nic secure se nemění.
-- Settings: `Layout.CreateChromedPanel` (ButtonFrameTemplate + CombinedBags NineSlice jako bag). Sekce Lanes (z `CATEGORY_ORDER`, ne z `ExtendOrder` — skrytý lane musí zůstat v seznamu, jinak nejde znovu zapnout), Custom lanes (Rename / Delete / New lane přes StaticPopup), Learned items (počet + Forget all), Features. Žádné `SetFrameStrata`.
+- Settings: `Layout.CreateChromedPanel` (ButtonFrameTemplate + CombinedBags NineSlice jako bag). Sekce Lanes (z `CATEGORY_ORDER`, ne z `ExtendOrder` — skrytý lane musí zůstat v seznamu, jinak nejde znovu zapnout), Custom lanes (Rename / Delete / New lane přes StaticPopup), Learned items (počet + Forget all), Trash (stav loot režimu, confirm checkbox, řádek na item + Keep), Features. Žádné `SetFrameStrata`.
+- **Modified LMB (0.5.19):** `OnMouseUp` LMB s Shift/Ctrl/Alt a prázdným kurzorem nejdřív zkusí nativní cestu (otevřený chat / whisper → `ChatEdit_InsertLink` / `ChatFrameUtil.InsertLink`; jinak `HandleModifiedItemClick` = link, dress-up; Shift bez chatu → `StackSplitFrame`). Pickup jen když nic z toho neproběhlo. S itemem na kurzoru = normální drop / swap.
+
+---
+
+## 7. Trash lane — auto-destroy (0.5.19)
+
+Design: Project store `docs/auto-destroy-lane.md` (v2). Lane `trash` je built-in, **default vypnutý** (`categories.trash = false`, `CategoryEnabled` chce `== true`); vypnutý = pravidla spí, itemy v Other, nic se neničí. Pořadí: … custom lanes · Trash · Other.
+
+```mermaid
+flowchart TD
+  Drop[item z bagu puštěn na Trash header / item / ghost] --> DOL[Layout.DropOnLane trash · dragSrc clear · kurzor drží item]
+  DOL --> Cmb{InCombatLockdown?}
+  Cmb -->|ano| No1[ClearCursor · zpráva]
+  Cmb -->|ne| Ref{Trash.Refuse: quest · green+ · locked · hearthstone · neznámá kvalita}
+  Ref -->|ano| No2[ClearCursor · item zpět · důvod do chatu]
+  Ref -->|ne| Conf{confirm zapnutý a item ještě nepotvrzený?}
+  Conf -->|ano| Pop[ClearCursor · StaticPopup Destroy link xN]
+  Pop -->|Accept = klik| Re[confirmed id · najdi stack · Pickup v témže kliku]
+  Re --> Del
+  Conf -->|ne| Del[DeleteCursorItem · ověř prázdný kurzor]
+  Del --> Teach[itemRules id = trash · destroyed id += N · log 20]
+  Teach --> Ghost[Relayout: šedý ghost id v Trash lane · 0 slotů · xN]
+
+  Loot[BAG_UPDATE_DELAYED / REGEN_ENABLED / změna pravidel] --> Scan[Scan: stacky s pravidlem trash, prošlé Refuse]
+  Scan --> Mode{LootMode: trashtest timer/event OK?}
+  Mode -->|auto| Auto[Flush hned · event / timer 0.2s]
+  Auto -->|blocked| Fall[autoFailed = click režim do /reload]
+  Mode -->|click| Wait[stack v Trash lane s červeným veilem]
+  Wait --> Next[další klik v bagu: slot OnMouseDown · header · ghost → FlushOnClick]
+  Next --> Flush[Pickup + DeleteCursorItem pro každý · nikdy když kurzor drží jiný item]
+
+  GhostDrag[OnDragStart ghost] --> Fake[fake drag: plovoucí ikona sleduje GetCursorPosition · drop hints · NIC na kurzoru]
+  Fake --> Stop[OnDragStop: Layout.LaneUnderMouse · + Lane · header · item · Settings řádek]
+  Stop --> Move[Trash.MoveOut: natural lane = forget · jiná lane = Teach · + Lane = nová lane]
+  GhostClick[klik na ghost] --> Menu[menu Keep · Keep in lane · Keep in a new lane · Cancel]
+  Menu --> Move
+```
+
+- `/bb trashtest` (bez argumentu = co by zničil + poslední výsledek; `go` = až 3 šedé stacky; `<itemID>` = bílý/šedý item). Testy: **click** (slash = Enter = hardware event), **timer** (`C_Timer.After 0.6`), **event** (první `BAG_UPDATE_DELAYED`). Verdikt po ~3.5 s podle toho, zda slot zmizel. Uloženo v `BetterBackpackDB.trashTest` (account, mimo profil). `click = false` → Trash na klientu nejde.
+- Loot režim: `auto` jen když `timer` nebo `event` OK a v této session nic neselhalo; jinak `click`. V boji nikdy (`PLAYER_REGEN_ENABLED` → rescan).
+- Jedno pravidlo = celý itemID: další stacky téhož itemu v bagu jdou hned taky (auto) nebo čekají červeně (click).
+- Ghost: `Button` mimo SAB, `RegisterForDrag`, ikona desaturovaná α0.45 + pass X; Shift-klik s otevřeným chatem = link itemu. Ghosty se počítají do pevné velikosti okna jako sloty (sizing lists); při search / filter se nekreslí.
+- Destroy proběhne jen uvnitř kliku hráče (drop, Accept, další klik) nebo v `auto` režimu; žádné `SetFrameStrata`, menu + plovoucí ikona jen přes frame level.
 

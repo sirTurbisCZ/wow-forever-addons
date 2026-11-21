@@ -21,6 +21,7 @@ local TOP = 32
 
 local panel
 local laneRows, customRows, featureRows, headers, notes = {}, {}, {}, {}, {}
+local trashChecks, trashRows = {}, {}
 
 local function Profile()
   return Config.GetProfile()
@@ -171,7 +172,8 @@ local function PaintLanes(y)
     row:ClearAllPoints()
     row:SetPoint("TOPLEFT", panel.host, "TOPLEFT", 0, -y)
     row:Show()
-    row.label:SetText(CategoryLabel(key))
+    row.laneKey = key
+    row.label:SetText(CategoryLabel(key) .. (key == "trash" and "  |cffff5050(auto-destroy)|r" or ""))
     local learned = CC and CC.CountLaneRules and CC.CountLaneRules(key) or 0
     row.extra:SetText(learned > 0 and LearnedLabel(learned) or "")
     if key == "other" then
@@ -184,7 +186,11 @@ local function PaintLanes(y)
       row.check:Enable()
       row.label:SetTextColor(1, 1, 1)
       local hidden = CC and CC.IsDefaultHidden and CC.IsDefaultHidden(key)
-      row.check:SetChecked(not hidden and p.categories[key] ~= false)
+      local on = Layout and Layout.CategoryEnabled and Layout.CategoryEnabled(key)
+      if on == nil then
+        on = not hidden and p.categories[key] ~= false
+      end
+      row.check:SetChecked(on and true or false)
       row.check:SetScript("OnClick", function(self)
         local raw = self:GetChecked()
         local on = raw == true or raw == 1
@@ -331,6 +337,110 @@ local function PaintLearned(y)
   return y + 28
 end
 
+local function TrashRow(i)
+  local row = trashRows[i]
+  if row then
+    return row
+  end
+  row = CreateFrame("Frame", nil, panel.host)
+  row:SetSize(PANEL_W - 2 * PAD_X, ROW_H)
+  row:EnableMouse(true)
+  local icon = row:CreateTexture(nil, "ARTWORK")
+  icon:SetSize(18, 18)
+  icon:SetPoint("LEFT", 3, 0)
+  pcall(icon.SetDesaturated, icon, true)
+  icon:SetAlpha(0.7)
+  row.icon = icon
+  local label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  label:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+  label:SetJustifyH("LEFT")
+  label:SetWidth(128)
+  label:SetWordWrap(false)
+  row.label = label
+  local extra = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  extra:SetPoint("LEFT", label, "RIGHT", 4, 0)
+  row.extra = extra
+  row.forget = SmallButton(row, "Keep", 58)
+  row.forget:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+  row:SetScript("OnEnter", function(self)
+    if self.itemID and GameTooltip.SetItemByID then
+      GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+      pcall(GameTooltip.SetItemByID, GameTooltip, self.itemID)
+      GameTooltip:Show()
+    end
+  end)
+  row:SetScript("OnLeave", function()
+    GameTooltip:Hide()
+  end)
+  trashRows[i] = row
+  return row
+end
+
+local function TrashStatus(T)
+  local r = T.TestResult and T.TestResult()
+  if not r then
+    return "Loot: destroyed on your next click in the bag. Run |cffffffff/bb trashtest go|r once to check if Forever allows it on arrival."
+  end
+  if not r.click then
+    return "|cffff5050/bb trashtest: this client blocks destroying — Trash can't work.|r"
+  end
+  if T.LootMode() == "auto" then
+    return "Loot: destroyed as soon as it lands in your bags (out of combat)."
+  end
+  return "Loot: waits in Trash (red) and is destroyed on your next click in the bag."
+end
+
+local function PaintTrash(y)
+  local T = Feat("Trash")
+  if not T then
+    return y
+  end
+  y = Note(5, "Check Trash under Lanes to turn it on. Drop a grey or white item on the Trash header: "
+    .. "it is destroyed now, and every time you loot it again. Its grey icon stays in Trash — "
+    .. "drag it to another lane, or click it, to keep that item. Quest items and green+ are never destroyed.", y)
+  y = Note(6, TrashStatus(T), y)
+  local row = CheckRow(trashChecks, 1)
+  row:ClearAllPoints()
+  row:SetPoint("TOPLEFT", panel.host, "TOPLEFT", 0, -y)
+  row:Show()
+  row.label:SetText("Ask before the first destroy of each item")
+  row.label:SetTextColor(1, 1, 1)
+  row.extra:SetText("")
+  row.check:Enable()
+  row.check:SetChecked(T.ConfirmEnabled())
+  row.check:SetScript("OnClick", function(self)
+    local raw = self:GetChecked()
+    T.SetConfirm(raw == true or raw == 1)
+  end)
+  y = y + ROW_H
+  local ids = T.TaughtIDs()
+  for i = 1, #ids do
+    local id = ids[i]
+    local r = TrashRow(i)
+    r.itemID = id
+    r:ClearAllPoints()
+    r:SetPoint("TOPLEFT", panel.host, "TOPLEFT", 0, -y)
+    r.icon:SetTexture(T.ItemIcon(id))
+    r.label:SetText(T.ItemName(id))
+    local n = T.DestroyedCount(id)
+    r.extra:SetText(n > 0 and ("x" .. n) or "")
+    r.forget:SetScript("OnClick", function()
+      T.Forget(id)
+    end)
+    r:Show()
+    y = y + ROW_H
+  end
+  for i = #ids + 1, #trashRows do
+    trashRows[i]:Hide()
+  end
+  if #ids == 0 then
+    y = Note(7, "Nothing in Trash yet.", y)
+  elseif notes[7] then
+    notes[7]:Hide()
+  end
+  return y
+end
+
 local FEATURES = {
   {
     label = "Visual stack merge",
@@ -399,6 +509,8 @@ local function Paint()
   y = PaintCustom(y) + 6
   y = Header(3, "Learned items", y)
   y = PaintLearned(y) + 6
+  y = Header(5, "Trash", y)
+  y = PaintTrash(y) + 6
   y = Header(4, "Features", y)
   y = PaintFeatures(y)
   panel.host:SetHeight(math.max(28, y))
@@ -471,6 +583,24 @@ function Settings.SetDropHints(on)
     local row = customRows[i]
     row.dropHl:SetShown(on and row:IsShown() and true or false)
   end
+end
+
+--- Lane row under the mouse (built-in or custom), for the Trash ghost fake drag.
+function Settings.LaneUnderMouse()
+  if not (panel and panel:IsVisible()) then
+    return nil
+  end
+  local pools = { { laneRows, "laneKey" }, { customRows, "laneId" } }
+  for p = 1, #pools do
+    local pool, field = pools[p][1], pools[p][2]
+    for i = 1, #pool do
+      local row = pool[i]
+      if row[field] and row:IsVisible() and row:IsMouseOver() then
+        return row[field]
+      end
+    end
+  end
+  return nil
 end
 
 function Settings.Refresh()

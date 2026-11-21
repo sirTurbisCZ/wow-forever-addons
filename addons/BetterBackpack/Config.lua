@@ -12,7 +12,7 @@ local Config = BetterBackpack.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.5.18"
+Config.VERSION = "0.5.19"
 
 local function ProfileDefaults()
   return {
@@ -32,9 +32,11 @@ local function ProfileDefaults()
       quest = true,
       keys = true,
       container = true,
+      trash = false, -- auto-destroy lane, opt-in
       other = true,
     },
     itemRules = {},
+    trash = { confirm = true, confirmed = {}, destroyed = {}, log = {} },
     -- Nice-to-have (from betterbackpack/features-nth): optional Feat() modules.
     searchQuery = "",
     filterCategory = nil, -- nil / "all" = no filter; else category key

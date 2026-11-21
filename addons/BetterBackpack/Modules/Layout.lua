@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.18).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.19).
   Forever: never SetToplevel / SetFrameStrata (ADDON_ACTION_BLOCKED).
   Chrome metrics from Baganator Forever Blizzard skin + ContainerFrameCombinedBags:
     ButtonFrameOffset=6, Bg/TopTile @ (6,-21), NineSlice borders, Inset hidden.
@@ -40,10 +40,13 @@ local CLASSIC_BORDER = {
 }
 
 local CATEGORY_ORDER = {
-  "junk", "consumable", "reagent", "gem", "gear", "quest", "keys", "container", "other",
+  "junk", "consumable", "reagent", "gem", "gear", "quest", "keys", "container", "trash", "other",
 }
 
+local TRASH = "trash"
+
 local CATEGORY_LABELS = {
+  trash = "Trash",
   junk = "Junk",
   consumable = "Consumables",
   reagent = "Materials",
@@ -137,11 +140,15 @@ local function CategoryEnabled(key)
     return false
   end
   local cats = Profile().categories
+  if key == TRASH then
+    return type(cats) == "table" and cats[key] == true
+  end
   if not cats then
     return true
   end
   return cats[key] ~= false
 end
+Layout.CategoryEnabled = CategoryEnabled
 
 local function IsCollapsed(key)
   local c = Profile().collapsed
@@ -353,6 +360,27 @@ function Layout.NaturalLane(bag, slot)
   return cat
 end
 
+--- Natural lane for an itemID that may not be in the bags (Trash ghosts).
+function Layout.NaturalLaneForID(itemID)
+  local q
+  if C_Item and C_Item.GetItemQualityByID then
+    local ok, res = pcall(C_Item.GetItemQualityByID, itemID)
+    q = ok and SafeNum(res) or nil
+  end
+  if q == nil and GetItemInfo then
+    local ok, _, _, res = pcall(GetItemInfo, itemID)
+    q = ok and SafeNum(res) or nil
+  end
+  local cat = ClassifyNatural(0, 0, { quality = q }, itemID) or "other"
+  if cat == "weapon" or cat == "armor" then
+    cat = "gear"
+  end
+  if not CategoryEnabled(cat) then
+    cat = "other"
+  end
+  return cat
+end
+
 --[[
   Drag-teach (0.5.17): an item picked up from our bag and dropped on a lane header, on an
   item in another lane, or on "+ Lane" is not moved — its itemID is taught to that lane
@@ -409,6 +437,19 @@ function Layout.DropOnLane(key)
   if not src or type(key) ~= "string" or not (CC and CC.Teach) then
     return false
   end
+  if key == TRASH then
+    local T = Feat("Trash")
+    if not T then
+      return false
+    end
+    -- Cursor keeps the item: Trash deletes it inside this click.
+    if Slots.ClearDragSource then
+      Slots.ClearDragSource()
+    end
+    Layout.SetDropHints(false)
+    T.HandleDrop(src)
+    return true
+  end
   EndDrag()
   CC.Teach(src.itemID, key, Layout.NaturalLane(src.bag, src.slot))
   return true
@@ -425,6 +466,40 @@ function Layout.DropNewLane()
     CC.PromptNew(src.itemID)
   end
   return true
+end
+
+--- Lane key under the mouse ("new" = + Lane button), for the Trash ghost fake drag.
+function Layout.LaneUnderMouse()
+  local function Over(f)
+    return f and f:IsVisible() and f:IsMouseOver()
+  end
+  if Over(laneBtn) then
+    return "new"
+  end
+  for key, sf in pairs(sectionFrames) do
+    if Over(sf) and Over(sf.header) then
+      return key
+    end
+  end
+  local hit
+  if Slots.ForEach then
+    Slots.ForEach(function(btn)
+      if not hit and btn._bbLane and (btn:GetAlpha() or 0) > 0 and Over(btn) then
+        local ok, on = pcall(btn.IsMouseEnabled, btn)
+        if not ok or on then
+          hit = btn._bbLane
+        end
+      end
+    end)
+  end
+  if hit then
+    return hit
+  end
+  local Settings = Feat("Settings")
+  if Settings and Settings.LaneUnderMouse then
+    return Settings.LaneUnderMouse()
+  end
+  return nil
 end
 
 local cursorWatch = CreateFrame("Frame")
@@ -1018,6 +1093,10 @@ local function EnsureSection(key)
     if Layout.DropOnLane(key) then
       return
     end
+    local T = Feat("Trash")
+    if T and T.FlushOnClick then
+      T.FlushOnClick()
+    end
     local p = Profile()
     if type(p.collapsed) ~= "table" then
       p.collapsed = {}
@@ -1114,11 +1193,25 @@ local function DoLayout()
     -- only change what is drawn inside; the window never resizes for them.
     local filtering = IsFiltering()
     local sizing = filtering and MergedLists(CollectBuckets(true)) or lists
-    -- Custom lanes are drop targets: drawn even when empty (header + "(0)"), except
-    -- while a search / filter hides lanes without matches.
+    -- Custom lanes and Trash are drop targets: drawn even when empty (header + "(0)"),
+    -- except while a search / filter hides lanes without matches.
     local function IsCustom(key)
-      return type(key) == "string" and key:find("^custom_", 1) ~= nil
+      return key == TRASH or (type(key) == "string" and key:find("^custom_", 1) ~= nil)
     end
+
+    -- Trash ghosts: one per taught itemID, UI-only (no bag slot), appended after real stacks.
+    local TrashMod = Feat("Trash")
+    local ghostIDs = {}
+    if TrashMod and lists[TRASH] and TrashMod.TaughtIDs then
+      ghostIDs = TrashMod.TaughtIDs()
+      local target = filtering and sizing or lists
+      if target[TRASH] then
+        for g = 1, #ghostIDs do
+          target[TRASH][#target[TRASH] + 1] = { ghost = ghostIDs[g] }
+        end
+      end
+    end
+    local ghostUsed = {}
 
     -- Grid width = widest unfiltered lane (capped at maxCols), never narrower than this open's max.
     local widest = 0
@@ -1157,7 +1250,11 @@ local function DoLayout()
           sf:SetWidth(contentW)
           sf:Show()
           local collapsed = IsCollapsed(key)
-          SetHeaderState(sf.header, Layout.GetCategoryLabel(key), #list, collapsed)
+          local shownCount = #list
+          if key == TRASH and not filtering then
+            shownCount = #ghostIDs
+          end
+          SetHeaderState(sf.header, Layout.GetCategoryLabel(key), shownCount, collapsed)
           y = y + HEADER_H + HEADER_PAD
           if not collapsed and #list > 0 then
             local col, row = 0, 0
@@ -1166,16 +1263,25 @@ local function DoLayout()
             local parentFrame = main or content
             for j = 1, #list do
               local entry = list[j]
-              local bag, slot = entry.bag, entry.slot
-              local btn = Slots.Acquire(bag, slot)
-              if btn then
-                used[btn] = true
-                btn._bbLane = key
-                local px = INSET_X + col * (SLOT + PAD)
-                local py = TOP_CHROME + y + row * (SLOT + PAD)
-                Slots.Place(btn, parentFrame, px, py, true)
-                if SM and SM.ApplyDisplayCount then
-                  SM.ApplyDisplayCount(btn, entry)
+              local px = INSET_X + col * (SLOT + PAD)
+              local py = TOP_CHROME + y + row * (SLOT + PAD)
+              if entry.ghost then
+                if TrashMod and TrashMod.PlaceGhost then
+                  TrashMod.PlaceGhost(entry.ghost, parentFrame, px, py)
+                  ghostUsed[entry.ghost] = true
+                end
+              else
+                local btn = Slots.Acquire(entry.bag, entry.slot)
+                if btn then
+                  used[btn] = true
+                  btn._bbLane = key
+                  Slots.Place(btn, parentFrame, px, py, true)
+                  if SM and SM.ApplyDisplayCount then
+                    SM.ApplyDisplayCount(btn, entry)
+                  end
+                  if TrashMod and TrashMod.SetPendingVeil then
+                    TrashMod.SetPendingVeil(btn, key == TRASH)
+                  end
                 end
               end
               col = col + 1
@@ -1208,6 +1314,10 @@ local function DoLayout()
       if not still then
         sf:Hide()
       end
+    end
+
+    if TrashMod and TrashMod.HideGhosts then
+      TrashMod.HideGhosts(ghostUsed)
     end
 
     local PinsMod = Feat("Pins")
@@ -2551,6 +2661,10 @@ function Layout.Hide()
   stickyCols, stickyH = nil, nil
   Layout.SetDropHints(false)
   ClearBagMatchGlows()
+  local T = Feat("Trash")
+  if T and T.OnBagHide then
+    pcall(T.OnBagHide)
+  end
   local S = BetterBackpack.Modules.Settings
   if S and S.Hide then
     S.Hide()

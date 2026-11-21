@@ -433,6 +433,16 @@ SlashCmdList.BETTERBACKPACK = function(msg)
     return
   end
 
+  if cmd == "trashtest" then
+    local Trash = BetterBackpack.Modules.Trash
+    if Trash and Trash.RunTest then
+      SafeCall("trashtest", Trash.RunTest, rest)
+    else
+      Print("Trash module not loaded")
+    end
+    return
+  end
+
   if cmd == "pin" then
     local Pins = BetterBackpack.Modules.Pins
     if not Pins then

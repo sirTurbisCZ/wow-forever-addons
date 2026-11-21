@@ -901,6 +901,130 @@ function Slots.ClearDragSource()
   dragSrc = nil
 end
 
+function Slots.ItemLink(bag, slot)
+  local link
+  if C_Container and C_Container.GetContainerItemLink then
+    local ok, res = pcall(C_Container.GetContainerItemLink, bag, slot)
+    if ok then
+      link = res
+    end
+  elseif GetContainerItemLink then
+    local ok, res = pcall(GetContainerItemLink, bag, slot)
+    if ok then
+      link = res
+    end
+  end
+  if type(link) ~= "string" or IsSecret(link) then
+    return nil
+  end
+  return link
+end
+
+local function ChatEditActive()
+  if ChatEdit_GetActiveWindow then
+    local ok, eb = pcall(ChatEdit_GetActiveWindow)
+    if ok and eb then
+      return true
+    end
+  end
+  if ChatFrameUtil and ChatFrameUtil.GetActiveWindow then
+    local ok, eb = pcall(ChatFrameUtil.GetActiveWindow)
+    if ok and eb then
+      return true
+    end
+  end
+  return false
+end
+
+--- Shift / Ctrl link + dress-up, same path as ContainerFrameItemButton (chat box open or not).
+function Slots.InsertChatLink(link)
+  if type(link) ~= "string" then
+    return false
+  end
+  local fns = {
+    ChatEdit_InsertLink,
+    ChatFrameUtil and ChatFrameUtil.InsertLink,
+  }
+  for i = 1, #fns do
+    if type(fns[i]) == "function" then
+      local ok, res = pcall(fns[i], link)
+      if ok and res then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+local function Modified(kind, fallback)
+  if IsModifiedClick then
+    local ok, res = pcall(IsModifiedClick, kind)
+    if ok then
+      return res and true or false
+    end
+  end
+  return fallback and fallback() or false
+end
+
+local function SplitStack(self, b, s)
+  local info
+  if C_Container and C_Container.GetContainerItemInfo then
+    local ok, res = pcall(C_Container.GetContainerItemInfo, b, s)
+    info = ok and type(res) == "table" and res or nil
+  end
+  local count = SafeNum(info and info.stackCount)
+  if not count or count < 2 or (info and info.isLocked) then
+    return false
+  end
+  self.SplitStack = function(_, split)
+    if C_Container and C_Container.SplitContainerItem then
+      pcall(C_Container.SplitContainerItem, b, s, split)
+    elseif SplitContainerItem then
+      pcall(SplitContainerItem, b, s, split)
+    end
+    dragSrc = nil
+  end
+  if StackSplitFrame and StackSplitFrame.OpenStackSplitFrame then
+    return pcall(StackSplitFrame.OpenStackSplitFrame, StackSplitFrame, count, self, "BOTTOMRIGHT", "TOPRIGHT")
+  end
+  if OpenStackSplitFrame then
+    return pcall(OpenStackSplitFrame, count, self, "BOTTOMRIGHT", "TOPRIGHT")
+  end
+  return false
+end
+
+--- Modified LMB on a bag item. True = handled natively, do not pick the item up.
+local function HandleModifiedLmb(self)
+  local shift = IsShiftKeyDown and IsShiftKeyDown()
+  local ctrl = IsControlKeyDown and IsControlKeyDown()
+  local alt = IsAltKeyDown and IsAltKeyDown()
+  if not (shift or ctrl or alt) then
+    return false
+  end
+  local b, s = self._bbBag, self._bbSlot
+  if b == nil or s == nil then
+    return false
+  end
+  local link = Slots.ItemLink(b, s)
+  if link then
+    if Modified("CHATLINK", function() return shift end) and ChatEditActive() and Slots.InsertChatLink(link) then
+      return true
+    end
+    if HandleModifiedItemClick then
+      local ok, res = pcall(HandleModifiedItemClick, link)
+      if ok and res then
+        return true
+      end
+    end
+  end
+  if Modified("SPLITSTACK", function() return shift end) and not CursorItemID() then
+    if SplitStack(self, b, s) then
+      return true
+    end
+  end
+  return false
+end
+
 local function WireScripts(btn)
   if btn._bbWired then
     if not (InCombatLockdown and InCombatLockdown()) then
@@ -950,6 +1074,10 @@ local function WireScripts(btn)
   btn:SetScript("OnReceiveDrag", pickup)
   if btn.HookScript then
     btn:HookScript("OnMouseDown", function(self, button)
+      local Trash = BetterBackpack.Modules.Trash
+      if Trash and Trash.FlushOnClick and not (InCombatLockdown and InCombatLockdown()) then
+        Trash.FlushOnClick()
+      end
       local Context = BetterBackpack.Modules.Context
       -- Only merchant/mail clear type2. Bank keeps secure UseContainerItem.
       if button == "RightButton" and Context and Context.NeedsInsecureSpecialRmb and Context.NeedsInsecureSpecialRmb() then
@@ -988,7 +1116,7 @@ local function WireScripts(btn)
             ClearLmbUse(self)
             self._bbSpellTarget = nil
           end
-        else
+        elseif CursorItemID() or not HandleModifiedLmb(self) then
           pickup(self)
         end
       end
