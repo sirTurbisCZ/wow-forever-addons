@@ -12,7 +12,7 @@ local Config = BetterBackpack.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.5.23"
+Config.VERSION = "0.5.24"
 
 local function ProfileDefaults()
   return {
@@ -134,7 +134,7 @@ function Config.EnsureDB()
     from = 4
   end
 
-  -- 0.5.23: Trash destroys on drop without confirm unless user re-enables in Settings.
+  -- 0.5.24: Trash destroys on drop without confirm unless user re-enables in Settings.
   if from < 5 then
     EnsureProfile(db)
     if type(db.profile) == "table" and type(db.profile.trash) == "table" then

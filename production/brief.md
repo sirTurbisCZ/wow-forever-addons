@@ -1,4 +1,8 @@
-# Playtest brief — BetterBackpack 0.5.21 (Trash drop fix + click-only destroy)
+# Playtest brief — BetterBackpack 0.5.24 (Settings two-pane + no + Lane)
+
+**0.5.24**
+- Settings rebuilt: left categories (Lanes, Custom lanes, Trash, Learned, Features), right panel — like Interface Options.
+- Removed "+ Lane" from bag search row; new custom lanes only via Settings → Custom lanes → New lane.
 
 Branch `cursor/bb-056-layout-expand-hug-9374` (includes bank RMB 0.5.12, search 0.5.11, Close-chrome title buttons 0.5.16, sticky size 0.5.15, drag-teach lanes 0.5.17–0.5.18).
 

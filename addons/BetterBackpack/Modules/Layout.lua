@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.23).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.24, no + Lane in header).
   Forever: never SetToplevel / SetFrameStrata (ADDON_ACTION_BLOCKED).
   Chrome metrics from Baganator Forever Blizzard skin + ContainerFrameCombinedBags:
     ButtonFrameOffset=6, Bg/TopTile @ (6,-21), NineSlice borders, Inset hidden.
@@ -386,11 +386,9 @@ end
 
 --[[
   Drag-teach (0.5.17): an item picked up from our bag and dropped on a lane header, on an
-  item in another lane, or on "+ Lane" is not moved — its itemID is taught to that lane
+  item in another lane is not moved — its itemID is taught to that lane
   (profile.itemRules) and the cursor is cleared, so the item stays in its bag slot.
 ]]
-local laneBtn
-
 function Layout.SetDropHints(on)
   for _, sf in pairs(sectionFrames) do
     if sf.header and sf.header.dropHl then
@@ -400,13 +398,6 @@ function Layout.SetDropHints(on)
   local Settings = Feat("Settings")
   if Settings and Settings.SetDropHints then
     pcall(Settings.SetDropHints, on)
-  end
-  if laneBtn then
-    if on then
-      laneBtn:LockHighlight()
-    else
-      laneBtn:UnlockHighlight()
-    end
   end
 end
 
@@ -494,13 +485,10 @@ function Layout.DropNewLane()
   return true
 end
 
---- Lane key under the mouse ("new" = + Lane button), for the Trash ghost fake drag.
+--- Lane key under the mouse, for the Trash ghost fake drag.
 function Layout.LaneUnderMouse()
   local function Over(f)
     return f and f:IsVisible() and f:IsMouseOver()
-  end
-  if Over(laneBtn) then
-    return "new"
   end
   for key, sf in pairs(sectionFrames) do
     if Over(sf) and Over(sf.header) then
@@ -540,58 +528,6 @@ cursorWatch:SetScript("OnEvent", function()
     Layout.SetDropHints(false)
   end
 end)
-
-local function EnsureLaneButton(frame)
-  if not frame then
-    return
-  end
-  if not laneBtn then
-    local ok, b = pcall(CreateFrame, "Button", "BetterBackpackNewLaneBtn", frame, "UIPanelButtonTemplate")
-    laneBtn = ok and b or CreateFrame("Button", "BetterBackpackNewLaneBtn", frame)
-    laneBtn:SetSize(58, 22)
-    laneBtn:SetText("+ Lane")
-    pcall(laneBtn.SetNormalFontObject, laneBtn, GameFontNormalSmall)
-    pcall(laneBtn.SetHighlightFontObject, laneBtn, GameFontHighlightSmall)
-    laneBtn:SetScript("OnClick", function()
-      if Layout.DropNewLane() then
-        return
-      end
-      local CC = Feat("CustomCategories")
-      if CC and CC.PromptNew then
-        CC.PromptNew(nil)
-      end
-    end)
-    laneBtn:SetScript("OnReceiveDrag", function()
-      Layout.DropNewLane()
-    end)
-    laneBtn:SetScript("OnEnter", function(self)
-      if GameTooltip then
-        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        GameTooltip:SetText("New lane")
-        GameTooltip:AddLine("Click to name a new lane, or drop an item here to start one with it.", 0.8, 0.8, 0.8, true)
-        GameTooltip:AddLine("Drop an item on another lane to send it there from now on.", 0.6, 0.8, 1, true)
-        GameTooltip:Show()
-      end
-    end)
-    laneBtn:SetScript("OnLeave", function()
-      if GameTooltip then
-        GameTooltip:Hide()
-      end
-    end)
-  end
-  if laneBtn:GetParent() ~= frame then
-    laneBtn:SetParent(frame)
-  end
-  laneBtn:SetFrameLevel((frame:GetFrameLevel() or 1) + 80)
-  laneBtn:ClearAllPoints()
-  local search = _G.BetterBackpackSearchBox or _G.BetterBackpackSearchBoxFlat
-  if search and search:GetParent() == frame then
-    laneBtn:SetPoint("LEFT", search, "RIGHT", 6, 0)
-  else
-    laneBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", 182, -28)
-  end
-  laneBtn:Show()
-end
 
 -- While open the frame only grows (new loot); collapse / search / using items never shrink it.
 -- Reset on close, so the next open refits to the full unfiltered layout.
@@ -1464,7 +1400,6 @@ local function DoLayout()
     if SearchChrome and SearchChrome.EnsureChrome then
       pcall(SearchChrome.EnsureChrome, main)
     end
-    pcall(EnsureLaneButton, main)
     UpdateFreeSpace()
     UpdateMoney()
     if focusBagID ~= nil then
@@ -2690,7 +2625,10 @@ function Layout.Show()
   if SearchChrome and SearchChrome.EnsureChrome then
     pcall(SearchChrome.EnsureChrome, main)
   end
-  pcall(EnsureLaneButton, main)
+  local orphan = _G.BetterBackpackNewLaneBtn
+  if orphan and orphan.Hide then
+    orphan:Hide()
+  end
   UpdateFreeSpace()
   UpdateMoney()
   pcall(Layout.Raise)

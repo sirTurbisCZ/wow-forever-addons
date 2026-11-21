@@ -161,7 +161,7 @@ flowchart TD
   Where -->|item in another lane| T[Layout.DropOnLane lane]
   Where -->|lane header click / OnReceiveDrag| T
   Where -->|custom lane row in Settings| T
-  Where -->|+ Lane button| N[Layout.DropNewLane → ClearCursor → StaticPopup name]
+  Where -->|Settings Custom → New lane| N[CustomCategories.PromptNew]
   N --> Create[CC.CreateLane name + AssignItem itemID]
   Where -->|item in same lane| Swap[normal PickupContainerItem swap]
   Where -->|elsewhere / cursor cleared| Clear[CURSOR_CHANGED/UPDATE → dragSrc nil · hints off]

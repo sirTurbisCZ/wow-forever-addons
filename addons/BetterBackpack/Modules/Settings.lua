@@ -1,7 +1,6 @@
 --[[
-  BetterBackpack.Settings — lanes, custom lanes, learned items, features (0.5.17).
-  Same CombinedBags chrome as the bag (Layout.CreateChromedPanel), Blizzard options rows:
-  gold section header + hairline, UICheckButtonTemplate, full-row click + hover highlight.
+  BetterBackpack.Settings — Interface Options style (0.5.24).
+  Left category list, right content pane. Same CombinedBags chrome as the bag.
   Never SetFrameStrata (Forever ADDON_ACTION_BLOCKED) — frame level only.
 ]]
 
@@ -14,12 +13,24 @@ BetterBackpack.Modules.Settings = Settings
 local Config = BetterBackpack.Config
 local Layout = BetterBackpack.Modules.Layout
 
-local PANEL_W = 300
-local PAD_X = 16
+local PANEL_W, PANEL_H = 580, 460
+local NAV_W = 132
+local PAD = 10
+local TOP = 36
 local ROW_H = 24
-local TOP = 32
+local CONTENT_W = PANEL_W - NAV_W - PAD * 3
+
+local SECTIONS = {
+  { id = "lanes", label = "Lanes" },
+  { id = "custom", label = "Custom lanes" },
+  { id = "trash", label = "Trash" },
+  { id = "learned", label = "Learned" },
+  { id = "features", label = "Features" },
+}
 
 local panel
+local currentSection = "lanes"
+local navBtns = {}
 local laneRows, customRows, featureRows, headers, notes = {}, {}, {}, {}, {}
 local trashChecks, trashRows = {}, {}
 
@@ -50,6 +61,10 @@ local function RefreshBags()
   end
 end
 
+local function Content()
+  return panel and panel.content
+end
+
 local function Gold(fs)
   local c = NORMAL_FONT_COLOR
   if c and c.r then
@@ -59,51 +74,83 @@ local function Gold(fs)
   end
 end
 
-local function Header(i, text, y)
-  local h = headers[i]
+local function HideAll()
+  local function hidePool(pool)
+    for i = 1, #pool do
+      pool[i]:Hide()
+    end
+  end
+  hidePool(laneRows)
+  hidePool(customRows)
+  hidePool(featureRows)
+  hidePool(trashRows)
+  hidePool(trashChecks)
+  for i = 1, #headers do
+    if headers[i].fs then
+      headers[i].fs:Hide()
+    end
+    if headers[i].line then
+      headers[i].line:Hide()
+    end
+  end
+  for i = 1, #notes do
+    notes[i]:Hide()
+  end
+  if panel then
+    if panel.addBtn then
+      panel.addBtn:Hide()
+    end
+    if panel.forgetBtn then
+      panel.forgetBtn:Hide()
+    end
+    if panel.learnedFs then
+      panel.learnedFs:Hide()
+    end
+  end
+end
+
+local function SectionTitle(text, y)
+  local h = headers[1]
   if not h then
     h = {}
-    h.fs = panel.host:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    h.fs = Content():CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     h.fs:SetJustifyH("LEFT")
-    h.line = panel.host:CreateTexture(nil, "ARTWORK")
-    h.line:SetColorTexture(1, 1, 1, 0.14)
-    h.line:SetHeight(1)
-    headers[i] = h
+    headers[1] = h
   end
   h.fs:ClearAllPoints()
-  h.fs:SetPoint("TOPLEFT", panel.host, "TOPLEFT", 0, -y)
+  h.fs:SetPoint("TOPLEFT", Content(), "TOPLEFT", 2, -y)
   h.fs:SetText(text)
   Gold(h.fs)
   h.fs:Show()
-  h.line:ClearAllPoints()
-  h.line:SetPoint("LEFT", h.fs, "RIGHT", 8, 0)
-  h.line:SetPoint("RIGHT", panel.host, "RIGHT", 0, 0)
-  h.line:Show()
-  return y + 20
+  return y + 26
 end
 
 local function Note(i, text, y)
   local fs = notes[i]
   if not fs then
-    fs = panel.host:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    fs = Content():CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     fs:SetJustifyH("LEFT")
-    fs:SetWidth(PANEL_W - 2 * PAD_X)
+    fs:SetWidth(CONTENT_W - 4)
     fs:SetTextColor(0.65, 0.65, 0.65)
     notes[i] = fs
   end
   fs:ClearAllPoints()
-  fs:SetPoint("TOPLEFT", panel.host, "TOPLEFT", 2, -y)
+  fs:SetPoint("TOPLEFT", Content(), "TOPLEFT", 2, -y)
   fs:SetText(text)
   fs:Show()
-  return y + math.ceil(fs:GetStringHeight() or 12) + 6
+  return y + math.ceil(fs:GetStringHeight() or 12) + 8
 end
 
 local function RowHighlight(row)
+  if row._bbRowHl then
+    return
+  end
   local hl = row:CreateTexture(nil, "HIGHLIGHT")
   hl:SetAllPoints()
   hl:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
   hl:SetBlendMode("ADD")
   hl:SetAlpha(0.35)
+  row._bbRowHl = hl
 end
 
 local function CheckRow(pool, i)
@@ -111,8 +158,8 @@ local function CheckRow(pool, i)
   if row then
     return row
   end
-  row = CreateFrame("Button", nil, panel.host)
-  row:SetSize(PANEL_W - 2 * PAD_X, ROW_H)
+  row = CreateFrame("Button", nil, Content())
+  row:SetSize(CONTENT_W, ROW_H)
   RowHighlight(row)
   local ok, check = pcall(CreateFrame, "CheckButton", nil, row, "UICheckButtonTemplate")
   if not ok or not check then
@@ -144,7 +191,7 @@ local function SmallButton(parent, text, w)
   if not ok or not b then
     b = CreateFrame("Button", nil, parent)
   end
-  b:SetSize(w, 20)
+  b:SetSize(w, 22)
   b:SetText(text)
   pcall(b.SetNormalFontObject, b, GameFontNormalSmall)
   pcall(b.SetHighlightFontObject, b, GameFontHighlightSmall)
@@ -160,6 +207,7 @@ local function LearnedLabel(n)
 end
 
 local function PaintLanes(y)
+  y = Note(1, "Unchecked lanes spill into Other — nothing is hidden from the bag.", y)
   local order = BuiltInOrder()
   local p = Profile()
   if type(p.categories) ~= "table" then
@@ -170,7 +218,7 @@ local function PaintLanes(y)
     local key = order[i]
     local row = CheckRow(laneRows, i)
     row:ClearAllPoints()
-    row:SetPoint("TOPLEFT", panel.host, "TOPLEFT", 0, -y)
+    row:SetPoint("TOPLEFT", Content(), "TOPLEFT", 0, -y)
     row:Show()
     row.laneKey = key
     row.label:SetText(CategoryLabel(key) .. (key == "trash" and "  |cffff5050(auto-destroy)|r" or ""))
@@ -204,9 +252,6 @@ local function PaintLanes(y)
     end
     y = y + ROW_H
   end
-  for i = #order + 1, #laneRows do
-    laneRows[i]:Hide()
-  end
   return y
 end
 
@@ -215,9 +260,8 @@ local function CustomRow(i)
   if row then
     return row
   end
-  row = CreateFrame("Frame", nil, panel.host)
-  row:SetSize(PANEL_W - 2 * PAD_X, ROW_H)
-  -- Drop target too: an item dragged from the bag onto this row is taught to the lane.
+  row = CreateFrame("Frame", nil, Content())
+  row:SetSize(CONTENT_W, ROW_H)
   row:EnableMouse(true)
   local dropHl = row:CreateTexture(nil, "BACKGROUND")
   dropHl:SetAllPoints()
@@ -242,7 +286,7 @@ local function CustomRow(i)
   local label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   label:SetPoint("LEFT", swatch, "RIGHT", 9, 0)
   label:SetJustifyH("LEFT")
-  label:SetWidth(106)
+  label:SetWidth(200)
   label:SetWordWrap(false)
   row.label = label
   row.del = SmallButton(row, DELETE or "Delete", 58)
@@ -255,12 +299,27 @@ end
 
 local function PaintCustom(y)
   local CC = Feat("CustomCategories")
+  y = Note(2, "Create and rename lanes here only. Drop an item on a row or on a lane header in the bag to teach it.", y)
+  local add = panel.addBtn
+  if not add then
+    add = SmallButton(Content(), "New lane", 96)
+    add:SetScript("OnClick", function()
+      if CC and CC.PromptNew then
+        CC.PromptNew(nil)
+      end
+    end)
+    panel.addBtn = add
+  end
+  add:ClearAllPoints()
+  add:SetPoint("TOPLEFT", Content(), "TOPLEFT", 0, -y)
+  add:Show()
+  y = y + 30
   local list = CC and CC.List and CC.List() or {}
   for i = 1, #list do
     local c = list[i]
     local row = CustomRow(i)
     row:ClearAllPoints()
-    row:SetPoint("TOPLEFT", panel.host, "TOPLEFT", 0, -y)
+    row:SetPoint("TOPLEFT", Content(), "TOPLEFT", 0, -y)
     row.laneId = c.id
     local n = CC.CountLaneRules and CC.CountLaneRules(c.id) or 0
     row.label:SetText((c.name or c.id) .. (n > 0 and ("  |cff808080" .. n .. "|r") or ""))
@@ -273,68 +332,10 @@ local function PaintCustom(y)
     row:Show()
     y = y + ROW_H + 2
   end
-  for i = #list + 1, #customRows do
-    customRows[i]:Hide()
-  end
   if #list == 0 then
-    y = Note(1, "No custom lanes yet. Create one here, or drop an item on \"+ Lane\" in the bag.", y)
-  else
-    y = Note(4, "Drop an item from the bag on a lane here or on its header in the bag.", y)
+    y = Note(3, "No custom lanes yet — use New lane above.", y)
   end
-  if #list > 0 and notes[1] then
-    notes[1]:Hide()
-  elseif #list == 0 and notes[4] then
-    notes[4]:Hide()
-  end
-  local add = panel.addBtn
-  if not add then
-    add = SmallButton(panel.host, "New lane", 96)
-    add:SetScript("OnClick", function()
-      if CC and CC.PromptNew then
-        CC.PromptNew(nil)
-      end
-    end)
-    panel.addBtn = add
-  end
-  add:ClearAllPoints()
-  add:SetPoint("TOPLEFT", panel.host, "TOPLEFT", 0, -(y + 2))
-  add:Show()
-  return y + 28
-end
-
-local function PaintLearned(y)
-  local CC = Feat("CustomCategories")
-  local n = CC and CC.CountRules and CC.CountRules() or 0
-  y = Note(2, "Drag an item from the bag onto another lane (its header or any item in it). "
-    .. "That item goes there from now on. Drop it back on its own lane to forget.", y)
-  local fs = panel.learnedFs
-  if not fs then
-    fs = panel.host:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    panel.learnedFs = fs
-  end
-  fs:ClearAllPoints()
-  fs:SetPoint("TOPLEFT", panel.host, "TOPLEFT", 2, -(y + 4))
-  fs:SetText(n > 0 and (LearnedLabel(n) .. " taught") or "Nothing taught yet")
-  fs:Show()
-  local forget = panel.forgetBtn
-  if not forget then
-    forget = SmallButton(panel.host, "Forget all", 84)
-    forget:SetScript("OnClick", function()
-      if CC and CC.PromptForgetAll then
-        CC.PromptForgetAll()
-      end
-    end)
-    panel.forgetBtn = forget
-  end
-  forget:ClearAllPoints()
-  forget:SetPoint("TOPRIGHT", panel.host, "TOPRIGHT", 0, -(y + 1))
-  if n > 0 then
-    forget:Enable()
-  else
-    forget:Disable()
-  end
-  forget:Show()
-  return y + 28
+  return y
 end
 
 local function TrashRow(i)
@@ -342,8 +343,8 @@ local function TrashRow(i)
   if row then
     return row
   end
-  row = CreateFrame("Frame", nil, panel.host)
-  row:SetSize(PANEL_W - 2 * PAD_X, ROW_H)
+  row = CreateFrame("Frame", nil, Content())
+  row:SetSize(CONTENT_W, ROW_H)
   row:EnableMouse(true)
   local icon = row:CreateTexture(nil, "ARTWORK")
   icon:SetSize(18, 18)
@@ -354,7 +355,7 @@ local function TrashRow(i)
   local label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   label:SetPoint("LEFT", icon, "RIGHT", 8, 0)
   label:SetJustifyH("LEFT")
-  label:SetWidth(128)
+  label:SetWidth(240)
   label:SetWordWrap(false)
   row.label = label
   local extra = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -381,7 +382,7 @@ local function TrashStatus(T)
   if r and r.click == false then
     return "|cffff5050/bb trashtest: this client blocks destroying — Trash can't work.|r"
   end
-  return "New loot of a Trash item waits in Trash (red) and is destroyed on your next click in the bag."
+  return "New loot waits in Trash (red) and is destroyed on your next click in the bag."
 end
 
 local function PaintTrash(y)
@@ -389,13 +390,11 @@ local function PaintTrash(y)
   if not T then
     return y
   end
-  y = Note(5, "Trash is not Junk: Junk only sorts grey items; Trash |cffff6666(destroy)|r destroys them. "
-    .. "Drop a white/grey stack on the Trash header (not Junk). Confirm → gone → grey ghost in Trash. "
-    .. "Future loot waits red until your next click in the bag. Click or drag the ghost to keep it.", y)
-  y = Note(6, TrashStatus(T), y)
+  y = Note(4, "Trash |cffff6666(destroy)|r is not Junk (sort). Drop on the Trash header — destroyed immediately. Ghost icon = future loot destroyed. Keep to stop.", y)
+  y = Note(5, TrashStatus(T), y)
   local row = CheckRow(trashChecks, 1)
   row:ClearAllPoints()
-  row:SetPoint("TOPLEFT", panel.host, "TOPLEFT", 0, -y)
+  row:SetPoint("TOPLEFT", Content(), "TOPLEFT", 0, -y)
   row:Show()
   row.label:SetText("Don't ask again (skip all destroy confirms)")
   row.label:SetTextColor(1, 1, 1)
@@ -411,14 +410,14 @@ local function PaintTrash(y)
       T.SetConfirm(not dontAsk)
     end
   end)
-  y = y + ROW_H
+  y = y + ROW_H + 6
   local ids = T.TaughtIDs()
   for i = 1, #ids do
     local id = ids[i]
     local r = TrashRow(i)
     r.itemID = id
     r:ClearAllPoints()
-    r:SetPoint("TOPLEFT", panel.host, "TOPLEFT", 0, -y)
+    r:SetPoint("TOPLEFT", Content(), "TOPLEFT", 0, -y)
     r.icon:SetTexture(T.ItemIcon(id))
     r.label:SetText(T.ItemName(id))
     local n = T.DestroyedCount(id)
@@ -429,15 +428,45 @@ local function PaintTrash(y)
     r:Show()
     y = y + ROW_H
   end
-  for i = #ids + 1, #trashRows do
-    trashRows[i]:Hide()
-  end
   if #ids == 0 then
-    y = Note(7, "Nothing in Trash yet.", y)
-  elseif notes[7] then
-    notes[7]:Hide()
+    y = Note(6, "Nothing in Trash yet.", y)
   end
   return y
+end
+
+local function PaintLearned(y)
+  local CC = Feat("CustomCategories")
+  local n = CC and CC.CountRules and CC.CountRules() or 0
+  y = Note(7, "Drag an item onto another lane header (or an item in that lane). Drop back on its natural lane to forget.", y)
+  local fs = panel.learnedFs
+  if not fs then
+    fs = Content():CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    panel.learnedFs = fs
+  end
+  fs:ClearAllPoints()
+  fs:SetPoint("TOPLEFT", Content(), "TOPLEFT", 2, -y)
+  fs:SetText(n > 0 and (LearnedLabel(n) .. " taught") or "Nothing taught yet")
+  fs:Show()
+  y = y + 24
+  local forget = panel.forgetBtn
+  if not forget then
+    forget = SmallButton(Content(), "Forget all", 88)
+    forget:SetScript("OnClick", function()
+      if CC and CC.PromptForgetAll then
+        CC.PromptForgetAll()
+      end
+    end)
+    panel.forgetBtn = forget
+  end
+  forget:ClearAllPoints()
+  forget:SetPoint("TOPLEFT", Content(), "TOPLEFT", 0, -y)
+  if n > 0 then
+    forget:Enable()
+  else
+    forget:Disable()
+  end
+  forget:Show()
+  return y + 28
 end
 
 local FEATURES = {
@@ -476,11 +505,12 @@ local FEATURES = {
 }
 
 local function PaintFeatures(y)
+  y = Note(8, "Optional bag behaviour.", y)
   for i = 1, #FEATURES do
     local d = FEATURES[i]
     local row = CheckRow(featureRows, i)
     row:ClearAllPoints()
-    row:SetPoint("TOPLEFT", panel.host, "TOPLEFT", 0, -y)
+    row:SetPoint("TOPLEFT", Content(), "TOPLEFT", 0, -y)
     row:Show()
     row.label:SetText(d.label)
     row.label:SetTextColor(1, 1, 1)
@@ -496,24 +526,95 @@ local function PaintFeatures(y)
   return y
 end
 
-local function Paint()
-  if not panel or not panel.host then
-    return
+local function NavButton(i)
+  local btn = navBtns[i]
+  if btn then
+    return btn
+  end
+  btn = CreateFrame("Button", nil, panel.nav)
+  btn:SetSize(NAV_W - 8, 24)
+  btn:SetNormalFontObject(GameFontHighlight)
+  btn:SetHighlightFontObject(GameFontHighlight)
+  btn:SetDisabledFontObject(GameFontDisable)
+  local hl = btn:CreateTexture(nil, "BACKGROUND")
+  hl:SetAllPoints()
+  hl:SetColorTexture(1, 0.82, 0, 0.15)
+  hl:Hide()
+  btn.hl = hl
+  local sel = btn:CreateTexture(nil, "BACKGROUND", nil, 1)
+  sel:SetAllPoints()
+  sel:SetColorTexture(1, 0.82, 0, 0.28)
+  sel:Hide()
+  btn.sel = sel
+  btn.text = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  btn.text:SetPoint("LEFT", 10, 0)
+  btn.text:SetJustifyH("LEFT")
+  btn:SetScript("OnClick", function()
+    currentSection = SECTIONS[i].id
+    Settings.Refresh()
+  end)
+  btn:SetScript("OnEnter", function(self)
+    if currentSection ~= SECTIONS[i].id then
+      self.hl:Show()
+    end
+  end)
+  btn:SetScript("OnLeave", function(self)
+    self.hl:Hide()
+  end)
+  navBtns[i] = btn
+  return btn
+end
+
+local function PaintNav()
+  local y = 4
+  for i = 1, #SECTIONS do
+    local sec = SECTIONS[i]
+    local btn = NavButton(i)
+    btn:ClearAllPoints()
+    btn:SetPoint("TOPLEFT", panel.nav, "TOPLEFT", 4, -y)
+    btn.text:SetText(sec.label)
+    local on = currentSection == sec.id
+    btn.sel:SetShown(on)
+    btn.text:SetTextColor(on and 1 or 0.75, on and 0.82 or 0.75, on and 0 or 0.75)
+    btn:Show()
+    y = y + 26
+  end
+  for i = #SECTIONS + 1, #navBtns do
+    navBtns[i]:Hide()
+  end
+end
+
+local function PaintContent()
+  HideAll()
+  local title
+  for i = 1, #SECTIONS do
+    if SECTIONS[i].id == currentSection then
+      title = SECTIONS[i].label
+      break
+    end
   end
   local y = 0
-  y = Header(1, "Lanes", y)
-  y = Note(3, "Unchecked lanes spill into Other — nothing is hidden from the bag.", y)
-  y = PaintLanes(y) + 10
-  y = Header(2, "Custom lanes", y)
-  y = PaintCustom(y) + 6
-  y = Header(3, "Learned items", y)
-  y = PaintLearned(y) + 6
-  y = Header(5, "Trash", y)
-  y = PaintTrash(y) + 6
-  y = Header(4, "Features", y)
-  y = PaintFeatures(y)
-  panel.host:SetHeight(math.max(28, y))
-  panel:SetHeight(TOP + y + 18)
+  y = SectionTitle(title or "Settings", y)
+  if currentSection == "lanes" then
+    y = PaintLanes(y)
+  elseif currentSection == "custom" then
+    y = PaintCustom(y)
+  elseif currentSection == "trash" then
+    y = PaintTrash(y)
+  elseif currentSection == "learned" then
+    y = PaintLearned(y)
+  elseif currentSection == "features" then
+    y = PaintFeatures(y)
+  end
+  Content():SetHeight(math.max(120, y + 8))
+end
+
+local function Paint()
+  if not panel or not panel.content then
+    return
+  end
+  PaintNav()
+  PaintContent()
 end
 
 function Settings.Ensure()
@@ -525,7 +626,7 @@ function Settings.Ensure()
   else
     panel = CreateFrame("Frame", "BetterBackpackSettings", UIParent)
   end
-  panel:SetSize(PANEL_W, 420)
+  panel:SetSize(PANEL_W, PANEL_H)
   panel:SetFrameLevel(510)
   panel:EnableMouse(true)
   panel:SetMovable(true)
@@ -544,31 +645,35 @@ function Settings.Ensure()
     pcall(panel.SetTitle, panel, title)
   elseif panel.TitleText then
     panel.TitleText:SetText(title)
-  else
-    local fs = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    fs:SetPoint("TOP", 0, -6)
-    fs:SetText(title)
   end
 
   local close = panel.CloseButton
-  if not close then
-    local ok, b = pcall(CreateFrame, "Button", nil, panel, "UIPanelCloseButton")
-    close = ok and b or nil
-    if close then
-      close:SetPoint("TOPRIGHT", 0, 0)
-    end
-  end
   if close then
     close:SetScript("OnClick", function()
       panel:Hide()
     end)
   end
 
-  local host = CreateFrame("Frame", nil, panel)
-  host:SetPoint("TOPLEFT", PAD_X, -TOP)
-  host:SetWidth(PANEL_W - 2 * PAD_X)
-  host:SetFrameLevel(panel:GetFrameLevel() + 20)
-  panel.host = host
+  panel.nav = CreateFrame("Frame", nil, panel)
+  panel.nav:SetPoint("TOPLEFT", PAD, -TOP)
+  panel.nav:SetSize(NAV_W, PANEL_H - TOP - PAD)
+  panel.nav:SetFrameLevel(panel:GetFrameLevel() + 15)
+
+  if not panel.navDiv then
+    panel.navDiv = panel:CreateTexture(nil, "ARTWORK")
+    panel.navDiv:SetColorTexture(1, 1, 1, 0.12)
+    panel.navDiv:SetWidth(1)
+  end
+  panel.navDiv:ClearAllPoints()
+  panel.navDiv:SetPoint("TOP", panel.nav, "TOPRIGHT", 4, 0)
+  panel.navDiv:SetPoint("BOTTOM", panel.nav, "BOTTOMRIGHT", 4, 0)
+  panel.navDiv:Show()
+
+  panel.content = CreateFrame("Frame", nil, panel)
+  panel.content:SetPoint("TOPLEFT", panel.navDiv, "TOPRIGHT", PAD, 0)
+  panel.content:SetSize(CONTENT_W, PANEL_H - TOP - PAD)
+  panel.content:SetFrameLevel(panel:GetFrameLevel() + 20)
+  panel.host = panel.content
 
   if UISpecialFrames then
     table.insert(UISpecialFrames, "BetterBackpackSettings")
@@ -578,13 +683,15 @@ function Settings.Ensure()
 end
 
 function Settings.SetDropHints(on)
+  local show = on and panel and panel:IsShown() and currentSection == "custom"
   for i = 1, #customRows do
     local row = customRows[i]
-    row.dropHl:SetShown(on and row:IsShown() and true or false)
+    if row.dropHl then
+      row.dropHl:SetShown(show and row:IsShown() and true or false)
+    end
   end
 end
 
---- Lane row under the mouse (built-in or custom), for the Trash ghost fake drag.
 function Settings.LaneUnderMouse()
   if not (panel and panel:IsVisible()) then
     return nil
@@ -619,7 +726,10 @@ function Settings.Show()
     panel:SetPoint("CENTER", UIParent, "CENTER", 0, 40)
   end
   panel:Show()
-  panel:Raise()
+  if Layout and Layout.Raise then
+    Layout.Raise()
+  end
+  panel:SetFrameLevel((main and main:GetFrameLevel() or 200) + 30)
 end
 
 function Settings.Hide()
