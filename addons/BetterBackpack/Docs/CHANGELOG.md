@@ -1,5 +1,10 @@
 # BetterBackpack changelog
 
+## 1.2.0 — quest starter bang
+
+- **Slots:** yellow **!** on bag slots when `C_Container.GetContainerItemQuestInfo` reports **`questID` and not `isActive`** (item begins a quest; not yet accepted). Uses Blizzard bang texture / `QuestBang` atlas; not shown for plain `isQuestItem` objectives.
+- **Core:** `QUEST_ACCEPTED`, `QUEST_REMOVED`, `UNIT_QUEST_LOG_CHANGED` refresh open bag slot visuals (`RefreshCooldowns` → `SyncVisual` / `SyncQuestBang`).
+
 ## 1.1.9 — ship (combat B + ESC)
 
 - **Combat B:** OOC **`EnsureCombatShell`** keeps **`Show`+alpha0** warm shell (`_bbKeepShown`); in combat toggle = alpha 1/0 on prebuilt frame (no `Hide` in lockdown). **`CloseOurs`** reparks shell OOC after close.

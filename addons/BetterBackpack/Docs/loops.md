@@ -1,7 +1,7 @@
 # BetterBackpack — workflows and diagrams
 
 **Code:** `Core.lua`, `Modules/{Slots,Layout,Context,BulkTransfer,VendorJunk,OpenClose,Tidy,Settings,Search,Filter,CustomCategories,Trash,StackMerge,Pins,LayoutModes}.lua`  
-**Version reference:** 1.1.9 (combat keep-shown warm shell · ESC re-arm + CloseBackpack close-only · vendor bulk · auto-sell)  
+**Version reference:** 1.2.0 (quest starter bang · combat keep-shown warm shell · ESC re-arm · vendor bulk · auto-sell)  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never harvest CombinedBags items).
 
 ---
@@ -47,7 +47,8 @@ flowchart TD
   Buckets --> SF[Search.Passes + Filter.Passes]
   SF --> Merge[StackMerge.Collapse per lane]
   Merge --> Place[Slots.Acquire + Place]
-  Place --> Attrs{OOC?}
+  Place --> Visual[SyncVisual + quest bang if questID and not isActive]
+  Visual --> Attrs{OOC?}
   Attrs -->|yes| Sync[SyncAttrs type2=item]
   Attrs -->|combat| Keep[visual sync only]
 ```

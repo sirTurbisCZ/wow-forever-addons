@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 1.1.9 — combat B keep-shown + ESC (re-arm, CloseBackpack fix).
+## Notes: 1.2.0 — quest starter bang (!) on slots (questID, not isActive).
 ## Author: tuma
-## Version: 1.1.9
+## Version: 1.2.0
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled
