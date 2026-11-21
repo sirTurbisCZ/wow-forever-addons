@@ -207,6 +207,7 @@ end
 local bootFrame = CreateFrame("Frame")
 bootFrame:RegisterEvent("ADDON_LOADED")
 bootFrame:RegisterEvent("PLAYER_LOGIN")
+bootFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 bootFrame:RegisterEvent("BAG_UPDATE")
 bootFrame:RegisterEvent("BAG_UPDATE_DELAYED")
 bootFrame:RegisterEvent("ITEM_LOCK_CHANGED")
@@ -293,6 +294,13 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
       end
     end
     Print(string.format(L.LOADED or "loaded v%s · /bb", tostring(Config.VERSION)))
+    return
+  end
+
+  if event == "PLAYER_ENTERING_WORLD" then
+    if ModuleWanted() and OpenClose and OpenClose.EnsureBagKeyReplace then
+      SafeCall("hooks", OpenClose.EnsureBagKeyReplace)
+    end
     return
   end
 

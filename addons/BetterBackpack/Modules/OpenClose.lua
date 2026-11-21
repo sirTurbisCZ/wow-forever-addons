@@ -400,7 +400,7 @@ local function BagKeyChat(branch, detail)
   elseif DEFAULT_CHAT_FRAME then
     DEFAULT_CHAT_FRAME:AddMessage(line)
   end
-  local db = BetterBackpackDB
+  local db = (Config and Config.EnsureDB and Config.EnsureDB()) or BetterBackpackDB
   if db then
     db.bagKeyTrace = db.bagKeyTrace or {}
     db.bagKeyTrace[#db.bagKeyTrace + 1] = {
@@ -973,7 +973,7 @@ end
 
 -- Replace Toggle* instead of hooksecurefunc (post-hooks fought XOR).
 local BLIZZARD_TOGGLES = { "ToggleBag", "ToggleBackpack", "ToggleKeyRing", "ToggleAllBags" }
-local BLIZZARD_OPENS = { "OpenAllBags", "OpenBag" }
+local BLIZZARD_OPENS = { "OpenAllBags", "OpenBag", "OpenBackpack", "CloseBackpack" }
 
 local function CaptureBlizzardToggles()
   for i = 1, #BLIZZARD_TOGGLES do
@@ -1058,6 +1058,7 @@ local function ReplaceToggle(globalName, handler)
   OpenClose["_replaced_" .. globalName] = true
   OpenClose["_orig_" .. globalName] = orig
   local wrapper = function(...)
+    BagKeyChat("wrap", globalName)
     if not EnabledReplace() then
       return orig(...)
     end
@@ -1652,6 +1653,7 @@ local function ReplaceOpen(globalName, handler)
   OpenClose["_replaced_" .. globalName] = true
   OpenClose["_orig_" .. globalName] = orig
   local wrapper = function(...)
+    BagKeyChat("wrap", globalName)
     if not EnabledReplace() then
       return orig(...)
     end
@@ -1669,6 +1671,56 @@ local function ReplaceOpen(globalName, handler)
   return true
 end
 
+local function PersistBagKeyHookState()
+  if not (Config and Config.EnsureDB) then
+    return
+  end
+  local db = Config.EnsureDB()
+  local wrapTB = OpenClose._bb_wrap_ToggleBackpack
+  local wrapTA = OpenClose._bb_wrap_ToggleAllBags
+  local gTB = _G.ToggleBackpack
+  local gTA = _G.ToggleAllBags
+  db.bagKeyHook = {
+    t = (time and time()) or 0,
+    ver = Config.VERSION,
+    toggleBackpack = {
+      globalType = type(gTB),
+      ours = gTB == wrapTB,
+      replaced = OpenClose._replaced_ToggleBackpack and true or false,
+    },
+    toggleAllBags = {
+      globalType = type(gTA),
+      ours = gTA == wrapTA,
+      replaced = OpenClose._replaced_ToggleAllBags and true or false,
+    },
+    openBackpack = type(_G.OpenBackpack),
+    closeBackpack = type(_G.CloseBackpack),
+  }
+end
+
+local bagKeyRetryGen = 0
+
+local function ScheduleBagKeyHookRetries()
+  if not (C_Timer and C_Timer.After) then
+    return
+  end
+  bagKeyRetryGen = bagKeyRetryGen + 1
+  local gen = bagKeyRetryGen
+  local delays = { 0.05, 0.25, 1, 3, 5, 10, 20 }
+  for i = 1, #delays do
+    C_Timer.After(delays[i], function()
+      if gen ~= bagKeyRetryGen then
+        return
+      end
+      if not EnabledReplace() then
+        return
+      end
+      pcall(ApplyBagKeyReplace)
+      pcall(PersistBagKeyHookState)
+    end)
+  end
+end
+
 local function ApplyOpenAPIReplace()
   CaptureBlizzardOpens()
   ReplaceOpen("OpenAllBags", function()
@@ -1676,6 +1728,12 @@ local function ApplyOpenAPIReplace()
   end)
   ReplaceOpen("OpenBag", function(bagID)
     onOpenIntent(bagID)
+  end)
+  ReplaceOpen("OpenBackpack", function()
+    onBagKey("OpenBackpack")
+  end)
+  ReplaceOpen("CloseBackpack", function()
+    onBagKey("CloseBackpack")
   end)
 end
 
@@ -1716,6 +1774,7 @@ local function ApplyBagKeyReplace()
   end)
   ReplaceToggle("ToggleBackpack", onBackpackToggle)
   ApplyOpenAPIReplace()
+  PersistBagKeyHookState()
 end
 
 function OpenClose.EnsureBagKeyReplace()
@@ -1795,7 +1854,17 @@ function OpenClose.DiagnoseBagKey()
       tostring(AddOnFolderExists("BagShelves"))
     )
   end
-  local db = BetterBackpackDB
+  local db = (Config and Config.EnsureDB and Config.EnsureDB()) or BetterBackpackDB
+  local hk = db and db.bagKeyHook
+  if hk then
+  lines[#lines + 1] = string.format(
+      "bagKeyHook t=%s tb_ours=%s ta_ours=%s openBP=%s",
+      tostring(hk.t),
+      tostring(hk.toggleBackpack and hk.toggleBackpack.ours),
+      tostring(hk.toggleAllBags and hk.toggleAllBags.ours),
+      tostring(hk.openBackpack)
+    )
+  end
   local tr = db and db.bagKeyTrace
   if tr and #tr > 0 then
     local from = math.max(1, #tr - 7)
@@ -1820,16 +1889,8 @@ function OpenClose.InstallHooks()
     hooksInstalled = true
   end
   local ok, err = pcall(ApplyBagKeyReplace)
-  if first and C_Timer and C_Timer.After then
-    C_Timer.After(0, function()
-      pcall(ApplyBagKeyReplace)
-    end)
-    C_Timer.After(1, function()
-      pcall(ApplyBagKeyReplace)
-    end)
-    C_Timer.After(3, function()
-      pcall(ApplyBagKeyReplace)
-    end)
+  if first then
+    ScheduleBagKeyHookRetries()
   end
   if first and ok then
     local n = 0

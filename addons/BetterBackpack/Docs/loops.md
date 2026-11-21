@@ -10,7 +10,7 @@
 
 ```mermaid
 flowchart TD
-  B[ToggleAllBags + ToggleBackpack + OpenAllBags<br/>ReplaceToggle re-asserts if global stolen · late ADDON_LOADED]
+  B[ToggleAllBags + ToggleBackpack + Open/CloseBackpack<br/>retries to +20s · bagKeyHook in SV · ENTERING_WORLD reassert]
   Bar[ToggleBag / ToggleKeyRing → Blizzard]
   B --> Rep[Replace global — skip Blizzard body]
   Rep --> Black[BlackoutAllBlizzard alpha=0 first]
