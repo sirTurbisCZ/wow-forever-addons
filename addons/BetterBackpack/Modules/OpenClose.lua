@@ -1,8 +1,8 @@
 --[[
-  BetterBackpack.OpenClose — B + /bb (0.5.46)
+  BetterBackpack.OpenClose — B + /bb (0.5.47)
 
-  ToggleAllBags + ToggleBackpack only → onBagKey XOR. ToggleBag / ToggleKeyRing = Blizzard (never replaced).
-  Bag-bar native: never park/blackout ContainerFrame*; backpack button arm only (OnMouseDown).
+  ToggleAllBags + ToggleBackpack → onBagKey XOR (same handler). ToggleBag / ToggleKeyRing = Blizzard.
+  Bag-bar native: never park/blackout ContainerFrame*; RestoreNativeBagFrames on close only.
   (not hooksecurefunc). Forever Toggle* bodies call Open*/Close* first; a
   post-hook XOR then closed what we just opened (or reopened after close) —
   open/close thrash that froze the client on B.
@@ -104,12 +104,7 @@ local function RestoreNativeBagFrames()
   for _, name in ipairs(KeyRingFrameNames()) do
     RestoreFrameInteractive(_G[name])
   end
-  pcall(function()
-    local c = ContainerFrameCombinedBags
-    if c and not SessionOpen() and not OursVisible() then
-      RestoreFrameInteractive(c)
-    end
-  end)
+  -- Never restore CombinedBags here — was undoing blackout during B/open.
 end
 
 local function FrameOnScreen(f)
@@ -425,7 +420,6 @@ local function ParkBlizzardForOverlay()
     Park(combined)
   end
   if BagBarNativeEnabled() then
-    RestoreNativeBagFrames()
     return
   end
   for i = 1, 13 do
@@ -751,25 +745,6 @@ local function onBagKey()
   OpenClose.ClearReplaceSuppress()
   if SessionOpen() then
     pcall(OpenClose.CloseOurs, { closeBlizzard = false, suppress = 0.25 })
-    inBagKey = false
-    return
-  end
-  if InCombat() then
-    pcall(CloseNativeCombinedBags)
-    pcall(ParkBlizzardForOverlay)
-    local shown = false
-    if Layout and Layout.ForceCombatShow then
-      shown = Layout.ForceCombatShow() and true or false
-    end
-    if shown then
-      bagsOpen = true
-      toggleLockUntil = Now() + TOGGLE_LOCK
-      pcall(ParkBlizzardForOverlay)
-      CombatTraceOnce("onBagKey", "ForceCombatShow ok")
-    else
-      CombatTraceOnce("onBagKey", "ForceCombatShow fail")
-      pcall(OpenOurs)
-    end
     inBagKey = false
     return
   end
@@ -1450,32 +1425,12 @@ end
 
 local BAG_KEY_TOGGLES = { "ToggleAllBags", "ToggleBackpack" }
 
-local BACKPACK_ARM_BUTTONS = {
-  "MainMenuBarBackpackButton",
-  "CharacterBackpackSlot",
-  "BagsBarBackpackButton",
-}
-
-local function InstallBackpackArmOnly()
-  if not BagBarNativeEnabled() then
-    return 0
-  end
-  local n = 0
-  for i = 1, #BACKPACK_ARM_BUTTONS do
-    if HookOneBackpackArm(_G[BACKPACK_ARM_BUTTONS[i]]) then
-      n = n + 1
-    end
-  end
-  return n
-end
-
 local function ApplyBagKeyReplace()
   CaptureBlizzardToggles()
   OpenClose.RestoreBlizzardToggles()
-  -- ToggleBag / ToggleKeyRing stay native — only B paths replaced.
+  -- ToggleBag / ToggleKeyRing stay native — only B paths replaced (0.5.45 path).
   ReplaceToggle("ToggleAllBags", onBagKey)
-  ReplaceToggle("ToggleBackpack", onBackpackToggle)
-  pcall(InstallBackpackArmOnly)
+  ReplaceToggle("ToggleBackpack", onBagKey)
 end
 
 function OpenClose.EnsureBagKeyReplace()

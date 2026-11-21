@@ -1,7 +1,10 @@
-# Playtest brief — BetterBackpack 0.5.46 (native bag bar)
+# Playtest brief — BetterBackpack 0.5.47 (B restore + native bar)
+
+**0.5.47**
+- **B** back to **0.5.45**: both `ToggleAllBags` + `ToggleBackpack` → **`onBagKey`**. Fix 0.5.46 regression: no `RestoreNativeBagFrames` during park (un-blackout Combined). Keep unpark ContainerFrames on **CloseOurs**.
 
 **0.5.46**
-- **B** unchanged (ToggleAllBags+ToggleBackpack). **ToggleBag never replaced.** Native bar: no ContainerFrame park/blackout; restore alpha after overlay. Backpack icon: mouse-down arm → bag 0. Combat **B** → `ForceCombatShow`.
+- Broke B (restore Combined during park / combat-only path). Bag unpark kept in 0.5.47.
 
 **0.5.45**
 - **B** binds often hit **`ToggleBackpack`** — replace **Both** `ToggleAllBags` + `ToggleBackpack` (re-apply 0s/1s after login). `OpenOurs` / `onBagKey` call **`CloseNativeCombinedBags`** (park + Hide). Chat: `2/2 toggles`.
