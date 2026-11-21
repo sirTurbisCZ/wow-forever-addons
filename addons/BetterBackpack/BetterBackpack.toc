@@ -2,7 +2,7 @@
 ## Title: BetterBackpack
 ## Notes: Category-lane bags with combat-safe RMB. Parks CombinedBags — never Hide.
 ## Author: tuma
-## Version: 0.4.2
+## Version: 0.5.0
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled
@@ -12,6 +12,12 @@ Locale/enUS.lua
 Config.lua
 Modules/Slots.lua
 Modules/Context.lua
+Modules/Search.lua
+Modules/Filter.lua
+Modules/CustomCategories.lua
+Modules/StackMerge.lua
+Modules/Pins.lua
+Modules/LayoutModes.lua
 Modules/Layout.lua
 Modules/OpenClose.lua
 Modules/Tidy.lua

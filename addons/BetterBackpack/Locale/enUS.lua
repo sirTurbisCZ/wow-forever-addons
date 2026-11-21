@@ -6,14 +6,22 @@ BetterBackpack.L = BetterBackpack.L or {}
 local L = BetterBackpack.L
 
 L.PREFIX = "|cffc9a227[BetterBackpack]|r"
-L.LOADED = "loaded v%s · B = bags · Úklid/Nastavení · /bb"
+L.LOADED = "loaded v%s · B = bags · Úklid/Nastavení · search · /bb"
 L.UNKNOWN_CMD = "unknown command — /bb help"
 L.HELP_LINES = {
   "/bb — toggle bags",
   "/bb help — this help",
   "/bb on|off — enable / restore Blizzard bags",
   "/bb sort|uklid — OOC Úklid (SortBags+stack)",
-  "/bb settings — category enable/disable",
+  "/bb settings — categories + feature toggles",
+  "/bb search <text> — filter by name/itemID (empty clears)",
+  "/bb filter <cat|all> — show one category lane",
+  "/bb pin <itemID> — toggle red ghost pin (not owned)",
+  "/bb custom add <name> — new custom category",
+  "/bb custom del <id> — remove custom category",
+  "/bb assign <itemID> <cat|clear> — item → category rule",
+  "/bb layout [lanes|dense] — layout mode toggle",
+  "/bb merge [on|off] — visual stack merge",
   "/bb dump — status + recent errors",
   "/bb safe — safe mode (release to Blizzard)",
   "/bb reset — restore defaults",

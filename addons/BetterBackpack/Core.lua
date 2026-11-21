@@ -410,6 +410,129 @@ SlashCmdList.BETTERBACKPACK = function(msg)
     return
   end
 
+  if cmd == "search" or cmd == "find" then
+    local Search = BetterBackpack.Modules.Search
+    if not Search then
+      Print("Search module not loaded")
+      return
+    end
+    Search.SetQuery(rest or "")
+    Print("search=", Search.GetQuery() == "" and "(cleared)" or Search.GetQuery())
+    return
+  end
+
+  if cmd == "filter" then
+    local Filter = BetterBackpack.Modules.Filter
+    if not Filter then
+      Print("Filter module not loaded")
+      return
+    end
+    local key = (rest or ""):match("^(%S+)")
+    Filter.SetCategory(key)
+    Print("filter=", Filter.GetCategory() or "all")
+    return
+  end
+
+  if cmd == "pin" then
+    local Pins = BetterBackpack.Modules.Pins
+    if not Pins then
+      Print("Pins module not loaded")
+      return
+    end
+    local id = tonumber((rest or ""):match("^(%d+)"))
+    if not id then
+      Print("usage: /bb pin <itemID>")
+      return
+    end
+    Pins.Toggle(id)
+    Print("pin toggled", id)
+    return
+  end
+
+  if cmd == "custom" then
+    local CC = BetterBackpack.Modules.CustomCategories
+    if not CC then
+      Print("CustomCategories module not loaded")
+      return
+    end
+    local sub, arg = (rest or ""):match("^(%S+)%s*(.*)$")
+    sub = sub and sub:lower() or ""
+    if sub == "add" then
+      local entry = CC.Add(arg)
+      if entry then
+        Print("custom category", entry.id, entry.name)
+      else
+        Print("usage: /bb custom add <name>")
+      end
+    elseif sub == "del" or sub == "rm" or sub == "remove" then
+      CC.Remove(arg:match("^(%S+)"))
+      Print("custom removed", arg)
+    else
+      local list = CC.List() or {}
+      Print("custom categories:", #list)
+      for i = 1, #list do
+        Print(" ", list[i].id, list[i].name)
+      end
+    end
+    return
+  end
+
+  if cmd == "assign" then
+    local CC = BetterBackpack.Modules.CustomCategories
+    if not CC then
+      Print("CustomCategories module not loaded")
+      return
+    end
+    local id, cat = (rest or ""):match("^(%d+)%s+(%S+)")
+    id = tonumber(id)
+    if not id then
+      Print("usage: /bb assign <itemID> <cat|clear>")
+      return
+    end
+    if not cat or cat == "clear" or cat == "none" then
+      CC.AssignItem(id, nil)
+      Print("cleared rule for", id)
+    else
+      CC.AssignItem(id, cat)
+      Print("assigned", id, "→", cat)
+    end
+    return
+  end
+
+  if cmd == "layout" or cmd == "mode" then
+    local LM = BetterBackpack.Modules.LayoutModes
+    if not LM then
+      Print("LayoutModes module not loaded")
+      return
+    end
+    local arg = (rest or ""):match("^(%S+)")
+    if arg == "lanes" or arg == "dense" then
+      LM.Set(arg)
+    else
+      LM.Toggle()
+    end
+    Print("layoutMode=", LM.Get())
+    return
+  end
+
+  if cmd == "merge" or cmd == "stackmerge" then
+    local SM = BetterBackpack.Modules.StackMerge
+    if not SM then
+      Print("StackMerge module not loaded")
+      return
+    end
+    local arg = (rest or ""):match("^(%S+)")
+    if arg == "on" then
+      SM.SetEnabled(true)
+    elseif arg == "off" then
+      SM.SetEnabled(false)
+    else
+      SM.SetEnabled(not SM.IsEnabled())
+    end
+    Print("stackMerge=", tostring(SM.IsEnabled()))
+    return
+  end
+
   if cmd == "sort" or cmd == "tidy" or cmd == "uklid" then
     SafeCall("sort", Tidy.SortBags)
     return

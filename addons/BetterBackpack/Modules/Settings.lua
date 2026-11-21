@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.Settings — toggle category lanes on/off.
+  BetterBackpack.Settings — category lanes + nice-to-have toggles (0.5.0).
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -13,19 +13,31 @@ local Layout = BetterBackpack.Modules.Layout
 
 local panel
 local rows = {}
+local featureRows = {}
 
 local function Profile()
   return Config.GetProfile()
 end
 
+local function Feat(name)
+  return BetterBackpack.Modules and BetterBackpack.Modules[name]
+end
+
 local function CategoryOrder()
+  if Layout and Layout.GetCategoryOrder then
+    return Layout.GetCategoryOrder()
+  end
   return (Layout and Layout.CATEGORY_ORDER) or {
-    "junk", "consumable", "reagent", "gem", "gear", "quest", "container", "other",
+    "junk", "consumable", "reagent", "gem", "gear", "quest", "keys", "container", "other",
   }
 end
 
-local function CategoryLabels()
-  return (Layout and Layout.CATEGORY_LABELS) or {}
+local function CategoryLabel(key)
+  if Layout and Layout.GetCategoryLabel then
+    return Layout.GetCategoryLabel(key)
+  end
+  local labels = (Layout and Layout.CATEGORY_LABELS) or {}
+  return labels[key] or key
 end
 
 local function RefreshBags()
@@ -54,12 +66,82 @@ local function MakeCheck(parent)
   return btn
 end
 
+local function PaintFeatureToggles(y)
+  local defs = {
+    {
+      key = "stackMerge",
+      label = "Visual stack merge",
+      get = function()
+        local SM = Feat("StackMerge")
+        return not SM or SM.IsEnabled()
+      end,
+      set = function(on)
+        local SM = Feat("StackMerge")
+        if SM and SM.SetEnabled then
+          SM.SetEnabled(on)
+        else
+          Profile().stackMerge = on and true or false
+          RefreshBags()
+        end
+      end,
+    },
+    {
+      key = "dense",
+      label = "Dense layout (more columns)",
+      get = function()
+        local LM = Feat("LayoutModes")
+        return LM and LM.Get and LM.Get() == "dense"
+      end,
+      set = function(on)
+        local LM = Feat("LayoutModes")
+        if LM and LM.Set then
+          LM.Set(on and "dense" or "lanes")
+        else
+          Profile().layoutMode = on and "dense" or "lanes"
+          RefreshBags()
+        end
+      end,
+    },
+  }
+  for i = 1, #defs do
+    local d = defs[i]
+    local row = featureRows[i]
+    if not row then
+      row = CreateFrame("Frame", nil, panel.host)
+      row:SetSize(260, 26)
+      local check = MakeCheck(row)
+      check:SetPoint("LEFT", 0, 0)
+      row.check = check
+      local label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+      label:SetPoint("LEFT", check, "RIGHT", 4, 0)
+      label:SetJustifyH("LEFT")
+      row.label = label
+      featureRows[i] = row
+    end
+    row:Show()
+    row:ClearAllPoints()
+    row:SetPoint("TOPLEFT", panel.host, "TOPLEFT", 0, -y)
+    row.label:SetText(d.label)
+    row.label:SetTextColor(0.85, 0.9, 1)
+    row.check:Enable()
+    row.check:SetChecked(d.get() and true or false)
+    row.check:SetScript("OnClick", function(self)
+      local raw = self:GetChecked()
+      d.set(raw == true or raw == 1)
+    end)
+    y = y + 28
+  end
+  for i = #defs + 1, #featureRows do
+    featureRows[i]:Hide()
+  end
+  return y
+end
+
 local function PaintRows()
   if not panel or not panel.host then
     return
   end
   local order = CategoryOrder()
-  local labels = CategoryLabels()
   local p = Profile()
   if type(p.categories) ~= "table" then
     p.categories = {}
@@ -83,12 +165,18 @@ local function PaintRows()
     row:Show()
     row:ClearAllPoints()
     row:SetPoint("TOPLEFT", panel.host, "TOPLEFT", 0, -y)
-    row.label:SetText(labels[key] or key)
+    local labelText = CategoryLabel(key)
+    row.label:SetText(labelText)
     if key == "other" then
       row.check:SetChecked(true)
       row.check:Disable()
-      row.label:SetText((labels[key] or key) .. " (always)")
+      row.label:SetText(labelText .. " (always)")
       row.label:SetTextColor(0.7, 0.7, 0.7)
+      row.check:SetScript("OnClick", nil)
+    elseif type(key) == "string" and key:find("^custom_", 1) then
+      row.check:SetChecked(true)
+      row.check:Disable()
+      row.label:SetTextColor(0.7, 1, 0.7)
       row.check:SetScript("OnClick", nil)
     else
       row.check:Enable()
@@ -98,12 +186,17 @@ local function PaintRows()
       row.check:SetScript("OnClick", function(self)
         local raw = self:GetChecked()
         local enabled = (raw == true or raw == 1)
-        local prof = Profile()
-        if type(prof.categories) ~= "table" then
-          prof.categories = {}
+        local CC = Feat("CustomCategories")
+        if CC and CC.SetDefaultHidden then
+          CC.SetDefaultHidden(key, not enabled)
+        else
+          local prof = Profile()
+          if type(prof.categories) ~= "table" then
+            prof.categories = {}
+          end
+          prof.categories[key] = enabled and true or false
+          RefreshBags()
         end
-        prof.categories[key] = enabled and true or false
-        RefreshBags()
       end)
     end
     y = y + 28
@@ -111,8 +204,20 @@ local function PaintRows()
   for i = #order + 1, #rows do
     rows[i]:Hide()
   end
+  y = y + 8
+  local sep = panel.featSep
+  if not sep then
+    sep = panel.host:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    panel.featSep = sep
+  end
+  sep:ClearAllPoints()
+  sep:SetPoint("TOPLEFT", panel.host, "TOPLEFT", 0, -y)
+  sep:SetText("Features")
+  sep:Show()
+  y = y + 18
+  y = PaintFeatureToggles(y)
   panel.host:SetHeight(math.max(28, y))
-  panel:SetHeight(56 + y + 24)
+  panel:SetHeight(56 + y + 48)
 end
 
 function Settings.Ensure()

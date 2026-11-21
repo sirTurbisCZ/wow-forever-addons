@@ -6,7 +6,7 @@ Category-lane bags for **World of Warcraft Forever** (Interface 16001) with comb
 
 1. Put this folder in `Interface/AddOns/BetterBackpack/` (or symlink via `./scripts/link-addon.sh BetterBackpack`).
 2. Enable at character select if needed.
-3. `/reload` in game — chat should show `loaded v0.4.2` (visible gear left of broom, used/total N/M, bag-bar XOR).
+3. `/reload` in game — chat should show `loaded v0.5.0` (0.4.2 BagShelves chrome + nice-to-have search/filter/merge/pins).
 
 ## Slash
 
@@ -14,14 +14,36 @@ Category-lane bags for **World of Warcraft Forever** (Interface 16001) with comb
 |---------|--------|
 | `/bb` | Toggle bags |
 | `/bb on\|off` | Enable or restore Blizzard bags |
-| `/bb sort` | OOC tidy (`SortBags`) |
+| `/bb sort` / `/bb uklid` | OOC tidy (`SortBags`) |
+| `/bb settings` | Categories + feature toggles (Nastavení) |
+| `/bb search <text>` | Filter icons by name / itemID |
+| `/bb filter <cat\|all>` | Show one category lane |
+| `/bb pin <itemID>` | Toggle red ghost pin (missing items) |
+| `/bb custom add <name>` | New custom category |
+| `/bb custom del <id>` | Remove custom category |
+| `/bb assign <itemID> <cat\|clear>` | Item → category rule |
+| `/bb layout [lanes\|dense]` | Layout mode |
+| `/bb merge [on\|off]` | Visual stack merge |
 | `/bb dump` | Status + error ring |
 | `/bb safe` | Safe mode → Blizzard |
 | `/bb reset` | Defaults |
 | `/bb selftest` | Wiring check (still need 1× manual combat RMB) |
 | `/bb bags` | Reagent / free-space probe |
 
-Also `/betterbackpack`.
+Also `/betterbackpack`. Úklid / Nastavení stay Czech on chrome.
+
+## Nice-to-have modules (0.5.0)
+
+| File | Job |
+|------|-----|
+| `Modules/Search.lua` | Search box + match |
+| `Modules/Filter.lua` | Category filter |
+| `Modules/CustomCategories.lua` | Custom lanes + hide defaults |
+| `Modules/StackMerge.lua` | Visual same-itemID merge |
+| `Modules/Pins.lua` | Red ghost for unowned pins |
+| `Modules/LayoutModes.lua` | lanes vs dense columns |
+
+Layout talks to them only through optional `Feat("Name")` lookups. OpenClose / AutoSort-twin chrome stays on the main 0.4.x path — NTH does not rewrite it.
 
 ## Playtest (T0–T3)
 
@@ -29,6 +51,8 @@ Also `/betterbackpack`.
 2. Enter combat with bags open → RMB potion/Q-item works.
 3. Open B mid-combat → lanes usable; no CombinedBags ghost.
 4. Spam B 5× in combat → leave combat OK without `/reload`.
+
+NTH smoke (OOC): search box → filter → merge toggle → pin a missing itemID → layout dense.
 
 ## Notes
 
