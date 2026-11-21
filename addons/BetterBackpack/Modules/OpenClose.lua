@@ -1050,14 +1050,13 @@ local function onOpenIntent(bagID)
   end
   bagID = NormalizeBagID(bagID)
 
-  if bagID ~= nil and BagBarNativeEnabled() then
-    if OursVisible() or bagsOpen then
-      OpenClose.CloseOurs({ closeBlizzard = false, suppress = 0.35 })
+  if BagBarNativeEnabled() then
+    if OursVisible() or bagsOpen or SessionOpen() then
+      OpenClose.CloseOurs({ closeBlizzard = false, suppress = 0.2 })
     end
-    ClearFocusBag()
-    ClearCategoryFilter()
-    BeginNativeSession(bagID)
-    InvokeNativeToggleBag(bagID)
+    if bagID ~= nil then
+      CallOrigToggle("ToggleBag", bagID)
+    end
     return
   end
 
