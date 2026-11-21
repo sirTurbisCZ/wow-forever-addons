@@ -31,7 +31,7 @@ flowchart TD
 
 - Never `SetOverrideBindingClick` or `SetFrameStrata` / `SetToplevel` on our frame.
 - Toggle globals are **replaced**, not post-hooked.
-- Combat (**1.0**): `_bbKeepShown` — main frame stays shown at alpha 0; open = alpha 1 only (no `Show()` in lockdown).
+- Combat (**1.0**): `_bbKeepShown` — main frame stays shown at alpha 0; open = alpha 1 only (no `Show()` in lockdown). **`UISpecialFrames`** only when `IsBagFrameVisible()` (ESC does not trap on parked shell).
 - `OpenAllBags` / `OpenBag` → `OpenOurs` when replace is on (vendor keeps BB, not native CombinedBags).
 - Window size is computed from the full unfiltered bag with all lanes expanded (sticky while open).
 

@@ -2595,19 +2595,8 @@ function Layout.EnsureMain()
     if OpenClose and OpenClose.NotifyHidden then
       OpenClose.NotifyHidden()
     end
+    SyncBagUISpecialFrame()
   end)
-  if UISpecialFrames then
-    local already = false
-    for i = 1, #UISpecialFrames do
-      if UISpecialFrames[i] == "BetterBackpackFrame" then
-        already = true
-        break
-      end
-    end
-    if not already then
-      table.insert(UISpecialFrames, "BetterBackpackFrame")
-    end
-  end
 
   local titleText = CombinedBagTitle()
   if built.SetTitle then
@@ -2773,6 +2762,24 @@ function Layout.IsShown()
   return Layout.IsBagFrameVisible()
 end
 
+local BAG_SPECIAL_FRAME = "BetterBackpackFrame"
+
+-- Only register for ESC when user-visible (not keep-shown alpha=0 shell).
+local function SyncBagUISpecialFrame()
+  if not UISpecialFrames then
+    return
+  end
+  local want = Layout.IsBagFrameVisible()
+  for i = #UISpecialFrames, 1, -1 do
+    if UISpecialFrames[i] == BAG_SPECIAL_FRAME then
+      table.remove(UISpecialFrames, i)
+    end
+  end
+  if want then
+    table.insert(UISpecialFrames, BAG_SPECIAL_FRAME)
+  end
+end
+
 --- Reuse prebuilt UI for lockdown — no CreateFrame / EnsureTitleChrome / DoLayout.
 function Layout.CombatAttachMain()
   if main and (main._bbBuilt or main._bbContent) then
@@ -2812,6 +2819,7 @@ function Layout.EnsureCombatShell()
       f:SetAlpha(0)
       f:EnableMouse(false)
     end)
+    SyncBagUISpecialFrame()
     return true
   end
   if Slots and Slots.PreCreate then
@@ -2834,6 +2842,7 @@ function Layout.EnsureCombatShell()
     f:SetAlpha(0)
     f:EnableMouse(false)
   end)
+  SyncBagUISpecialFrame()
   return true
 end
 
@@ -2957,6 +2966,7 @@ local function CombatPresentFrame(frame)
       end
     end)
   end
+  SyncBagUISpecialFrame()
   return Layout.IsBagFrameVisible()
 end
 
@@ -2980,6 +2990,7 @@ function Layout.CombatHide()
     frame:SetAlpha(0)
     frame:EnableMouse(false)
   end)
+  SyncBagUISpecialFrame()
   return not Layout.IsBagFrameVisible()
 end
 
@@ -3072,6 +3083,7 @@ function Layout.Show()
   if not shown and BetterBackpack.RecordError then
     BetterBackpack.RecordError("Show", "IsShown=false after Show()")
   end
+  SyncBagUISpecialFrame()
   return shown
 end
 
@@ -3098,6 +3110,7 @@ function Layout.Hide()
       main:Hide()
     end)
   end
+  SyncBagUISpecialFrame()
 end
 
 function Layout.ForceHidden()
