@@ -753,15 +753,13 @@ local function onKeyRingToggle()
   ClearFocusBag()
   ClearCategoryFilter()
   if KeyRingNativeOpen() then
-    local origKr = OrigToggle("ToggleKeyRing")
-    local origBag = OrigToggle("ToggleBag")
     ignoringBagShow = true
     OpenClose._nativeOpening = true
-  BlackoutCombinedOnly()
+    BlackoutCombinedOnly()
     if not CallOrigToggle("ToggleKeyRing") and key ~= nil then
       CallOrigToggle("ToggleBag", key)
     end
-    if type(CloseAllBags) == "function" and KeyRingNativeOpen() then
+    if KeyRingNativeOpen() and type(CloseAllBags) == "function" then
       pcall(CloseAllBags)
     end
     EndNativeSession()
