@@ -1,8 +1,11 @@
-# Playtest brief — BetterBackpack 0.5.25 (open mode + broom chrome)
+# Playtest brief — BetterBackpack 0.5.26 (native bag-bar + broom size)
 
-**0.5.25**
-- **B** opens all bags (combined). Bag-bar icon opens **that bag only** (lanes from its slots); click another icon switches; click same icon closes. Keyring → Keys lane (+ keyring focus). Settings → Features → *Bag bar opens one bag only* (off = old highlight-all-bags).
-- Broom button: native gold AutoSort art (no red/orange Close plate).
+**0.5.26**
+- **B** = BetterBackpack combined overlay (all lanes). **Bag-bar / per-bag icon** = native Blizzard `ContainerFrame` (or keyring) — not overlay. Toggle same icon closes; another icon switches native bag. Settings → Features → *Bag bar opens native Blizzard bag* (default on; off = overlay + slot highlight).
+- Broom: gold AutoSort art stretched to **exact Close button size**.
+
+**0.5.25** (superseded open-mode)
+- Overlay single-bag collect — replaced by native frames in 0.5.26.
 
 **0.5.24**
 - Settings rebuilt: left categories (Lanes, Custom lanes, Trash, Learned, Features), right panel — like Interface Options.

@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.25, bag-bar single-bag collect).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.26).
   Forever: never SetToplevel / SetFrameStrata (ADDON_ACTION_BLOCKED).
   Chrome metrics from Baganator Forever Blizzard skin + ContainerFrameCombinedBags:
     ButtonFrameOffset=6, Bg/TopTile @ (6,-21), NineSlice borders, Inset hidden.
@@ -552,25 +552,6 @@ local function BagsMatchForHighlight(a, b)
   return na ~= nil and nb ~= nil and na == nb
 end
 
---- When bag-bar opened with focus: show only that bag's slots (unless Keys filter or opt-out).
-local function SingleBagCollectFilterActive(unfiltered)
-  if unfiltered then
-    return false
-  end
-  local p = Profile()
-  if p.bagBarSingleBag == false then
-    return false
-  end
-  if focusBagID == nil then
-    return false
-  end
-  local Filter = Feat("Filter")
-  if Filter and Filter.GetCategory and Filter.GetCategory() == "keys" then
-    return false
-  end
-  return true
-end
-
 local function CollectBuckets(unfiltered)
   local order = Layout.GetCategoryOrder()
   local buckets = {}
@@ -579,13 +560,9 @@ local function CollectBuckets(unfiltered)
   end
   local Search = not unfiltered and Feat("Search")
   local Filter = not unfiltered and Feat("Filter")
-  local onlyBag = SingleBagCollectFilterActive(unfiltered)
   local ranges = Slots.BagRanges()
   for i = 1, #ranges do
     local bag, n = ranges[i].bag, ranges[i].slots
-    if onlyBag and not BagsMatchForHighlight(bag, focusBagID) then
-      -- skip bag
-    else
     for slot = 1, n do
       if Slots.SlotOccupied(bag, slot) then
         -- Disabled category → Other (items always visible somewhere).
@@ -611,7 +588,6 @@ local function CollectBuckets(unfiltered)
           buckets[cat][#buckets[cat] + 1] = { bag = bag, slot = slot }
         end
       end
-    end
     end
   end
   return buckets
@@ -852,14 +828,10 @@ function Layout.SetBagFocus(bagID)
   if not Layout.IsShown() then
     return
   end
-  local highlightOnly = Profile().bagBarSingleBag == false
   if focusBagID ~= nil then
-    SetBagMatchHighlight(focusBagID, highlightOnly)
+    SetBagMatchHighlight(focusBagID, true)
   else
     ClearBagMatchGlows()
-  end
-  if Profile().bagBarSingleBag ~= false and Layout.Relayout then
-    pcall(Layout.Relayout)
   end
 end
 
@@ -1961,6 +1933,18 @@ local GEAR_ATLASES = { "questlog-icon-setting", "GM-icon-settings", "OptionsIcon
   highlight, 1px press offset. Atlases are checked with C_Texture.GetAtlasInfo —
   SetNormalAtlas does not error on unknown names, so pcall alone never fell back.
 ]]
+local function StretchButtonStateArt(btn)
+  for _, which in ipairs({ "Normal", "Pushed", "Highlight" }) do
+    local t = btn["Get" .. which .. "Texture"] and btn["Get" .. which .. "Texture"](btn)
+    if t then
+      pcall(function()
+        t:ClearAllPoints()
+        t:SetAllPoints(btn)
+      end)
+    end
+  end
+end
+
 local function StyleAutoSortTwin(btn, kind, w, h)
   btn:SetSize(w, h)
   pcall(function()
@@ -1981,6 +1965,7 @@ local function StyleAutoSortTwin(btn, kind, w, h)
     SetStateArt(btn, "Normal", n)
     SetStateArt(btn, "Pushed", p or n)
     SetStateArt(btn, "Highlight", nativeHl or SQUARE_HILIGHT)
+    StretchButtonStateArt(btn)
   else
     -- Flat options gear, no plate (CombinedBags has no native gear).
     SetStateArt(btn, "Normal", nil)

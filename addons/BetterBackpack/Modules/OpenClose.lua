@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.OpenClose — B + bag-bar + keyring (0.5.25 open modes)
+  BetterBackpack.OpenClose — B overlay + bag-bar native (0.5.26)
 
   ToggleAllBags / ToggleBackpack / ToggleBag / ToggleKeyRing are *replaced*
   (not hooksecurefunc). Forever Toggle* bodies call Open*/Close* first; a
@@ -28,6 +28,8 @@ local pulseToken = 0
 local openBusy = false
 local closeBusy = false
 local ignoringBagShow = false
+local nativeSession = false
+local nativeFocusBag = nil
 local TOGGLE_LOCK = 0.28
 local guardElapsed = 0
 
@@ -42,6 +44,101 @@ end
 local function EnabledReplace()
   local p = Profile()
   return p.enabled and not p.safeMode and p.replaceBlizzard
+end
+
+local function BagBarNativeEnabled()
+  return Profile().bagBarNativeBag ~= false
+end
+
+function OpenClose.IsNativeSession()
+  return nativeSession
+end
+
+local function EndNativeSession()
+  nativeSession = false
+  nativeFocusBag = nil
+end
+
+local function BeginNativeSession(bagID)
+  nativeSession = true
+  nativeFocusBag = bagID
+end
+
+local function RestoreFrameInteractive(f)
+  if not f then
+    return
+  end
+  pcall(function()
+    f:SetAlpha(1)
+    f:EnableMouse(true)
+  end)
+end
+
+local function NativeContainersVisible()
+  for i = 1, 13 do
+    local f = _G["ContainerFrame" .. i]
+    if f and f:IsShown() then
+      local a = 1
+      pcall(function()
+        a = f:GetAlpha() or 1
+      end)
+      if a >= 0.05 then
+        return true
+      end
+    end
+  end
+  for _, name in ipairs({ "KeyRingFrame", "ContainerFrame-2", "ContainerFrameKeyRing" }) do
+    local f = _G[name]
+    if f and f:IsShown() then
+      local a = 1
+      pcall(function()
+        a = f:GetAlpha() or 1
+      end)
+      if a >= 0.05 then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+local function RestoreShownNativeBags()
+  for i = 1, 13 do
+    local f = _G["ContainerFrame" .. i]
+    if f and f:IsShown() then
+      RestoreFrameInteractive(f)
+    end
+  end
+  for _, name in ipairs({ "KeyRingFrame", "ContainerFrame-2", "ContainerFrameKeyRing" }) do
+    local f = _G[name]
+    if f and f:IsShown() then
+      RestoreFrameInteractive(f)
+    end
+  end
+end
+
+local function CloseNativeBags()
+  ignoringBagShow = true
+  if type(CloseAllBags) == "function" then
+    pcall(CloseAllBags)
+  end
+  EndNativeSession()
+  ignoringBagShow = false
+end
+
+local function OrigToggle(name)
+  return OpenClose["_orig_" .. name]
+end
+
+local function BlackoutCombinedOnly()
+  local f = ContainerFrameCombinedBags
+  if not f then
+    return
+  end
+  pcall(function()
+    f:SetAlpha(0)
+    f:EnableMouse(false)
+  end)
 end
 
 function OpenClose.SuppressReplace(seconds)
@@ -144,6 +241,8 @@ local OpenOurs
 local SetFocusBag
 local ClearFocusBag
 local NormalizeBagID
+local ClearCategoryFilter
+local FocusBagsMatch
 
 local function PulsePark()
   pulseToken = pulseToken + 1
@@ -333,19 +432,15 @@ local function onBagKey()
   end
   toggleLockUntil = t + TOGGLE_LOCK
 
-  if SessionOpen() then
+  if SessionOpen() or nativeSession or NativeContainersVisible() then
     ClearFocusBag()
-    local Filter = BetterBackpack.Modules.Filter
-    if Filter and Filter.SetCategory then
-      pcall(Filter.SetCategory, "all")
-    end
+    ClearCategoryFilter()
+    CloseNativeBags()
     OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
   else
     ClearFocusBag()
-    local Filter = BetterBackpack.Modules.Filter
-    if Filter and Filter.SetCategory then
-      pcall(Filter.SetCategory, "all")
-    end
+    ClearCategoryFilter()
+    CloseNativeBags()
     OpenOurs()
   end
 end
@@ -360,28 +455,73 @@ local function onKeyRingToggle()
     key = NormalizeBagID(Slots and Slots.KeyringBagIndex and Slots.KeyringBagIndex())
   end)
   local t = Now()
-  BlackoutAll()
+  if BagBarNativeEnabled() then
+    BlackoutCombinedOnly()
+  else
+    BlackoutAll()
+  end
   if t < toggleLockUntil then
-    ParkAllShown()
+    if BagBarNativeEnabled() then
+      BlackoutCombinedOnly()
+    else
+      ParkAllShown()
+    end
     return
   end
   toggleLockUntil = t + TOGGLE_LOCK
-  if SessionOpen() then
-    ClearFocusBag()
-    local Filter = BetterBackpack.Modules.Filter
-    if Filter and Filter.SetCategory then
-      pcall(Filter.SetCategory, "all")
+
+  if not BagBarNativeEnabled() then
+    if SessionOpen() then
+      ClearFocusBag()
+      ClearCategoryFilter()
+      OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
+    else
+      if key ~= nil then
+        SetFocusBag(key)
+      end
+      local Filter = BetterBackpack.Modules.Filter
+      if Filter and Filter.SetCategory then
+        pcall(Filter.SetCategory, "keys")
+      end
+      OpenOurs()
     end
-    OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
+    return
+  end
+
+  if OursVisible() or bagsOpen then
+    OpenClose.CloseOurs({ closeBlizzard = false, suppress = 0.35 })
+  end
+  ClearFocusBag()
+  ClearCategoryFilter()
+  OpenClose.SuppressReplace(0.45)
+  local orig = OrigToggle("ToggleKeyRing")
+  if (nativeSession or NativeContainersVisible()) and key ~= nil and nativeFocusBag ~= nil and FocusBagsMatch(key, nativeFocusBag) then
+    ignoringBagShow = true
+    if orig then
+      pcall(orig)
+    elseif type(CloseAllBags) == "function" then
+      pcall(CloseAllBags)
+    end
+    EndNativeSession()
+    ignoringBagShow = false
+    return
+  end
+  if key ~= nil then
+    BeginNativeSession(key)
+  end
+  ignoringBagShow = true
+  BlackoutCombinedOnly()
+  if orig then
+    pcall(orig)
+  end
+  local function after()
+    RestoreShownNativeBags()
+    ignoringBagShow = false
+  end
+  if C_Timer and C_Timer.After then
+    C_Timer.After(0, after)
   else
-    if key ~= nil then
-      SetFocusBag(key)
-    end
-    local Filter = BetterBackpack.Modules.Filter
-    if Filter and Filter.SetCategory then
-      pcall(Filter.SetCategory, "keys")
-    end
-    OpenOurs()
+    after()
   end
 end
 
@@ -398,6 +538,7 @@ local function ReplaceToggle(globalName, handler)
     return true
   end
   OpenClose["_replaced_" .. globalName] = true
+  OpenClose["_orig_" .. globalName] = orig
   _G[globalName] = function(...)
     if not EnabledReplace() then
       return orig(...)
@@ -450,7 +591,7 @@ ClearFocusBag = function()
   end
 end
 
-local function FocusBagsMatch(a, b)
+FocusBagsMatch = function(a, b)
   if a == nil or b == nil then
     return false
   end
@@ -461,7 +602,7 @@ local function FocusBagsMatch(a, b)
   return a == b
 end
 
-local function ClearCategoryFilter()
+ClearCategoryFilter = function()
   local Filter = BetterBackpack.Modules.Filter
   if Filter and Filter.SetCategory then
     pcall(Filter.SetCategory, "all")
@@ -493,7 +634,39 @@ local function onOpenIntent(bagID)
     return
   end
   bagID = NormalizeBagID(bagID)
+
+  if bagID ~= nil and BagBarNativeEnabled() then
+    if OursVisible() or bagsOpen then
+      OpenClose.CloseOurs({ closeBlizzard = false, suppress = 0.35 })
+    end
+    ClearFocusBag()
+    ClearCategoryFilter()
+    BeginNativeSession(bagID)
+    OpenClose.SuppressReplace(0.45)
+    ignoringBagShow = true
+    BlackoutCombinedOnly()
+    if type(OpenBag) == "function" then
+      pcall(OpenBag, bagID)
+    else
+      local orig = OrigToggle("ToggleBag")
+      if orig then
+        pcall(orig, bagID)
+      end
+    end
+    local function after()
+      RestoreShownNativeBags()
+      ignoringBagShow = false
+    end
+    if C_Timer and C_Timer.After then
+      C_Timer.After(0, after)
+    else
+      after()
+    end
+    return
+  end
+
   BlackoutAll()
+  CloseNativeBags()
   if bagID ~= nil then
     SetFocusBag(bagID)
     ClearCategoryFilter()
@@ -527,7 +700,8 @@ end
 local lastBagToggleAt = 0
 
 --[[
-  XOR for bag-bar / ToggleBag (same contract as B).
+  Bag-bar / ToggleBag: native single ContainerFrame when bagBarNativeBag (default);
+  else BetterBackpack overlay with bag focus highlight.
 ]]
 local function onBagToggle(bagID, src)
   if ignoringBagShow or closeBusy then
@@ -544,13 +718,60 @@ local function onBagToggle(bagID, src)
 
   bagID = NormalizeBagID(bagID)
   LogBagPathOnce(src or "ToggleBag", bagID)
-  BlackoutAll()
 
   if t < toggleLockUntil then
-    ParkAllShown()
+    if BagBarNativeEnabled() then
+      BlackoutCombinedOnly()
+    else
+      BlackoutAll()
+      ParkAllShown()
+    end
     return
   end
   toggleLockUntil = t + TOGGLE_LOCK
+
+  if BagBarNativeEnabled() then
+    if OursVisible() or bagsOpen then
+      OpenClose.CloseOurs({ closeBlizzard = false, suppress = 0.35 })
+    end
+    ClearFocusBag()
+    ClearCategoryFilter()
+    OpenClose.SuppressReplace(0.45)
+    local orig = OrigToggle("ToggleBag")
+    if bagID ~= nil and (nativeSession or NativeContainersVisible()) and nativeFocusBag ~= nil and FocusBagsMatch(bagID, nativeFocusBag) then
+      ignoringBagShow = true
+      if orig then
+        pcall(orig, bagID)
+      elseif type(CloseBag) == "function" then
+        pcall(CloseBag, bagID)
+      end
+      EndNativeSession()
+      ignoringBagShow = false
+      return
+    end
+    if bagID ~= nil then
+      BeginNativeSession(bagID)
+    end
+    ignoringBagShow = true
+    BlackoutCombinedOnly()
+    if orig then
+      pcall(orig, bagID)
+    elseif type(OpenBag) == "function" then
+      pcall(OpenBag, bagID)
+    end
+    local function after()
+      RestoreShownNativeBags()
+      ignoringBagShow = false
+    end
+    if C_Timer and C_Timer.After then
+      C_Timer.After(0, after)
+    else
+      after()
+    end
+    return
+  end
+
+  BlackoutAll()
 
   if SessionOpen() then
     local focused = Layout and Layout.GetBagFocus and Layout.GetBagFocus()
@@ -592,6 +813,8 @@ local function onCloseIntent()
   if SessionOpen() then
     ClearFocusBag()
     OpenClose.CloseOurs({ closeBlizzard = false, suppress = 0.25 })
+  elseif nativeSession or NativeContainersVisible() then
+    EndNativeSession()
   end
 end
 
@@ -732,6 +955,9 @@ function OpenClose.InstallHooks()
   end
   if type(OpenBag) == "function" then
     hooksecurefunc("OpenBag", function(id)
+      if ignoringBagShow or OpenClose.IsReplaceSuppressed() then
+        return
+      end
       LogBagPathOnce("OpenBag", id)
       onOpenIntent(id)
     end)
@@ -814,6 +1040,10 @@ function OpenClose.InstallHooks()
             if ignoringBagShow or not EnabledReplace() then
               return
             end
+            if (nativeSession or BagBarNativeEnabled()) and not SessionOpen() and not openBusy then
+              RestoreFrameInteractive(self)
+              return
+            end
             Blackout(self)
             Park(self)
             if SessionOpen() or openBusy then
@@ -824,12 +1054,18 @@ function OpenClose.InstallHooks()
               if ignoringBagShow or closeBusy or not EnabledReplace() then
                 return
               end
+              if nativeSession and not SessionOpen() then
+                RestoreShownNativeBags()
+                return
+              end
               if SessionOpen() or openBusy then
                 ParkAllShown()
                 PulsePark()
                 return
               end
-              onOpenIntent(nil)
+              if not BagBarNativeEnabled() then
+                onOpenIntent(nil)
+              end
             end
             if C_Timer and C_Timer.After then
               C_Timer.After(0, afterToggle)

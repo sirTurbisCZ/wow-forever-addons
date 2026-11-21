@@ -487,12 +487,12 @@ local FEATURES = {
     end,
   },
   {
-    label = "Bag bar opens one bag only",
+    label = "Bag bar opens native Blizzard bag",
     get = function()
-      return Profile().bagBarSingleBag ~= false
+      return Profile().bagBarNativeBag ~= false
     end,
     set = function(on)
-      Profile().bagBarSingleBag = on and true or false
+      Profile().bagBarNativeBag = on and true or false
       RefreshBags()
     end,
   },
