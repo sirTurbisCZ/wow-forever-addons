@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.1.10**
+Version: **0.1.11**
 
 ## Merge-missing (enemy plates)
 
@@ -27,9 +27,14 @@ flowchart TD
 
 ## Friend / party plates (Pichy)
 
-- **No** `ClearAllPoints` on name or DebuffList.
-- Any shift left from ≤0.1.8 is restored on refresh.
-- `CountShownAuraKids` requires `Icon` / `icon` / `GetAuraInstance` (no bare Frame false positives).
+- No merge paint; **do** lift name above native buff/debuff row.
+- Never SetPoint DebuffList (Forever FORBIDDEN).
+- `CountShownAuraKids` requires `Icon` / `icon` / `GetAuraInstance`.
+
+## Name vs DoTs (Golm / Pichy)
+
+- Lift = `IconSize + gap` above health bar — name **above** auras.
+- Forbidden: pin name at `bar+2` (under DoTs) — that was the 0.1.8–0.1.10 layout break.
 
 ## Hard rules
 

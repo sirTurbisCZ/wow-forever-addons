@@ -2,8 +2,8 @@
   Plateband.Modules.Plates — native DebuffList stays fully visible.
   Solo personal DoTs: leave 100% native (no duplicate paint).
   Merge: party/nearby foreign harmful DoTs Blizzard omits — beside native band.
-  Player/friend plates: shift name ABOVE aura row (never SetPoint DebuffList —
-  Forever FORBIDDEN). Enemy: merge LEFT→RIGHT of native. No CLEU / no HP recolor.
+  Name ABOVE auras (lift by icon height) — never tuck under DoTs (bar+2 was the
+  Golm/Pichy break). Never SetPoint DebuffList (Forever FORBIDDEN). No CLEU.
 ]]
 
 Plateband = Plateband or {}
@@ -995,38 +995,38 @@ end
 -- Forward decl: Layout anchors merge beside native (defined below).
 local NativeBandRightAnchor
 
---- Enemy plates only: tuck name under aura band + merge LEFT→RIGHT of native.
---- Never touch friend/party name or SetPoint DebuffList (Forever FORBIDDEN / Pichy break).
+--- Name ABOVE aura band for any plate with auras; merge LEFT→RIGHT of native.
+--- Never SetPoint DebuffList. Never pin name at bar+2 (under DoTs — Golm/Pichy bug).
 local function LayoutAuraRowAboveName(unit, plate, mergeFb, painted)
   painted = tonumber(painted) or 0
-
-  -- Friend/party plates: restore any 0.1.8 shift and leave Blizzard layout alone.
-  if IsPlayerOrFriendPlate(unit, plate) then
-    RestoreNameShift(unit, plate)
-    return
-  end
-
-  -- Only layout when we actually painted merge icons (no nativeN-only name glue).
-  if painted <= 0 or not mergeFb then
-    RestoreNameShift(unit, plate)
-    return
-  end
-
   local nameFS = PlateNameFS(plate)
   local bar = HealthBar(plate)
   local native = NativeDebuffList(plate)
+  local nativeN = CountNativeAuraRow(plate)
+  local needLift = (nativeN > 0) or (painted > 0)
 
-  if nameFS and bar then
+  if not needLift then
+    RestoreNameShift(unit, plate)
+  elseif nameFS and bar then
     SaveNamePoints(unit, nameFS)
     pcall(function()
       nameFS:ClearAllPoints()
-      -- Enemy: name under the aura band so merge+native sit above readable name.
-      nameFS:SetPoint("BOTTOM", bar, "TOP", 0, 2)
+      -- Lift name fully above where native/merge icons sit.
+      local lift = IconSize() + OVERLAY_GAP_ABOVE + 4
+      nameFS:SetPoint("BOTTOM", bar, "TOP", 0, lift)
     end)
     local st = nameShifts[unit]
     if st then
       st.shifted = true
     end
+  end
+
+  -- Friends: name lift only (no merge paint). Enemies: merge beside native.
+  if IsPlayerOrFriendPlate(unit, plate) then
+    return
+  end
+  if not mergeFb or painted <= 0 then
+    return
   end
 
   mergeFb:ClearAllPoints()
@@ -1036,6 +1036,7 @@ local function LayoutAuraRowAboveName(unit, plate, mergeFb, painted)
   elseif native then
     mergeFb:SetPoint("LEFT", native, "RIGHT", OVERLAY_PAD, 0)
   elseif bar then
+    -- Same vertical band as native (just above health), name already lifted above.
     mergeFb:SetPoint("BOTTOM", bar, "TOP", 0, OVERLAY_GAP_ABOVE)
   else
     mergeFb:SetPoint("BOTTOM", plate, "TOP", 0, OVERLAY_GAP_ABOVE)
@@ -1410,7 +1411,77 @@ local function ButtonAuraIcon(btn)
   return nil, false, false
 end
 
---- TargetFrame scrape via Forever auraPools (+ public/secret textures not on native).
+--- Brute TF walk — Forever often paints icons while auraPools/GetFramesByIndex are empty.
+local function ScrapeTargetFrameIconsBrute(skipKeys, out, maxN)
+  if not TargetFrame or #out >= maxN then
+    return
+  end
+  local function isCastBar(frame)
+    local hit = false
+    pcall(function()
+      local n = frame.GetName and frame:GetName()
+      if type(n) == "string" and (n:find("Casting", 1, true) or n:find("SpellBar", 1, true)
+        or n:find("CastBar", 1, true)) then
+        hit = true
+      end
+    end)
+    return hit
+  end
+  local function scan(frame, depth)
+    if not frame or depth > 12 or #out >= maxN then
+      return
+    end
+    if isCastBar(frame) then
+      return
+    end
+    pcall(function()
+      if not SafeShown(frame) then
+        return
+      end
+      local iconTex = frame.Icon or frame.icon
+      if not iconTex then
+        return
+      end
+      local w
+      pcall(function()
+        w = frame:GetWidth()
+      end)
+      if type(w) == "number" and not IsSecret(w) and (w < 12 or w > 48) then
+        return
+      end
+      local icon, skippedPersonal, gotIcon = ButtonAuraIcon(frame)
+      if skippedPersonal or not gotIcon then
+        return
+      end
+      local key = PublicTexKey(icon)
+      if not key then
+        key = "tfbrute:" .. tostring(frame)
+      end
+      if key and not skipKeys[key] then
+        out[#out + 1] = icon
+        skipKeys[key] = true
+      end
+    end)
+    local ok, kids = pcall(function()
+      return { frame:GetChildren() }
+    end)
+    if ok and type(kids) == "table" then
+      for i = 1, #kids do
+        scan(kids[i], depth + 1)
+        if #out >= maxN then
+          return
+        end
+      end
+    end
+  end
+  local container = GetTargetAuraContainer()
+  if container then
+    scan(container, 0)
+  end
+  -- Contextual Auras only — never whole TargetFrame (scoops cast bar).
+end
+
+--- TargetFrame scrape via Forever auraPools (+ brute + public/secret textures).
 local function CollectTargetFrameMissing(skipKeys, out, maxN)
   local buttons = {}
   CollectTargetFrameButtons(buttons, maxN)
@@ -1435,6 +1506,45 @@ local function CollectTargetFrameMissing(skipKeys, out, maxN)
         end
       end
     end
+  end
+  if #out < maxN then
+    ScrapeTargetFrameIconsBrute(skipKeys, out, maxN)
+  end
+  -- activeDebuffs table (Forever)
+  if TargetFrame and type(TargetFrame.activeDebuffs) == "table" and #out < maxN then
+    pcall(function()
+      for _, aura in pairs(TargetFrame.activeDebuffs) do
+        if #out >= maxN then
+          return
+        end
+        if type(aura) == "table" and (aura.icon or aura.Icon or aura.GetAuraInstance) then
+          if aura.Icon or aura.icon or aura.GetAuraInstance then
+            local asBtn = aura
+            if asBtn.GetAuraInstance or asBtn.Icon or asBtn.icon then
+              local icon, skippedPersonal, gotIcon = ButtonAuraIcon(asBtn)
+              if not skippedPersonal and gotIcon then
+                local key = PublicTexKey(icon) or ("tfadbtn:" .. tostring(aura))
+                if not skipKeys[key] then
+                  out[#out + 1] = icon
+                  skipKeys[key] = true
+                end
+              end
+            end
+          end
+          if AuraIsPlayerOwned(aura) ~= true then
+            local icon = aura.icon
+            local key = AuraDedupeKey(aura, icon)
+            if not key then
+              key = "tfad:" .. tostring(aura)
+            end
+            if key and not skipKeys[key] then
+              out[#out + 1] = icon
+              skipKeys[key] = true
+            end
+          end
+        end
+      end
+    end)
   end
 end
 
@@ -1464,10 +1574,10 @@ local function PaintMergeMissing(unit, plate)
 
   EnsureNativeVisible(plate)
 
-  -- Friend/party plates: no merge paint, no name reanchor (Pichy / blue-bar break).
+  -- Friend/party plates: no merge paint; still lift name above native auras.
   if IsPlayerOrFriendPlate(unit, plate) then
     ClearFallback(unit)
-    RestoreNameShift(unit, plate)
+    LayoutAuraRowAboveName(unit, plate, nil, 0)
     return 0
   end
 
@@ -1497,7 +1607,8 @@ local function PaintMergeMissing(unit, plate)
 
   if #missing == 0 then
     ClearFallback(unit)
-    RestoreNameShift(unit, plate)
+    -- Still lift name above native DoTs (Golm) — never bar+2 under icons.
+    LayoutAuraRowAboveName(unit, plate, nil, 0)
     return 0
   end
 
@@ -1527,7 +1638,7 @@ local function PaintMergeMissing(unit, plate)
   if painted == 0 then
     fb:Hide()
     fb._painted = 0
-    RestoreNameShift(unit, plate)
+    LayoutAuraRowAboveName(unit, plate, nil, 0)
     return 0
   end
 
@@ -1916,7 +2027,8 @@ local function OnEvent(_, event, arg1)
       end)
     end
   elseif event == "ADDON_ACTION_BLOCKED" or event == "ADDON_ACTION_FORBIDDEN" then
-    if type(arg1) == "string" then
+    -- Only record Plateband blocks — BetterBackpack spam was drowning cards.
+    if type(arg1) == "string" and arg1:find("Plateband", 1, true) then
       lastBlocked = arg1
       MaybeAutoDiagnose("blocked", true)
     end
