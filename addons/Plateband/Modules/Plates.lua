@@ -673,8 +673,19 @@ local function CreateBandContainer(parent, size)
   return container
 end
 
--- Intentionally no native DebuffList alpha park / SetVertexColor / WorldFrame chrome.
--- Aura icons only. Native list stays visible (avoid dual-row flicker later if needed).
+--- Soft-park Forever DebuffList when we own the above-plate row.
+--- Use SetAlpha only (SetPoint/Hide on DebuffListFrame can taint Forever).
+local function SetNativeParked(plate, park)
+  local list = NativeDebuffList(plate)
+  if not list then
+    return
+  end
+  pcall(function()
+    if list.SetAlpha then
+      list:SetAlpha(park and 0 or 1)
+    end
+  end)
+end
 
 local function AnchorBand(container, unit, plate)
   plate = plate or PlateFor(unit)
@@ -708,11 +719,9 @@ local function AnchorBand(container, unit, plate)
     end
 
     local bar = HealthBar(plate)
-    local native = NativeDebuffList(plate)
     container:ClearAllPoints()
-    if native and SafeShown(native) then
-      container:SetPoint("BOTTOMLEFT", native, "BOTTOMLEFT", 0, 0)
-    elseif bar then
+    -- One above-plate group (same slot as native DebuffList — not beside it).
+    if bar then
       container:SetPoint("BOTTOM", bar, "TOP", 0, OVERLAY_GAP_ABOVE)
     else
       container:SetPoint("BOTTOM", plate, "TOP", 0, OVERLAY_GAP_ABOVE)
@@ -776,6 +785,10 @@ local function ClearFallback(unit)
 end
 
 local function ClearOverlay(unit)
+  local plate = unit and PlateFor(unit)
+  if plate then
+    SetNativeParked(plate, false)
+  end
   local holder = overlays[unit]
   if holder then
     pcall(holder.SetEnabled, holder, false)
@@ -836,6 +849,7 @@ end
 
 --- Collect aura icon textures from a frame tree (native DebuffList / TF).
 --- Pass textures straight into SetTexture — never compare secret FileIDs.
+--- Direct aura buttons only — no deep recurse (nested Icon frames caused dup stacks).
 local function CollectAuraTextures(root, out, maxN)
   if not root or #out >= maxN then
     return
@@ -853,19 +867,20 @@ local function CollectAuraTextures(root, out, maxN)
     local child = kids[i]
     if child and SafeShown(child) then
       local iconTex = child.Icon or child.icon
-      local file
-      pcall(function()
-        if iconTex and iconTex.GetTexture then
-          file = iconTex:GetTexture()
+      if iconTex then
+        local file
+        pcall(function()
+          if iconTex.GetTexture then
+            file = iconTex:GetTexture()
+          end
+        end)
+        -- Secret FileIDs are SetTexture-safe.
+        if file ~= nil then
+          out[#out + 1] = file
+        else
+          out[#out + 1] = iconTex
         end
-      end)
-      -- Secret FileIDs are SetTexture-safe; never truthy-compare them for filtering.
-      if file ~= nil then
-        out[#out + 1] = file
-      elseif iconTex then
-        out[#out + 1] = iconTex
       end
-      CollectAuraTextures(child, out, maxN)
     end
   end
 end
@@ -946,11 +961,8 @@ local function PaintFallback(unit, plate)
 
   fb:ClearAllPoints()
   local bar = HealthBar(plate)
-  local nativeList = NativeDebuffList(plate)
-  if nativeList and SafeShown(nativeList) then
-    -- Sit with native debuffs ABOVE the plate (right of native row).
-    fb:SetPoint("LEFT", nativeList, "RIGHT", OVERLAY_PAD, 0)
-  elseif bar then
+  -- Same above-bar slot as native (native gets alpha-parked when we paint).
+  if bar then
     fb:SetPoint("BOTTOM", bar, "TOP", 0, OVERLAY_GAP_ABOVE)
   else
     fb:SetPoint("BOTTOM", plate, "TOP", 0, OVERLAY_GAP_ABOVE)
@@ -965,6 +977,7 @@ local function PaintFallback(unit, plate)
 
   if painted > 0 then
     fb:Show()
+    SetNativeParked(plate, true)
   else
     fb:Hide()
   end
@@ -1008,6 +1021,7 @@ local function UpdateOverlay(unit, plate)
               if n > 0 then
                 holder:Show()
                 ClearFallback(unit)
+                SetNativeParked(plate, true)
               end
             end)
           end)
@@ -1025,12 +1039,16 @@ local function UpdateOverlay(unit, plate)
     if holder then
       holder:Show()
     end
+    SetNativeParked(plate, true)
   else
-    -- AC empty → scrape native/TF textures into a click-through fallback row.
+    -- AC empty → one scrape row in the native slot; park native to avoid doubles.
     if holder then
       holder:Hide()
     end
-    PaintFallback(unit, plate)
+    local fbN = PaintFallback(unit, plate)
+    if fbN == 0 then
+      SetNativeParked(plate, false)
+    end
   end
 end
 

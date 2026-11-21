@@ -2,7 +2,7 @@
 ## Title: Plateband
 ## Notes: Shared harmful / DoT icons grouped with native nameplate debuffs above the plate.
 ## Author: tuma
-## Version: 0.1.3
+## Version: 0.1.4
 ## SavedVariables: PlatebandDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled
