@@ -1002,6 +1002,32 @@ local function InstallBagHoverHighlight()
   end
 end
 
+local function HeaderShiftDown(header)
+  if IsShiftKeyDown and IsShiftKeyDown() then
+    return true
+  end
+  return header and header._bbShiftDown == true
+end
+
+local function TryHeaderBulkTransfer(header, laneKey)
+  if CursorHoldingItem() then
+    return false
+  end
+  if not HeaderShiftDown(header) then
+    return false
+  end
+  if Layout.DropOnLane(laneKey) then
+    header._bbShiftDown = nil
+    return true
+  end
+  local BT = Feat("BulkTransfer")
+  if BT and BT.TransferLane then
+    BT.TransferLane(laneKey)
+  end
+  header._bbShiftDown = nil
+  return true
+end
+
 local function EnsureSection(key)
   local sf = sectionFrames[key]
   if sf then
@@ -1043,9 +1069,20 @@ local function EnsureSection(key)
   header:SetScript("OnReceiveDrag", function()
     Layout.DropOnLane(key)
   end)
-  header:SetScript("OnMouseUp", function(_, button)
+  header:SetScript("OnMouseDown", function(self, button)
+    if button == "RightButton" then
+      self._bbShiftDown = (IsShiftKeyDown and IsShiftKeyDown()) or false
+    else
+      self._bbShiftDown = nil
+    end
+  end)
+  header:SetScript("OnMouseUp", function(self, button)
     if button == "LeftButton" and CursorHoldingItem() then
       Layout.DropOnLane(key)
+      return
+    end
+    if button == "RightButton" and TryHeaderBulkTransfer(self, key) then
+      self._bbBulkHandled = true
     end
   end)
   header._bbLane = key
@@ -1077,14 +1114,14 @@ local function EnsureSection(key)
       GameTooltip:Hide()
     end
   end)
-  header:SetScript("OnClick", function(_, button)
-    if button == "RightButton" and not Layout.DropOnLane(key) and not CursorHoldingItem() then
-      local shift = IsShiftKeyDown and IsShiftKeyDown()
-      if shift then
-        local BT = Feat("BulkTransfer")
-        if BT and BT.LaneHeaderRmb and BT.LaneHeaderRmb(key) then
-          return
-        end
+  header:SetScript("OnClick", function(self, button)
+    if button == "RightButton" then
+      if self._bbBulkHandled then
+        self._bbBulkHandled = nil
+        return
+      end
+      if TryHeaderBulkTransfer(self, key) then
+        return
       end
     end
     if Layout.DropOnLane(key) then

@@ -1,4 +1,9 @@
-# Playtest brief — BetterBackpack 0.5.76
+# Playtest brief — BetterBackpack 0.5.77
+
+**0.5.77**
+- Shift captured on header **MouseDown**; bulk on **MouseUp** + OnClick via `TransferLane`.
+- One chat line: `Bulk header trace: lane=… ctx=…` on first bulk attempt.
+- Shift+RMB never collapses (plain RMB still toggles lane).
 
 **0.5.76**
 - Lane header **RMB** = collapse/expand (unchanged).

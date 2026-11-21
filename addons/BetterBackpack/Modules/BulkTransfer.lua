@@ -18,6 +18,7 @@ local TRASH = "trash"
 
 local pumpToken = 0
 local pumpQueue
+local headerTraceOnce = false
 
 local function OOC()
   if InCombatLockdown and InCombatLockdown() then
@@ -246,12 +247,26 @@ local function StartQueue(ctx, slots)
   return true
 end
 
-function BulkTransfer.LaneHeaderRmb(laneKey)
+function BulkTransfer.TransferLane(laneKey)
+  local ctx = Context and Context.SpecialRmbContext and Context.SpecialRmbContext()
+  if not headerTraceOnce and BetterBackpack.Print then
+    headerTraceOnce = true
+    local shift = IsShiftKeyDown and IsShiftKeyDown()
+    BetterBackpack.Print(string.format(
+      "|cff88ccffBulk|r header trace: lane=%s ctx=%s shift=%s ooc=%s",
+      tostring(laneKey),
+      tostring(ctx),
+      tostring(shift),
+      tostring(OOC())
+    ))
+  end
   if not OOC() or not laneKey or laneKey == TRASH then
     return false
   end
-  local ctx = Context and Context.SpecialRmbContext and Context.SpecialRmbContext()
   if not ctx then
+    if BetterBackpack.Print then
+      BetterBackpack.Print("|cff88ccffBulk|r — open vendor, mail, or bank first")
+    end
     return false
   end
   if not Layout or not Layout.ListLaneSlots then
@@ -274,6 +289,10 @@ function BulkTransfer.LaneHeaderRmb(laneKey)
     ))
   end
   return ok
+end
+
+function BulkTransfer.LaneHeaderRmb(laneKey)
+  return BulkTransfer.TransferLane(laneKey)
 end
 
 function BulkTransfer.TransferSlot(bag, slot, ctx)
