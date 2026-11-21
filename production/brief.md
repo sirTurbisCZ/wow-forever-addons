@@ -1,4 +1,7 @@
-# Playtest brief — BetterBackpack 0.5.29 (B + bag-bar diagnose)
+# Playtest brief — BetterBackpack 0.5.30 (native all bags + keyring)
+
+**0.5.30**
+- Native bag-bar: orig `ToggleBag` / `ToggleKeyRing`, no toggleLock on bar, OnShow restore while opening. B unchanged (combined).
 
 **0.5.29**
 - B: `ToggleAllBags` and `ToggleBackpack` → combined XOR (Forever often binds B to ToggleBackpack). Backpack **icon** still native bag 0 (mouse-down arm).
