@@ -1,4 +1,8 @@
-# Playtest brief — BetterBackpack 0.5.83
+# Playtest brief — BetterBackpack 0.5.84
+
+**0.5.84**
+- TOC: **BulkTransfer.lua after Layout**; `LayoutMod()` at call time (fixes ListLaneSlots missing).
+- Fallback `CollectLaneSlots` via Slots+ClassifyBagSlot if needed.
 
 **0.5.83**
 - Vendor bulk: **sync sell in header click** (C_Timer cannot Pickup/Sell).

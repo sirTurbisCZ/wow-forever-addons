@@ -3113,6 +3113,7 @@ function Layout.ForceHidden()
   end
 end
 
+-- Exported for BulkTransfer / VendorJunk lane bulk (resolve Layout at call time).
 function Layout.ListLaneSlots(laneKey, unfiltered)
   if not laneKey then
     return {}

@@ -8,9 +8,17 @@ BetterBackpack.Modules = BetterBackpack.Modules or {}
 local BulkTransfer = {}
 BetterBackpack.Modules.BulkTransfer = BulkTransfer
 
-local Context = BetterBackpack.Modules.Context
-local Layout = BetterBackpack.Modules.Layout
-local Slots = BetterBackpack.Modules.Slots
+local function ContextMod()
+  return BetterBackpack.Modules and BetterBackpack.Modules.Context
+end
+
+local function LayoutMod()
+  return BetterBackpack.Modules and BetterBackpack.Modules.Layout
+end
+
+local function SlotsMod()
+  return BetterBackpack.Modules and BetterBackpack.Modules.Slots
+end
 
 local TRASH = "trash"
 
@@ -25,6 +33,7 @@ local function OOC()
 end
 
 local function ContainerAPI(bag, slot)
+  local Slots = SlotsMod()
   if Slots and Slots.ContainerAPI then
     local b, s = Slots.ContainerAPI(bag, slot)
     if b ~= nil and s ~= nil then
@@ -56,6 +65,7 @@ local function SlotQuality(bag, slot)
   if C_Container and C_Container.GetContainerItemInfo then
     local ok, info = pcall(C_Container.GetContainerItemInfo, b, s)
     if ok and info and info.quality ~= nil then
+      local Slots = SlotsMod()
       if Slots and Slots.SafeNum then
         return Slots.SafeNum(info.quality, nil)
       end
@@ -118,6 +128,7 @@ local function StackCount(bag, slot)
 end
 
 local function SlotChanged(bag, slot, idBefore, countBefore)
+  local Slots = SlotsMod()
   local b, s = ContainerAPI(bag, slot)
   if not Slots or not Slots.SlotOccupied then
     return true
@@ -137,6 +148,7 @@ local function SlotChanged(bag, slot, idBefore, countBefore)
 end
 
 local function DetectContext()
+  local Context = ContextMod()
   if Context and Context.SpecialRmbContext then
     return Context.SpecialRmbContext()
   end
@@ -144,6 +156,7 @@ local function DetectContext()
 end
 
 local function MerchantFrameOpen()
+  local Context = ContextMod()
   if Context and Context.SpecialRmbContext and Context.SpecialRmbContext() == "merchant" then
     return true
   end
@@ -305,6 +318,7 @@ local function ActionVerb(ctx)
 end
 
 function BulkTransfer.HeaderTooltipLine()
+  local Context = ContextMod()
   local ctx = Context and Context.SpecialRmbContext and Context.SpecialRmbContext()
   local verb = ActionVerb(ctx)
   if not verb then
@@ -347,7 +361,8 @@ local function PumpStep(limit)
     if b ~= nil and s ~= nil then
       b, s = ContainerAPI(b, s)
     end
-    if b ~= nil and s ~= nil and Slots.SlotOccupied and Slots.SlotOccupied(b, s) then
+    local Slots = SlotsMod()
+    if b ~= nil and s ~= nil and Slots and Slots.SlotOccupied and Slots.SlotOccupied(b, s) then
       if TransferOne(b, s, ctx) then
         moved = moved + 1
         pumpQueue.sold = (pumpQueue.sold or 0) + 1
@@ -371,6 +386,7 @@ local function PumpAsync()
     local q = pumpQueue
     pumpQueue = nil
     FinishMerchantPump(q)
+    local Layout = LayoutMod()
     if Layout and Layout.Refresh then
       Layout.Refresh()
     end
@@ -387,10 +403,38 @@ local function PumpAsync()
     local q = pumpQueue
     pumpQueue = nil
     FinishMerchantPump(q)
+    local Layout = LayoutMod()
     if Layout and Layout.Refresh then
       Layout.Refresh()
     end
   end
+end
+
+local function CollectLaneSlots(laneKey, unfiltered)
+  local Layout = LayoutMod()
+  if Layout and Layout.ListLaneSlots then
+    return Layout.ListLaneSlots(laneKey, unfiltered)
+  end
+  if Layout and Layout.ClassifyBagSlot and SlotsMod() then
+    local Slots = SlotsMod()
+    local out = {}
+    local ranges = Slots.BagRanges and Slots.BagRanges() or Slots.InventoryBagRanges and Slots.InventoryBagRanges()
+    if ranges then
+      for i = 1, #ranges do
+        local bag, n = ranges[i].bag, ranges[i].slots
+        for slot = 1, n do
+          if Slots.SlotOccupied(bag, slot) then
+            local cat = Layout.ClassifyBagSlot and Layout.ClassifyBagSlot(bag, slot)
+            if cat == laneKey then
+              out[#out + 1] = { bag = bag, slot = slot }
+            end
+          end
+        end
+      end
+    end
+    return out
+  end
+  return {}
 end
 
 local function StartQueue(ctx, slots, label, diag, syncMax)
@@ -431,6 +475,7 @@ local function StartQueue(ctx, slots, label, diag, syncMax)
     elseif q and BetterBackpack.Print then
       BulkPrint(string.format("moved %d / %d%s", q.sold or 0, q.total or 0, q.label and (" · " .. q.label) or ""))
     end
+    local Layout = LayoutMod()
     if Layout and Layout.Refresh then
       Layout.Refresh()
     end
@@ -488,11 +533,11 @@ function BulkTransfer.TransferLane(laneKey)
     BulkPrint("abort · open vendor, mail, or bank first")
     return false
   end
+  local Layout = LayoutMod()
+  local slots = CollectLaneSlots(laneKey, true)
   if not Layout or not Layout.ListLaneSlots then
-    BulkPrint("abort · Layout.ListLaneSlots missing")
-    return false
+    BulkPrint("warn · Layout.ListLaneSlots nil at load — used Slots fallback")
   end
-  local slots = Layout.ListLaneSlots(laneKey, true)
   BulkPrint(string.format("ListLaneSlots · lane=%s count=%d", tostring(laneKey), #slots))
   local mOpen = MerchantFrameOpen()
   local repair = false
@@ -518,7 +563,9 @@ function BulkTransfer.TransferLane(laneKey)
   if ctx == "merchant" and not mOpen then
     BulkPrint("warn · merchant UI not detected — trying sell anyway (ctx=merchant)")
   end
-  local label = tostring(Layout.GetCategoryLabel and Layout.GetCategoryLabel(laneKey) or laneKey)
+  local label = tostring(
+    (Layout and Layout.GetCategoryLabel and Layout.GetCategoryLabel(laneKey)) or laneKey
+  )
   local diag = ctx == "merchant" and MerchantProbe(slots[1]) or nil
   BulkPrint(string.format("%s · %s · %d stacks · queue…", label, tostring(ActionVerb(ctx) or ctx), #slots))
   local ok = StartQueue(ctx, slots, label, diag)
@@ -536,6 +583,7 @@ function BulkTransfer.TransferSlot(bag, slot, ctx)
   if not OOC() then
     return false
   end
+  local Context = ContextMod()
   ctx = ctx or (Context and Context.SpecialRmbContext and Context.SpecialRmbContext())
   if not ctx then
     return false

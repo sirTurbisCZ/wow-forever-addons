@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 0.5.83 sync vendor sell in click; bulk diagnostics.
+## Notes: 0.5.84 BulkTransfer after Layout; runtime LayoutMod.
 ## Author: tuma
-## Version: 0.5.83
+## Version: 0.5.84
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled
@@ -12,7 +12,6 @@ Locale/enUS.lua
 Config.lua
 Modules/Slots.lua
 Modules/Context.lua
-Modules/BulkTransfer.lua
 Modules/VendorJunk.lua
 Modules/Search.lua
 Modules/Filter.lua
@@ -22,6 +21,7 @@ Modules/StackMerge.lua
 Modules/Pins.lua
 Modules/LayoutModes.lua
 Modules/Layout.lua
+Modules/BulkTransfer.lua
 Modules/OpenClose.lua
 Modules/Tidy.lua
 Modules/Settings.lua
