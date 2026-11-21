@@ -487,6 +487,16 @@ local FEATURES = {
     end,
   },
   {
+    label = "Bag bar opens one bag only",
+    get = function()
+      return Profile().bagBarSingleBag ~= false
+    end,
+    set = function(on)
+      Profile().bagBarSingleBag = on and true or false
+      RefreshBags()
+    end,
+  },
+  {
     label = "Dense layout (more columns)",
     get = function()
       local LM = Feat("LayoutModes")

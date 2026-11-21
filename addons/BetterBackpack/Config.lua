@@ -12,7 +12,7 @@ local Config = BetterBackpack.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.5.24"
+Config.VERSION = "0.5.25"
 
 local function ProfileDefaults()
   return {
@@ -46,6 +46,7 @@ local function ProfileDefaults()
     fillEmptyWells = false, -- opt-in: empty slot wells in space freed by collapse / search
     pins = {}, -- { [itemID] = true } red ghost when not owned
     layoutMode = "lanes", -- "lanes" | "dense"
+    bagBarSingleBag = true, -- bag-bar / OpenBag: one bag's slots; B / OpenAllBags: all bags
     pos = nil, -- { point, relPoint, x, y } when user-moved
     userMoved = false,
   }

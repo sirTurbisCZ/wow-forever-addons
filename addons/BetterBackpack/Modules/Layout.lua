@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.24, no + Lane in header).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.25, bag-bar single-bag collect).
   Forever: never SetToplevel / SetFrameStrata (ADDON_ACTION_BLOCKED).
   Chrome metrics from Baganator Forever Blizzard skin + ContainerFrameCombinedBags:
     ButtonFrameOffset=6, Bg/TopTile @ (6,-21), NineSlice borders, Inset hidden.
@@ -541,6 +541,36 @@ local function IsFiltering()
 end
 
 -- unfiltered=true ignores Search/Filter: used to size the frame so filtering never resizes it.
+local function BagsMatchForHighlight(a, b)
+  if a == nil or b == nil then
+    return false
+  end
+  if Slots.IsReagentBag(a) and Slots.IsReagentBag(b) then
+    return true
+  end
+  local na, nb = SafeNum(a, nil), SafeNum(b, nil)
+  return na ~= nil and nb ~= nil and na == nb
+end
+
+--- When bag-bar opened with focus: show only that bag's slots (unless Keys filter or opt-out).
+local function SingleBagCollectFilterActive(unfiltered)
+  if unfiltered then
+    return false
+  end
+  local p = Profile()
+  if p.bagBarSingleBag == false then
+    return false
+  end
+  if focusBagID == nil then
+    return false
+  end
+  local Filter = Feat("Filter")
+  if Filter and Filter.GetCategory and Filter.GetCategory() == "keys" then
+    return false
+  end
+  return true
+end
+
 local function CollectBuckets(unfiltered)
   local order = Layout.GetCategoryOrder()
   local buckets = {}
@@ -549,9 +579,13 @@ local function CollectBuckets(unfiltered)
   end
   local Search = not unfiltered and Feat("Search")
   local Filter = not unfiltered and Feat("Filter")
+  local onlyBag = SingleBagCollectFilterActive(unfiltered)
   local ranges = Slots.BagRanges()
   for i = 1, #ranges do
     local bag, n = ranges[i].bag, ranges[i].slots
+    if onlyBag and not BagsMatchForHighlight(bag, focusBagID) then
+      -- skip bag
+    else
     for slot = 1, n do
       if Slots.SlotOccupied(bag, slot) then
         -- Disabled category → Other (items always visible somewhere).
@@ -577,6 +611,7 @@ local function CollectBuckets(unfiltered)
           buckets[cat][#buckets[cat] + 1] = { bag = bag, slot = slot }
         end
       end
+    end
     end
   end
   return buckets
@@ -746,17 +781,6 @@ local function UpdateFreeSpace()
   end)
 end
 
-local function BagsMatchForHighlight(a, b)
-  if a == nil or b == nil then
-    return false
-  end
-  if Slots.IsReagentBag(a) and Slots.IsReagentBag(b) then
-    return true
-  end
-  local na, nb = SafeNum(a, nil), SafeNum(b, nil)
-  return na ~= nil and nb ~= nil and na == nb
-end
-
 local function EnsureBagIndicator(btn)
   if not btn then
     return nil
@@ -828,10 +852,14 @@ function Layout.SetBagFocus(bagID)
   if not Layout.IsShown() then
     return
   end
+  local highlightOnly = Profile().bagBarSingleBag == false
   if focusBagID ~= nil then
-    SetBagMatchHighlight(focusBagID, true)
+    SetBagMatchHighlight(focusBagID, highlightOnly)
   else
     ClearBagMatchGlows()
+  end
+  if Profile().bagBarSingleBag ~= false and Layout.Relayout then
+    pcall(Layout.Relayout)
   end
 end
 
@@ -2237,11 +2265,8 @@ local function EnsureBagShelvesTitleChrome(frame, close)
   tidy:ClearAllPoints()
   tidy:SetPoint("RIGHT", gear, "LEFT", -gap, 0)
   tidy:SetFrameLevel(level)
-  if close then
-    StyleCloseTwin(tidy, "tidy", close, w, h)
-  else
-    StyleAutoSortTwin(tidy, "tidy", w, h)
-  end
+  -- Native AutoSort plate + gold broom (Close-twin cover tinted the plate orange/red).
+  StyleAutoSortTwin(tidy, "tidy", w, h)
   if not tidy._bbChromeWired then
     tidy._bbChromeWired = true
     tidy:SetScript("OnEnter", function(self)

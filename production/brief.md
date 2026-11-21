@@ -1,4 +1,8 @@
-# Playtest brief — BetterBackpack 0.5.24 (Settings two-pane + no + Lane)
+# Playtest brief — BetterBackpack 0.5.25 (open mode + broom chrome)
+
+**0.5.25**
+- **B** opens all bags (combined). Bag-bar icon opens **that bag only** (lanes from its slots); click another icon switches; click same icon closes. Keyring → Keys lane (+ keyring focus). Settings → Features → *Bag bar opens one bag only* (off = old highlight-all-bags).
+- Broom button: native gold AutoSort art (no red/orange Close plate).
 
 **0.5.24**
 - Settings rebuilt: left categories (Lanes, Custom lanes, Trash, Learned, Features), right panel — like Interface Options.

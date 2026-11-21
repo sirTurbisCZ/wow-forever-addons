@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.OpenClose — B + bag-bar + keyring (0.5.4)
+  BetterBackpack.OpenClose — B + bag-bar + keyring (0.5.25 open modes)
 
   ToggleAllBags / ToggleBackpack / ToggleBag / ToggleKeyRing are *replaced*
   (not hooksecurefunc). Forever Toggle* bodies call Open*/Close* first; a
@@ -334,8 +334,18 @@ local function onBagKey()
   toggleLockUntil = t + TOGGLE_LOCK
 
   if SessionOpen() then
+    ClearFocusBag()
+    local Filter = BetterBackpack.Modules.Filter
+    if Filter and Filter.SetCategory then
+      pcall(Filter.SetCategory, "all")
+    end
     OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
   else
+    ClearFocusBag()
+    local Filter = BetterBackpack.Modules.Filter
+    if Filter and Filter.SetCategory then
+      pcall(Filter.SetCategory, "all")
+    end
     OpenOurs()
   end
 end
@@ -440,6 +450,24 @@ ClearFocusBag = function()
   end
 end
 
+local function FocusBagsMatch(a, b)
+  if a == nil or b == nil then
+    return false
+  end
+  local Slots = BetterBackpack.Modules.Slots
+  if Slots and Slots.IsReagentBag and Slots.IsReagentBag(a) and Slots.IsReagentBag(b) then
+    return true
+  end
+  return a == b
+end
+
+local function ClearCategoryFilter()
+  local Filter = BetterBackpack.Modules.Filter
+  if Filter and Filter.SetCategory then
+    pcall(Filter.SetCategory, "all")
+  end
+end
+
 NormalizeBagID = function(bagID)
   if type(bagID) == "number" then
     return bagID
@@ -468,11 +496,18 @@ local function onOpenIntent(bagID)
   BlackoutAll()
   if bagID ~= nil then
     SetFocusBag(bagID)
+    ClearCategoryFilter()
+  else
+    ClearFocusBag()
+    ClearCategoryFilter()
   end
   if SessionOpen() or openBusy then
     ParkAllShown()
     if Layout and Layout.Raise then
       pcall(Layout.Raise)
+    end
+    if Layout and Layout.Relayout then
+      pcall(Layout.Relayout)
     end
     return
   end
@@ -518,12 +553,31 @@ local function onBagToggle(bagID, src)
   toggleLockUntil = t + TOGGLE_LOCK
 
   if SessionOpen() then
-    ClearFocusBag()
-    OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
+    local focused = Layout and Layout.GetBagFocus and Layout.GetBagFocus()
+    if bagID ~= nil and focused ~= nil and FocusBagsMatch(bagID, focused) then
+      ClearFocusBag()
+      ClearCategoryFilter()
+      OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
+    elseif bagID ~= nil then
+      SetFocusBag(bagID)
+      ClearCategoryFilter()
+      ParkAllShown()
+      if Layout and Layout.Raise then
+        pcall(Layout.Raise)
+      end
+      if Layout and Layout.Relayout then
+        pcall(Layout.Relayout)
+      end
+    else
+      ClearFocusBag()
+      ClearCategoryFilter()
+      OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
+    end
   else
     if bagID ~= nil then
       SetFocusBag(bagID)
     end
+    ClearCategoryFilter()
     OpenOurs()
   end
 end
