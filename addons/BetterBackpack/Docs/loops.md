@@ -1,7 +1,7 @@
 # BetterBackpack — smyčky a grafy
 
 **Kód:** `Core.lua`, `Modules/{Slots,Layout,Context,OpenClose,Tidy,Settings,Search,Filter,CustomCategories,StackMerge,Pins,LayoutModes}.lua`  
-**Verze reference:** 0.5.2 (features-nth merged onto 0.4.2 chrome)  
+**Verze reference:** 0.5.3 (Toggle* replace — no open/close thrash)  
 **Stabilita:** Project `docs/bag-addon-brief.md` + Scenario Maps `docs/scenarios/BetterBackpack/`  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never path C harvest).
 
@@ -11,36 +11,37 @@
 
 ```mermaid
 flowchart TD
-  B[ToggleAllBags / ToggleBackpack / ToggleBag / bag-bar OnClick]
-  B --> Black[BlackoutAllBlizzard alpha=0 first]
+  B[ToggleAllBags / ToggleBackpack / ToggleBag / ToggleKeyRing]
+  B --> Rep[Replace global — skip Blizzard body]
+  Rep --> Black[BlackoutAllBlizzard alpha=0 first]
   Black --> Lock{t < toggleLockUntil or debounce?}
   Lock -->|ano| Pulse[Park only]
   Lock -->|ne| Vis{SessionOpen?}
   Vis -->|ne| Open[OpenOurs + SetBagFocus + park]
   Vis -->|ano| Close[CloseOurs + ClearBagFocus]
   Close --> Keep0[Keep alpha=0 + CloseAllBags<br/>NEVER RestoreBlizzard alpha=1]
-  OpenOnly[OpenAllBags / OpenBag] --> OpenOrPark[Open if closed else park+focus]
+  OpenOnly[OpenAllBags / OpenBag — non-Toggle API] --> OpenOrPark[Open if closed else park+focus]
   CloseAPI[CloseBag / CloseAllBags] --> Close
   OnShow[CombinedBags Show/OnShow] --> BO[Blackout first line]
-  BO --> Park[Park; OpenOurs only if still closed]
+  BO --> Park[Park; deferred OpenOurs only if still closed]
 ```
 
 **Pravidla**
 
 - Nikdy `SetOverrideBindingClick`.
-- Forever: `SetFrameStrata` on BetterBackpackFrame can BLOCKED+error — always `pcall` (0.5.2 OpenOurs false).
-
-- Anti-flash: `Show`/`OnShow`/`onToggle` → **Blackout alpha=0 first**; CloseOurs never `RestoreBlizzardBags`.
+- Forever: never `SetFrameStrata` / ButtonFrameTemplate on BetterBackpackFrame (BLOCKED → OpenOurs false). Plain `CreateFrame` + painted chrome.
+- **0.5.3:** `Toggle*` are **replaced**, not `hooksecurefunc`. Post-hooks ran after Blizzard `Open*`/`Close*` (and our Open*/Close* hooks) → open-then-close / close-then-reopen thrash that froze on B.
+- Anti-flash: `Show`/`OnShow`/`onToggle` → **Blackout alpha=0 first**; CloseOurs never `RestoreBlizzardBags`. OpenOurs fail → `ForceCloseBlizzard` (not Unblackout).
 - CombinedBags stays `IsShown`+parked while ours open — **ne** `:Hide()` mid-session.
 - `SuppressReplace`; OnShow nesmí ClearSuppress→OpenOurs.
-- **ToggleBag + bag-bar OnClick = XOR** (same as B). OpenBag/OpenAllBags = open-only. CloseBag/CloseAllBags close ours.
+- **ToggleBag + bag-bar OnClick = XOR** (same as B; `toggleLockUntil` after replaced ToggleBag). OpenBag/OpenAllBags = open-only. CloseBag/CloseAllBags close ours.
 - HookScript OnClick only on frames with `HasScript("OnClick")` / Button — never throw on BagsBar chrome kids.
 - Bag focus: `Layout.SetBagFocus(id)` highlights that bag’s slots after open.
 - Frame size: **10 cols** default (CombinedBags/BagShelves); INSET_X=14, TOP_CHROME=58, BOT_CHROME=32; outer = contentW+INSET_X+28.
 - Title chrome: AutoSort **twins** (same native size, atlas art, no ADD glow); broom | gear | X. No native reparent.
 - Footer N/M: player bags `0..NUM_BAG_SLOTS` + **reagent bag** (Materials lane). Never keyring invent (102=70+32).
 - Slots: `Normalize` 37×37 on every `Place` and after `SetItemButtonQuality`.
-- CombinedBags/Container OnShow: park now; **defer** open to next tick so Toggle* XOR runs first.
+- CombinedBags/Container OnShow: park now; **defer** open to next tick (non-Toggle Open* only).
 
 ---
 

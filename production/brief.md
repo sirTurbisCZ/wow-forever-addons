@@ -1,11 +1,11 @@
-# Playtest brief — BetterBackpack 0.5.2
+# Playtest brief — BetterBackpack 0.5.3
 
-**Gaps fixed**
-1. Open: stop `SetFrameStrata` (still BLOCKED); keep UIParent; OnHide ignore while opening.
-2. Bag-bar: Button/CheckButton hooks + BagSlotButtonMixin.OnClick.
-3. Keyring: XOR open → focus keyring + `/bb filter keys`; second press closes.
-4. Chrome/NTH: search TOPLEFT CombinedBags-like; stack-merge Count fallback; `/bb pin` hover/cursor.
+**Freeze fix**
+- B froze: `hooksecurefunc(Toggle*)` ran *after* Blizzard `Open*`/`Close*` (and our Open*/Close* hooks) → open-then-close / close-then-reopen thrash.
+- Fix: **replace** `ToggleAllBags` / `ToggleBackpack` / `ToggleBag` / `ToggleKeyRing`; skip Blizzard body when replace enabled.
+- Plain `BetterBackpackFrame` (no ButtonFrameTemplate `SetFrameStrata` BLOCKED).
+- OpenOurs fail → `ForceCloseBlizzard` (no Unblackout re-entry).
 
-**Keep:** footer ~/70 · AutoSort-twin gear/broom.
+**Keep:** footer ~/70 · AutoSort-twin gear/broom · bag-bar XOR · keyring→Keys · search left.
 
-**Done when:** `/reload` → `v0.5.2` → B opens · bag-bar XOR · keyring → Keys · search box left · `/bb pin` on tooltip item.
+**Done when:** `/reload` → `v0.5.3` → B opens and stays open · B closes · no freeze · bag-bar XOR.

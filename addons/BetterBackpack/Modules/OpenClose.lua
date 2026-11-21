@@ -1,10 +1,14 @@
 --[[
-  BetterBackpack.OpenClose — B + bag-bar + keyring (0.5.2)
+  BetterBackpack.OpenClose — B + bag-bar + keyring (0.5.3)
 
-  B / ToggleAllBags / ToggleBackpack / ToggleBag / bag-bar OnClick = XOR.
-  OpenAllBags / OpenBackpack / OpenBag = open (+ bag focus). CloseBag /
-  CloseAllBags = close ours when session open. CombinedBags OnShow: park;
-  deferred open only if still closed AFTER Toggle* hooks (else B XOR-closes).
+  ToggleAllBags / ToggleBackpack / ToggleBag / ToggleKeyRing are *replaced*
+  (not hooksecurefunc). Forever Toggle* bodies call Open*/Close* first; a
+  post-hook XOR then closed what we just opened (or reopened after close) —
+  open/close thrash that froze the client on B.
+
+  OpenAllBags / OpenBackpack / OpenBag = open (+ bag focus). Close* close
+  ours when session open. CombinedBags OnShow: park; deferred open only if
+  still closed after Toggle* (covers non-Toggle Open* paths).
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -139,6 +143,7 @@ end
 local OpenOurs
 local SetFocusBag
 local ClearFocusBag
+local NormalizeBagID
 
 local function PulsePark()
   pulseToken = pulseToken + 1
@@ -161,23 +166,6 @@ local function PulsePark()
       C_Timer.After(d, tick)
     end
   end
-end
-
-local function UnblackoutBlizzard()
-  pcall(function()
-    local f = ContainerFrameCombinedBags
-    if f then
-      f:SetAlpha(1)
-      f:EnableMouse(true)
-    end
-    for i = 1, 13 do
-      local cf = _G["ContainerFrame" .. i]
-      if cf then
-        cf:SetAlpha(1)
-        cf:EnableMouse(true)
-      end
-    end
-  end)
 end
 
 OpenOurs = function()
@@ -225,9 +213,9 @@ OpenOurs = function()
         Layout.Hide()
       end
     end)
-    -- Do not leave bags blacked-out with nothing shown (B feels like a crash).
-    UnblackoutBlizzard()
-    -- Throttle: OpenOurs false spam filled the ring (×16) when EnsureMain aborted.
+    -- Keep Blizzard parked/closed — Unblackout + shown CombinedBags re-entered
+    -- OnShow→OpenOurs and amplified the Toggle open/close thrash.
+    ForceCloseBlizzard()
     if BetterBackpack.RecordError and (not OpenClose._lastOpenFailAt or (Now() - OpenClose._lastOpenFailAt) > 5) then
       OpenClose._lastOpenFailAt = Now()
       BetterBackpack.RecordError("OpenOurs", ok and tostring(shown) or tostring(shown))
@@ -329,7 +317,7 @@ function OpenClose.OpenOurs()
 end
 
 --[[
-  Toggle* (B / backpack toggle): XOR open/close.
+  Toggle* (B / backpack toggle): XOR open/close. Used by replaced globals.
 ]]
 local function onBagKey()
   if not EnabledReplace() then
@@ -350,6 +338,63 @@ local function onBagKey()
   else
     OpenOurs()
   end
+end
+
+local function onKeyRingToggle()
+  if not EnabledReplace() then
+    return
+  end
+  local Slots = BetterBackpack.Modules.Slots
+  local key
+  pcall(function()
+    key = NormalizeBagID(Slots and Slots.KeyringBagIndex and Slots.KeyringBagIndex())
+  end)
+  local t = Now()
+  BlackoutAll()
+  if t < toggleLockUntil then
+    ParkAllShown()
+    return
+  end
+  toggleLockUntil = t + TOGGLE_LOCK
+  if SessionOpen() then
+    ClearFocusBag()
+    local Filter = BetterBackpack.Modules.Filter
+    if Filter and Filter.SetCategory then
+      pcall(Filter.SetCategory, "all")
+    end
+    OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
+  else
+    if key ~= nil then
+      SetFocusBag(key)
+    end
+    local Filter = BetterBackpack.Modules.Filter
+    if Filter and Filter.SetCategory then
+      pcall(Filter.SetCategory, "keys")
+    end
+    OpenOurs()
+  end
+end
+
+--[[
+  Replace Toggle* instead of hooksecurefunc. Post-hooks run AFTER Blizzard
+  Open*/Close* (and our Open*/Close* hooks), so XOR always fought the body.
+]]
+local function ReplaceToggle(globalName, handler)
+  local orig = _G[globalName]
+  if type(orig) ~= "function" then
+    return false
+  end
+  if OpenClose["_replaced_" .. globalName] then
+    return true
+  end
+  OpenClose["_replaced_" .. globalName] = true
+  _G[globalName] = function(...)
+    if not EnabledReplace() then
+      return orig(...)
+    end
+    handler(...)
+  end
+  return true
 end
 
 local hooksLogged = false
@@ -395,7 +440,7 @@ ClearFocusBag = function()
   end
 end
 
-local function NormalizeBagID(bagID)
+NormalizeBagID = function(bagID)
   if type(bagID) == "number" then
     return bagID
   end
@@ -613,48 +658,13 @@ function OpenClose.InstallHooks()
     return
   end
 
-  if type(ToggleAllBags) == "function" then
-    hooksecurefunc("ToggleAllBags", onBagKey)
-  end
-  if type(ToggleBackpack) == "function" then
-    hooksecurefunc("ToggleBackpack", onBagKey)
-  end
-  if type(ToggleKeyRing) == "function" then
-    hooksecurefunc("ToggleKeyRing", function()
-      if not EnabledReplace() then
-        return
-      end
-      local Slots = BetterBackpack.Modules.Slots
-      local key
-      pcall(function()
-        key = NormalizeBagID(Slots and Slots.KeyringBagIndex and Slots.KeyringBagIndex())
-      end)
-      local t = Now()
-      BlackoutAll()
-      if t < toggleLockUntil then
-        ParkAllShown()
-        return
-      end
-      toggleLockUntil = t + TOGGLE_LOCK
-      if SessionOpen() then
-        ClearFocusBag()
-        local Filter = BetterBackpack.Modules.Filter
-        if Filter and Filter.SetCategory then
-          pcall(Filter.SetCategory, "all")
-        end
-        OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
-      else
-        if key ~= nil then
-          SetFocusBag(key)
-        end
-        local Filter = BetterBackpack.Modules.Filter
-        if Filter and Filter.SetCategory then
-          pcall(Filter.SetCategory, "keys")
-        end
-        OpenOurs()
-      end
-    end)
-  end
+  -- Replace Toggle* (do not hooksecurefunc): post-hooks fight Open*/Close* inside the body.
+  ReplaceToggle("ToggleAllBags", onBagKey)
+  ReplaceToggle("ToggleBackpack", onBagKey)
+  ReplaceToggle("ToggleBag", function(id)
+    onBagToggle(id, "ToggleBag")
+  end)
+  ReplaceToggle("ToggleKeyRing", onKeyRingToggle)
 
   if type(OpenAllBags) == "function" then
     hooksecurefunc("OpenAllBags", function()
@@ -670,11 +680,6 @@ function OpenClose.InstallHooks()
     hooksecurefunc("OpenBag", function(id)
       LogBagPathOnce("OpenBag", id)
       onOpenIntent(id)
-    end)
-  end
-  if type(ToggleBag) == "function" then
-    hooksecurefunc("ToggleBag", function(id)
-      onBagToggle(id, "ToggleBag")
     end)
   end
   if type(CloseBag) == "function" then
@@ -827,7 +832,7 @@ function OpenClose.InstallHooks()
   end)
 
   hooksInstalled = true
-  LogHooksOnce(string.format("ToggleBag/OpenBag/CloseBag · bagBtns=%d", nBag or 0))
+  LogHooksOnce(string.format("Toggle* replaced · Open/Close hooks · bagBtns=%d", nBag or 0))
 
   if C_Timer and C_Timer.After then
     C_Timer.After(1, function()

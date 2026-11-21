@@ -1132,34 +1132,15 @@ end
 
 local function CreateBagPanel()
   -- Named frame persists across failed EnsureMain — always reuse, never double-create.
+  -- Forever: ButtonFrameTemplate / BasicFrame* call SetFrameStrata → ADDON_ACTION_BLOCKED
+  -- on BetterBackpackFrame (OpenOurs false ×N). Plain Frame + painted chrome only.
   local frame = _G.BetterBackpackFrame
-  if not frame then
-    local templates = {
-      "ButtonFrameTemplate",
-      "BasicFrameTemplateWithInset",
-      "BasicFrameTemplate",
-    }
-    for i = 1, #templates do
-      local ok, f = pcall(function()
-        return CreateFrame("Frame", "BetterBackpackFrame", UIParent, templates[i])
-      end)
-      if ok and f then
-        frame = f
-        break
-      end
-    end
-  end
   if not frame then
     frame = CreateFrame("Frame", "BetterBackpackFrame", UIParent)
   end
   pcall(function()
     if frame:GetParent() ~= UIParent then
       frame:SetParent(UIParent)
-    end
-  end)
-  pcall(function()
-    if ButtonFrameTemplate_HidePortrait then
-      ButtonFrameTemplate_HidePortrait(frame)
     end
   end)
   KillPortrait(frame)
@@ -1191,7 +1172,7 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local CHROME_VER = 18 -- no SetFrameStrata; search+twins CombinedBags-like
+local CHROME_VER = 19 -- plain Frame (no template SetFrameStrata); search+twins
 local chromeLogged = false
 local customChromeHidden = false
 local nativeSortReleased = false
