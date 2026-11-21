@@ -1,6 +1,6 @@
 --[[
   Plateband — above-plate shared harmful / DoT band.
-  /pb help|on|off|diagnose|dump|safe|reset|size
+  /pb help|on|off|diagnose|dump|safe|reset|size|watch
 ]]
 
 local addonName = ...
@@ -11,6 +11,7 @@ Plateband.Modules = Plateband.Modules or {}
 local L = Plateband.L or {}
 local Config = Plateband.Config
 local Plates = Plateband.Modules.Plates
+local SessionLog = Plateband.Modules.SessionLog
 
 local function EnsureDB()
   return Config.EnsureDB()
@@ -23,6 +24,8 @@ local function Print(...)
   end
   print((L.PREFIX or "[Plateband]") .. " " .. table.concat(parts, " "))
 end
+
+Plateband.Print = Print
 
 local function Trim(s, maxLen)
   s = tostring(s or "")
@@ -39,7 +42,7 @@ local function Now()
   return 0
 end
 
---- Error boundary → circular log (+ optional ForeverErrorLog).
+--- Error boundary → circular log + sessionLog (+ optional ForeverErrorLog).
 function Plateband.RecordError(context, err)
   local db = EnsureDB()
   local msg = Trim(tostring(err or "?"), Config.MAX_MSG)
@@ -61,6 +64,9 @@ function Plateband.RecordError(context, err)
       if stack ~= "" then
         e.stack = stack
       end
+      if SessionLog and SessionLog.Append then
+        SessionLog.Append(string.format("ERROR ×%s [%s] %s", tostring(e.count), ctx, msg))
+      end
       return
     end
   end
@@ -75,6 +81,10 @@ function Plateband.RecordError(context, err)
   }
   while #list > Config.MAX_ERRORS do
     table.remove(list, 1)
+  end
+
+  if SessionLog and SessionLog.Append then
+    SessionLog.Append(string.format("ERROR [%s] %s", ctx, msg))
   end
 
   if ForeverErrorLog and ForeverErrorLog.Record then
@@ -110,37 +120,57 @@ end
 local function DumpRing()
   local db = EnsureDB()
   local list = db.errors
-  Print(string.format(L.DUMP_HEADER or "dump — errors=%d", #list))
+  local slog = db.sessionLog or {}
+  local nLines = type(slog.lines) == "table" and #slog.lines or 0
+  Print(string.format(
+    L.DUMP_HEADER or "dump — errors=%d · sessionLog lines=%d · file=%s",
+    #list,
+    nLines,
+    tostring(slog.fileOk)
+  ))
   local p = db.profile
   Print(string.format(
-    L.STATUS_LINE or "enabled=%s · safe=%s · schema=%s · ver=%s",
+    L.STATUS_LINE or "enabled=%s · safe=%s · watch=%s · schema=%s · ver=%s · log=%s",
     tostring(p.enabled),
     tostring(p.safeMode),
+    tostring(p.watchOn),
     tostring(db.schemaVersion),
-    tostring(Config.VERSION)
+    tostring(Config.VERSION),
+    tostring(nLines)
   ))
-  if db.lastDiag and db.lastDiag.card then
+  Print(L.LOG_HINT or "send Plateband.lua SavedVariables after /reload")
+  if db.lastDiagnose and db.lastDiagnose.card then
+    print("|cffaaaaaa" .. tostring(db.lastDiagnose.card) .. "|r")
+  elseif db.lastDiag and db.lastDiag.card then
     print("|cffaaaaaa" .. tostring(db.lastDiag.card) .. "|r")
   end
   if #list == 0 then
     Print(L.NO_ERRORS or "no errors in ring")
-    return
-  end
-  local from = math.max(1, #list - 9)
-  for i = from, #list do
-    local e = list[i]
-    local n = e.count and e.count > 1 and (" ×" .. e.count) or ""
-    print(string.format(
-      "|cffd94a4a%d. [%s]%s %s|r",
-      i,
-      e.context or "?",
-      n,
-      e.msg or "?"
-    ))
-    if e.stack and e.stack ~= "" then
-      for line in e.stack:gmatch("[^\n]+") do
-        print("|cff888888  " .. line:sub(1, 160) .. "|r")
+  else
+    local from = math.max(1, #list - 9)
+    for i = from, #list do
+      local e = list[i]
+      local n = e.count and e.count > 1 and (" ×" .. e.count) or ""
+      print(string.format(
+        "|cffd94a4a%d. [%s]%s %s|r",
+        i,
+        e.context or "?",
+        n,
+        e.msg or "?"
+      ))
+      if e.stack and e.stack ~= "" then
+        for line in e.stack:gmatch("[^\n]+") do
+          print("|cff888888  " .. line:sub(1, 160) .. "|r")
+        end
       end
+    end
+  end
+  -- Tail of session log
+  if nLines > 0 then
+    local from = math.max(1, nLines - 7)
+    print("|cff888888--- sessionLog tail ---|r")
+    for i = from, nLines do
+      print("|cff888888" .. tostring(slog.lines[i]) .. "|r")
     end
   end
 end
@@ -151,8 +181,14 @@ bootFrame:RegisterEvent("PLAYER_LOGIN")
 bootFrame:SetScript("OnEvent", function(_, event, name)
   if event == "ADDON_LOADED" and name == addonName then
     EnsureDB()
+    if SessionLog and SessionLog.BeginSession then
+      SafeCall("session:begin", SessionLog.BeginSession)
+    end
   elseif event == "PLAYER_LOGIN" then
     EnsureDB()
+    if SessionLog and SessionLog.BeginSession then
+      SafeCall("session:begin", SessionLog.BeginSession)
+    end
     ApplyModuleState()
     Print(string.format(L.LOADED or "loaded v%s · /pb", tostring(Config.VERSION)))
   end
@@ -174,13 +210,17 @@ SlashCmdList.PLATEBAND = function(msg)
         Print(lines[i])
       end
     end
+    local nLines = db.sessionLog and db.sessionLog.lines and #db.sessionLog.lines or 0
     Print(string.format(
-      L.STATUS_LINE or "enabled=%s · safe=%s · schema=%s · ver=%s",
+      L.STATUS_LINE or "enabled=%s · safe=%s · watch=%s · schema=%s · ver=%s · log=%s",
       tostring(p.enabled),
       tostring(p.safeMode),
+      tostring(p.watchOn),
       tostring(db.schemaVersion),
-      tostring(Config.VERSION)
+      tostring(Config.VERSION),
+      tostring(nLines)
     ))
+    Print(L.LOG_HINT or "send Plateband.lua after /reload")
     return
   end
 
@@ -208,8 +248,36 @@ SlashCmdList.PLATEBAND = function(msg)
 
   if cmd == "reset" then
     Config.Reset()
+    if SessionLog and SessionLog.BeginSession then
+      -- force new session after reset
+      pcall(function()
+        -- BeginSession is idempotent per load; append a reset marker
+        SessionLog.Append("CONFIG_RESET")
+      end)
+    end
     ApplyModuleState()
     Print(L.CONFIG_RESET or "config reset to defaults")
+    return
+  end
+
+  if cmd == "watch" then
+    local a = (rest or ""):lower()
+    if a == "on" or a == "1" then
+      if Plates and Plates.SetWatch then
+        local card = SafeCall("watch:on", Plates.SetWatch, true)
+        Print(string.format(L.WATCH_ON or "watch on — card every %ss", tostring(p.watchInterval or 2)))
+        if card then
+          print("|cff7ec8e3" .. card .. "|r")
+        end
+      end
+    elseif a == "off" or a == "0" then
+      if Plates and Plates.SetWatch then
+        SafeCall("watch:off", Plates.SetWatch, false)
+      end
+      Print(L.WATCH_OFF or "watch off")
+    else
+      Print("usage: /pb watch on|off  (currently " .. tostring(p.watchOn) .. ")")
+    end
     return
   end
 
@@ -253,6 +321,4 @@ SlashCmdList.PLATEBAND = function(msg)
   Print(L.UNKNOWN_CMD or "unknown command — /pb help")
 end
 
--- Public hooks for other Forever tools
-Plateband.Print = Print
 Plateband.ApplyModuleState = ApplyModuleState

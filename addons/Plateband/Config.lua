@@ -2,7 +2,7 @@
 
 Plateband = Plateband or {}
 
-local CURRENT_SCHEMA = 1
+local CURRENT_SCHEMA = 2
 local MAX_ERRORS = 40
 local MAX_MSG = 2000
 
@@ -12,7 +12,7 @@ local Config = Plateband.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.1.0"
+Config.VERSION = "0.1.1"
 
 local function ProfileDefaults()
   return {
@@ -21,6 +21,10 @@ local function ProfileDefaults()
     iconSize = 18,
     maxIcons = 12,
     showBand = true,
+    watchOn = false,
+    watchInterval = 2,
+    autoDiag = true,
+    chatOnChange = true,
   }
 end
 
@@ -29,7 +33,14 @@ local function Defaults()
     schemaVersion = CURRENT_SCHEMA,
     profile = ProfileDefaults(),
     errors = {},
-    lastDiag = nil,
+    lastDiagnose = nil,
+    lastDiag = nil, -- alias
+    sessionLog = {
+      startedAt = 0,
+      lines = {},
+      fileOk = false,
+      export = "",
+    },
   }
 end
 
@@ -50,6 +61,20 @@ local function EnsureProfile(db)
   end
 end
 
+local function EnsureSessionLog(db)
+  if type(db.sessionLog) ~= "table" then
+    db.sessionLog = {
+      startedAt = 0,
+      lines = {},
+      fileOk = false,
+      export = "",
+    }
+  end
+  if type(db.sessionLog.lines) ~= "table" then
+    db.sessionLog.lines = {}
+  end
+end
+
 --- Ensure PlatebandDB exists, migrate schema, return db.
 function Config.EnsureDB()
   if type(PlatebandDB) ~= "table" then
@@ -66,11 +91,21 @@ function Config.EnsureDB()
       db.errors = {}
     end
     db.schemaVersion = 1
+    from = 1
   end
 
-  -- Future: if from < 2 then … end
+  if from < 2 then
+    EnsureSessionLog(db)
+    EnsureProfile(db)
+    -- Migrate lastDiag → lastDiagnose
+    if db.lastDiagnose == nil and db.lastDiag ~= nil then
+      db.lastDiagnose = db.lastDiag
+    end
+    db.schemaVersion = 2
+  end
 
   EnsureProfile(db)
+  EnsureSessionLog(db)
   if type(db.errors) ~= "table" then
     db.errors = {}
   end

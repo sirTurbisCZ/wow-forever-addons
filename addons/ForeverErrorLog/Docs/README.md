@@ -31,9 +31,15 @@ Aliases: `/ferrors`, `/forevererrors`.
 ## Sharing a bug
 
 1. Reproduce the error (or wait until it appears — chat shows a short `[FElog]` line).
-2. `/felog list` to confirm it was stored.
-3. `/felog dump` for stacks in chat, or open  
-   `WTF/Account/<Account>/SavedVariables/ForeverErrorLog.lua` and paste the relevant entries into Discord / a GitHub issue.
+2. `/reload` once (or log out) so SavedVariables flush to disk.
+3. Send this file to friends / Discord / GitHub:
+
+`World of Warcraft/_forever_/WTF/Account/<Account>/SavedVariables/ForeverErrorLog.lua`
+
+Inside: `errors` (ring across sessions) and `sessionLog` (wiped each login, append-only during play).  
+Optional rare path if addon file IO works: `Interface/AddOns/ForeverErrorLog/Logs/session.log`.
+
+You can still `/felog list` / `/felog dump` for a quick chat view.
 
 ## Troubleshooting
 

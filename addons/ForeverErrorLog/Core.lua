@@ -12,6 +12,8 @@ local Config = ForeverErrorLog.Config
 
 local installed
 local originalHandler
+local sessionBegun = false
+local fileOk -- nil untried / false / true
 
 local function EnsureDB()
   return Config.EnsureDB()
@@ -38,6 +40,111 @@ local function Now()
     return time()
   end
   return 0
+end
+
+local FILE_REL = "Interface/AddOns/ForeverErrorLog/Logs/session.log"
+local FILE_REL_BS = [[Interface\AddOns\ForeverErrorLog\Logs\session.log]]
+
+local function TryOpen(path, mode)
+  if not (io and io.open) then
+    return nil
+  end
+  local ok, f = pcall(io.open, path, mode)
+  if ok then
+    return f
+  end
+  return nil
+end
+
+local function ProbeSessionFile()
+  if fileOk == false then
+    return false
+  end
+  if not (io and io.open) then
+    fileOk = false
+    return false
+  end
+  for _, path in ipairs({ FILE_REL, FILE_REL_BS }) do
+    local f = TryOpen(path, "w")
+    if f then
+      pcall(function()
+        f:write("")
+        f:close()
+      end)
+      fileOk = true
+      return true
+    end
+  end
+  fileOk = false
+  return false
+end
+
+local function AppendSessionFile(line)
+  if fileOk == false or not (io and io.open) then
+    return false
+  end
+  if fileOk == nil then
+    ProbeSessionFile()
+  end
+  if not fileOk then
+    return false
+  end
+  for _, path in ipairs({ FILE_REL, FILE_REL_BS }) do
+    local f = TryOpen(path, "a")
+    if f then
+      local ok = pcall(function()
+        f:write(line)
+        f:write("\n")
+        f:close()
+      end)
+      if ok then
+        return true
+      end
+    end
+  end
+  fileOk = false
+  return false
+end
+
+local function AppendSession(line)
+  local db = EnsureDB()
+  local log = db.sessionLog
+  if type(log) ~= "table" then
+    return
+  end
+  if type(log.lines) ~= "table" then
+    log.lines = {}
+  end
+  line = Trim(line, 500)
+  local stamped = string.format("[%s] %s", tostring(Now()), line)
+  log.lines[#log.lines + 1] = stamped
+  local maxN = Config.MAX_SESSION_LINES or 200
+  while #log.lines > maxN do
+    table.remove(log.lines, 1)
+  end
+  log.export = table.concat(log.lines, "\n")
+  log.fileOk = AppendSessionFile(stamped) or log.fileOk
+end
+
+--- Wipe session log on cold load. Error ring is kept across sessions.
+local function BeginSession()
+  if sessionBegun then
+    return
+  end
+  sessionBegun = true
+  local db = EnsureDB()
+  local wrote = ProbeSessionFile()
+  db.sessionLog = {
+    startedAt = Now(),
+    lines = {},
+    fileOk = wrote and true or false,
+    export = "",
+  }
+  AppendSession(string.format(
+    "SESSION_START ver=%s file=%s",
+    tostring(Config.VERSION or "?"),
+    wrote and "yes" or "sv_only"
+  ))
 end
 
 local function AddonFromMessage(msg)
@@ -72,6 +179,7 @@ local function Record(msg, stack)
       if stack ~= "" then
         e.stack = stack
       end
+      AppendSession(string.format("ERROR ×%s [%s] %s", tostring(e.count), tostring(e.addon or "?"), msg))
       return
     end
   end
@@ -86,6 +194,7 @@ local function Record(msg, stack)
   while #list > Config.MAX_ERRORS do
     table.remove(list, 1)
   end
+  AppendSession(string.format("ERROR [%s] %s", tostring(AddonFromMessage(msg)), msg))
   local short = msg
   if #short > 180 then
     short = short:sub(1, 177) .. "..."
@@ -217,9 +326,11 @@ frame:RegisterEvent("PLAYER_LOGIN")
 frame:SetScript("OnEvent", function(_, event, name)
   if event == "ADDON_LOADED" and name == addonName then
     EnsureDB()
+    BeginSession()
     InstallHandler()
   elseif event == "PLAYER_LOGIN" then
     EnsureDB()
+    BeginSession()
     InstallHandler()
     SuppressScriptErrorsPopup()
     local db = ForeverErrorLogDB

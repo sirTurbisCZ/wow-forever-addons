@@ -22,7 +22,7 @@ L.HELP_LINES = {
   "/felog ui on|off — Blizzard scriptErrors popup",
 }
 L.LIST_HEADER = "%d error(s) — last 15:"
-L.DUMP_HINT = "full text is in ForeverErrorLogDB (WTF SavedVariables)"
+L.DUMP_HINT = "send WTF/.../SavedVariables/ForeverErrorLog.lua after /reload (sessionLog + errors)"
 L.CAPTURE_ON = "capture on"
 L.CAPTURE_OFF = "capture off"
 L.UI_ON = "scriptErrors popup on"
