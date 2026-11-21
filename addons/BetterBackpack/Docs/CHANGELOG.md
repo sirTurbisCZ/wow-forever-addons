@@ -1,5 +1,9 @@
 # BetterBackpack changelog
 
+## 1.1.9
+
+- **ESC:** `CloseBackpack` from `CloseSpecialWindows` hit replaced API → `onBagKey` **open** branch when `vis=false` (opened bags on ESC). Close-only when not user-visible; skip during `_bbEscRearm`/`_bbEscPass`. Fix `BagKeyTrace` forward order (nil call in `BagCombatDiag`).
+
 ## 1.1.8
 
 - **ESC (arch):** keep-shown `Show`+alpha0 on `ButtonFrameTemplate` still participates in ESC/CloseSpecialWindows on Forever even when **not** in `UISpecialFrames` (1.1.3 worked because shell was **Hidden**). Parked OOC: **transient `Hide` during `CloseSpecialWindows` only**, then re-arm keep-shown (combat B preserved). User-open: sync + normal UISpecial close. `_bbEscRearm` suppresses OnHide side effects.

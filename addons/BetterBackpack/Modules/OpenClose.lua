@@ -392,6 +392,32 @@ end
 
 local BAG_KEY_TRACE_MAX = 16
 
+local function BagKeyTrace(branch, detail)
+  local p = Profile()
+  if not (p and p.debug) then
+    return
+  end
+  local extra = detail and (" · " .. tostring(detail)) or ""
+  local line = "|cffc9a227BetterBackpack|r onBagKey · " .. tostring(branch) .. extra
+  if BetterBackpack.Print then
+    BetterBackpack.Print(line)
+  elseif DEFAULT_CHAT_FRAME then
+    DEFAULT_CHAT_FRAME:AddMessage(line)
+  end
+  local db = (Config and Config.EnsureDB and Config.EnsureDB()) or BetterBackpackDB
+  if db then
+    db.bagKeyTrace = db.bagKeyTrace or {}
+    db.bagKeyTrace[#db.bagKeyTrace + 1] = {
+      t = Now(),
+      branch = tostring(branch),
+      detail = detail and tostring(detail) or "",
+    }
+    while #db.bagKeyTrace > BAG_KEY_TRACE_MAX do
+      table.remove(db.bagKeyTrace, 1)
+    end
+  end
+end
+
 local function BagCombatDiag(phase)
   local p = Profile()
   if not (p and p.debug) then
@@ -419,32 +445,6 @@ local function BagCombatDiag(phase)
     keep,
     InCombat() and "alpha" or "show-hide"
   ))
-end
-
-local function BagKeyTrace(branch, detail)
-  local p = Profile()
-  if not (p and p.debug) then
-    return
-  end
-  local extra = detail and (" · " .. tostring(detail)) or ""
-  local line = "|cffc9a227BetterBackpack|r onBagKey · " .. tostring(branch) .. extra
-  if BetterBackpack.Print then
-    BetterBackpack.Print(line)
-  elseif DEFAULT_CHAT_FRAME then
-    DEFAULT_CHAT_FRAME:AddMessage(line)
-  end
-  local db = (Config and Config.EnsureDB and Config.EnsureDB()) or BetterBackpackDB
-  if db then
-    db.bagKeyTrace = db.bagKeyTrace or {}
-    db.bagKeyTrace[#db.bagKeyTrace + 1] = {
-      t = Now(),
-      branch = tostring(branch),
-      detail = detail and tostring(detail) or "",
-    }
-    while #db.bagKeyTrace > BAG_KEY_TRACE_MAX do
-      table.remove(db.bagKeyTrace, 1)
-    end
-  end
 end
 
 local function ReleaseStaleBusy()
@@ -978,6 +978,14 @@ local function onBagKey(src)
   src = src or "?"
   if inBagKey then
     BagKeyTrace("skip", src .. " inBagKey")
+    return
+  end
+  if src == "CloseBackpack" and not SessionOpen() then
+    BagKeyTrace("skip", "CloseBackpack already closed")
+    return
+  end
+  if src == "OpenBackpack" and SessionOpen() then
+    BagKeyTrace("skip", "OpenBackpack already open")
     return
   end
   local t = Now()
@@ -1829,6 +1837,15 @@ local function ApplyOpenAPIReplace()
     onBagKey("OpenBackpack")
   end)
   ReplaceOpen("CloseBackpack", function()
+    if BetterBackpack._bbEscRearm or BetterBackpack._bbEscPass then
+      return
+    end
+    if Layout and Layout.IsBagFrameVisible and not Layout.IsBagFrameVisible() then
+      return
+    end
+    if not (SessionOpen() or OursVisible()) then
+      return
+    end
     onBagKey("CloseBackpack")
   end)
 end
