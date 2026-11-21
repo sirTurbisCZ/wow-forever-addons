@@ -1,4 +1,7 @@
-# Playtest brief — BetterBackpack 0.5.49 (session reset)
+# Playtest brief — BetterBackpack 0.5.50 (B debounce + trace)
+
+**0.5.50**
+- **B stuck:** Twin toggle (AllBags+Backpack) debounced 140ms; `BagKeyChat` logs every branch in chat. `ReleaseStaleBusy` if invisible but busy. ToggleBackpack → `onBackpackToggle` (bag-bar native arm). CloseOurs pcall + always clears `closeBusy`.
 
 **0.5.49**
 - Stuck after 1st close: **`SessionOpen` = frame `IsShown` only** (not `bagsOpen`). **`ResetOverlaySessionState`** after every `CloseOurs` / `NotifyHidden`. `Layout.ForceHidden`. Unpark native ContainerFrames if left off-screen. B close suppress 0.1s.
