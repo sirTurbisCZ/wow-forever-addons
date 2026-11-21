@@ -2,7 +2,7 @@
 
 Plateband = Plateband or {}
 
-local CURRENT_SCHEMA = 5
+local CURRENT_SCHEMA = 6
 local MAX_ERRORS = 40
 local MAX_MSG = 2000
 
@@ -12,7 +12,7 @@ local Config = Plateband.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.1.11"
+Config.VERSION = "0.1.12"
 
 local function ProfileDefaults()
   return {
@@ -23,8 +23,8 @@ local function ProfileDefaults()
     showBand = true,
     -- Never replace/park native DebuffList (personal = Blizzard only).
     paintOverlay = false,
-    -- Append others' harmful icons Blizzard omitted beside native band.
-    mergeMissing = true,
+    -- 0.1.12 safe default: native DebuffList only (merge broke plates via name SetPoint).
+    mergeMissing = false,
     watchOn = false,
     watchInterval = 2,
     autoDiag = true,
@@ -129,6 +129,15 @@ function Config.EnsureDB()
     db.profile.paintOverlay = false
     db.profile.mergeMissing = true
     db.schemaVersion = 5
+    from = 5
+  end
+
+  if from < 6 then
+    EnsureProfile(db)
+    -- Name mutation broke Forever plates — force native-only until merge is opt-in safe.
+    db.profile.paintOverlay = false
+    db.profile.mergeMissing = false
+    db.schemaVersion = 6
   end
 
   EnsureProfile(db)

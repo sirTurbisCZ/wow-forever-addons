@@ -1,9 +1,8 @@
 --[[
   Plateband.Modules.Plates — native DebuffList stays fully visible.
-  Solo personal DoTs: leave 100% native (no duplicate paint).
-  Merge: party/nearby foreign harmful DoTs Blizzard omits — beside native band.
-  Name ABOVE auras (lift by icon height) — never tuck under DoTs (bar+2 was the
-  Golm/Pichy break). Never SetPoint DebuffList (Forever FORBIDDEN). No CLEU.
+  0.1.12 safe default: ZERO name mutation, merge OFF — Blizzard plates only.
+  Opt-in mergeMissing paints beside native (still never SetPoint DebuffList/name).
+  No CLEU / no HP recolor.
 ]]
 
 Plateband = Plateband or {}
@@ -995,33 +994,13 @@ end
 -- Forward decl: Layout anchors merge beside native (defined below).
 local NativeBandRightAnchor
 
---- Name ABOVE aura band for any plate with auras; merge LEFT→RIGHT of native.
---- Never SetPoint DebuffList. Never pin name at bar+2 (under DoTs — Golm/Pichy bug).
-local function LayoutAuraRowAboveName(unit, plate, mergeFb, painted)
+--- Anchor merge beside native only. NEVER ClearAllPoints/SetPoint the name
+--- (0.1.8–0.1.11 name lifts broke Forever plates — Golm/Pichy / “completely broken”).
+local function LayoutMergeBesideNative(unit, plate, mergeFb, painted)
   painted = tonumber(painted) or 0
-  local nameFS = PlateNameFS(plate)
-  local bar = HealthBar(plate)
-  local native = NativeDebuffList(plate)
-  local nativeN = CountNativeAuraRow(plate)
-  local needLift = (nativeN > 0) or (painted > 0)
+  -- Always undo any prior Plateband name mutation from older versions.
+  RestoreNameShift(unit, plate)
 
-  if not needLift then
-    RestoreNameShift(unit, plate)
-  elseif nameFS and bar then
-    SaveNamePoints(unit, nameFS)
-    pcall(function()
-      nameFS:ClearAllPoints()
-      -- Lift name fully above where native/merge icons sit.
-      local lift = IconSize() + OVERLAY_GAP_ABOVE + 4
-      nameFS:SetPoint("BOTTOM", bar, "TOP", 0, lift)
-    end)
-    local st = nameShifts[unit]
-    if st then
-      st.shifted = true
-    end
-  end
-
-  -- Friends: name lift only (no merge paint). Enemies: merge beside native.
   if IsPlayerOrFriendPlate(unit, plate) then
     return
   end
@@ -1029,6 +1008,8 @@ local function LayoutAuraRowAboveName(unit, plate, mergeFb, painted)
     return
   end
 
+  local bar = HealthBar(plate)
+  local native = NativeDebuffList(plate)
   mergeFb:ClearAllPoints()
   local right = NativeBandRightAnchor(plate)
   if right then
@@ -1036,11 +1017,15 @@ local function LayoutAuraRowAboveName(unit, plate, mergeFb, painted)
   elseif native then
     mergeFb:SetPoint("LEFT", native, "RIGHT", OVERLAY_PAD, 0)
   elseif bar then
-    -- Same vertical band as native (just above health), name already lifted above.
     mergeFb:SetPoint("BOTTOM", bar, "TOP", 0, OVERLAY_GAP_ABOVE)
   else
     mergeFb:SetPoint("BOTTOM", plate, "TOP", 0, OVERLAY_GAP_ABOVE)
   end
+end
+
+-- Back-compat alias for any lingering call sites.
+local function LayoutAuraRowAboveName(unit, plate, mergeFb, painted)
+  LayoutMergeBesideNative(unit, plate, mergeFb, painted)
 end
 
 local function ClearOverlay(unit)
@@ -1573,11 +1558,11 @@ local function PaintMergeMissing(unit, plate)
   end
 
   EnsureNativeVisible(plate)
+  RestoreNameShift(unit, plate)
 
-  -- Friend/party plates: no merge paint; still lift name above native auras.
+  -- Friend/party plates: never merge.
   if IsPlayerOrFriendPlate(unit, plate) then
     ClearFallback(unit)
-    LayoutAuraRowAboveName(unit, plate, nil, 0)
     return 0
   end
 
@@ -1593,22 +1578,18 @@ local function PaintMergeMissing(unit, plate)
     if type(unit) == "string" and unit ~= "target" then
       CollectPlayerOwnedKeys(unit, skipKeys)
     end
-    -- allowSecretUnknown: Forever often secrets ownership+FileID on foreign DoTs.
     CollectUnitAuraMissing("target", skipKeys, missing, maxN, true)
     if type(unit) == "string" and unit ~= "target" then
       CollectUnitAuraMissing(unit, skipKeys, missing, maxN, true)
     end
     CollectTargetFrameMissing(skipKeys, missing, maxN)
   else
-    -- Non-target enemy: unit API only (allow secret unknowns — TF is target-only).
     CollectPlayerOwnedKeys(unit, skipKeys)
     CollectUnitAuraMissing(unit, skipKeys, missing, maxN, true)
   end
 
   if #missing == 0 then
     ClearFallback(unit)
-    -- Still lift name above native DoTs (Golm) — never bar+2 under icons.
-    LayoutAuraRowAboveName(unit, plate, nil, 0)
     return 0
   end
 
@@ -1638,7 +1619,6 @@ local function PaintMergeMissing(unit, plate)
   if painted == 0 then
     fb:Hide()
     fb._painted = 0
-    LayoutAuraRowAboveName(unit, plate, nil, 0)
     return 0
   end
 
@@ -1652,8 +1632,7 @@ local function PaintMergeMissing(unit, plate)
   fb:Show()
   fb._painted = painted
 
-  -- Merge beside native; tuck enemy name under the band.
-  LayoutAuraRowAboveName(unit, plate, fb, painted)
+  LayoutMergeBesideNative(unit, plate, fb, painted)
   return painted
 end
 
@@ -1679,10 +1658,10 @@ local function UpdateOverlay(unit, plate)
   end
 
   local p = Profile()
-  -- paintOverlay=false: do not replace native. mergeMissing: append others' omitted DoTs.
-  if p.mergeMissing == false then
-    ClearFallback(unit)
-    RestoreNameShift(unit, plate)
+  -- 0.1.12 safe default: mergeMissing=false → native DebuffList only, no chrome.
+  ClearFallback(unit)
+  RestoreNameShift(unit, plate)
+  if p.mergeMissing ~= true then
     return
   end
 
@@ -2037,7 +2016,7 @@ end
 
 function Mod.Start()
   acCreateFailed = false
-  -- Always wipe any leftover overlay chrome (0.1.3–0.1.4 could cover name).
+  -- Always wipe any leftover overlay chrome + undo name mutation from ≤0.1.11.
   for unit in pairs(overlays) do
     ClearOverlay(unit)
     overlays[unit] = nil
@@ -2045,6 +2024,19 @@ function Mod.Start()
   for unit in pairs(fallbacks) do
     ClearFallback(unit)
     fallbacks[unit] = nil
+  end
+  for unit in pairs(nameShifts) do
+    RestoreNameShift(unit, PlateFor(unit))
+    nameShifts[unit] = nil
+  end
+  -- Also restore names on currently live plates (shift table may be empty after reload).
+  local live = EnumerateLivePlates()
+  for i = 1, #live do
+    local u = live[i].unit
+    if u then
+      RestoreNameShift(u, live[i].plate)
+      EnsureNativeVisible(live[i].plate)
+    end
   end
   if started then
     RefreshAll()

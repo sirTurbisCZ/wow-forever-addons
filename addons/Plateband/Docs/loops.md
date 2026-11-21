@@ -1,43 +1,23 @@
 # Plateband — aura / layout loops
 
-Version: **0.1.11**
+Version: **0.1.12**
 
-## Merge-missing (enemy plates)
+## Safe default (native DebuffList only)
 
 ```mermaid
 flowchart TD
-  ev[NAME_PLATE / TARGET / UNIT_AURA / ticker 0.25s] --> refresh[RefreshAll / UpdateOverlay]
-  refresh --> friend{Friend or party plate?}
-  friend -->|yes| restore[RestoreNameShift + no paint]
-  friend -->|no| merge{mergeMissing?}
-  merge -->|no| restore2[RestoreNameShift]
-  merge -->|yes| paint[PaintMergeMissing]
-  paint --> target{Is target plate?}
-  target -->|yes| src[TF auraPools + C_UnitAuras HARMFUL<br/>allowSecretUnknown]
-  target -->|no| unitOnly[C_UnitAuras HARMFUL<br/>allowSecretUnknown]
-  src --> skip[skipKeys = native + player-owned]
-  unitOnly --> skip
-  skip --> missing{missing icons?}
-  missing -->|no| clear[ClearFallback + RestoreNameShift]
-  missing -->|yes| fb[Paint fallback textures]
-  fb --> layout[LayoutAuraRowAboveName]
-  layout --> beside[Merge LEFT of native rightmost]
-  layout --> name[Enemy name BOTTOM of health TOP +2]
+  ev[NAME_PLATE / TARGET / UNIT_AURA / ticker] --> upd[UpdateOverlay]
+  upd --> native[EnsureNativeVisible DebuffList alpha=1]
+  upd --> clear[ClearFallback + RestoreNameShift]
+  upd --> mergeFlag{mergeMissing?}
+  mergeFlag -->|false default| stop[Stop — Blizzard layout untouched]
+  mergeFlag -->|true opt-in| paint[PaintMergeMissing beside native]
+  paint --> anchor[LayoutMergeBesideNative — no name SetPoint]
 ```
-
-## Friend / party plates (Pichy)
-
-- No merge paint; **do** lift name above native buff/debuff row.
-- Never SetPoint DebuffList (Forever FORBIDDEN).
-- `CountShownAuraKids` requires `Icon` / `icon` / `GetAuraInstance`.
-
-## Name vs DoTs (Golm / Pichy)
-
-- Lift = `IconSize + gap` above health bar — name **above** auras.
-- Forbidden: pin name at `bar+2` (under DoTs) — that was the 0.1.8–0.1.10 layout break.
 
 ## Hard rules
 
 - Never park/hide native DebuffList.
 - Never SetPoint DebuffList (Forever FORBIDDEN).
+- Never ClearAllPoints / SetPoint UnitFrame.name (0.1.8–0.1.11 broke plates).
 - No CLEU core · no plate HP recolor.

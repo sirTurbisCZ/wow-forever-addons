@@ -2,9 +2,9 @@
 
 Companion for Forever nameplate auras. Looks and feels like Blizzard’s native DebuffList.
 
-- **Your** personal DoTs stay 100% native (Plateband does not paint them).
-- On **enemy** plates (especially the current target), Plateband appends **only** harmful icons Blizzard omitted — same band, LEFT→RIGHT of native DebuffList (party/nearby foreign DoTs). TF harvest uses `auraPools` + brute Contextual walk.
-- **Name sits above auras** on friend and enemy plates (lift by icon height). Never pin the name under DoTs. Never `ClearAllPoints` on native DebuffList.
+- **Default (0.1.12+):** native DebuffList only — Plateband does not move names or paint merge icons.
+- Personal DoTs stay 100% Blizzard. Never parks or hides native DebuffList.
+- Optional merge (`mergeMissing`) can append omitted party/nearby DoTs beside native — off by default after layout breakage in 0.1.8–0.1.11.
 
 ## Install
 
@@ -26,12 +26,12 @@ Developers (monorepo): `./scripts/link-addon.sh Plateband` then `/reload`.
 | Command | What it does |
 |---------|----------------|
 | `/pb help` | Help and status |
-| `/pb on` / `/pb off` | Enable or disable merge painting |
+| `/pb on` / `/pb off` | Enable or disable the module |
 | `/pb diagnose` | Compact status card (also auto-saved) |
 | `/pb dump` | Status, recent errors, session log tail |
 | `/pb watch on` / `/pb watch off` | Print one-line card every ~2s (off by default; SV still logs) |
-| `/pb safe` | Turn merge off and clear overlays |
-| `/pb reset` | Restore default settings |
+| `/pb safe` | Turn module off and clear overlays |
+| `/pb reset` | Restore default settings (native-only) |
 | `/pb size <n>` | Icon size hint (12–32) |
 
 Alias: `/plateband`.
@@ -53,25 +53,24 @@ If Forever Error Log is installed, also send:
 
 ## What it does
 
-- Leaves Blizzard DebuffList fully visible for personal / native auras.
-- On enemy plates, diffs TargetFrame (target) + unit harmful auras against native icons and paints **only missing** others’ DoTs to the **right** of the native band. Friend plates are never rewritten.
-- Click-through overlays — plate click still selects the unit.
+- Leaves Blizzard DebuffList fully visible.
+- Click-through — plate click still selects the unit.
 - Auto-saves throttled diagnose cards into SavedVariables during play.
-- Degrades gracefully when aura APIs are empty (no combat-log core).
+- Merge of omitted foreign DoTs is **opt-in** (`mergeMissing`) and does not reanchor the name.
 
 ## What it does not do
 
 - No bag UI, party HUD, or full plate skin rewrite.
 - Does not recolor nameplate health bars.
 - Does not use the combat log as a DoT source.
-- Does not replace or hide native DebuffList.
+- Does not replace, hide, or `ClearAllPoints` native DebuffList / name text (safe default).
 
 ## Troubleshooting
 
 | Symptom | What to try |
 |---------|-------------|
 | Addon does not load | Folder name must be exactly `Plateband`; `/reload` |
-| No extra icons | Expected solo — native shows your DoTs. With party DoTs on target, check `/pb diagnose` (`fb` > 0 when merge paints) |
-| Icons cover the name | `/pb safe` and send `Plateband.lua` after `/reload` |
+| Weird / broken plates after older Plateband | `/reload` on **0.1.12+** (native-only; undoes prior name pins) |
+| Want party DoT merge again | Advanced: set `PlatebandDB.profile.mergeMissing = true` then `/reload` (experimental) |
 | Errors / weird plates | `/pb safe`, then `/felog list` if Forever Error Log is installed |
 | Dual aura rows with an old Retinue install | Disable or unlink Retinue; Plateband owns plates only |
