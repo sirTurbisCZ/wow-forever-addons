@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.14).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.15).
   Forever: never SetToplevel / SetFrameStrata (ADDON_ACTION_BLOCKED).
   Chrome metrics from Baganator Forever Blizzard skin + ContainerFrameCombinedBags:
     ButtonFrameOffset=6, Bg/TopTile @ (6,-21), NineSlice borders, Inset hidden.
@@ -328,6 +328,10 @@ function Layout.ClassifyBagSlot(bag, slot)
   end
   return "other", info
 end
+
+-- While open the frame only grows (new loot); collapse / search / using items never shrink it.
+-- Reset on close, so the next open refits to the full unfiltered layout.
+local stickyCols, stickyH
 
 local function IsFiltering()
   local S, F = Feat("Search"), Feat("Filter")
@@ -936,7 +940,7 @@ local function DoLayout()
     -- only change what is drawn inside; the window never resizes for them.
     local sizing = IsFiltering() and MergedLists(CollectBuckets(true)) or lists
 
-    -- Hug content: grid is as wide as the widest lane (capped at maxCols).
+    -- Grid width = widest unfiltered lane (capped at maxCols), never narrower than this open's max.
     local widest = 0
     for _, list in pairs(sizing) do
       if #list > widest then
@@ -944,6 +948,9 @@ local function DoLayout()
       end
     end
     local cols = math.max(math.min(widest, maxCols), math.min(MIN_COLS, maxCols))
+    if stickyCols and stickyCols > cols then
+      cols = math.min(stickyCols, maxCols)
+    end
     local contentW = cols * SLOT + (cols - 1) * PAD
 
     local lanesH = 0
@@ -1058,6 +1065,11 @@ local function DoLayout()
     local contentH = math.max(y, lanesH, 40)
     local width = INSET_X + contentW + INSET_X
     local height = TOP_CHROME + contentH + BOT_CHROME
+    if stickyH and stickyH > height then
+      height = stickyH
+      contentH = height - TOP_CHROME - BOT_CHROME
+    end
+    stickyCols, stickyH = cols, height
     content:ClearAllPoints()
     -- Always from main (not Inset) — Inset stretch left empty black below Other.
     content:SetPoint("TOPLEFT", main, "TOPLEFT", INSET_X, -TOP_CHROME)
@@ -1447,7 +1459,7 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local CHROME_VER = 28 -- 0.5.14: broom/gear = Close size, flush left of X; flat gear
+local CHROME_VER = 29 -- 0.5.15: broom/gear in Close chrome; sticky frame size
 local chromeLogged = false
 local customChromeHidden = false
 
@@ -1613,94 +1625,6 @@ local function SetStateArt(btn, which, d)
   end)
 end
 
---[[
-  Real CombinedBags broom: adopt the live BagItemAutoSortButton (Blizzard art, size,
-  tooltip). Not protected, so SetParent is safe; OnClick routes to Tidy (OOC guard +
-  refresh suppression). If Blizzard re-parents it (CombinedBags update) while ours is
-  open, re-grab on the next frame — never inside the SetParent hook (no thrash).
-]]
-local adoptingSort = false
-local nativeSortHooked = false
-
-local function AdoptNativeAutoSort(frame, anchor, level, gap, w, h)
-  local native = _G.BagItemAutoSortButton
-  if not native or not frame then
-    return nil
-  end
-  adoptingSort = true
-  local ok = pcall(function()
-    if native:GetParent() ~= frame then
-      native:SetParent(frame)
-    end
-    if not native._bbNativeW then
-      native._bbNativeW, native._bbNativeH = native:GetWidth(), native:GetHeight()
-    end
-    native:SetSize(w, h)
-    native:ClearAllPoints()
-    native:SetPoint("RIGHT", anchor, "LEFT", -gap, 0)
-    native:SetFrameLevel(level)
-    native:SetAlpha(1)
-    native:EnableMouse(true)
-    native:Show()
-  end)
-  adoptingSort = false
-  if not ok then
-    return nil
-  end
-  if not native._bbTidyWired then
-    native._bbTidyWired = true
-    pcall(function()
-      native:SetScript("OnClick", function()
-        local T = BetterBackpack.Modules.Tidy
-        if T and T.SortBags then
-          T.SortBags()
-        end
-      end)
-    end)
-  end
-  if not nativeSortHooked then
-    nativeSortHooked = true
-    pcall(function()
-      hooksecurefunc(native, "SetParent", function(_, parent)
-        if adoptingSort or parent == main then
-          return
-        end
-        if C_Timer and C_Timer.After then
-          C_Timer.After(0, function()
-            if main and Layout.IsShown() and Profile().enabled then
-              pcall(EnsureTitleChrome, main)
-            end
-          end)
-        end
-      end)
-    end)
-  end
-  return native
-end
-
-function Layout.ReleaseNativeAutoSort()
-  local native = _G.BagItemAutoSortButton
-  if not native or not main or native:GetParent() ~= main then
-    return
-  end
-  adoptingSort = true
-  pcall(function()
-    local combined = ContainerFrameCombinedBags
-    if native._bbNativeW then
-      native:SetSize(native._bbNativeW, native._bbNativeH)
-    end
-    if combined then
-      native:SetParent(combined)
-      native:ClearAllPoints()
-      native:SetPoint("TOPRIGHT", combined, "TOPRIGHT", -40, -4)
-    else
-      native:SetParent(UIParent)
-      native:Hide()
-    end
-  end)
-  adoptingSort = false
-end
-
 -- ContainerFrame.xml BagItemAutoSortButton: 25×23, highlight 21×20 centered.
 local SQUARE_HILIGHT = {
   file = "Interface\\Buttons\\ButtonHilight-Square",
@@ -1785,6 +1709,154 @@ local function StyleAutoSortTwin(btn, kind, w, h)
   btn._bbChromeStyled = true
 end
 
+--[[
+  broom | gear in the Close button's own chrome (0.5.15): plate = Close normal / pushed /
+  highlight art read live (same atlas or file, same size). Its X is covered by a patch of
+  the same plate's interior (top-middle band, clear of the X arms); a gold glyph sits on
+  top. Broom glyph = autosort atlas cropped inside its bevel, drawn ADD so its dark plate
+  drops out and only the gold broom remains. No foreign plates, no BagItemAutoSortButton reparent.
+]]
+local function TexRegion(tex)
+  if not tex then
+    return nil
+  end
+  local atlas = SafeAtlas(tex)
+  if atlas then
+    if not (C_Texture and C_Texture.GetAtlasInfo) then
+      return nil
+    end
+    local ok, info = pcall(C_Texture.GetAtlasInfo, atlas)
+    local file = ok and info and (info.file or info.filename)
+    if file and info.leftTexCoord then
+      return file, info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord
+    end
+    return nil
+  end
+  local file = SafeTexture(tex)
+  if not file then
+    return nil
+  end
+  local ok, ulx, uly, _, _, _, _, lrx, lry = pcall(tex.GetTexCoord, tex)
+  if not ok or type(ulx) ~= "number" or IsSecret(ulx) or type(lry) ~= "number" then
+    ulx, uly, lrx, lry = 0, 0, 1, 1
+  end
+  return file, ulx, lrx, uly, lry
+end
+
+local function SubRegion(t, file, l, r, top, b, u0, u1, v0, v1)
+  t:SetTexture(file)
+  t:SetTexCoord(l + (r - l) * u0, l + (r - l) * u1, top + (b - top) * v0, top + (b - top) * v1)
+end
+
+local function PaintCover(btn, pushed)
+  local close, cover = btn._bbCloseRef, btn._bbCover
+  if not (close and cover) then
+    return
+  end
+  local file, l, r, t, b = TexRegion(pushed and close:GetPushedTexture() or close:GetNormalTexture())
+  if not file then
+    file, l, r, t, b = TexRegion(close:GetNormalTexture())
+  end
+  if file then
+    SubRegion(cover, file, l, r, t, b, 0.44, 0.56, 0.20, 0.30)
+    cover:Show()
+  else
+    cover:Hide()
+  end
+end
+
+local function PaintGlyph(icon, kind, w, h)
+  icon:SetBlendMode("BLEND")
+  icon:SetDesaturated(false)
+  icon:SetVertexColor(1, 1, 1)
+  icon:SetTexCoord(0, 1, 0, 1)
+  local m = math.min(w, h)
+  if kind == "tidy" then
+    icon:SetSize(math.floor(m * 0.8 + 0.5), math.floor(m * 0.8 + 0.5))
+    local ok, info = false, nil
+    if C_Texture and C_Texture.GetAtlasInfo then
+      ok, info = pcall(C_Texture.GetAtlasInfo, "bags-button-autosort-up")
+    end
+    local file = ok and info and (info.file or info.filename)
+    if file and info.leftTexCoord then
+      SubRegion(icon, file, info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord,
+        0.16, 0.84, 0.16, 0.84)
+      icon:SetBlendMode("ADD")
+    else
+      icon:SetTexture("Interface\\Buttons\\UI-RefreshButton")
+    end
+    return
+  end
+  icon:SetSize(math.floor(m * 0.62 + 0.5), math.floor(m * 0.62 + 0.5))
+  for _, atlas in ipairs(GEAR_ATLASES) do
+    if AtlasExists(atlas) and pcall(icon.SetAtlas, icon, atlas) then
+      icon:SetDesaturated(true)
+      icon:SetVertexColor(1, 0.82, 0.18)
+      return
+    end
+  end
+  icon:SetTexture("Interface\\Buttons\\UI-OptionsButton")
+  icon:SetTexCoord(0.15, 0.85, 0.15, 0.85)
+end
+
+local function StyleCloseTwin(btn, kind, close, w, h)
+  btn:SetSize(w, h)
+  pcall(function()
+    btn:SetDisabledTexture(nil)
+  end)
+  local n = NativeArt(close:GetNormalTexture(), close)
+  local p = NativeArt(close:GetPushedTexture(), close)
+  local hl = NativeArt(close.GetHighlightTexture and close:GetHighlightTexture(), close)
+  SetStateArt(btn, "Normal", n)
+  SetStateArt(btn, "Pushed", p or n)
+  SetStateArt(btn, "Highlight", hl or SQUARE_HILIGHT)
+  btn._bbCloseRef = close
+
+  if btn._bbFill then
+    btn._bbFill:Hide()
+  end
+  local cover = btn._bbCover
+  if not cover then
+    cover = btn:CreateTexture(nil, "ARTWORK", nil, 7)
+    btn._bbCover = cover
+  end
+  local inset = math.floor(math.min(w, h) * 0.18 + 0.5)
+  cover:ClearAllPoints()
+  cover:SetPoint("TOPLEFT", btn, "TOPLEFT", inset, -inset)
+  cover:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -inset, inset)
+  PaintCover(btn, false)
+
+  local icon = btn._bbIcon
+  if not icon then
+    icon = btn:CreateTexture(nil, "OVERLAY")
+    btn._bbIcon = icon
+  end
+  if not btn._bbCloseHooks then
+    btn._bbCloseHooks = true
+    btn:HookScript("OnMouseDown", function(self)
+      if self._bbCloseRef then
+        PaintCover(self, true)
+      end
+      if self._bbIcon then
+        self._bbIcon:SetPoint("CENTER", self, "CENTER", 1, -1)
+      end
+    end)
+    btn:HookScript("OnMouseUp", function(self)
+      if self._bbCloseRef then
+        PaintCover(self, false)
+      end
+      if self._bbIcon then
+        self._bbIcon:SetPoint("CENTER", self, "CENTER", 0, 0)
+      end
+    end)
+  end
+  icon:ClearAllPoints()
+  icon:SetPoint("CENTER", btn, "CENTER", 0, 0)
+  PaintGlyph(icon, kind, w, h)
+  icon:Show()
+  btn._bbChromeStyled = true
+end
+
 local function EnsureChromeButton(existing, globalName, frame)
   local btn = existing
   if btn and btn._bbChrome17 then
@@ -1808,7 +1880,7 @@ end
 local function EnsureBagShelvesTitleChrome(frame, close)
   HideLegacyChromeOnce()
 
-  -- broom | gear | X: all three exactly the Close button's size, flush in one row.
+  -- broom | gear | X: all three exactly the Close button's size, even gap, one row.
   local w, h = MeasureAutoSortSize()
   if close then
     local cw, ch = close:GetWidth(), close:GetHeight()
@@ -1817,7 +1889,7 @@ local function EnsureBagShelvesTitleChrome(frame, close)
     end
   end
   local level = (close and close:GetFrameLevel()) or ((frame:GetFrameLevel() or 1) + 520)
-  local gap = 0
+  local gap = 2
 
   -- gear immediately left of Close (broom | gear | X)
   local priorGear = frame.settingsBtn
@@ -1832,7 +1904,11 @@ local function EnsureBagShelvesTitleChrome(frame, close)
     gear:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -32, -4)
   end
   gear:SetFrameLevel(level)
-  StyleAutoSortTwin(gear, "settings", w, h)
+  if close then
+    StyleCloseTwin(gear, "settings", close, w, h)
+  else
+    StyleAutoSortTwin(gear, "settings", w, h)
+  end
   if not gear._bbChromeWired then
     gear._bbChromeWired = true
     gear:SetScript("OnEnter", function(self)
@@ -1860,20 +1936,6 @@ local function EnsureBagShelvesTitleChrome(frame, close)
   gear:Show()
   frame.settingsBtn = gear
 
-  local native = AdoptNativeAutoSort(frame, gear, level, gap, w, h)
-  local twin = _G.BetterBackpackTidyBtn17
-  if native then
-    if twin then
-      pcall(function()
-        twin:Hide()
-        twin:EnableMouse(false)
-      end)
-    end
-    frame.sortBtn = native
-    LogChromeOnce(native, gear, close)
-    return native, gear
-  end
-
   local priorTidy = frame.sortBtn
   if priorTidy and (priorTidy == _G.BagItemAutoSortButton or not priorTidy._bbChrome17) then
     priorTidy = nil
@@ -1882,7 +1944,11 @@ local function EnsureBagShelvesTitleChrome(frame, close)
   tidy:ClearAllPoints()
   tidy:SetPoint("RIGHT", gear, "LEFT", -gap, 0)
   tidy:SetFrameLevel(level)
-  StyleAutoSortTwin(tidy, "tidy", w, h)
+  if close then
+    StyleCloseTwin(tidy, "tidy", close, w, h)
+  else
+    StyleAutoSortTwin(tidy, "tidy", w, h)
+  end
   if not tidy._bbChromeWired then
     tidy._bbChromeWired = true
     tidy:SetScript("OnEnter", function(self)
@@ -2279,11 +2345,8 @@ end
 
 function Layout.Hide()
   focusBagID = nil
+  stickyCols, stickyH = nil, nil
   ClearBagMatchGlows()
-  local p = Profile()
-  if not p.enabled or p.safeMode then
-    Layout.ReleaseNativeAutoSort()
-  end
   local S = BetterBackpack.Modules.Settings
   if S and S.Hide then
     S.Hide()
