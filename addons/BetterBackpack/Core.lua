@@ -229,13 +229,22 @@ local blockedQuietUntil = 0
 bootFrame:SetScript("OnEvent", function(_, event, ...)
   if event == "ADDON_LOADED" then
     local name = ...
-    if name ~= addonName then
+    if name == addonName then
+      EnsureDB()
+      BulkTransfer = BT()
+      if not BulkTransfer or not BulkTransfer.TransferLane then
+        Print("ERROR: BulkTransfer failed to load — check FrameXML.log / TOC")
+      end
       return
     end
-    EnsureDB()
-    BulkTransfer = BT()
-    if not BulkTransfer or not BulkTransfer.TransferLane then
-      Print("ERROR: BulkTransfer failed to load — check FrameXML.log / TOC")
+    if ModuleWanted() and OpenClose and OpenClose.EnsureBagKeyReplace then
+      if C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+          SafeCall("hooks", OpenClose.EnsureBagKeyReplace)
+        end)
+      else
+        SafeCall("hooks", OpenClose.EnsureBagKeyReplace)
+      end
     end
     return
   end

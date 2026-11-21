@@ -390,6 +390,8 @@ local function SessionOpen()
   return OursVisible()
 end
 
+local BAG_KEY_TRACE_MAX = 16
+
 local function BagKeyChat(branch, detail)
   local extra = detail and (" · " .. tostring(detail)) or ""
   local line = "|cffc9a227BetterBackpack|r onBagKey · " .. tostring(branch) .. extra
@@ -397,6 +399,18 @@ local function BagKeyChat(branch, detail)
     BetterBackpack.Print(line)
   elseif DEFAULT_CHAT_FRAME then
     DEFAULT_CHAT_FRAME:AddMessage(line)
+  end
+  local db = BetterBackpackDB
+  if db then
+    db.bagKeyTrace = db.bagKeyTrace or {}
+    db.bagKeyTrace[#db.bagKeyTrace + 1] = {
+      t = Now(),
+      branch = tostring(branch),
+      detail = detail and tostring(detail) or "",
+    }
+    while #db.bagKeyTrace > BAG_KEY_TRACE_MAX do
+      table.remove(db.bagKeyTrace, 1)
+    end
   end
 end
 
@@ -995,6 +1009,7 @@ local function RestoreBlizzardToggle(globalName)
   _G[globalName] = orig
   OpenClose["_orig_" .. globalName] = nil
   OpenClose["_replaced_" .. globalName] = nil
+  OpenClose["_bb_wrap_" .. globalName] = nil
 end
 
 local function RestoreBlizzardOpen(globalName)
@@ -1005,6 +1020,7 @@ local function RestoreBlizzardOpen(globalName)
   _G[globalName] = orig
   OpenClose["_orig_" .. globalName] = nil
   OpenClose["_replaced_" .. globalName] = nil
+  OpenClose["_bb_wrap_" .. globalName] = nil
 end
 
 function OpenClose.RestoreBlizzardToggles()
@@ -1021,16 +1037,27 @@ end
 OpenClose.RestoreAllBlizzardBagToggles = OpenClose.RestoreBlizzardToggles
 
 local function ReplaceToggle(globalName, handler)
-  local orig = _G[globalName]
+  local wrapKey = "_bb_wrap_" .. globalName
+  if OpenClose["_replaced_" .. globalName] and _G[globalName] == OpenClose[wrapKey] then
+    return true
+  end
+  local orig = OpenClose["_orig_" .. globalName]
+  if type(orig) ~= "function" then
+    orig = OpenClose["_blizzard_" .. globalName]
+  end
+  if type(orig) ~= "function" then
+    local fn = _G[globalName]
+    if type(fn) == "function" and fn ~= OpenClose[wrapKey] then
+      orig = fn
+      OpenClose["_blizzard_" .. globalName] = orig
+    end
+  end
   if type(orig) ~= "function" then
     return false
   end
-  if OpenClose["_replaced_" .. globalName] then
-    return true
-  end
   OpenClose["_replaced_" .. globalName] = true
   OpenClose["_orig_" .. globalName] = orig
-  _G[globalName] = function(...)
+  local wrapper = function(...)
     if not EnabledReplace() then
       return orig(...)
     end
@@ -1043,6 +1070,8 @@ local function ReplaceToggle(globalName, handler)
       end
     end
   end
+  OpenClose[wrapKey] = wrapper
+  _G[globalName] = wrapper
   return true
 end
 
@@ -1602,16 +1631,27 @@ end
 local BAG_KEY_TOGGLES = { "ToggleAllBags", "ToggleBackpack" }
 
 local function ReplaceOpen(globalName, handler)
-  local orig = _G[globalName]
+  local wrapKey = "_bb_wrap_" .. globalName
+  if OpenClose["_replaced_" .. globalName] and _G[globalName] == OpenClose[wrapKey] then
+    return true
+  end
+  local orig = OpenClose["_orig_" .. globalName]
+  if type(orig) ~= "function" then
+    orig = OpenClose["_blizzard_" .. globalName]
+  end
+  if type(orig) ~= "function" then
+    local fn = _G[globalName]
+    if type(fn) == "function" and fn ~= OpenClose[wrapKey] then
+      orig = fn
+      OpenClose["_blizzard_" .. globalName] = orig
+    end
+  end
   if type(orig) ~= "function" then
     return false
   end
-  if OpenClose["_replaced_" .. globalName] then
-    return true
-  end
   OpenClose["_replaced_" .. globalName] = true
   OpenClose["_orig_" .. globalName] = orig
-  _G[globalName] = function(...)
+  local wrapper = function(...)
     if not EnabledReplace() then
       return orig(...)
     end
@@ -1624,6 +1664,8 @@ local function ReplaceOpen(globalName, handler)
       end
     end
   end
+  OpenClose[wrapKey] = wrapper
+  _G[globalName] = wrapper
   return true
 end
 
@@ -1681,20 +1723,23 @@ function OpenClose.EnsureBagKeyReplace()
 end
 
 function OpenClose.InstallHooks()
-  if hooksInstalled then
-    return
+  local first = not hooksInstalled
+  if first then
+    hooksInstalled = true
   end
-  hooksInstalled = true
   local ok, err = pcall(ApplyBagKeyReplace)
-  if C_Timer and C_Timer.After then
+  if first and C_Timer and C_Timer.After then
     C_Timer.After(0, function()
       pcall(ApplyBagKeyReplace)
     end)
     C_Timer.After(1, function()
       pcall(ApplyBagKeyReplace)
     end)
+    C_Timer.After(3, function()
+      pcall(ApplyBagKeyReplace)
+    end)
   end
-  if ok then
+  if first and ok then
     local n = 0
     if OpenClose._replaced_ToggleAllBags then
       n = n + 1
@@ -1713,7 +1758,7 @@ function OpenClose.InstallHooks()
     else
       LogHooksOnce("bag-key toggles missing · /bb only")
     end
-  elseif BetterBackpack and BetterBackpack.RecordError then
+  elseif first and BetterBackpack and BetterBackpack.RecordError then
     BetterBackpack.RecordError("hooks", err)
   end
 end
