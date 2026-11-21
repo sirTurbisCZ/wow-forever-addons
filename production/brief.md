@@ -1,4 +1,9 @@
-# Playtest brief — BetterBackpack 0.5.66 (OpenClose parse)
+# Playtest brief — BetterBackpack 0.5.67 (OpenClose revert + load)
+
+**0.5.67**
+- **OpenClose** = git **0.5.62** (`a6367fd`) body; **all block comments removed** (WoW lexer); bag-bar `_G` loop fix; combat **OpenOurs** -> `Layout.CombatShow` + cold-preload hint (Close stays `Layout.Hide` -> `CombatHide`).
+- Live errors were still `OpenClose.lua:1398 unexpected symbol near 'if'` (FrameXML) / `532 '=' expected near 'and'` (FELog) with symlink at **0.5.66**.
+- Expect `loaded v0.5.67`, FrameXML clean, B hooks on.
 
 **0.5.66**
 - **Load fix:** WoW Lua lexer — no inline `--[[ ... ]]` after multiline blocks; `_G[name]` loops without `]]` token (false long-comment close). ASCII combat trace.
