@@ -1,5 +1,9 @@
 # BetterBackpack changelog
 
+## 1.1.8
+
+- **ESC (arch):** keep-shown `Show`+alpha0 on `ButtonFrameTemplate` still participates in ESC/CloseSpecialWindows on Forever even when **not** in `UISpecialFrames` (1.1.3 worked because shell was **Hidden**). Parked OOC: **transient `Hide` during `CloseSpecialWindows` only**, then re-arm keep-shown (combat B preserved). User-open: sync + normal UISpecial close. `_bbEscRearm` suppresses OnHide side effects.
+
 ## 1.1.7
 
 - **ESC:** sync `UISpecialFrames` immediately before every `CloseSpecialWindows` (visible = listed, parked = not). Fallback `CloseFromEsc` if visible after orig. `NotifyHidden` ESC path + `OnHide` repark keep-shown shell after Blizzard `Hide`. `/bb debug on` → `bagEscTrace` + chat `esc ·` lines.

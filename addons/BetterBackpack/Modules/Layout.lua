@@ -2585,7 +2585,10 @@ function Layout.EnsureMain()
     end
   end)
   built:SetScript("OnHide", function(self)
-    if BetterBackpack._bbBuilding or BetterBackpack._bbClosing then
+    if BetterBackpack._bbBuilding or BetterBackpack._bbClosing or BetterBackpack._bbEscRearm then
+      if BetterBackpack._bbEscRearm and Layout.SyncBagUISpecialFrame then
+        Layout.SyncBagUISpecialFrame()
+      end
       return
     end
     local OpenClose = BetterBackpack.Modules.OpenClose
@@ -2881,6 +2884,20 @@ local function SyncBagUISpecialFrame()
   Layout.SyncBagUISpecialFrame()
 end
 
+local function RearmCombatParkFrame(f)
+  if not f then
+    return
+  end
+  BetterBackpack._bbKeepShown = true
+  combatVisuallyHidden = true
+  pcall(function()
+    f:Show()
+    f:SetAlpha(0)
+    f:EnableMouse(false)
+  end)
+  Layout.SyncBagUISpecialFrame()
+end
+
 function Layout.InstallEscGuard()
   if Layout._escGuardInstalled then
     return
@@ -2893,20 +2910,44 @@ function Layout.InstallEscGuard()
   CloseSpecialWindows = function(...)
     Layout.SyncBagUISpecialFrame()
     local userVisible = Layout.IsBagFrameVisible()
-    local listed = BagFrameListedInUISpecial()
-    Layout.EscDebugTrace("pre-close", string.format("listed=%s", tostring(listed)))
-    BetterBackpack._bbEscPass = userVisible and true or false
-    local ret = orig(...)
-    Layout.EscDebugTrace("post-close", string.format("origRet=%s", tostring(ret)))
-    BetterBackpack._bbEscPass = nil
-    if userVisible and Layout.IsBagFrameVisible() then
-      local OC = BetterBackpack.Modules and BetterBackpack.Modules.OpenClose
-      if OC and OC.CloseFromEsc then
-        if OC.CloseFromEsc() then
-          return true
+    Layout.EscDebugTrace("pre", string.format("vis=%s", tostring(userVisible)))
+
+    if userVisible then
+      BetterBackpack._bbEscPass = true
+      local ret = orig(...)
+      BetterBackpack._bbEscPass = nil
+      Layout.SyncBagUISpecialFrame()
+      Layout.EscDebugTrace("post-open", string.format("ret=%s stillVis=%s", tostring(ret), tostring(Layout.IsBagFrameVisible())))
+      if Layout.IsBagFrameVisible() then
+        local OC = BetterBackpack.Modules and BetterBackpack.Modules.OpenClose
+        if OC and OC.CloseFromEsc then
+          return OC.CloseFromEsc() and true or ret
         end
       end
+      return ret
     end
+
+    -- Parked keep-shown (Show+alpha0): not in UISpecialFrames but ButtonFrame IsShown
+    -- still breaks ESC stack on Forever — transient Hide for orig only, then re-arm (combat B).
+    local f = main or _G.BetterBackpackFrame
+    local rearm = false
+    if f and BetterBackpack._bbKeepShown and f.IsShown and f:IsShown()
+        and (combatVisuallyHidden or FrameAlpha(f) < ALPHA_ESC_MIN) then
+      if not (InCombatLockdown and InCombatLockdown()) then
+        rearm = true
+        BetterBackpack._bbEscRearm = true
+        pcall(function()
+          f:Hide()
+        end)
+      end
+    end
+
+    local ret = orig(...)
+    if rearm then
+      BetterBackpack._bbEscRearm = nil
+      RearmCombatParkFrame(f)
+    end
+    Layout.EscDebugTrace("post-park", string.format("ret=%s rearm=%s", tostring(ret), tostring(rearm)))
     return ret
   end
 end
@@ -2932,7 +2973,7 @@ function Layout.CombatAttachMain()
 end
 
 -- OOC only: PreCreate + EnsureMain shell (_bbBuilt). Parks Show+alpha0 (combat B needs IsShown).
--- UISpecialFrames only when user-visible (alpha 1); ESC safe when parked alpha 0.
+-- ESC: user-visible ↔ UISpecialFrames; parked uses transient Hide in CloseSpecialWindows (1.1.8).
 function Layout.EnsureCombatShell()
   if InCombatLockdown and InCombatLockdown() then
     return false

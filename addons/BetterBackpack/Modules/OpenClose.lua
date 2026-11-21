@@ -897,7 +897,7 @@ function OpenClose.CloseFromEsc()
 end
 
 function OpenClose.NotifyHidden()
-  if BetterBackpack._bbClosing then
+  if BetterBackpack._bbClosing or BetterBackpack._bbEscRearm then
     return
   end
   if BetterBackpack._bbEscPass then

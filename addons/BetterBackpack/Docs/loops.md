@@ -31,7 +31,7 @@ flowchart TD
 
 - Never `SetOverrideBindingClick` or `SetFrameStrata` / `SetToplevel` on our frame.
 - Toggle globals are **replaced**, not post-hooked.
-- Combat: OOC **`EnsureCombatShell`** parks **Show+alpha0** (`_bbKeepShown`); B in combat = alpha 1/0. **`SyncBagUISpecialFrame`:** user-visible ⇔ in `UISpecialFrames`. **`CloseSpecialWindows`:** sync first, orig, optional `CloseFromEsc` fallback. Parked never `Hide()` on ESC; `OnHide` reparks keep-shown after ESC `Hide`.
+- Combat: OOC **`EnsureCombatShell`** parks **Show+alpha0** (`_bbKeepShown`); B in combat = alpha 1/0. **`SyncBagUISpecialFrame`:** user-visible ⇔ `UISpecialFrames`. **`CloseSpecialWindows`:** open → Blizzard close; parked keep-shown → transient `Hide` + orig + **re-arm** (`_bbEscRearm`).
 - `OpenAllBags` / `OpenBag` → `OpenOurs` when replace is on (vendor keeps BB, not native CombinedBags).
 - Window size is computed from the full unfiltered bag with all lanes expanded (sticky while open).
 
