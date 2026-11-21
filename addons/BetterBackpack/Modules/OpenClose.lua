@@ -88,51 +88,6 @@ local function RestoreFrameInteractive(f)
   end)
 end
 
-NormalizeBagID = function(bagID)
-  local Slots = BetterBackpack.Modules.Slots
-  if Slots and Slots.SafeNum then
-    local plain = Slots.SafeNum(bagID, nil)
-    if plain ~= nil then
-      return plain
-    end
-  end
-  if type(bagID) == "number" then
-    if Slots and Slots.SafeNum and Slots.SafeNum(bagID, nil) == nil then
-      return bagID
-    end
-    return bagID
-  end
-  if type(bagID) == "string" then
-    local n = tonumber(bagID)
-    if n then
-      return n
-    end
-  end
-  return nil
-end
-
-local function BBKeyringBagIndex()
-  local Slots = BetterBackpack.Modules.Slots
-  if Slots and type(Slots.KeyringBagIndex) == "function" then
-    local raw = Slots.KeyringBagIndex()
-    if type(NormalizeBagID) == "function" then
-      local k = NormalizeBagID(raw)
-      if k ~= nil then
-        return k
-      end
-    elseif raw ~= nil then
-      return raw
-    end
-  end
-  if KEYRING_CONTAINER ~= nil then
-    if type(NormalizeBagID) == "function" then
-      return NormalizeBagID(KEYRING_CONTAINER)
-    end
-    return KEYRING_CONTAINER
-  end
-  return -2
-end
-
 local function RestoreNativeBagFrames()
   if not BagBarNativeEnabled() then
     return
@@ -264,6 +219,28 @@ local function NativeKeyRingVisible()
     end
   end
   return false
+end
+
+local function BBKeyringBagIndex()
+  local Slots = BetterBackpack.Modules.Slots
+  if Slots and type(Slots.KeyringBagIndex) == "function" then
+    local raw = Slots.KeyringBagIndex()
+    if type(NormalizeBagID) == "function" then
+      local k = NormalizeBagID(raw)
+      if k ~= nil then
+        return k
+      end
+    elseif raw ~= nil then
+      return raw
+    end
+  end
+  if KEYRING_CONTAINER ~= nil then
+    if type(NormalizeBagID) == "function" then
+      return NormalizeBagID(KEYRING_CONTAINER)
+    end
+    return KEYRING_CONTAINER
+  end
+  return -2
 end
 
 local function RestoreShownNativeBags()
@@ -1069,6 +1046,30 @@ ClearCategoryFilter = function()
   end
 end
 
+NormalizeBagID = function(bagID)
+  local Slots = BetterBackpack.Modules.Slots
+  if Slots and Slots.SafeNum then
+    local plain = Slots.SafeNum(bagID, nil)
+    if plain ~= nil then
+      return plain
+    end
+  end
+  if type(bagID) == "number" then
+    if Slots and Slots.SafeNum and Slots.SafeNum(bagID, nil) == nil then
+      -- Forever secret bag index — keep opaque value for Blizzard ToggleBag/OpenBag.
+      return bagID
+    end
+    return bagID
+  end
+  if type(bagID) == "string" then
+    local n = tonumber(bagID)
+    if n then
+      return n
+    end
+  end
+  return nil
+end
+
 --- Plain number when possible; otherwise raw bag token (incl. secret Enum indices).
 local function BagIDForNative(bagID)
   local plain = NormalizeBagID(bagID)
@@ -1119,27 +1120,6 @@ local function BagIdFromButtonName(btn)
     return BBKeyringBagIndex()
   end
   return nil
-end
-
-local function BagIdFromButton(btn)
-  if not btn then
-    return nil
-  end
-  local bagID
-  pcall(function()
-    if btn.GetBagID then
-      bagID = btn:GetBagID()
-    elseif btn.bagID ~= nil then
-      bagID = btn.bagID
-    elseif btn.id ~= nil then
-      bagID = btn.id
-    end
-  end)
-  local fromApi = NormalizeBagID(bagID)
-  if fromApi ~= nil then
-    return fromApi
-  end
-  return NormalizeBagID(BagIdFromButtonName(btn))
 end
 
 local function IsKeyringBarButton(btn)
@@ -1466,7 +1446,6 @@ local function SafeHookOnClick(btn, handler)
     return false
   end
   if not FrameSupportsOnClick(btn) then
-  -- Secure/bar templates often reject OnClick hook; ToggleBag replace handles those.
     return false
   end
   local ok = pcall(function()
@@ -1476,6 +1455,27 @@ local function SafeHookOnClick(btn, handler)
     btn.BetterBackpackClickHooked = true
   end
   return ok
+end
+
+local function BagIdFromButton(btn)
+  if not btn then
+    return nil
+  end
+  local bagID
+  pcall(function()
+    if btn.GetBagID then
+      bagID = btn:GetBagID()
+    elseif btn.bagID ~= nil then
+      bagID = btn.bagID
+    elseif btn.id ~= nil then
+      bagID = btn.id
+    end
+  end)
+  local fromApi = NormalizeBagID(bagID)
+  if fromApi ~= nil then
+    return fromApi
+  end
+  return NormalizeBagID(BagIdFromButtonName(btn))
 end
 
 local function onBagBarClick(btn)
@@ -1536,6 +1536,9 @@ local function HookBackpackBarMouseDown()
 end
 
 local function HookBagBarButtons()
+  if BagBarNativeEnabled() then
+    return 0
+  end
   HookBackpackBarMouseDown()
   local hooked = 0
   local names = {
@@ -1588,24 +1591,6 @@ local function HookBagBarButtons()
   end
   return hooked
 end
-
-local bagBarHookPasses = 0
-
-local function EnsureBagBarHooks()
-  if not EnabledReplace() then
-    return 0
-  end
-  local n = HookBagBarButtons()
-  if n > 0 then
-    bagBarHookPasses = bagBarHookPasses + 1
-    if bagBarHookPasses == 1 then
-      LogHooksOnce(string.format("bag-bar clicks hooked=%d native=%s", n, tostring(BagBarNativeEnabled())))
-    end
-  end
-  return n
-end
-
-OpenClose.EnsureBagBarHooks = EnsureBagBarHooks
 
 local BAG_KEY_TOGGLES = { "ToggleAllBags", "ToggleBackpack" }
 
@@ -1673,22 +1658,14 @@ function OpenClose.OnMerchantShow()
   end
 end
 
-local function onToggleBag(...)
-  onBagToggle((...), "ToggleBag")
-end
-
 local function ApplyBagKeyReplace()
   CaptureBlizzardToggles()
   OpenClose.RestoreBlizzardToggles()
-  -- B → BetterBackpack; bag-bar → onBagToggle (overlay or native per profile).
+  -- ToggleBag / ToggleKeyRing stay native — only B paths replaced (0.5.45 path).
   ReplaceToggle("ToggleAllBags", function(...)
     onBagKey("ToggleAllBags")
   end)
   ReplaceToggle("ToggleBackpack", onBackpackToggle)
-  ReplaceToggle("ToggleBag", onToggleBag)
-  ReplaceToggle("ToggleKeyRing", function(...)
-    onKeyRingToggle()
-  end)
   ApplyOpenAPIReplace()
 end
 
@@ -1705,17 +1682,11 @@ function OpenClose.InstallHooks()
   if C_Timer and C_Timer.After then
     C_Timer.After(0, function()
       pcall(ApplyBagKeyReplace)
-      pcall(EnsureBagBarHooks)
     end)
-    C_Timer.After(0.5, EnsureBagBarHooks)
-    C_Timer.After(2, EnsureBagBarHooks)
     C_Timer.After(1, function()
       pcall(ApplyBagKeyReplace)
     end)
-  else
-    pcall(EnsureBagBarHooks)
   end
-  pcall(EnsureBagBarHooks)
   if ok then
     local n = 0
     if OpenClose._replaced_ToggleAllBags then

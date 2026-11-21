@@ -1,16 +1,8 @@
 # BetterBackpack changelog
 
-## 1.0.3
+## 1.0.4
 
-- **Bag bar:** move `NormalizeBagID`, `BBKeyringBagIndex`, and `BagIdFromButton` above first use (Lua scope — fixes live FELog 1137/160 nil calls).
-
-## 1.0.2
-
-- **Bag bar:** forward-declare `BagIdFromButton` (insufficient for defs-after-use in same chunk).
-
-## 1.0.1
-
-- **Bag bar:** install `EnsureBagBarHooks` (was never called); hook clicks in native + overlay modes; replace `ToggleBag` / `ToggleKeyRing` through `onBagToggle` (B unchanged).
+- **Revert** 1.0.1–1.0.3 bag-bar work: restore `OpenClose.lua` from **1.0.0** (working **B**; `ToggleBag` / bag-bar hooks unchanged). Bag-bar fix deferred.
 
 ## 1.0.0 (release)
 
