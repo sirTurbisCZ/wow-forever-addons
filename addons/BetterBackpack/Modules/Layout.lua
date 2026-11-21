@@ -2816,6 +2816,7 @@ function Layout.SyncBagUISpecialFrame()
       frameShown = f and f.IsShown and f:IsShown() and true or false,
       inUISpecialFrames = BagFrameListedInUISpecial(),
       wantEscClose = want,
+      keepShownOff = true,
     }
   end
 end
@@ -2836,11 +2837,12 @@ function Layout.InstallEscGuard()
   CloseSpecialWindows = function(...)
     Layout.StripBagSpecialFrame()
     local f = main or _G.BetterBackpackFrame
-    local a = f and FrameAlpha(f) or 0
-    if a < ALPHA_ESC_MIN or combatVisuallyHidden then
-      -- parked shell must not participate in CloseSpecialWindows
-    else
-      Layout.SyncBagUISpecialFrame()
+    if f and f.IsShown and f:IsShown() and (combatVisuallyHidden or FrameAlpha(f) < ALPHA_ESC_MIN) then
+      if not (InCombatLockdown and InCombatLockdown()) then
+        pcall(function()
+          f:Hide()
+        end)
+      end
     end
     return orig(...)
   end
@@ -2867,10 +2869,12 @@ function Layout.CombatAttachMain()
 end
 
 -- OOC only: PreCreate + EnsureMain shell (_bbBuilt). No DoLayout (safe load).
+-- No keep-shown Show+alpha0 (broke ESC / CloseSpecialWindows on Forever).
 function Layout.EnsureCombatShell()
   if InCombatLockdown and InCombatLockdown() then
     return false
   end
+  BetterBackpack._bbKeepShown = false
   local f = main or _G.BetterBackpackFrame
   if f and f._bbBuilt then
     if not BetterBackpack._bbLayoutWarm then
@@ -2878,14 +2882,13 @@ function Layout.EnsureCombatShell()
       pcall(DoLayout)
       BetterBackpack._bbLayoutWarm = true
     end
-    BetterBackpack._bbKeepShown = true
     combatVisuallyHidden = true
     pcall(function()
-      f:Show()
+      f:Hide()
       f:SetAlpha(0)
       f:EnableMouse(false)
     end)
-    SyncBagUISpecialFrame()
+    Layout.SyncBagUISpecialFrame()
     return true
   end
   if Slots and Slots.PreCreate then
@@ -2901,14 +2904,13 @@ function Layout.EnsureCombatShell()
     pcall(DoLayout)
     BetterBackpack._bbLayoutWarm = true
   end
-  BetterBackpack._bbKeepShown = true
   combatVisuallyHidden = true
   pcall(function()
-    f:Show()
+    f:Hide()
     f:SetAlpha(0)
     f:EnableMouse(false)
   end)
-  SyncBagUISpecialFrame()
+  Layout.SyncBagUISpecialFrame()
   return true
 end
 
@@ -2995,8 +2997,12 @@ local function CombatPresentFrame(frame)
     end
   end)
   local inCombat = InCombatLockdown and InCombatLockdown()
+  BetterBackpack._bbKeepShown = inCombat and true or false
   pcall(function()
     if inCombat then
+      if frame.Show and (not frame.IsShown or not frame:IsShown()) then
+        frame:Show()
+      end
       frame:SetAlpha(1)
       frame:EnableMouse(true)
     else
@@ -3050,13 +3056,23 @@ function Layout.CombatHide()
   combatVisuallyHidden = true
   local frame = main or _G.BetterBackpackFrame
   if not frame then
+    Layout.SyncBagUISpecialFrame()
     return true
   end
+  local inCombat = InCombatLockdown and InCombatLockdown()
   pcall(function()
-    frame:SetAlpha(0)
-    frame:EnableMouse(false)
+    if inCombat then
+      frame:SetAlpha(0)
+      frame:EnableMouse(false)
+      BetterBackpack._bbKeepShown = true
+    else
+      BetterBackpack._bbKeepShown = false
+      frame:Hide()
+      frame:SetAlpha(0)
+      frame:EnableMouse(false)
+    end
   end)
-  SyncBagUISpecialFrame()
+  Layout.SyncBagUISpecialFrame()
   return not Layout.IsBagFrameVisible()
 end
 
@@ -3102,6 +3118,7 @@ function Layout.Show()
     return false
   end
 
+  BetterBackpack._bbKeepShown = false
   combatVisuallyHidden = false
   pcall(function()
     if main:GetParent() ~= UIParent then
@@ -3166,30 +3183,35 @@ function Layout.Hide()
   if S and S.Hide then
     S.Hide()
   end
-  if BetterBackpack._bbKeepShown or (InCombatLockdown and InCombatLockdown()) then
+  if InCombatLockdown and InCombatLockdown() then
     Layout.CombatHide()
     return
   end
-  combatVisuallyHidden = false
+  BetterBackpack._bbKeepShown = false
+  combatVisuallyHidden = true
   if main then
     pcall(function()
       main:Hide()
     end)
   end
-  SyncBagUISpecialFrame()
+  local g = _G.BetterBackpackFrame
+  if g and g.Hide and g ~= main then
+    pcall(function()
+      g:Hide()
+    end)
+  end
+  Layout.SyncBagUISpecialFrame()
 end
 
 function Layout.ForceHidden()
   Layout.Hide()
-  if BetterBackpack._bbKeepShown then
-    return
-  end
   local g = _G.BetterBackpackFrame
   if g and g.Hide and (not main or g ~= main) then
     pcall(function()
       g:Hide()
     end)
   end
+  Layout.SyncBagUISpecialFrame()
 end
 
 -- Exported for BulkTransfer / VendorJunk lane bulk (resolve Layout at call time).

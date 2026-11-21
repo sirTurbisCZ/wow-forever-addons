@@ -443,7 +443,7 @@ local function ResetOverlaySessionState()
       Layout.Hide()
     end
     local g = _G.BetterBackpackFrame
-    if not BetterBackpack._bbKeepShown and g and g.IsShown and g:IsShown() and g.Hide then
+    if g and g.IsShown and g:IsShown() and g.Hide and not (InCombatLockdown and InCombatLockdown()) then
       g:Hide()
     end
   end)
@@ -786,7 +786,7 @@ function OpenClose.CloseOurs(opts)
     else
       pcall(function()
         local f = _G.BetterBackpackFrame
-        if f and not BetterBackpack._bbKeepShown and f.Hide then
+        if f and f.Hide and not (InCombatLockdown and InCombatLockdown()) then
           f:Hide()
         end
       end)
