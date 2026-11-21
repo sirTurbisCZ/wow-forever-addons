@@ -1,5 +1,7 @@
-# Playtest brief — BetterBackpack 0.2.2
+# Playtest brief — BetterBackpack 0.2.3
 
-**Goal:** Stack counts >1 visible; text Úklid/Nastavení; disabled cats → Other; N/M footer colored.
+**Goal:** Fix layout nil (EnsureTitleChrome); compact Úklid|Nastavení left of X; white stack counts >1.
 
-**Done when:** `/reload` → `loaded v0.2.2` · stacks on multi-count items · title text buttons · N/M not `---/---` · Settings tip about Other.
+**Evidence:** FElog `Layout.lua: attempt to call a nil value` — forward decl never assigned (`local function` shadowed).
+
+**Done when:** `/reload` → `loaded v0.2.3` · bags open without layout error · chrome tight L of X · stacks>1 white · Settings Other tip.

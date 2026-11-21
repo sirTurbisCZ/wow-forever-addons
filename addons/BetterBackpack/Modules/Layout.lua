@@ -1,7 +1,7 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.2.2).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.2.3).
   Forever: never SetToplevel (ADDON_ACTION_BLOCKED).
-  Text chrome Úklid/Nastavení; disabled categories → Other; N/M footer; stacks via Slots.
+  EnsureTitleChrome assigned to forward decl (Lua 5.1). Compact title chrome L of X.
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -50,6 +50,8 @@ local sectionFrames = {}
 local layoutBusy = false
 local bagHoverHooked = false
 local bagBarHoverHooked = {}
+-- Forward decl: DoLayout runs before the definition body below (Lua 5.1 upvalue).
+local EnsureTitleChrome
 
 local function SafeNum(v, fallback)
   return Slots.SafeNum(v, fallback)
@@ -939,11 +941,12 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local CHROME_VER = 4
+local CHROME_VER = 5
+local CHROME_BTN_W, CHROME_BTN_H = 72, 22
 
--- Plain text buttons — no mismatched bag/gear icons.
-local function StyleTextChromeButton(btn, label, width)
-  btn:SetSize(width or 84, 26)
+-- Compact text buttons, same size — no icons.
+local function StyleTextChromeButton(btn, label)
+  btn:SetSize(CHROME_BTN_W, CHROME_BTN_H)
   if btn._bbIcon then
     btn._bbIcon:Hide()
   end
@@ -952,10 +955,10 @@ local function StyleTextChromeButton(btn, label, width)
     bg:SetAllPoints()
     btn._bbBg = bg
   end
-  btn._bbBg:SetColorTexture(0.18, 0.16, 0.12, 0.96)
+  btn._bbBg:SetColorTexture(0.12, 0.11, 0.10, 0.92)
   btn._bbBg:Show()
   if not btn._bbLabel then
-    local fs = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local fs = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     fs:SetPoint("CENTER", 0, 0)
     btn._bbLabel = fs
   end
@@ -975,10 +978,10 @@ local function StyleTextChromeButton(btn, label, width)
 end
 
 --[[
-  Title chrome strip ABOVE TitleContainer — always re-asserted on Show.
-  Parent = main frame, frameLevel +500, anchored LEFT of CloseButton.
+  Assign into forward-declared EnsureTitleChrome (must NOT use `local function` here).
+  Compact strip: [Úklid][Nastavení][X] — right of title band, left of close.
 ]]
-local function EnsureTitleChrome(frame)
+EnsureTitleChrome = function(frame)
   if not frame then
     return
   end
@@ -1007,18 +1010,19 @@ local function EnsureTitleChrome(frame)
   end
   strip:SetParent(frame)
   strip:ClearAllPoints()
+  -- Sit in title bar: immediately left of X, vertically centered with close.
   if close then
-    strip:SetPoint("TOPRIGHT", close, "TOPLEFT", -4, -2)
+    strip:SetPoint("RIGHT", close, "LEFT", -2, 0)
   else
     strip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -28, -4)
   end
-  strip:SetSize(180, 28)
+  strip:SetSize(CHROME_BTN_W * 2 + 6, CHROME_BTN_H + 2)
   strip:SetFrameStrata(frame:GetFrameStrata() or "DIALOG")
   strip:SetFrameLevel((frame:GetFrameLevel() or 1) + 500)
   strip:EnableMouse(true)
   strip:Show()
 
-  -- Settings (right of strip = closer to X)
+  -- Nastavení closest to X
   local gear = frame.settingsBtn or strip.settingsBtn
   if not gear then
     gear = CreateFrame("Button", "BetterBackpackSettingsButton", strip)
@@ -1026,7 +1030,7 @@ local function EnsureTitleChrome(frame)
   gear:SetParent(strip)
   gear:ClearAllPoints()
   gear:SetPoint("RIGHT", strip, "RIGHT", 0, 0)
-  StyleTextChromeButton(gear, "Nastavení", 90)
+  StyleTextChromeButton(gear, "Nastavení")
   gear:SetFrameLevel(strip:GetFrameLevel() + 2)
   gear:SetScript("OnEnter", function(self)
     if GameTooltip then
@@ -1054,7 +1058,7 @@ local function EnsureTitleChrome(frame)
   frame.gear = gear
   settingsBtn = gear
 
-  -- Úklid (left of Settings)
+  -- Úklid left of Nastavení
   local tidy = frame.sortBtn or strip.sortBtn
   if not tidy then
     tidy = CreateFrame("Button", "BetterBackpackSortButton", strip)
@@ -1062,7 +1066,7 @@ local function EnsureTitleChrome(frame)
   tidy:SetParent(strip)
   tidy:ClearAllPoints()
   tidy:SetPoint("RIGHT", gear, "LEFT", -4, 0)
-  StyleTextChromeButton(tidy, "Úklid", 70)
+  StyleTextChromeButton(tidy, "Úklid")
   tidy:SetFrameLevel(strip:GetFrameLevel() + 2)
   tidy:SetScript("OnEnter", function(self)
     if GameTooltip then
@@ -1089,12 +1093,10 @@ local function EnsureTitleChrome(frame)
   frame.tidy = tidy
   sortBtn = tidy
 
-  -- Lift TitleContainer below our strip so it cannot cover buttons.
   pcall(function()
     if frame.TitleContainer then
-      local tl = frame.TitleContainer:GetFrameLevel() or 1
       local need = (frame:GetFrameLevel() or 1) + 50
-      if tl >= need then
+      if (frame.TitleContainer:GetFrameLevel() or 1) >= need then
         frame.TitleContainer:SetFrameLevel(need)
       end
     end

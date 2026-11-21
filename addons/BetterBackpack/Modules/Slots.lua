@@ -253,13 +253,16 @@ local function EnsureCountFs(btn)
   end
   pcall(function()
     fs:ClearAllPoints()
-    fs:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -2, 2)
+    fs:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -1, 1)
     fs:SetJustifyH("RIGHT")
+    -- Always white — never green/quality-tinted count.
     fs:SetTextColor(1, 1, 1, 1)
     if fs.SetDrawLayer then
       fs:SetDrawLayer("OVERLAY", 7)
     end
-    -- Prefer NumberFontNormal; fall back if missing on Forever.
+    if fs.SetShadowOffset then
+      fs:SetShadowOffset(1, -1)
+    end
     if NumberFontNormal then
       fs:SetFontObject(NumberFontNormal)
     elseif GameFontHighlightSmall then
@@ -271,20 +274,37 @@ end
 
 local function ResolveStackCount(info, bag, slot)
   if type(info) == "table" then
-    for _, key in ipairs({ "stackCount", "Count", "quantity", "stack" }) do
+    for _, key in ipairs({ "stackCount", "Count", "quantity", "stack", "num" }) do
       local c = SafeNum(info[key], nil)
       if c and c >= 1 then
         return c
       end
     end
   end
-  -- Some Forever builds expose count only via GetContainerItemInfo return unpack / legacy.
+  -- Legacy GetContainerItemInfo(bag,slot) → texture, count, ...
   if GetContainerItemInfo then
-    local ok, texture, itemCount = pcall(GetContainerItemInfo, bag, slot)
+    local ok, a, b, c = pcall(GetContainerItemInfo, bag, slot)
     if ok then
-      local c = SafeNum(itemCount, nil)
-      if c and c >= 1 then
-        return c
+      -- Retail-style table return
+      if type(a) == "table" then
+        local n = SafeNum(a.stackCount or a.Count, nil)
+        if n and n >= 1 then
+          return n
+        end
+      end
+      -- Classic unpack: texture, itemCount, locked, quality, ...
+      local n = SafeNum(b, nil) or SafeNum(c, nil)
+      if n and n >= 1 then
+        return n
+      end
+    end
+  end
+  if C_Container and C_Container.GetContainerItemInfo then
+    local ok, info2 = pcall(C_Container.GetContainerItemInfo, bag, slot)
+    if ok and type(info2) == "table" then
+      local n = SafeNum(info2.stackCount or info2.Count, nil)
+      if n and n >= 1 then
+        return n
       end
     end
   end
@@ -292,12 +312,18 @@ local function ResolveStackCount(info, bag, slot)
 end
 
 function Slots.SyncVisual(btn, bag, slot)
-  if not btn or not C_Container or not C_Container.GetContainerItemInfo then
+  if not btn then
     return
   end
   pcall(function()
-    local ok, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
-    if not ok or type(info) ~= "table" then
+    local info
+    if C_Container and C_Container.GetContainerItemInfo then
+      local ok, res = pcall(C_Container.GetContainerItemInfo, bag, slot)
+      if ok and type(res) == "table" then
+        info = res
+      end
+    end
+    if not info then
       local icon = btn.icon or btn.Icon
       if icon then
         icon:SetTexture(nil)
@@ -318,9 +344,10 @@ function Slots.SyncVisual(btn, bag, slot)
     end
     local count = ResolveStackCount(info, bag, slot)
     local fs = EnsureCountFs(btn)
-    -- Never rely solely on SetItemButtonCount (SecureActionButton has no ItemButton mixin).
+    -- count==1 (quest uniques etc.) → blank; count>1 → always white number.
     if fs then
-      if count > 1 then
+      fs:SetTextColor(1, 1, 1, 1)
+      if type(count) == "number" and count > 1 then
         fs:SetText(tostring(count))
         fs:Show()
       else
@@ -330,6 +357,11 @@ function Slots.SyncVisual(btn, bag, slot)
     end
     if SetItemButtonQuality and type(info.quality) == "number" and not IsSecret(info.quality) then
       SetItemButtonQuality(btn, info.quality, info.itemID)
+    end
+    -- Re-force white after quality (some builds tint Count).
+    if fs and type(count) == "number" and count > 1 then
+      fs:SetTextColor(1, 1, 1, 1)
+      fs:Show()
     end
     Slots.SyncCooldown(btn, bag, slot)
   end)
