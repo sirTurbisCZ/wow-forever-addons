@@ -120,10 +120,10 @@ function Search.EnsureChrome(main)
   end
 
   box = CreateFrame("Frame", "BetterBackpackSearchBox", main)
-  box:SetSize(140, 20)
-  -- Sit in title band left of AutoSort-twin gear/broom + Close (0.4.x chrome).
-  box:SetPoint("TOPRIGHT", main, "TOPRIGHT", -110, -18)
-  box:SetFrameLevel((main:GetFrameLevel() or 1) + 8)
+  box:SetSize(160, 20)
+  -- CombinedBags / BagShelves: search under title on the LEFT, not fighting Close twins.
+  box:SetPoint("TOPLEFT", main, "TOPLEFT", 12, -30)
+  box:SetFrameLevel((main:GetFrameLevel() or 1) + 80)
 
   local bg = box:CreateTexture(nil, "BACKGROUND")
   bg:SetAllPoints()

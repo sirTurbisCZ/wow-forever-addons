@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.OpenClose — B + bag-bar ownership (0.3.2)
+  BetterBackpack.OpenClose — B + bag-bar + keyring (0.5.2)
 
   B / ToggleAllBags / ToggleBackpack / ToggleBag / bag-bar OnClick = XOR.
   OpenAllBags / OpenBackpack / OpenBag = open (+ bag focus). CloseBag /
@@ -192,6 +192,7 @@ OpenOurs = function()
     OpenClose.ClearReplaceSuppress()
   end
   openBusy = true
+  OpenClose._openBusy = true
   BlackoutAll()
   ParkAllShown()
 
@@ -218,6 +219,7 @@ OpenOurs = function()
   if not okShow or not OursVisible() then
     bagsOpen = false
     openBusy = false
+    OpenClose._openBusy = false
     pcall(function()
       if Layout and Layout.Hide then
         Layout.Hide()
@@ -236,6 +238,7 @@ OpenOurs = function()
   bagsOpen = true
   toggleLockUntil = Now() + TOGGLE_LOCK
   openBusy = false
+  OpenClose._openBusy = false
   PulsePark()
   if Layout and Layout.Raise then
     pcall(Layout.Raise)
@@ -497,12 +500,18 @@ local function FrameSupportsOnClick(btn)
   if not btn or type(btn.HookScript) ~= "function" then
     return false
   end
-  -- Forever: only trust HasScript("OnClick"). ObjectType fallback hooked Frames
-  -- that throw "script type not supported" (taint + SafeCall noise).
   local ok, supported = pcall(function()
     return btn.HasScript and btn:HasScript("OnClick")
   end)
-  return ok and supported and true or false
+  if ok and supported then
+    return true
+  end
+  -- Bag-bar slots are often Buttons without HasScript until shown.
+  local ot
+  pcall(function()
+    ot = btn.GetObjectType and btn:GetObjectType()
+  end)
+  return ot == "Button" or ot == "CheckButton"
 end
 
 local function SafeHookOnClick(btn, handler)
@@ -565,6 +574,9 @@ local function HookBagBarButtons()
     "ReagentBagSlot",
     "KeyRingButton",
     "KeyringButton",
+    "KeyRingFrameButton",
+    "CharacterBagKeyringButton",
+    "MainMenuBarKeyRingButton",
     "MultiBag1",
     "MultiBag2",
     "MultiBag3",
@@ -608,7 +620,40 @@ function OpenClose.InstallHooks()
     hooksecurefunc("ToggleBackpack", onBagKey)
   end
   if type(ToggleKeyRing) == "function" then
-    hooksecurefunc("ToggleKeyRing", onBagKey)
+    hooksecurefunc("ToggleKeyRing", function()
+      if not EnabledReplace() then
+        return
+      end
+      local Slots = BetterBackpack.Modules.Slots
+      local key
+      pcall(function()
+        key = NormalizeBagID(Slots and Slots.KeyringBagIndex and Slots.KeyringBagIndex())
+      end)
+      local t = Now()
+      BlackoutAll()
+      if t < toggleLockUntil then
+        ParkAllShown()
+        return
+      end
+      toggleLockUntil = t + TOGGLE_LOCK
+      if SessionOpen() then
+        ClearFocusBag()
+        local Filter = BetterBackpack.Modules.Filter
+        if Filter and Filter.SetCategory then
+          pcall(Filter.SetCategory, "all")
+        end
+        OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
+      else
+        if key ~= nil then
+          SetFocusBag(key)
+        end
+        local Filter = BetterBackpack.Modules.Filter
+        if Filter and Filter.SetCategory then
+          pcall(Filter.SetCategory, "keys")
+        end
+        OpenOurs()
+      end
+    end)
   end
 
   if type(OpenAllBags) == "function" then
@@ -741,6 +786,20 @@ function OpenClose.InstallHooks()
   hookCombined()
   hookContainers()
   local nBag = HookBagBarButtons()
+  -- Forever BagsBar: some slots fire BagSlotOnClick / ToggleBag only — already hooked.
+  -- Re-run bag-bar hooks after BagsBar exists.
+  pcall(function()
+    if BagSlotButtonMixin and BagSlotButtonMixin.OnClick and not OpenClose._bagSlotHooked then
+      OpenClose._bagSlotHooked = true
+      hooksecurefunc(BagSlotButtonMixin, "OnClick", function(self)
+        if not EnabledReplace() then
+          return
+        end
+        onBagToggle(BagIdFromButton(self), "BagSlotMixin")
+      end)
+      nBag = (nBag or 0) + 1
+    end
+  end)
 
   local guard = CreateFrame("Frame")
   guard:SetScript("OnUpdate", function(_, elapsed)

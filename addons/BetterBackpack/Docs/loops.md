@@ -1,7 +1,7 @@
 # BetterBackpack — smyčky a grafy
 
 **Kód:** `Core.lua`, `Modules/{Slots,Layout,Context,OpenClose,Tidy,Settings,Search,Filter,CustomCategories,StackMerge,Pins,LayoutModes}.lua`  
-**Verze reference:** 0.5.1 (features-nth merged onto 0.4.2 chrome)  
+**Verze reference:** 0.5.2 (features-nth merged onto 0.4.2 chrome)  
 **Stabilita:** Project `docs/bag-addon-brief.md` + Scenario Maps `docs/scenarios/BetterBackpack/`  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never path C harvest).
 
@@ -28,7 +28,7 @@ flowchart TD
 **Pravidla**
 
 - Nikdy `SetOverrideBindingClick`.
-- Forever: `SetFrameStrata` on BetterBackpackFrame can BLOCKED+error — always `pcall` (0.5.1 OpenOurs false).
+- Forever: `SetFrameStrata` on BetterBackpackFrame can BLOCKED+error — always `pcall` (0.5.2 OpenOurs false).
 
 - Anti-flash: `Show`/`OnShow`/`onToggle` → **Blackout alpha=0 first**; CloseOurs never `RestoreBlizzardBags`.
 - CombinedBags stays `IsShown`+parked while ours open — **ne** `:Hide()` mid-session.
