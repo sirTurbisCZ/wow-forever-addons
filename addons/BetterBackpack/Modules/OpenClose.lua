@@ -1,7 +1,8 @@
 --[[
-  BetterBackpack.OpenClose — /bb only; Blizzard toggles untouched (0.5.42)
+  BetterBackpack.OpenClose — B + /bb (0.5.44)
 
-  Only ToggleAllBags is *replaced* (BetterBackpack combined). ToggleBag/ToggleBackpack/ToggleKeyRing stay Blizzard.
+  Only ToggleAllBags is *replaced* (BetterBackpack combined XOR via onBagKey). ToggleBag/ToggleBackpack/ToggleKeyRing stay Blizzard.
+  No bag-bar OnClick hooks in InstallHooks.
   (not hooksecurefunc). Forever Toggle* bodies call Open*/Close* first; a
   post-hook XOR then closed what we just opened (or reopened after close) —
   open/close thrash that froze the client on B.
@@ -1389,10 +1390,15 @@ function OpenClose.InstallHooks()
   local ok, err = pcall(function()
     CaptureBlizzardToggles()
     OpenClose.RestoreBlizzardToggles()
+    ReplaceToggle("ToggleAllBags", onBagKey)
   end)
   hooksInstalled = true
   if ok then
-    LogHooksOnce("Blizzard bag API · open /bb")
+    if OpenClose._replaced_ToggleAllBags then
+      LogHooksOnce("B → BetterBackpack XOR · bag bar = Blizzard")
+    else
+      LogHooksOnce("ToggleAllBags missing · /bb only")
+    end
   elseif BetterBackpack and BetterBackpack.RecordError then
     BetterBackpack.RecordError("hooks", err)
   end

@@ -1,4 +1,8 @@
-# Playtest brief — BetterBackpack 0.5.43 (post-load harden)
+# Playtest brief — BetterBackpack 0.5.44 (B = combined)
+
+**0.5.44**
+- **B** (`ToggleAllBags`) → BetterBackpack combined XOR again (`onBagKey`, `pcall`). Bag bar / per-bag = native Blizzard. No bag-bar hooks. `/bb` still works.
+- Needs `replaceBlizzard` on (default). Chat: `hooks ok · B → BetterBackpack XOR · bag bar = Blizzard`.
 
 **0.5.43**
 - WTF top error was `OpenClose.lua:1398 unexpected symbol near 'if'` (0.5.42 trims InstallHooks). Harden: `EnsureMain` / `DoLayout` chrome in pcall; Settings `notes` nil; hooks install pcall.
