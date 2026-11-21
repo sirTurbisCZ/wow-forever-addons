@@ -2,10 +2,10 @@
 
 Companion for Forever nameplate auras. Looks and feels like Blizzard’s native DebuffList.
 
-- **Default (0.1.12+):** native DebuffList only — Plateband does not move names or paint merge icons.
+- **Default (0.1.15+):** merge **on** — foreign DoTs beside native on enemy plates (`/pb merge off` for native-only).
 - Personal DoTs stay 100% Blizzard. Never parks or hides native DebuffList.
 - **Never** `ClearAllPoints` the plate name (three-addon refactor hard rule).
-- Optional merge design (`Docs/merge-design.md`): beside native only; still off by default (`mergeMissing=false`).
+- Merge design (`Docs/merge-design.md`): beside native only; on by default (`mergeMissing=true`).
 
 ## Install
 
@@ -34,7 +34,7 @@ Developers (monorepo): `./scripts/link-addon.sh Plateband` then `/reload`.
 | `/pb safe` | Turn module off and clear overlays |
 | `/pb reset` | Restore default settings (native-only) |
 | `/pb size <n>` | Icon size hint (12–32) |
-| `/pb merge on` / `/pb merge off` | Experimental foreign DoT merge beside native (default off) |
+| `/pb merge on` / `/pb merge off` | Foreign DoT merge beside native (default **on** since 0.1.15) |
 
 Alias: `/plateband`.
 
@@ -58,7 +58,7 @@ If Forever Error Log is installed, also send:
 - Leaves Blizzard DebuffList fully visible.
 - Click-through — plate click still selects the unit.
 - Auto-saves throttled diagnose cards into SavedVariables during play.
-- Merge of omitted foreign DoTs is **opt-in** (`mergeMissing`) and does not reanchor the name.
+- Merge of omitted foreign DoTs is **on by default** and does not reanchor the name.
 
 ## What it does not do
 
@@ -72,7 +72,8 @@ If Forever Error Log is installed, also send:
 | Symptom | What to try |
 |---------|-------------|
 | Addon does not load | Folder name must be exactly `Plateband`; `/reload` |
-| Weird / broken plates after older Plateband | `/reload` on **0.1.12+** (native-only; undoes prior name pins) |
-| Want party DoT merge again | `/pb merge on`, target enemy with party DoTs; `/pb diagnose` → `merge=1`, `fb>0` when icons painted |
+| Weird / broken plates after older Plateband | `/reload` on **0.1.12+** (undoes prior name pins) |
+| Native-only debuffs | `/pb merge off`; `/pb diagnose` → `merge=0` |
+| Party DoTs missing on plate | default merge on; `/pb diagnose` → `merge=1`, `fb>0` when icons painted |
 | Errors / weird plates | `/pb safe`, then `/felog list` if Forever Error Log is installed |
 | Dual aura rows with an old Retinue install | Disable or unlink Retinue; Plateband owns plates only |

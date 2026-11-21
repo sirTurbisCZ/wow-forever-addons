@@ -1,7 +1,7 @@
 # Plateband — safe merge design (no name mutation)
 
-**Status:** shipped (opt-in) under three-addon refactor · **default OFF** (`mergeMissing=false`, schema 6+)  
-**Versions:** safe baseline **0.1.12+**; toggle **`/pb merge on`** in **0.1.14+**
+**Status:** shipped under three-addon refactor · **default ON** (`mergeMissing=true`, schema 7+)  
+**Versions:** safe baseline **0.1.12+**; **`/pb merge off`** for native-only (**0.1.15+**)
 
 ## Goal
 
@@ -17,12 +17,12 @@ Append **only** party/nearby foreign harmful DoTs that native DebuffList omits, 
 | **No CLEU** as core | Forever policy |
 | Bags stay in **BetterBackpack** | Three-addon split; Plateband plates-only |
 
-## Data flow (opt-in `mergeMissing=true`)
+## Data flow (`mergeMissing=true`, default since 0.1.15)
 
 ```mermaid
 flowchart TD
   tick[UpdateOverlay] --> gate{mergeMissing?}
-  gate -->|false default| nativeOnly[EnsureNativeVisible + clear Plateband chrome]
+  gate -->|false /pb merge off| nativeOnly[EnsureNativeVisible + clear Plateband chrome]
   gate -->|true| enemy{Friend/party plate?}
   enemy -->|yes| skip[ClearFallback — no merge on friends]
   enemy -->|no| collect[Collect missing HARMFUL]
@@ -51,17 +51,15 @@ flowchart TD
 
 Skip: `AuraIsPlayerOwned == true`; native public texture keys.
 
-## Enable (experimental)
+## Disable merge (native-only)
 
-Default stays **off**. After playtest of native-only 0.1.12+:
+Default is **on** since 0.1.15 (schema 7 migrates prior opt-in off → on).
 
 ```
-/pb merge on
+/pb merge off
 ```
 
-(or `PlatebandDB.profile.mergeMissing = true` then `/reload`).
-
-Expect `/pb diagnose` `merge=1`, `fb>0` when TF/API shows foreign DoTs native omits; solo personal DoTs stay `fb=0`, `native>0`.
+Expect `/pb diagnose` `merge=1` by default; `fb>0` when TF/API shows foreign DoTs native omits; solo personal DoTs stay `fb=0`, `native>0`.
 
 ## Coordination (BetterBackpack / ForeverErrorLog)
 

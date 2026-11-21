@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.1.14**
+Version: **0.1.15**
 
 See also: [merge-design.md](merge-design.md) (opt-in merge, no name mutation).
 
@@ -12,7 +12,7 @@ flowchart TD
   upd --> native[EnsureNativeVisible DebuffList alpha=1]
   upd --> clear[ClearFallback only]
   upd --> mergeFlag{mergeMissing?}
-  mergeFlag -->|false default| stop[Stop — Blizzard name+DebuffList untouched]
+  mergeFlag -->|false /pb merge off| stop[Stop — Blizzard name+DebuffList untouched]
   mergeFlag -->|true opt-in| paint[PaintMergeMissing]
   paint --> layout[LayoutMergeBesideNative on Plateband frame only]
 ```

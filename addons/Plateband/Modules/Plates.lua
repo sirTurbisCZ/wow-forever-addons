@@ -1621,7 +1621,7 @@ local function UpdateOverlay(unit, plate)
   end
 
   local p = Profile()
-  -- 0.1.12 safe default: mergeMissing=false → native DebuffList only, no chrome.
+  -- mergeMissing=false (/pb merge off) → native DebuffList only, no chrome.
   ClearFallback(unit)
   RestoreNameShift(unit, plate)
   if p.mergeMissing ~= true then

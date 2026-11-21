@@ -6,7 +6,7 @@ Plateband.L = Plateband.L or {}
 local L = Plateband.L
 
 L.PREFIX = "|cff7ec8e3[Plateband]|r"
-L.LOADED = "loaded v%s · /pb merge on for party DoTs beside native · /pb help"
+L.LOADED = "loaded v%s · merge on by default · /pb merge off for native-only · /pb help"
 L.UNKNOWN_CMD = "unknown command — /pb help"
 L.HELP_LINES = {
   "/pb help — this help",
