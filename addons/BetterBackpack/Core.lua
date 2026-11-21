@@ -229,9 +229,7 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
       if C_Timer and C_Timer.After then
         C_Timer.After(0, function()
           SafeCall("precreate", Slots.PreCreate)
-          if not (InCombatLockdown and InCombatLockdown()) then
-            SafeCall("warmup:ensure", Layout.EnsureMain)
-          end
+          SafeCall("warmup:ensure", Layout.EnsureMain)
         end)
       else
         SafeCall("precreate", Slots.PreCreate)

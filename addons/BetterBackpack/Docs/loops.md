@@ -17,13 +17,16 @@ flowchart TD
   Black --> Lock{t < toggleLockUntil or debounce?}
   Lock -->|ano| Pulse[Park only]
   Lock -->|ne| Vis{SessionOpen?}
-  Vis -->|ne| Open[OpenOurs + SetBagFocus + park]
+  Vis -->|ne| Open[OpenOurs + Layout.Show]
+  Open --> ParkMode{InCombatLockdown?}
+  ParkMode -->|ano| AlphaOnly[ParkBlizzardForOverlay — alpha/mouse only]
+  ParkMode -->|ne| OffPark[off-screen Park + PulsePark]
   Vis -->|ano| Close[CloseOurs + ClearBagFocus]
   Close --> Keep0[Keep alpha=0 + CloseAllBags<br/>NEVER RestoreBlizzard alpha=1]
   OpenOnly[OpenAllBags / OpenBag — non-Toggle API] --> OpenOrPark[Open if closed else park+focus]
   CloseAPI[CloseBag / CloseAllBags] --> Close
   OnShow[CombinedBags Show/OnShow] --> BO[Blackout first line]
-  BO --> Park[Park; deferred OpenOurs only if still closed]
+  BO --> Park[ParkBlizzardForOverlay; defer OpenOurs if still closed]
 ```
 
 **Pravidla**
@@ -31,10 +34,10 @@ flowchart TD
 - Nikdy `SetOverrideBindingClick`.
 - Forever: never call `SetFrameStrata` / `SetToplevel` in Lua. **0.5.5+:** `ButtonFrameTemplate` + CombinedBags NineSlice/TopTile/Bg at Baganator Forever offsets (6,-21); **Inset:Hide**; empty `SlotBackground` on slots; footer inside bottom border.
 - **0.5.3+:** `Toggle*` are **replaced**, not `hooksecurefunc`. Post-hooks ran after Blizzard `Open*`/`Close*` → open/close thrash that froze on B.
-- Anti-flash: `Show`/`OnShow`/`onToggle` → **Blackout alpha=0 first**; CloseOurs never `RestoreBlizzardBags`. OpenOurs fail → `ForceCloseBlizzard` (not Unblackout).
+- Anti-flash: `Show`/`OnShow`/`onToggle` → **Blackout alpha=0 first**; CloseOurs never `RestoreBlizzardBags`. OpenOurs fail OOC → `ForceCloseBlizzard`; v combatu jen `ParkBlizzardForOverlay` (not Unblackout).
 - CombinedBags stays `IsShown`+parked while ours open — **ne** `:Hide()` mid-session.
 - `SuppressReplace`; OnShow nesmí ClearSuppress→OpenOurs.
-- **Open (0.5.29):** `ToggleAllBags` + `ToggleBackpack` (bez právě kliknuté ikony batohu) → **B** combined XOR. Ikona batohu: `OnMouseDown` arm → `ToggleBackpack` = nativní `0`. `NativeContainersVisible` = jen frame on-screen (ne parked). `OpenBag` pro nativní. CombinedBags OnShow nevolá overlay při `bagBarNativeBag`. `/bb dump` = open-state řádek.
+- **Open (0.5.32):** v combatu `OpenOurs` → `ParkBlizzardForOverlay` (CombinedBags + Container** jen alpha**, bez `SetPoint`); `Layout.Show` = reuse `BetterBackpackFrame` + `DoLayout` (proxy sloty, bez `SetAttribute`). Mimo combat plný park off-screen. LOGIN vždy `EnsureMain` warmup.
 - HookScript OnClick only on frames with `HasScript("OnClick")` / Button — never throw on BagsBar chrome kids.
 - Frame size (**0.5.8 fixed**): počítá se vždy z **plného bagu — nefiltrovaný, všechny lanes rozbalené** (`CollectBuckets(true)`, collapse ignorován). `cols = clamp(nejširší lane, MIN_COLS=6, Columns())` (Columns = profile 10, dense ≥12). Grid = `cols*37 + (cols-1)*2` (PAD 2, dense); outer = `INSET_X + grid + INSET_X` (INSET_X=14); výška = TOP_CHROME 54 + lanesH + BOT_CHROME 30. HEADER_H 18, SECTION_GAP 4.
 - Collapse / Search / Filter / „No matches“ **nikdy nemění velikost okna**; během otevření ho nezmenší ani úbytek itemů (sticky 0.5.15), roste jen při novém lootu. Lanes bez shody se skryjí i s headerem. Uvolněné místo zůstane prázdné (Bg). Opt-in: `profile.fillEmptyWells = true` → prázdné wells `bags-item-slot64` (0.5.9 default **false**, schema 4 vypne i uložené true).

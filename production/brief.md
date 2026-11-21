@@ -1,4 +1,7 @@
-# Playtest brief — BetterBackpack 0.5.31 (keyring native)
+# Playtest brief — BetterBackpack 0.5.32 (combat B)
+
+**0.5.32**
+- **B in combat:** combined opens with prebuilt frame; Blizzard CombinedBags hidden alpha-only (no reparent). No new SecureActionButton/SetAttribute in combat.
 
 **0.5.31**
 - Keyring: `ToggleKeyRing` + `ToggleBag(KEYRING_CONTAINER)` + `OpenKeyRing`; bar/mixin routes to `onKeyRingToggle`; KEYRING frame restore.

@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.OpenClose — B overlay + bag-bar native (0.5.31)
+  BetterBackpack.OpenClose — B overlay + bag-bar native (0.5.32)
 
   ToggleAllBags / ToggleBackpack / ToggleBag / ToggleKeyRing are *replaced*
   (not hooksecurefunc). Forever Toggle* bodies call Open*/Close* first; a
@@ -252,8 +252,22 @@ local function Park(f)
   end)
 end
 
-local function ParkAllShown()
-  BlackoutAll()
+local function InCombat()
+  return InCombatLockdown and InCombatLockdown() and true or false
+end
+
+--- Hide Blizzard bag UI for our overlay. In combat: alpha/mouse only (no ClearAllPoints).
+local function ParkBlizzardForOverlay()
+  Blackout(ContainerFrameCombinedBags)
+  for i = 1, 13 do
+    local cf = _G["ContainerFrame" .. i]
+    if cf and cf:IsShown() then
+      Blackout(cf)
+    end
+  end
+  if InCombat() then
+    return
+  end
   local f = ContainerFrameCombinedBags
   if f and f:IsShown() then
     Park(f)
@@ -264,6 +278,10 @@ local function ParkAllShown()
       Park(cf)
     end
   end
+end
+
+local function ParkAllShown()
+  ParkBlizzardForOverlay()
 end
 
 local function ForceCloseBlizzard()
@@ -340,8 +358,7 @@ OpenOurs = function()
   end
   openBusy = true
   OpenClose._openBusy = true
-  BlackoutAll()
-  ParkAllShown()
+  ParkBlizzardForOverlay()
 
   local function tryShow()
     local ok, shown = pcall(function()
@@ -374,7 +391,11 @@ OpenOurs = function()
     end)
     -- Keep Blizzard parked/closed — Unblackout + shown CombinedBags re-entered
     -- OnShow→OpenOurs and amplified the Toggle open/close thrash.
-    ForceCloseBlizzard()
+    if not InCombat() then
+      ForceCloseBlizzard()
+    else
+      ParkBlizzardForOverlay()
+    end
     if BetterBackpack.RecordError and (not OpenClose._lastOpenFailAt or (Now() - OpenClose._lastOpenFailAt) > 5) then
       OpenClose._lastOpenFailAt = Now()
       BetterBackpack.RecordError("OpenOurs", ok and tostring(shown) or tostring(shown))
@@ -386,7 +407,11 @@ OpenOurs = function()
   toggleLockUntil = Now() + TOGGLE_LOCK
   openBusy = false
   OpenClose._openBusy = false
-  PulsePark()
+  if not InCombat() then
+    PulsePark()
+  else
+    ParkBlizzardForOverlay()
+  end
   if Layout and Layout.Raise then
     pcall(Layout.Raise)
   end

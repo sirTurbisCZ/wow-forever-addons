@@ -2376,6 +2376,27 @@ function Layout.EnsureMain()
   if main and not content then
     DestroyHalfBuilt()
   end
+  if main and content and main._bbBuilt then
+    pcall(function()
+      if main:GetParent() ~= UIParent then
+        main:SetParent(UIParent)
+      end
+    end)
+    return main
+  end
+  local inCombat = InCombatLockdown and InCombatLockdown()
+  if inCombat then
+    local orphan = _G.BetterBackpackFrame
+    if orphan and orphan._bbBuilt and orphan._bbContent then
+      main = orphan
+      content = orphan._bbContent
+      freeFs = orphan.freeFs or freeFs
+      moneyFs = orphan._bbMoneyFs or moneyFs
+      emptyLabel = orphan._bbEmpty or emptyLabel
+      return main
+    end
+    return nil
+  end
   if not main then
     local orphan = _G.BetterBackpackFrame
     if orphan and not orphan._bbBuilt then
@@ -2621,6 +2642,24 @@ function Layout.Show()
   local p = Profile()
   if not p.enabled or p.safeMode then
     return false
+  end
+
+  local inCombat = InCombatLockdown and InCombatLockdown()
+  if inCombat then
+    pcall(function()
+      if main:GetParent() ~= UIParent then
+        main:SetParent(UIParent)
+      end
+      main:SetFrameLevel(500)
+      main:SetAlpha(1)
+      main:Show()
+    end)
+    pcall(Layout.Raise)
+    pcall(DoLayout)
+    pcall(RefreshCooldowns)
+    UpdateFreeSpace()
+    UpdateMoney()
+    return main:IsShown() and true or false
   end
 
   pcall(function()
