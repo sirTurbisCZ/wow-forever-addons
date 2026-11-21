@@ -1,13 +1,12 @@
-# Playtest brief — BetterBackpack 0.5.9
+# Playtest brief — BetterBackpack 0.5.10
 
-**History:** 0.5.6 fixed empty lanes (helpers called before `local` decl). 0.5.7 bag-arrow headers + ItemButtonTemplate slot art. 0.5.8 fixed full-bag window size (collapse/search never resize), dense grid, small counts.
+**History:** 0.5.6 empty-lanes fix · 0.5.7 headers/slot art · 0.5.8 fixed window size · 0.5.9 no wells, money-font footer (footer OK per Ondřej).
 
-**0.5.9**
-- No empty fill wells: `fillEmptyWells` default false; schema 4 turns off the `true` saved by 0.5.8
-- Broom = 1:1 copy of the live `BagItemAutoSortButton` art (normal/pushed/highlight) + size
-- Gear = same size, flat gear icon from a verified atlas (`C_Texture.GetAtlasInfo`), same square highlight, 1px press offset. Old code never fell back because `SetNormalAtlas` doesn't error on unknown atlases
-- Footer N/M uses the money text's font (copper button) and sits on its baseline
+**0.5.10**
+- Broom = the real `BagItemAutoSortButton`, reparented into our title bar (Blizzard art/size/tooltip). Click → Tidy (OOC guard). Re-grabbed next frame if CombinedBags takes it back; released to CombinedBags on `/bb off` / safe mode
+- Gear = AutoSort size + native highlight geometry + verified gear atlas (CombinedBags has no native gear)
+- 1px hairline above the footer
 
 **Keep:** Toggle* replace (B stable) — OpenClose untouched.
 
-**Done when:** `/reload` → `v0.5.9` → B · no wells after collapse/search · broom/gear/X look like CombinedBags · "43/70" matches money font/size · B closes.
+**Done when:** `/reload` → `v0.5.10` → B · broom is Blizzard's own (hover tooltip "Clean Up Bags") · click sorts · hairline above 43/70 · B ×5 stable · broom never vanishes after open/close.

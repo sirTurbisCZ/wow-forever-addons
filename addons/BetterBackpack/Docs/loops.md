@@ -1,7 +1,7 @@
 # BetterBackpack — smyčky a grafy
 
 **Kód:** `Core.lua`, `Modules/{Slots,Layout,Context,OpenClose,Tidy,Settings,Search,Filter,CustomCategories,StackMerge,Pins,LayoutModes}.lua`  
-**Verze reference:** 0.5.9 (pevná velikost = plný rozbalený bag · dense grid PAD 2 · NumberFontNormalSmall counts · broom/gear jako CombinedBags · footer N/M = font peněz · fill wells default off)  
+**Verze reference:** 0.5.10 (nativní AutoSort reparent · footer hairline · pevná velikost = plný rozbalený bag · dense grid PAD 2 · NumberFontNormalSmall counts · broom/gear jako CombinedBags · footer N/M = font peněz · fill wells default off)  
 **Stabilita:** Project `docs/bag-addon-brief.md` + Scenario Maps `docs/scenarios/BetterBackpack/`  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never path C harvest).
 
@@ -43,8 +43,8 @@ flowchart TD
 - Slot art (0.5.7) = ContainerFrameItemButton: Normal/Pushed/Highlight + IconBorder čtené z hidden `ItemButtonTemplate` (fallback UI-Quickslot2 64×64 CENTER 0,-1 / Quickslot-Depress / ButtonHilight-Square ADD / WhiteIconFrame), ikona full texcoord v `BORDER`, well `bags-item-slot64`. Count (0.5.8) `NumberFontNormalSmall` bílý BOTTOMRIGHT −3,2 (i StackMerge — žádný cyan).
 - Kategorie jsou **default rozbalené**; klik na header = per-profile toggle. Schema 3 (0.5.6) jednorázově maže `collapsed` zaseknutý z 0.5.4/0.5.5 (prázdné lanes → hráč zavřel všechny headery).
 - Lua 5.1: helper volaný z `DoLayout` / `SyncVisual` / `Acquire` musí být deklarovaný **nad** volajícím (nebo forward `local X` + `X = function`). 0.5.4/0.5.5 volaly `ApplyCombinedBagsChrome` / `EnsureSlotBackground` jako nil global → DoLayout abort na prvním itemu (žádné ikony, frame se nezmenšil).
-- Title chrome (0.5.9): broom = 1:1 kopie state art (normal/pushed/highlight) + velikosti živého `BagItemAutoSortButton`; gear = stejná velikost, plochá ikona z ověřeného atlasu (`C_Texture.GetAtlasInfo`: questlog-icon-setting → GM-icon-settings → OptionsIcon-Brown → Gear → UI-OptionsButton), stejný square highlight, press offset 1px. broom | gear | X. No native reparent. (`SetNormalAtlas` na neznámý atlas nehází chybu → pcall sám nikdy nefallbackoval.)
-- Footer N/M (0.5.9): font = font peněz (`<money>CopperButton:GetFontString()`), baseline zarovnaný na text peněz; barva dle zaplnění. Počítá player bags `0..NUM_BAG_SLOTS` + **reagent bag** (Materials lane). Never keyring invent (102=70+32).
+- Title chrome (0.5.10): broom = **skutečný `BagItemAutoSortButton`** reparentovaný do našeho okna (Blizzard art, velikost, tooltip; není protected → SetParent OK). OnClick → `Tidy.SortBags` (OOC guard + suppress). Když ho CombinedBags update přeparentuje zpět, `hooksecurefunc(SetParent)` naplánuje re-grab na další frame (`C_Timer.After(0)`, flag `adoptingSort` → žádný thrash). `/bb off` / safe → `Layout.ReleaseNativeAutoSort` vrátí do CombinedBags. Fallback twin jen když native chybí. Gear = velikost AutoSort, highlight včetně geometrie z native, plochá ikona z ověřeného atlasu (`C_Texture.GetAtlasInfo`). CombinedBags nativní gear nemá. broom | gear | X.
+- Footer N/M (0.5.9): hairline 1px (bílá α0.14, PixelUtil) nad footerem (0.5.10); font = font peněz (`<money>CopperButton:GetFontString()`), baseline zarovnaný na text peněz; barva dle zaplnění. Počítá player bags `0..NUM_BAG_SLOTS` + **reagent bag** (Materials lane). Never keyring invent (102=70+32).
 - Slots: `Normalize` 37×37 on every `Place` and after `SetItemButtonQuality`.
 - CombinedBags/Container OnShow: park now; **defer** open to next tick (non-Toggle Open* only).
 
@@ -77,7 +77,9 @@ flowchart TD
   Wells -->|on| WellsOn[empty bags-item-slot64 in freed space]
   WellsOn --> Chrome
   Wells -->|off| Chrome[ApplyCombinedBagsChrome NineSlice/Bg/TopTile · EnsureTitleChrome · Search.EnsureChrome]
-  Chrome --> Foot[UpdateFreeSpace N/M in money font + money]
+  Chrome --> Sort[EnsureTitleChrome: adopt BagItemAutoSortButton · gear twin · X]
+  Sort --> Foot[footer hairline · UpdateFreeSpace N/M in money font + money]
+  Steal[Blizzard SetParent on AutoSort] -.->|C_Timer.After 0| Sort
   Place --> Attrs{OOC?}
   Attrs -->|ano| Sync[SyncAttrs type2=item]
   Attrs -->|ne combat| Keep[Keep prior attrs · visual sync]

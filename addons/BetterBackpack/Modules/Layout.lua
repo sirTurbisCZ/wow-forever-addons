@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.9).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.10).
   Forever: never SetToplevel / SetFrameStrata (ADDON_ACTION_BLOCKED).
   Chrome metrics from Baganator Forever Blizzard skin + ContainerFrameCombinedBags:
     ButtonFrameOffset=6, Bg/TopTile @ (6,-21), NineSlice borders, Inset hidden.
@@ -1083,6 +1083,22 @@ local function DoLayout()
       main.footer:SetPoint("BOTTOMLEFT", main, "BOTTOMLEFT", BF_OFFSET + 4, 6)
       main.footer:SetPoint("BOTTOMRIGHT", main, "BOTTOMRIGHT", -(BF_OFFSET + 4), 6)
       main.footer:SetFrameLevel(mainLvl + 5)
+      -- Hairline between grid and footer (N/M + money).
+      local line = main.footer.hairline
+      if not line then
+        line = main.footer:CreateTexture(nil, "ARTWORK")
+        line:SetColorTexture(1, 1, 1, 0.14)
+        main.footer.hairline = line
+      end
+      line:ClearAllPoints()
+      line:SetPoint("BOTTOMLEFT", main.footer, "TOPLEFT", 0, 1)
+      line:SetPoint("BOTTOMRIGHT", main.footer, "TOPRIGHT", 0, 1)
+      if PixelUtil and PixelUtil.SetHeight then
+        PixelUtil.SetHeight(line, 1)
+      else
+        line:SetHeight(1)
+      end
+      line:Show()
     end
     if main.moneyFrame then
       main.moneyFrame:ClearAllPoints()
@@ -1431,10 +1447,9 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local CHROME_VER = 25 -- 0.5.9: native AutoSort twin art, verified gear atlas, money-font footer
+local CHROME_VER = 26 -- 0.5.10: adopted native BagItemAutoSortButton; footer hairline
 local chromeLogged = false
 local customChromeHidden = false
-local nativeSortReleased = false
 
 --[[
   0.4.2: twin BagItemAutoSortButton style for BOTH title buttons.
@@ -1469,32 +1484,6 @@ local function HideLegacyChromeOnce()
       end)
     end
   end
-end
-
-local function ReleaseNativeAutoSortOnce(frame)
-  if nativeSortReleased then
-    return
-  end
-  nativeSortReleased = true
-  local sortNative = _G.BagItemAutoSortButton
-  if not sortNative then
-    return
-  end
-  pcall(function()
-    local parent = sortNative:GetParent()
-    if parent == frame then
-      local combined = ContainerFrameCombinedBags
-      if combined then
-        sortNative:SetParent(combined)
-        sortNative:ClearAllPoints()
-        sortNative:SetPoint("TOPRIGHT", combined, "TOPRIGHT", -40, -4)
-        sortNative:Hide()
-      else
-        sortNative:SetParent(UIParent)
-        sortNative:Hide()
-      end
-    end
-  end)
 end
 
 local function MeasureAutoSortSize()
@@ -1551,28 +1540,40 @@ local function AtlasExists(atlas)
   return ok and info ~= nil
 end
 
--- Read a native button state texture (atlas preferred) so twins match 1:1.
-local function NativeArt(tex)
+-- Read a native button state texture (atlas preferred, + own size if not stretched).
+local function NativeArt(tex, owner)
   if not tex then
     return nil
   end
+  local d
   local atlas = SafeAtlas(tex)
   if atlas then
-    return { atlas = atlas }
-  end
-  local file = SafeTexture(tex)
-  if not file then
-    return nil
-  end
-  local d = { file = file }
-  pcall(function()
-    local c = { tex:GetTexCoord() }
-    if #c == 8 and not IsSecret(c[1]) then
-      d.coords = c
+    d = { atlas = atlas }
+  else
+    local file = SafeTexture(tex)
+    if not file then
+      return nil
     end
+    d = { file = file }
+    pcall(function()
+      local c = { tex:GetTexCoord() }
+      if #c == 8 and not IsSecret(c[1]) then
+        d.coords = c
+      end
+    end)
+  end
+  pcall(function()
     local b = tex:GetBlendMode()
     if type(b) == "string" and not IsSecret(b) then
       d.blend = b
+    end
+    if owner then
+      local w, h = tex:GetSize()
+      local ow = owner:GetWidth()
+      if type(w) == "number" and w > 0 and type(ow) == "number" and math.abs(w - ow) > 0.5 then
+        local p, _, rp, x, y = tex:GetPoint(1)
+        d.w, d.h, d.p, d.rp, d.x, d.y = w, h, p or "CENTER", rp or p or "CENTER", x or 0, y or 0
+      end
     end
   end)
   return d
@@ -1602,9 +1603,95 @@ local function SetStateArt(btn, which, d)
         t:SetTexCoord(unpack(d.coords))
       end
       t:ClearAllPoints()
-      t:SetAllPoints(btn)
+      if d.w then
+        t:SetSize(d.w, d.h)
+        t:SetPoint(d.p, btn, d.rp, d.x, d.y)
+      else
+        t:SetAllPoints(btn)
+      end
     end
   end)
+end
+
+--[[
+  Real CombinedBags broom: adopt the live BagItemAutoSortButton (Blizzard art, size,
+  tooltip). Not protected, so SetParent is safe; OnClick routes to Tidy (OOC guard +
+  refresh suppression). If Blizzard re-parents it (CombinedBags update) while ours is
+  open, re-grab on the next frame — never inside the SetParent hook (no thrash).
+]]
+local adoptingSort = false
+local nativeSortHooked = false
+
+local function AdoptNativeAutoSort(frame, anchor, level, gap)
+  local native = _G.BagItemAutoSortButton
+  if not native or not frame then
+    return nil
+  end
+  adoptingSort = true
+  local ok = pcall(function()
+    if native:GetParent() ~= frame then
+      native:SetParent(frame)
+    end
+    native:ClearAllPoints()
+    native:SetPoint("RIGHT", anchor, "LEFT", -gap, 0)
+    native:SetFrameLevel(level)
+    native:SetAlpha(1)
+    native:EnableMouse(true)
+    native:Show()
+  end)
+  adoptingSort = false
+  if not ok then
+    return nil
+  end
+  if not native._bbTidyWired then
+    native._bbTidyWired = true
+    pcall(function()
+      native:SetScript("OnClick", function()
+        local T = BetterBackpack.Modules.Tidy
+        if T and T.SortBags then
+          T.SortBags()
+        end
+      end)
+    end)
+  end
+  if not nativeSortHooked then
+    nativeSortHooked = true
+    pcall(function()
+      hooksecurefunc(native, "SetParent", function(_, parent)
+        if adoptingSort or parent == main then
+          return
+        end
+        if C_Timer and C_Timer.After then
+          C_Timer.After(0, function()
+            if main and Layout.IsShown() and Profile().enabled then
+              pcall(EnsureTitleChrome, main)
+            end
+          end)
+        end
+      end)
+    end)
+  end
+  return native
+end
+
+function Layout.ReleaseNativeAutoSort()
+  local native = _G.BagItemAutoSortButton
+  if not native or not main or native:GetParent() ~= main then
+    return
+  end
+  adoptingSort = true
+  pcall(function()
+    local combined = ContainerFrameCombinedBags
+    if combined then
+      native:SetParent(combined)
+      native:ClearAllPoints()
+      native:SetPoint("TOPRIGHT", combined, "TOPRIGHT", -40, -4)
+    else
+      native:SetParent(UIParent)
+      native:Hide()
+    end
+  end)
+  adoptingSort = false
 end
 
 local SQUARE_HILIGHT = { file = "Interface\\Buttons\\ButtonHilight-Square", blend = "ADD" }
@@ -1622,10 +1709,10 @@ local function StyleAutoSortTwin(btn, kind, w, h)
     btn:SetDisabledTexture(nil)
   end)
   local native = _G.BagItemAutoSortButton
-  local nativeHl = native and NativeArt(native.GetHighlightTexture and native:GetHighlightTexture())
+  local nativeHl = native and NativeArt(native.GetHighlightTexture and native:GetHighlightTexture(), native)
   if kind == "tidy" then
-    local n = native and NativeArt(native:GetNormalTexture())
-    local p = native and NativeArt(native:GetPushedTexture())
+    local n = native and NativeArt(native:GetNormalTexture(), native)
+    local p = native and NativeArt(native:GetPushedTexture(), native)
     if not n and AtlasExists("bags-button-autosort-up") then
       n = { atlas = "bags-button-autosort-up" }
     end
@@ -1697,7 +1784,6 @@ end
 
 local function EnsureBagShelvesTitleChrome(frame, close)
   HideLegacyChromeOnce()
-  ReleaseNativeAutoSortOnce(frame)
 
   local w, h = MeasureAutoSortSize()
   local level = (close and close:GetFrameLevel()) or ((frame:GetFrameLevel() or 1) + 520)
@@ -1743,6 +1829,20 @@ local function EnsureBagShelvesTitleChrome(frame, close)
   gear:EnableMouse(true)
   gear:Show()
   frame.settingsBtn = gear
+
+  local native = AdoptNativeAutoSort(frame, gear, level, gap)
+  local twin = _G.BetterBackpackTidyBtn17
+  if native then
+    if twin then
+      pcall(function()
+        twin:Hide()
+        twin:EnableMouse(false)
+      end)
+    end
+    frame.sortBtn = native
+    LogChromeOnce(native, gear, close)
+    return native, gear
+  end
 
   local priorTidy = frame.sortBtn
   if priorTidy and (priorTidy == _G.BagItemAutoSortButton or not priorTidy._bbChrome17) then
@@ -2150,6 +2250,10 @@ end
 function Layout.Hide()
   focusBagID = nil
   ClearBagMatchGlows()
+  local p = Profile()
+  if not p.enabled or p.safeMode then
+    Layout.ReleaseNativeAutoSort()
+  end
   local S = BetterBackpack.Modules.Settings
   if S and S.Hide then
     S.Hide()
