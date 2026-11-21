@@ -402,7 +402,15 @@ SlashCmdList.BETTERBACKPACK = function(msg)
     return
   end
 
-  if cmd == "sort" or cmd == "tidy" then
+  if cmd == "settings" or cmd == "config" or cmd == "opts" then
+    local S = BetterBackpack.Modules.Settings
+    if S and S.Toggle then
+      S.Toggle()
+    end
+    return
+  end
+
+  if cmd == "sort" or cmd == "tidy" or cmd == "uklid" then
     SafeCall("sort", Tidy.SortBags)
     return
   end

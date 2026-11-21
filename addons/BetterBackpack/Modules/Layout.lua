@@ -1,7 +1,7 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.1.9).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.2.0).
   Forever: never SetToplevel (ADDON_ACTION_BLOCKED).
-  Content = TOPLEFT+SetSize only (no BOTTOMRIGHT stretch — that broke layout).
+  Visible Úklid + Settings gear (category toggles).
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -45,7 +45,7 @@ local CLASS = {
   Key = 13, Miscellaneous = 15, Glyph = 16,
 }
 
-local main, content, freeFs, moneyFs, emptyLabel, sortBtn
+local main, content, freeFs, moneyFs, emptyLabel, sortBtn, settingsBtn
 local sectionFrames = {}
 local layoutBusy = false
 local bagHoverHooked = false
@@ -930,34 +930,28 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local function StyleUklidButton(btn)
-  local iconSize = 24
-  btn:SetSize(28, 28)
+local function StyleIconChromeButton(btn, atlasName, texturePath, size)
+  size = size or 28
+  local iconSize = size - 4
+  btn:SetSize(size, size)
   pcall(function()
-    if btn.SetNormalAtlas then
-      btn:SetNormalAtlas("bags-button-autosort-up")
-    else
-      btn:SetNormalTexture("Interface\\Buttons\\UI-RefreshButton")
-      local nt = btn:GetNormalTexture()
-      if nt and nt.SetAtlas then
-        pcall(nt.SetAtlas, nt, "bags-button-autosort-up", false)
-      end
-    end
-  end)
-  pcall(function()
+    btn:SetNormalTexture(texturePath or "Interface\\Buttons\\UI-RefreshButton")
     local nt = btn:GetNormalTexture()
     if nt then
+      if atlasName and nt.SetAtlas then
+        pcall(nt.SetAtlas, nt, atlasName, false)
+      end
       nt:ClearAllPoints()
       nt:SetPoint("CENTER")
       nt:SetSize(iconSize, iconSize)
     end
   end)
   pcall(function()
-    btn:SetPushedTexture("Interface\\Buttons\\UI-RefreshButton")
+    btn:SetPushedTexture(texturePath or "Interface\\Buttons\\UI-RefreshButton")
     local pt = btn:GetPushedTexture()
     if pt then
-      if pt.SetAtlas then
-        pcall(pt.SetAtlas, pt, "bags-button-autosort-up", false)
+      if atlasName and pt.SetAtlas then
+        pcall(pt.SetAtlas, pt, atlasName, false)
       end
       pt:ClearAllPoints()
       pt:SetPoint("CENTER", 1, -1)
@@ -975,6 +969,32 @@ local function StyleUklidButton(btn)
   end)
 end
 
+-- Wide visible Úklid: broom + label (not icon-only).
+local function StyleUklidButton(btn)
+  btn:SetSize(78, 28)
+  local bg = btn:CreateTexture(nil, "BACKGROUND")
+  bg:SetAllPoints()
+  bg:SetColorTexture(0.12, 0.12, 0.14, 0.92)
+  btn._bbBg = bg
+  local icon = btn:CreateTexture(nil, "ARTWORK")
+  icon:SetSize(20, 20)
+  icon:SetPoint("LEFT", 6, 0)
+  local ok = pcall(icon.SetAtlas, icon, "bags-button-autosort-up", false)
+  if not ok then
+    icon:SetTexture("Interface\\Buttons\\UI-RefreshButton")
+  end
+  btn._bbIcon = icon
+  local fs = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  fs:SetPoint("LEFT", icon, "RIGHT", 4, 0)
+  fs:SetPoint("RIGHT", -6, 0)
+  fs:SetJustifyH("LEFT")
+  fs:SetText("Úklid")
+  btn._bbLabel = fs
+  pcall(function()
+    btn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+  end)
+end
+
 function Layout.EnsureMain()
   -- Recover half-built frame (error mid-EnsureMain left empty chrome).
   if main and not content then
@@ -988,6 +1008,10 @@ function Layout.EnsureMain()
       sortBtn:Show()
       sortBtn:SetFrameLevel((main:GetFrameLevel() or 1) + 30)
     end
+    if settingsBtn then
+      settingsBtn:Show()
+      settingsBtn:SetFrameLevel((main:GetFrameLevel() or 1) + 30)
+    end
     return main
   end
 
@@ -1000,6 +1024,7 @@ function Layout.EnsureMain()
     moneyFs = built._bbMoneyFs
     emptyLabel = built._bbEmpty
     sortBtn = built.sortBtn or built.tidy
+    settingsBtn = built.settingsBtn or built.gear
     InstallBagHoverHighlight()
     return main
   end
@@ -1082,14 +1107,40 @@ function Layout.EnsureMain()
     end)
   end
 
-  -- Úklid broom (CombinedBags autosort atlas).
+  -- Settings gear (category enable/disable).
+  local gear = CreateFrame("Button", "BetterBackpackSettingsButton", built)
+  StyleIconChromeButton(gear, nil, "Interface\\Buttons\\UI-OptionsButton", 28)
+  if close then
+    gear:SetPoint("RIGHT", close, "LEFT", -2, 0)
+  else
+    gear:SetPoint("TOPRIGHT", -28, -4)
+  end
+  gear:SetFrameLevel((built:GetFrameLevel() or 1) + 30)
+  gear:SetScript("OnEnter", function(self)
+    if GameTooltip then
+      GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+      GameTooltip:SetText("Nastavení")
+      GameTooltip:AddLine("Zapnout / vypnout kategorie.", 0.7, 0.7, 0.7, true)
+      GameTooltip:Show()
+    end
+  end)
+  gear:SetScript("OnLeave", function()
+    if GameTooltip then
+      GameTooltip:Hide()
+    end
+  end)
+  gear:SetScript("OnClick", function()
+    local S = BetterBackpack.Modules.Settings
+    if S and S.Toggle then
+      S.Toggle()
+    end
+  end)
+  gear:Show()
+
+  -- Visible Úklid (broom + label).
   local tidy = CreateFrame("Button", "BetterBackpackSortButton", built)
   StyleUklidButton(tidy)
-  if close then
-    tidy:SetPoint("RIGHT", close, "LEFT", -2, 0)
-  else
-    tidy:SetPoint("TOPRIGHT", -28, -4)
-  end
+  tidy:SetPoint("RIGHT", gear, "LEFT", -4, 0)
   tidy:SetFrameLevel((built:GetFrameLevel() or 1) + 30)
   tidy:SetScript("OnEnter", function(self)
     if GameTooltip then
@@ -1182,11 +1233,14 @@ function Layout.EnsureMain()
   moneyFs = moneyFallback
   emptyLabel = empty
   sortBtn = tidy
+  settingsBtn = gear
   main.footer = footer
   main.freeFs = freeFs
   main.moneyFrame = moneyFrame
   main.sortBtn = tidy
   main.tidy = tidy
+  main.settingsBtn = gear
+  main.gear = gear
   main._bbContent = contentFrame
   main._bbEmpty = empty
   main._bbMoneyFs = moneyFallback
@@ -1226,7 +1280,11 @@ function Layout.Show()
   InstallBagHoverHighlight()
   if sortBtn then
     sortBtn:Show()
-    sortBtn:SetFrameLevel((main:GetFrameLevel() or 1) + 20)
+    sortBtn:SetFrameLevel((main:GetFrameLevel() or 1) + 30)
+  end
+  if settingsBtn then
+    settingsBtn:Show()
+    settingsBtn:SetFrameLevel((main:GetFrameLevel() or 1) + 30)
   end
   main:Show()
   pcall(function()
@@ -1246,6 +1304,10 @@ end
 
 function Layout.Hide()
   ClearBagMatchGlows()
+  local S = BetterBackpack.Modules.Settings
+  if S and S.Hide then
+    S.Hide()
+  end
   if main then
     main:Hide()
   end
