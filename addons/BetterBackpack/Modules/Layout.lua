@@ -820,7 +820,7 @@ ClearBagMatchGlows = function()
 end
 
 function Layout.SetBagFocus(bagID)
-  if type(bagID) == "number" then
+  if bagID ~= nil then
     focusBagID = bagID
   else
     focusBagID = nil

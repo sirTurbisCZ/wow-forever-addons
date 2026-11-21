@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.OpenClose — B + /bb (0.5.51)
+  BetterBackpack.OpenClose — B + /bb (0.5.52)
 
   Bag-bar slot (not main backpack icon) → single bag: native ToggleBag or BB bag focus XOR.
   Main backpack icon + B / ToggleAllBags → BetterBackpack combined (ClearFocusBag).
@@ -902,28 +902,21 @@ local function onKeyRingToggle()
     CallOrigToggle("ToggleKeyRing")
     return
   end
-  if BagBarNativeEnabled() then
-    if SessionOpen() or OursVisible() then
-      OpenClose.CloseOurs({ closeBlizzard = false, suppress = 0.05 })
-    end
-    BlackoutCombinedOnly()
+  -- BB never inventories keyring slots — always native Forever keyring UI (empty frame OK).
+  if SessionOpen() or OursVisible() then
+    OpenClose.CloseOurs({ closeBlizzard = false, suppress = 0.05 })
+  end
+  BlackoutCombinedOnly()
+  if KeyRingNativeOpen() then
     CallOrigToggle("ToggleKeyRing")
+    if type(CloseKeyRing) == "function" then
+      pcall(CloseKeyRing)
+    end
+    EndNativeSession()
     return
   end
-  if SessionOpen() then
-    ClearFocusBag()
-    ClearCategoryFilter()
-    OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.25 })
-  else
-    if BBKeyringBagIndex() ~= nil then
-      SetFocusBag(BBKeyringBagIndex())
-    end
-    local Filter = BetterBackpack.Modules.Filter
-    if Filter and Filter.SetCategory then
-      pcall(Filter.SetCategory, "keys")
-    end
-    OpenOurs()
-  end
+  BeginNativeSession(BBKeyringBagIndex())
+  pcall(InvokeNativeKeyRing)
 end
 
 --[[
@@ -1060,7 +1053,13 @@ OpenCombinedBags = function(src)
   end
   pcall(CloseNativeCombinedBags)
   pcall(ParkBlizzardForOverlay)
-  return OpenOurs()
+  local ok = OpenOurs()
+  ClearFocusBag()
+  ClearCategoryFilter()
+  if Layout and Layout.Relayout and SessionOpen() then
+    pcall(Layout.Relayout)
+  end
+  return ok
 end
 OpenClose.OpenCombinedBags = OpenCombinedBags
 
@@ -1297,6 +1296,10 @@ end
 local function onToggleBag(bagID, ...)
   if not EnabledReplace() then
     CallOrigToggle("ToggleBag", bagID, ...)
+    return
+  end
+  local t = Now()
+  if (t - lastBagKeyHandledAt) < BAG_KEY_DEBOUNCE then
     return
   end
   if BagBarNativeEnabled() then
@@ -1610,6 +1613,7 @@ local function ApplyBagKeyReplace()
   end)
   ReplaceToggle("ToggleBackpack", onBackpackToggle)
   ReplaceToggle("ToggleBag", onToggleBag)
+  ReplaceToggle("ToggleKeyRing", onKeyRingToggle)
 end
 
 function OpenClose.EnsureBagKeyReplace()
