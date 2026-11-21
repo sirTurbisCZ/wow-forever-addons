@@ -1,4 +1,4 @@
-# Playtest brief — BetterBackpack 1.0.0
+# Playtest brief — BetterBackpack 1.1.0
 
 Release gate — combat, vendor bulk, auto-sell, English UI.
 

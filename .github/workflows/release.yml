@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - "felog-v*"
+      - "betterbackpack-v*"
+      - "plateband-v*"
 
 permissions:
   contents: write
@@ -23,6 +25,14 @@ jobs:
             felog-v*)
               ADDON="ForeverErrorLog"
               VER="${TAG#felog-v}"
+              ;;
+            betterbackpack-v*)
+              ADDON="BetterBackpack"
+              VER="${TAG#betterbackpack-v}"
+              ;;
+            plateband-v*)
+              ADDON="Plateband"
+              VER="${TAG#plateband-v}"
               ;;
             *)
               echo "Unsupported tag: $TAG" >&2

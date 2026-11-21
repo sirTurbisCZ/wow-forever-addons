@@ -392,7 +392,11 @@ end
 
 local BAG_KEY_TRACE_MAX = 16
 
-local function BagKeyChat(branch, detail)
+local function BagKeyTrace(branch, detail)
+  local p = Profile()
+  if not (p and p.debug) then
+    return
+  end
   local extra = detail and (" · " .. tostring(detail)) or ""
   local line = "|cffc9a227BetterBackpack|r onBagKey · " .. tostring(branch) .. extra
   if BetterBackpack.Print then
@@ -616,14 +620,14 @@ end
 
 local function OpenOurs()
   if closeBusy then
-    BagKeyChat("open-skip", "closeBusy")
+    BagKeyTrace("open-skip", "closeBusy")
     return SessionOpen()
   end
   if openBusy then
     if not SessionOpen() then
       ReleaseStaleBusy()
     else
-      BagKeyChat("open-skip", "openBusy visible")
+      BagKeyTrace("open-skip", "openBusy visible")
       return true
     end
   end
@@ -763,7 +767,7 @@ function OpenClose.CloseOurs(opts)
     if not OursVisible() then
       ReleaseStaleBusy()
     else
-      BagKeyChat("close-skip", "closeBusy")
+      BagKeyTrace("close-skip", "closeBusy")
       return
     end
   end
@@ -883,16 +887,16 @@ end
 local function onBagKey(src)
   src = src or "?"
   if inBagKey then
-    BagKeyChat("skip", src .. " inBagKey")
+    BagKeyTrace("skip", src .. " inBagKey")
     return
   end
   local t = Now()
   if (t - lastBagKeyHandledAt) < BAG_KEY_DEBOUNCE then
-    BagKeyChat("skip", string.format("%s debounce %.0fms", src, (t - lastBagKeyHandledAt) * 1000))
+    BagKeyTrace("skip", string.format("%s debounce %.0fms", src, (t - lastBagKeyHandledAt) * 1000))
     return
   end
   if not EnabledReplace() then
-    BagKeyChat("skip", src .. " replaceOff")
+    BagKeyTrace("skip", src .. " replaceOff")
     return
   end
   inBagKey = true
@@ -900,7 +904,7 @@ local function onBagKey(src)
   OpenClose.ClearReplaceSuppress()
   lastBagKeyHandledAt = t
   local visible = SessionOpen()
-  BagKeyChat("enter", string.format(
+  BagKeyTrace("enter", string.format(
     "%s visible=%s busy=%s/%s lock=%.2f",
     src,
     tostring(visible),
@@ -910,9 +914,9 @@ local function onBagKey(src)
   ))
   local ok, err = pcall(function()
     if visible then
-      BagKeyChat("close", src)
+      BagKeyTrace("close", src)
       OpenClose.CloseOurs({ closeBlizzard = true, suppress = 0.05 })
-      BagKeyChat("after-close", string.format(
+      BagKeyTrace("after-close", string.format(
         "visible=%s busy=%s/%s",
         tostring(SessionOpen()),
         tostring(openBusy),
@@ -920,11 +924,11 @@ local function onBagKey(src)
       ))
       return
     end
-    BagKeyChat("open", src)
+    BagKeyTrace("open", src)
     pcall(CloseNativeCombinedBags)
     pcall(ParkBlizzardForOverlay)
     local opened = OpenOurs()
-    BagKeyChat("after-open", string.format(
+    BagKeyTrace("after-open", string.format(
       "opened=%s visible=%s busy=%s/%s",
       tostring(opened),
       tostring(SessionOpen()),
@@ -934,7 +938,7 @@ local function onBagKey(src)
   end)
   if not ok then
     ReleaseStaleBusy()
-    BagKeyChat("error", tostring(err))
+    BagKeyTrace("error", tostring(err))
     if BetterBackpack.RecordError then
       BetterBackpack.RecordError("onBagKey", err)
     end
@@ -1058,7 +1062,6 @@ local function ReplaceToggle(globalName, handler)
   OpenClose["_replaced_" .. globalName] = true
   OpenClose["_orig_" .. globalName] = orig
   local wrapper = function(...)
-    BagKeyChat("wrap", globalName)
     if not EnabledReplace() then
       return orig(...)
     end
@@ -1084,6 +1087,9 @@ local function LogHooksOnce(detail)
     return
   end
   hooksLogged = true
+  if not Profile().debug then
+    return
+  end
   if DEFAULT_CHAT_FRAME then
     DEFAULT_CHAT_FRAME:AddMessage(
       "|cff88ff88BetterBackpack|r hooks ok · " .. tostring(detail or "bag-bar")
@@ -1295,12 +1301,12 @@ end
 
 local function onBackpackToggle(...)
   if not EnabledReplace() then
-    BagKeyChat("backpack", "native replaceOff")
+    BagKeyTrace("backpack", "native replaceOff")
     CallOrigToggle("ToggleBackpack", ...)
     return
   end
   if BagBarNativeEnabled() and Now() < backpackBarArmUntil then
-    BagKeyChat("backpack", "native arm")
+    BagKeyTrace("backpack", "native arm")
     if SessionOpen() or OursVisible() then
       OpenClose.CloseOurs({ closeBlizzard = false, suppress = 0.05 })
     end
@@ -1653,7 +1659,6 @@ local function ReplaceOpen(globalName, handler)
   OpenClose["_replaced_" .. globalName] = true
   OpenClose["_orig_" .. globalName] = orig
   local wrapper = function(...)
-    BagKeyChat("wrap", globalName)
     if not EnabledReplace() then
       return orig(...)
     end
@@ -1878,7 +1883,7 @@ function OpenClose.DiagnoseBagKey()
       )
     end
   else
-    lines[#lines + 1] = "bagKeyTrace empty — no onBagKey since last /reload (B not handled by BB)"
+    lines[#lines + 1] = "bagKeyTrace empty — enable /bb debug on and press B, or no onBagKey yet"
   end
   return lines
 end
