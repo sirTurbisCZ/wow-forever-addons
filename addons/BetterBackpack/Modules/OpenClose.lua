@@ -38,6 +38,10 @@ local ClearCategoryFilter
 local OpenOurs
 local InvokeNativeKeyRing
 
+local function InCombat()
+  return InCombatLockdown and InCombatLockdown() and true or false
+end
+
 local function Now()
   return (GetTime and GetTime()) or 0
 end
@@ -400,10 +404,6 @@ local function Park(f)
   end)
 end
 
-local function InCombat()
-  return InCombatLockdown and InCombatLockdown() and true or false
-end
-
 local combatTraceOnce = {}
 
 local function CombatTraceOnce(tag, detail)
@@ -577,12 +577,6 @@ OpenOurs = function()
     if Layout and Layout.CombatShow then
       shown = Layout.CombatShow() and true or false
     end
-    if not shown then
-      local pre = Layout and Layout.IsColdPreloaded and Layout.IsColdPreloaded()
-      if not pre then
-        CombatTraceOnce("OpenOurs", "cold preload missing - open OOC once")
-      end
-    end
     openBusy = false
     OpenClose._openBusy = false
     local visible = OursVisible()
@@ -598,6 +592,9 @@ OpenOurs = function()
     bagsOpen = false
     ParkBlizzardForOverlay()
     local global = _G.BetterBackpackFrame
+    if not shown then
+      CombatTraceOnce("OpenOurs", "need one OOC B open first (_bbBuilt)")
+    end
     local built = global and tostring(global._bbBuilt) or "nil"
     local alpha = global and tostring(global:GetAlpha()) or "nil"
     CombatTraceOnce("OpenOurs", string.format("show failed shown=%s visible=%s built=%s alpha=%s", tostring(shown), tostring(visible), built, alpha))

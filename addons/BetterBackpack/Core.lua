@@ -105,41 +105,6 @@ local function ModuleWanted()
   return p.enabled and not p.safeMode
 end
 
-local coldWarmupToken = 0
-local function QueueColdWarmup(tag)
-  if not ModuleWanted() then
-    return
-  end
-  if Layout and Layout.IsColdPreloaded and Layout.IsColdPreloaded() then
-    return
-  end
-  if InCombatLockdown and InCombatLockdown() then
-    return
-  end
-  coldWarmupToken = coldWarmupToken + 1
-  local token = coldWarmupToken
-  local function run()
-    if token ~= coldWarmupToken then
-      return
-    end
-    if InCombatLockdown and InCombatLockdown() then
-      return
-    end
-    if Layout and Layout.ColdPreload then
-      SafeCall("coldPreload:" .. tostring(tag), Layout.ColdPreload)
-    else
-      SafeCall("precreate:" .. tostring(tag), Slots.PreCreate)
-      SafeCall("warmup:" .. tostring(tag), Layout.EnsureMain)
-    end
-  end
-  if C_Timer and C_Timer.After then
-    C_Timer.After(0, run)
-    C_Timer.After(0.5, run)
-  else
-    run()
-  end
-end
-
 local bagRefreshToken = 0
 local function QueueBagRefresh()
   if InCombatLockdown and InCombatLockdown() then
@@ -223,7 +188,6 @@ end
 local bootFrame = CreateFrame("Frame")
 bootFrame:RegisterEvent("ADDON_LOADED")
 bootFrame:RegisterEvent("PLAYER_LOGIN")
-bootFrame:RegisterEvent("ENTERING_WORLD")
 bootFrame:RegisterEvent("BAG_UPDATE")
 bootFrame:RegisterEvent("BAG_UPDATE_DELAYED")
 bootFrame:RegisterEvent("ITEM_LOCK_CHANGED")
@@ -260,16 +224,18 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
       if OpenClose and OpenClose.InstallHooks then
         SafeCall("hooks", OpenClose.InstallHooks)
       else
-        Print("ERROR: OpenClose failed to load - check FrameXML.log")
+        Print("ERROR: OpenClose failed to load — check FrameXML.log")
       end
-      QueueColdWarmup("login")
+      if C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+          SafeCall("precreate", Slots.PreCreate)
+          SafeCall("warmup:ensure", Layout.EnsureMain)
+        end)
+      else
+        SafeCall("precreate", Slots.PreCreate)
+      end
     end
     Print(string.format(L.LOADED or "loaded v%s · /bb", tostring(Config.VERSION)))
-    return
-  end
-
-  if event == "ENTERING_WORLD" then
-    QueueColdWarmup("world")
     return
   end
 

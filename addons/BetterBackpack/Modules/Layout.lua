@@ -2669,7 +2669,7 @@ local function FrameAlpha(f)
   return a
 end
 
--- User-visible open (combat alpha-off = closed for B XOR).
+-- Open for B XOR: combat alpha-off counts as closed.
 function Layout.IsBagFrameVisible()
   if combatVisuallyHidden then
     return false
@@ -2708,7 +2708,7 @@ function Layout.CombatAttachMain()
   return main
 end
 
--- Combat open: alpha 1 + Show (no EnsureMain / DoLayout in lockdown).
+-- Combat open: frame built on prior OOC B only; alpha 1 (no DoLayout in lockdown).
 function Layout.CombatShow()
   local frame = Layout.CombatAttachMain() or _G.BetterBackpackFrame
   if not frame or not frame._bbBuilt then
@@ -2731,7 +2731,7 @@ function Layout.CombatShow()
   return Layout.IsBagFrameVisible()
 end
 
--- Combat close: alpha 0 (never Hide in lockdown).
+-- Combat close: alpha 0 only (never Hide in lockdown).
 function Layout.CombatHide()
   combatVisuallyHidden = true
   local frame = main or _G.BetterBackpackFrame
@@ -2859,49 +2859,6 @@ function Layout.Hide()
       main:Hide()
     end)
   end
-end
-
--- OOC login: build frame + slots + one layout; park alpha 0 for combat B.
-function Layout.ColdPreload()
-  if BetterBackpack._coldPreloaded then
-    return true
-  end
-  if InCombatLockdown and InCombatLockdown() then
-    return false
-  end
-  local p = Profile()
-  if not p.enabled or p.safeMode then
-    return false
-  end
-  if Slots and Slots.PreCreate then
-    pcall(Slots.PreCreate)
-  end
-  local okEns = pcall(Layout.EnsureMain)
-  if not okEns or not main or not main._bbBuilt then
-    return false
-  end
-  pcall(function()
-    if main:GetParent() ~= UIParent then
-      main:SetParent(UIParent)
-    end
-    main:SetFrameLevel(500)
-    main:SetAlpha(0)
-    main:EnableMouse(false)
-    main:Show()
-  end)
-  pcall(DoLayout)
-  pcall(RefreshCooldowns)
-  combatVisuallyHidden = true
-  pcall(function()
-    main:SetAlpha(0)
-    main:EnableMouse(false)
-  end)
-  BetterBackpack._coldPreloaded = true
-  return true
-end
-
-function Layout.IsColdPreloaded()
-  return BetterBackpack._coldPreloaded and true or false
 end
 
 function Layout.ForceHidden()
