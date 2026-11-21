@@ -1,7 +1,7 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.4.0).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.4.1).
   Forever: never SetToplevel (ADDON_ACTION_BLOCKED).
-  Title chrome: BagShelves-style Close-sized tidy+gear (no native AutoSort reparent).
+  Width/padding/title match BagShelves CombinedBags feel (10 cols).
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -15,13 +15,14 @@ local Slots = BetterBackpack.Modules.Slots
 
 local SLOT = 37
 local PAD = 4
-local HEADER_H = 18
+local HEADER_H = 20 -- BagShelves
 local HEADER_PAD = 2
-local SECTION_GAP = 4 -- even gap after every section (incl. last trimmed)
-local INSET_X = 12
-local TOP_CHROME = 40 -- title bar only (gear+broom share Close row)
-local BOT_CHROME = 26 -- free-slots + money strip
+local SECTION_GAP = 8 -- BagShelves section trailing gap
+local INSET_X = 14 -- BagShelves
+local TOP_CHROME = 58 -- BagShelves title band (not skinny header)
+local BOT_CHROME = 32 -- BagShelves footer strip
 local FOOTER_H = 20
+local FRAME_RIGHT_PAD = 28 -- BagShelves ApplyFrameSize: width + INSET_X + 28
 -- Fallback when CloseButton size is unavailable (UIPanelCloseButton is 32×32).
 local CHROME_BTN = 32
 
@@ -84,7 +85,7 @@ local function Columns()
   if type(c) == "number" and c >= 4 and c <= 16 then
     return c
   end
-  return 8
+  return 10 -- Combined Bags width feel (BagShelves)
 end
 
 local function CategoryEnabled(key)
@@ -728,7 +729,8 @@ local function DoLayout()
     local buckets = CollectBuckets()
     local used = {}
     local y = 0
-    local maxW = cols * (SLOT + PAD) - PAD
+    -- BagShelves: content width = cols*(SLOT+PAD)+4 (CombinedBags feel).
+    local contentW = cols * (SLOT + PAD) + 4
     local any = false
 
     for i = 1, #CATEGORY_ORDER do
@@ -740,7 +742,7 @@ local function DoLayout()
           local sf = EnsureSection(key)
           sf:ClearAllPoints()
           sf:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
-          sf:SetWidth(maxW)
+          sf:SetWidth(contentW)
           sf:Show()
           local collapsed = IsCollapsed(key)
           sf.header.title:SetText(string.format(
@@ -799,14 +801,14 @@ local function DoLayout()
     if y >= SECTION_GAP then
       y = y - SECTION_GAP
     end
-    local contentH = math.max(y, 1)
-    local width = math.max(maxW + INSET_X * 2, 320)
-    -- Hug content: no min-180, no +8 fluff.
+    local contentH = math.max(y, 40)
+    -- BagShelves ApplyFrameSize: outer = contentW + INSET_X + 28.
+    local width = contentW + INSET_X + FRAME_RIGHT_PAD
     local height = TOP_CHROME + contentH + BOT_CHROME
     content:ClearAllPoints()
     -- Always from main (not Inset) — Inset stretch left empty black below Other.
     content:SetPoint("TOPLEFT", main, "TOPLEFT", INSET_X, -TOP_CHROME)
-    content:SetSize(maxW, contentH)
+    content:SetSize(contentW, contentH)
     content:Show()
     -- Must sit above ButtonFrameTemplate Inset.Bg or lanes look empty (counts only).
     local mainLvl = main:GetFrameLevel() or 200
@@ -1459,7 +1461,7 @@ function Layout.EnsureMain()
     InstallBagHoverHighlight()
     return main
   end
-  built:SetSize(400, 320)
+  built:SetSize(456, 360)
   built:SetFrameStrata("DIALOG")
   built:SetFrameLevel(200)
   built:SetMovable(true)
@@ -1664,7 +1666,7 @@ function Layout.Show()
   end)
   if not main:GetWidth() or main:GetWidth() < 100 then
     pcall(function()
-      main:SetSize(400, 320)
+      main:SetSize(456, 360)
     end)
   end
   PlaceOnScreen()

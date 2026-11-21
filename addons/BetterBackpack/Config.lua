@@ -2,7 +2,7 @@
 
 BetterBackpack = BetterBackpack or {}
 
-local CURRENT_SCHEMA = 1
+local CURRENT_SCHEMA = 2
 local MAX_ERRORS = 40
 local MAX_MSG = 2000
 
@@ -12,7 +12,7 @@ local Config = BetterBackpack.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.4.0"
+Config.VERSION = "0.4.1"
 
 local function ProfileDefaults()
   return {
@@ -20,7 +20,7 @@ local function ProfileDefaults()
     safeMode = false,
     replaceBlizzard = true,
     debug = false,
-    columns = 8,
+    columns = 10, -- CombinedBags / BagShelves width feel
     scale = 1.0,
     collapsed = {},
     categories = {
@@ -88,6 +88,18 @@ function Config.EnsureDB()
       db.errors = {}
     end
     db.schemaVersion = 1
+    from = 1
+  end
+
+  -- 0.4.1: match CombinedBags/BagShelves default width (10 cols).
+  if from < 2 then
+    EnsureProfile(db)
+    local p = db.profile
+    if type(p) == "table" and (p.columns == nil or p.columns == 8) then
+      p.columns = 10
+    end
+    db.schemaVersion = 2
+    from = 2
   end
 
   EnsureProfile(db)

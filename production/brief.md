@@ -1,9 +1,9 @@
-# Playtest brief — BetterBackpack 0.4.0
+# Playtest brief — BetterBackpack 0.4.1
 
-**Keep:** footer 63/70 (player+reagent) — do not touch count.
+**Keep:** footer ~/70 (player+reagent).
 
-**Bug:** chrome back to square one (missing gear / ugly title buttons).
+**Bug:** tall skinny panel — not CombinedBags/BagShelves width.
 
-**Fix:** port ARCHIVE BagShelves title chrome — Close-sized custom broom+gear (atlas autosort + UI-OptionsButton), order broom | gear | X. No native AutoSort reparent (releases stolen button). No BagShelves open/close/taint loops.
+**Fix:** default **10 cols**; BagShelves padding (INSET 14, TOP 58, BOT 32); outer width = contentW+INSET+28. Schema migrates saved columns 8→10.
 
-**Done when:** `/reload` → CombinedBags-like title buttons visible+aligned · footer still ~/70.
+**Done when:** `/reload` → wide CombinedBags-like panel + title chrome · footer ~/70.
