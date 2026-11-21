@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.Settings — category lanes + nice-to-have toggles (0.3.0-nth).
+  BetterBackpack.Settings — category lanes + nice-to-have toggles (0.5.0).
 ]]
 
 BetterBackpack = BetterBackpack or {}

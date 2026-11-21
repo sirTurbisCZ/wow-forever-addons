@@ -1,9 +1,8 @@
 --[[
-  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.3.0-nth).
+  BetterBackpack.Layout — category lanes + CombinedBags chrome (0.5.0).
   Forever: never SetToplevel (ADDON_ACTION_BLOCKED).
-  Hug-content height; even section gaps; title LEFT + chrome LEFT of X.
-  Feature hooks (Search/Filter/CustomCategories/StackMerge/Pins/LayoutModes) are
-  optional module lookups — safe if TOC omits a feature file.
+  Width/padding match BagShelves; title buttons = AutoSort twins (no glow).
+  NTH hooks via optional Feat("Search|Filter|…") — do not rewrite OpenClose chrome here.
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -21,13 +20,16 @@ end
 
 local SLOT = 37
 local PAD = 4
-local HEADER_H = 18
+local HEADER_H = 20 -- BagShelves
 local HEADER_PAD = 2
-local SECTION_GAP = 4 -- even gap after every section (incl. last trimmed)
-local INSET_X = 12
-local TOP_CHROME = 34 -- title band; content starts below
-local BOT_CHROME = 26 -- N/M + money strip
+local SECTION_GAP = 8 -- BagShelves section trailing gap
+local INSET_X = 14 -- BagShelves
+local TOP_CHROME = 58 -- BagShelves title band (not skinny header)
+local BOT_CHROME = 32 -- BagShelves footer strip
 local FOOTER_H = 20
+local FRAME_RIGHT_PAD = 28 -- BagShelves ApplyFrameSize: width + INSET_X + 28
+-- Fallback when CloseButton size is unavailable (UIPanelCloseButton is 32×32).
+local CHROME_BTN = 32
 
 local CATEGORY_ORDER = {
   "junk", "consumable", "reagent", "gem", "gear", "quest", "keys", "container", "other",
@@ -78,8 +80,11 @@ local sectionFrames = {}
 local layoutBusy = false
 local bagHoverHooked = false
 local bagBarHoverHooked = {}
+local focusBagID = nil
 -- Forward decl: DoLayout runs before the definition body below (Lua 5.1 upvalue).
 local EnsureTitleChrome
+local SetBagMatchHighlight
+local ClearBagMatchGlows
 
 local function SafeNum(v, fallback)
   return Slots.SafeNum(v, fallback)
@@ -102,7 +107,7 @@ end
 local function Columns()
   local c = Profile().columns
   if type(c) ~= "number" or c < 4 or c > 16 then
-    c = 8
+    c = 10 -- Combined Bags width feel (BagShelves)
   end
   local LM = Feat("LayoutModes")
   if LM and LM.Columns then
@@ -115,7 +120,6 @@ local function CategoryEnabled(key)
   if key == "other" then
     return true
   end
-  -- Custom category ids are always "enabled" when present in order.
   if type(key) == "string" and key:find("^custom_", 1) then
     return true
   end
@@ -338,7 +342,6 @@ local function CollectBuckets()
           cat = "gear"
         end
         if not buckets[cat] then
-          -- Unknown custom key: create bucket so custom lanes work.
           if type(cat) == "string" and cat:find("^custom_", 1) then
             buckets[cat] = {}
           else
@@ -414,41 +417,66 @@ local function UpdateMoney()
   end
 end
 
--- Occupied/total only — no "Free N" label.
+-- Classic used/total N/M: ONLY GetContainerNumSlots(0..NUM_BAG_SLOTS). 102 was 70+32 keyring invent.
+local freeSpaceLogged = false
+
+local function LogPlayerSlotsOnce(used, total, parts)
+  if freeSpaceLogged then
+    return
+  end
+  freeSpaceLogged = true
+  local msg = string.format(
+    "|cff88ff88BetterBackpack|r slots %s → used/total=%d/%d (player+reagent, no keyring/bank)",
+    tostring(parts or "?"),
+    used or 0,
+    total or 0
+  )
+  if DEFAULT_CHAT_FRAME then
+    DEFAULT_CHAT_FRAME:AddMessage(msg)
+  end
+end
+
 local function UpdateFreeSpace()
-  -- Rebind in case EnsureMain reattach left a stale upvalue.
   freeFs = (main and main.freeFs) or freeFs
   if not freeFs then
     return
   end
-  local free, total = 0, 0
-  local okRanges, ranges = pcall(function()
-    return Slots.BagRanges()
-  end)
-  if okRanges and type(ranges) == "table" then
-    for i = 1, #ranges do
-      local bag, n = ranges[i].bag, ranges[i].slots
-      n = tonumber(n) or 0
-      total = total + n
-      for slot = 1, n do
-        if not Slots.SlotOccupied(bag, slot) then
-          free = free + 1
+  local used, total, free, parts = 0, 0, 0, "?"
+  pcall(function()
+    if Slots.CountPlayerSlots then
+      used, total, free, parts = Slots.CountPlayerSlots()
+    else
+      local ranges = Slots.PlayerBagRanges and Slots.PlayerBagRanges() or {}
+      for i = 1, #ranges do
+        local n = ranges[i].slots
+        total = total + n
+        for slot = 1, n do
+          if not Slots.SlotOccupied(ranges[i].bag, slot) then
+            free = free + 1
+          end
         end
       end
+      used = total - free
     end
+  end)
+  if used < 0 then
+    used = 0
   end
-  local used = total - free
+  LogPlayerSlotsOnce(used, total, parts)
   pcall(function()
     freeFs:Show()
     freeFs:ClearAllPoints()
-    freeFs:SetPoint("LEFT", main.footer or freeFs:GetParent(), "LEFT", 4, 0)
-    freeFs:SetPoint("TOP", main.footer or freeFs:GetParent(), "TOP", 0, 0)
-    freeFs:SetPoint("BOTTOM", main.footer or freeFs:GetParent(), "BOTTOM", 0, 0)
+    local footer = main.footer or freeFs:GetParent()
+    freeFs:SetPoint("LEFT", footer, "LEFT", 4, 0)
+    freeFs:SetPoint("TOP", footer, "TOP", 0, 0)
+    freeFs:SetPoint("BOTTOM", footer, "BOTTOM", 0, 0)
+    if freeFs.SetFontObject and NumberFontNormalSmall then
+      freeFs:SetFontObject(NumberFontNormalSmall)
+    end
     freeFs:SetJustifyH("LEFT")
     freeFs:SetJustifyV("MIDDLE")
     freeFs:SetDrawLayer("OVERLAY", 7)
     freeFs:SetText(string.format("%d/%d", used, total))
-    -- ≤50% green, ≤75% yellow, <100% orange, only 100% red
     local ratio = (total > 0) and (used / total) or 0
     if ratio <= 0.50 then
       freeFs:SetTextColor(0.25, 0.85, 0.35)
@@ -511,7 +539,7 @@ local function ShowBagIndicator(ind, show)
   end)
 end
 
-local function SetBagMatchHighlight(bagID, highlight)
+SetBagMatchHighlight = function(bagID, highlight)
   pcall(function()
     Slots.ForEach(function(btn)
       if not btn or (btn:GetAlpha() or 0) < 0.5 then
@@ -525,7 +553,7 @@ local function SetBagMatchHighlight(bagID, highlight)
   end)
 end
 
-local function ClearBagMatchGlows()
+ClearBagMatchGlows = function()
   pcall(function()
     Slots.ForEach(function(btn)
       if btn and btn.BagIndicator then
@@ -533,6 +561,31 @@ local function ClearBagMatchGlows()
       end
     end)
   end)
+end
+
+function Layout.SetBagFocus(bagID)
+  if type(bagID) == "number" then
+    focusBagID = bagID
+  else
+    focusBagID = nil
+  end
+  if not Layout.IsShown() then
+    return
+  end
+  if focusBagID ~= nil then
+    SetBagMatchHighlight(focusBagID, true)
+  else
+    ClearBagMatchGlows()
+  end
+end
+
+function Layout.ClearBagFocus()
+  focusBagID = nil
+  ClearBagMatchGlows()
+end
+
+function Layout.GetBagFocus()
+  return focusBagID
 end
 
 local function ResolveBagBarBagID(btn, forcedBag)
@@ -559,18 +612,39 @@ local function HookOneBagBarButton(btn, forcedBag)
   if not btn or bagBarHoverHooked[btn] then
     return
   end
-  bagBarHoverHooked[btn] = true
-  btn:HookScript("OnEnter", function(self)
-    if not Layout.IsShown() then
+  local canEnter = false
+  pcall(function()
+    canEnter = btn.HasScript and btn:HasScript("OnEnter")
+  end)
+  if not canEnter then
+    local ot
+    pcall(function()
+      ot = btn.GetObjectType and btn:GetObjectType()
+    end)
+    if ot ~= "Button" and ot ~= "CheckButton" and ot ~= "Frame" then
       return
     end
-    local bagID = ResolveBagBarBagID(self, forcedBag)
-    if bagID ~= nil then
-      SetBagMatchHighlight(bagID, true)
-    end
+  end
+  bagBarHoverHooked[btn] = true
+  pcall(function()
+    btn:HookScript("OnEnter", function(self)
+      if not Layout.IsShown() then
+        return
+      end
+      local bagID = ResolveBagBarBagID(self, forcedBag)
+      if bagID ~= nil then
+        SetBagMatchHighlight(bagID, true)
+      end
+    end)
   end)
-  btn:HookScript("OnLeave", function()
-    ClearBagMatchGlows()
+  pcall(function()
+    btn:HookScript("OnLeave", function()
+      if focusBagID ~= nil and Layout.IsShown() then
+        SetBagMatchHighlight(focusBagID, true)
+      else
+        ClearBagMatchGlows()
+      end
+    end)
   end)
 end
 
@@ -678,6 +752,7 @@ local function EnsureSection(key)
   end
   sf = CreateFrame("Frame", nil, content)
   sf:SetSize(100, HEADER_H)
+  sf:SetFrameLevel((content:GetFrameLevel() or 1) + 5)
   local header = CreateFrame("Button", nil, sf)
   header:SetPoint("TOPLEFT")
   header:SetPoint("TOPRIGHT")
@@ -712,7 +787,8 @@ local function DoLayout()
     local buckets = CollectBuckets()
     local used = {}
     local y = 0
-    local maxW = cols * (SLOT + PAD) - PAD
+    -- BagShelves: content width = cols*(SLOT+PAD)+4 (CombinedBags feel).
+    local contentW = cols * (SLOT + PAD) + 4
     local any = false
     local order = Layout.GetCategoryOrder()
     local SM = Feat("StackMerge")
@@ -729,7 +805,7 @@ local function DoLayout()
           local sf = EnsureSection(key)
           sf:ClearAllPoints()
           sf:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
-          sf:SetWidth(maxW)
+          sf:SetWidth(contentW)
           sf:Show()
           local collapsed = IsCollapsed(key)
           sf.header.title:SetText(string.format(
@@ -742,14 +818,20 @@ local function DoLayout()
           if not collapsed then
             local col, row = 0, 0
             local rows = math.ceil(#list / cols)
+            -- Parent to main (absolute), not content — content sat under Inset.Bg.
+            local parentFrame = main or content
             for j = 1, #list do
               local entry = list[j]
               local bag, slot = entry.bag, entry.slot
               local btn = Slots.Acquire(bag, slot)
-              used[btn] = true
-              Slots.Place(btn, content, col * (SLOT + PAD), y + row * (SLOT + PAD), true)
-              if SM and SM.ApplyDisplayCount then
-                SM.ApplyDisplayCount(btn, entry)
+              if btn then
+                used[btn] = true
+                local px = INSET_X + col * (SLOT + PAD)
+                local py = TOP_CHROME + y + row * (SLOT + PAD)
+                Slots.Place(btn, parentFrame, px, py, true)
+                if SM and SM.ApplyDisplayCount then
+                  SM.ApplyDisplayCount(btn, entry)
+                end
               end
               col = col + 1
               if col >= cols then
@@ -814,24 +896,37 @@ local function DoLayout()
     if y >= SECTION_GAP then
       y = y - SECTION_GAP
     end
-    local contentH = math.max(y, 1)
-    local width = math.max(maxW + INSET_X * 2, 320)
-    -- Hug content: no min-180, no +8 fluff.
+    local contentH = math.max(y, 40)
+    -- BagShelves ApplyFrameSize: outer = contentW + INSET_X + 28.
+    local width = contentW + INSET_X + FRAME_RIGHT_PAD
     local height = TOP_CHROME + contentH + BOT_CHROME
     content:ClearAllPoints()
     -- Always from main (not Inset) — Inset stretch left empty black below Other.
     content:SetPoint("TOPLEFT", main, "TOPLEFT", INSET_X, -TOP_CHROME)
-    content:SetSize(maxW, contentH)
+    content:SetSize(contentW, contentH)
+    content:Show()
+    -- Must sit above ButtonFrameTemplate Inset.Bg or lanes look empty (counts only).
+    local mainLvl = main:GetFrameLevel() or 200
+    pcall(function()
+      if main.Inset then
+        main.Inset:SetFrameLevel(math.max(1, mainLvl + 1))
+        main.Inset:EnableMouse(false)
+      end
+    end)
+    content:SetFrameLevel(mainLvl + 40)
     main:SetSize(width, height)
     if main.footer then
       main.footer:ClearAllPoints()
       main.footer:SetPoint("BOTTOMLEFT", main, "BOTTOMLEFT", 10, 6)
       main.footer:SetPoint("BOTTOMRIGHT", main, "BOTTOMRIGHT", -10, 6)
-      main.footer:SetFrameLevel((main:GetFrameLevel() or 1) + 5)
+      main.footer:SetFrameLevel(mainLvl + 5)
     end
     if main.moneyFrame then
       main.moneyFrame:ClearAllPoints()
       main.moneyFrame:SetPoint("BOTTOMRIGHT", main, "BOTTOMRIGHT", -4, 6)
+      pcall(function()
+        main.moneyFrame:SetFrameLevel(mainLvl + 6)
+      end)
     end
     -- Shrink Inset so its Bg does not paint empty under content.
     pcall(function()
@@ -848,6 +943,9 @@ local function DoLayout()
     end
     UpdateFreeSpace()
     UpdateMoney()
+    if focusBagID ~= nil then
+      SetBagMatchHighlight(focusBagID, true)
+    end
   end)
   layoutBusy = false
   if not ok and BetterBackpack.RecordError then
@@ -1054,7 +1152,11 @@ local function CreateBagPanel()
   if not frame then
     frame = CreateFrame("Frame", "BetterBackpackFrame", UIParent)
   end
-  frame:SetParent(UIParent)
+  pcall(function()
+    if frame:GetParent() ~= UIParent then
+      frame:SetParent(UIParent)
+    end
+  end)
   pcall(function()
     if ButtonFrameTemplate_HidePortrait then
       ButtonFrameTemplate_HidePortrait(frame)
@@ -1072,7 +1174,7 @@ local function DestroyHalfBuilt()
       main:SetParent(nil)
     end)
   end
-  main, content, freeFs, moneyFs, emptyLabel, sortBtn = nil, nil, nil, nil, nil, nil
+  main, content, freeFs, moneyFs, emptyLabel, sortBtn, settingsBtn = nil, nil, nil, nil, nil, nil, nil
   sectionFrames = {}
   pcall(function()
     local old = _G.BetterBackpackFrame
@@ -1083,45 +1185,319 @@ local function DestroyHalfBuilt()
   end)
 end
 
-local CHROME_VER = 6
-local CHROME_BTN_W, CHROME_BTN_H = 70, 20
+local CHROME_VER = 17 -- AutoSort-twin settings+tidy (same size, no glow)
+local chromeLogged = false
+local customChromeHidden = false
+local nativeSortReleased = false
 
--- Compact text buttons, same size — no icons.
-local function StyleTextChromeButton(btn, label)
-  btn:SetSize(CHROME_BTN_W, CHROME_BTN_H)
-  if btn._bbIcon then
-    btn._bbIcon:Hide()
+--[[
+  0.4.2: twin BagItemAutoSortButton style for BOTH title buttons.
+  - Same pixel size as native AutoSort (not Close 32×32)
+  - Atlas art (not pixelated UI-OptionsButton)
+  - No ADD MouseHilight glow
+]]
+
+local function HideLegacyChromeOnce()
+  if customChromeHidden then
+    return
   end
-  if not btn._bbBg then
-    local bg = btn:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    btn._bbBg = bg
+  customChromeHidden = true
+  for _, name in ipairs({
+    "BetterBackpackSortButton",
+    "BetterBackpackSettingsButton",
+    "BetterBackpackSortBtn12",
+    "BetterBackpackGearBtn12",
+    "BetterBackpackSortBtn13",
+    "BetterBackpackGearBtn13",
+    "BetterBackpackSettingsBtn15",
+    "BetterBackpackGearBtn16",
+    "BetterBackpackTidyBtn16",
+  }) do
+    local b = _G[name]
+    if b then
+      pcall(function()
+        b:Hide()
+        b:EnableMouse(false)
+        b:ClearAllPoints()
+        b:SetAlpha(0)
+      end)
+    end
   end
-  btn._bbBg:SetColorTexture(0.12, 0.11, 0.10, 0.92)
-  btn._bbBg:Show()
-  if not btn._bbLabel then
-    local fs = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetPoint("CENTER", 0, 0)
-    btn._bbLabel = fs
+end
+
+local function ReleaseNativeAutoSortOnce(frame)
+  if nativeSortReleased then
+    return
   end
-  btn._bbLabel:ClearAllPoints()
-  btn._bbLabel:SetPoint("CENTER", 0, 0)
-  btn._bbLabel:SetText(label)
-  btn._bbLabel:SetTextColor(1, 0.82, 0.2)
+  nativeSortReleased = true
+  local sortNative = _G.BagItemAutoSortButton
+  if not sortNative then
+    return
+  end
+  pcall(function()
+    local parent = sortNative:GetParent()
+    if parent == frame then
+      local combined = ContainerFrameCombinedBags
+      if combined then
+        sortNative:SetParent(combined)
+        sortNative:ClearAllPoints()
+        sortNative:SetPoint("TOPRIGHT", combined, "TOPRIGHT", -40, -4)
+        sortNative:Hide()
+      else
+        sortNative:SetParent(UIParent)
+        sortNative:Hide()
+      end
+    end
+  end)
+end
+
+local function MeasureAutoSortSize()
+  -- Native BagItemAutoSortButton is typically 25×23 — do not Show() (flash).
+  local w, h = 25, 23
+  local sortNative = _G.BagItemAutoSortButton
+  if sortNative then
+    pcall(function()
+      local cw, ch = sortNative:GetWidth(), sortNative:GetHeight()
+      if type(cw) == "number" and cw >= 8 then
+        w = cw
+      end
+      if type(ch) == "number" and ch >= 8 then
+        h = ch
+      end
+    end)
+  end
+  return w, h
+end
+
+local function LogChromeOnce(tidy, gear, close)
+  if chromeLogged then
+    return
+  end
+  chromeLogged = true
+  local function wh(b)
+    if not b then
+      return "nil"
+    end
+    local w, h, name = 0, 0, "?"
+    pcall(function()
+      w, h = b:GetWidth(), b:GetHeight()
+      name = (b.GetName and b:GetName()) or name
+    end)
+    return string.format("%s %.0fx%.0f", tostring(name), w or 0, h or 0)
+  end
+  local msg = string.format(
+    "|cff88ff88BetterBackpack|r chrome tidy=%s gear=%s close=%s ver=%d",
+    wh(tidy),
+    wh(gear),
+    wh(close),
+    CHROME_VER
+  )
+  if DEFAULT_CHAT_FRAME then
+    DEFAULT_CHAT_FRAME:AddMessage(msg)
+  end
+end
+
+-- AutoSort twin: SetNormalAtlas / SetPushedAtlas, exact AutoSort size, NO glow highlight.
+local function StyleAutoSortTwin(btn, kind, w, h)
+  btn:SetSize(w, h)
+  btn:SetWidth(w)
+  btn:SetHeight(h)
+  -- Clear any leftover CreateTexture / ADD hilight from older chrome.
   pcall(function()
     btn:SetNormalTexture(nil)
     btn:SetPushedTexture(nil)
+    btn:SetHighlightTexture(nil)
+    btn:SetDisabledTexture(nil)
   end)
+  if kind == "tidy" then
+    local ok = pcall(function()
+      btn:SetNormalAtlas("bags-button-autosort-up")
+      btn:SetPushedAtlas("bags-button-autosort-down")
+    end)
+    if not ok then
+      pcall(function()
+        btn:SetNormalTexture("Interface\\Buttons\\UI-RefreshButton")
+      end)
+    end
+    pcall(function()
+      local nt = btn:GetNormalTexture()
+      if nt then
+        nt:ClearAllPoints()
+        nt:SetAllPoints()
+      end
+      local pt = btn:GetPushedTexture()
+      if pt then
+        pt:ClearAllPoints()
+        pt:SetAllPoints()
+      end
+    end)
+  else
+    -- Settings twin: same Set*Atlas path + size as broom. Prefer flat Gear atlas.
+    local ok = false
+    for _, atlas in ipairs({ "Gear", "OptionsIcon-Brown", "bags-icon-equipment" }) do
+      if not ok then
+        ok = pcall(function()
+          btn:SetNormalAtlas(atlas)
+          btn:SetPushedAtlas(atlas)
+        end)
+      end
+    end
+    if not ok then
+      -- Last resort: OptionsButton cropped flat, never ADD-blended.
+      pcall(function()
+        btn:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
+        local nt = btn:GetNormalTexture()
+        if nt then
+          nt:ClearAllPoints()
+          nt:SetAllPoints()
+          nt:SetTexCoord(0.15, 0.85, 0.15, 0.85)
+          nt:SetVertexColor(0.9, 0.9, 0.9)
+        end
+        btn:SetPushedTexture("Interface\\Buttons\\UI-OptionsButton")
+        local pt = btn:GetPushedTexture()
+        if pt then
+          pt:ClearAllPoints()
+          pt:SetPoint("CENTER", 1, -1)
+          pt:SetSize(w - 2, h - 2)
+          pt:SetTexCoord(0.15, 0.85, 0.15, 0.85)
+          pt:SetVertexColor(0.7, 0.7, 0.7)
+        end
+      end)
+    else
+      pcall(function()
+        local nt = btn:GetNormalTexture()
+        if nt then
+          nt:ClearAllPoints()
+          nt:SetAllPoints()
+        end
+        local pt = btn:GetPushedTexture()
+        if pt then
+          pt:ClearAllPoints()
+          pt:SetPoint("CENTER", 1, -1)
+          pt:SetSize(w, h)
+          pt:SetVertexColor(0.8, 0.8, 0.8)
+        end
+      end)
+    end
+  end
+  -- No glow (UI-Common-MouseHilight ADD was the shiny ring).
   pcall(function()
-    btn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+    btn:SetHighlightTexture(nil)
   end)
-  btn:EnableMouse(true)
-  btn:Show()
+  btn._bbChromeStyled = true
+end
+
+local function EnsureChromeButton(existing, globalName, frame)
+  local btn = existing
+  if btn and btn._bbChrome17 then
+    pcall(function()
+      btn:SetParent(frame)
+    end)
+    return btn
+  end
+  btn = _G[globalName]
+  if not (btn and btn._bbChrome17) then
+    btn = CreateFrame("Button", globalName, frame)
+    btn._bbChrome17 = true
+  else
+    pcall(function()
+      btn:SetParent(frame)
+    end)
+  end
+  return btn
+end
+
+local function EnsureBagShelvesTitleChrome(frame, close)
+  HideLegacyChromeOnce()
+  ReleaseNativeAutoSortOnce(frame)
+
+  local w, h = MeasureAutoSortSize()
+  local level = (close and close:GetFrameLevel()) or ((frame:GetFrameLevel() or 1) + 520)
+  local gap = 2
+
+  -- gear immediately left of Close (broom | gear | X)
+  local priorGear = frame.settingsBtn
+  if priorGear and not priorGear._bbChrome17 then
+    priorGear = nil
+  end
+  local gear = EnsureChromeButton(priorGear, "BetterBackpackGearBtn17", frame)
+  gear:ClearAllPoints()
+  if close then
+    gear:SetPoint("RIGHT", close, "LEFT", -gap, 0)
+  else
+    gear:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -32, -4)
+  end
+  gear:SetFrameLevel(level)
+  StyleAutoSortTwin(gear, "settings", w, h)
+  if not gear._bbChromeWired then
+    gear._bbChromeWired = true
+    gear:SetScript("OnEnter", function(self)
+      if GameTooltip then
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetText("Nastavení")
+        GameTooltip:AddLine("Kategorie zapnout / vypnout.", 0.7, 0.7, 0.7, true)
+        GameTooltip:Show()
+      end
+    end)
+    gear:SetScript("OnLeave", function()
+      if GameTooltip then
+        GameTooltip:Hide()
+      end
+    end)
+    gear:SetScript("OnClick", function()
+      local S = BetterBackpack.Modules.Settings
+      if S and S.Toggle then
+        S.Toggle()
+      end
+    end)
+  end
+  gear:SetAlpha(1)
+  gear:EnableMouse(true)
+  gear:Show()
+  frame.settingsBtn = gear
+
+  local priorTidy = frame.sortBtn
+  if priorTidy and (priorTidy == _G.BagItemAutoSortButton or not priorTidy._bbChrome17) then
+    priorTidy = nil
+  end
+  local tidy = EnsureChromeButton(priorTidy, "BetterBackpackTidyBtn17", frame)
+  tidy:ClearAllPoints()
+  tidy:SetPoint("RIGHT", gear, "LEFT", -gap, 0)
+  tidy:SetFrameLevel(level)
+  StyleAutoSortTwin(tidy, "tidy", w, h)
+  if not tidy._bbChromeWired then
+    tidy._bbChromeWired = true
+    tidy:SetScript("OnEnter", function(self)
+      if GameTooltip then
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetText("Úklid")
+        GameTooltip:AddLine("SortBags + stack. Mimo boj.", 0.7, 0.7, 0.7, true)
+        GameTooltip:Show()
+      end
+    end)
+    tidy:SetScript("OnLeave", function()
+      if GameTooltip then
+        GameTooltip:Hide()
+      end
+    end)
+    tidy:SetScript("OnClick", function()
+      local T = BetterBackpack.Modules.Tidy
+      if T and T.SortBags then
+        T.SortBags()
+      end
+    end)
+  end
+  tidy:SetAlpha(1)
+  tidy:EnableMouse(true)
+  tidy:Show()
+  frame.sortBtn = tidy
+
+  LogChromeOnce(tidy, gear, close)
+  return tidy, gear
 end
 
 --[[
   Assign into forward-declared EnsureTitleChrome (must NOT use `local function` here).
-  Compact strip: [Úklid][Nastavení][X] — right of title band, left of close.
 ]]
 EnsureTitleChrome = function(frame)
   if not frame then
@@ -1136,12 +1512,12 @@ EnsureTitleChrome = function(frame)
   end
   if close then
     close:ClearAllPoints()
-    close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 1, -1)
+    -- BagShelves: TOPRIGHT 2,1
+    close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 2, 1)
     close:SetFrameLevel((frame:GetFrameLevel() or 1) + 520)
     close:Show()
   end
 
-  -- Title LEFT in title band (CombinedBags-like); leave room for chrome+X on right.
   pcall(function()
     local title = CombinedBagTitle()
     if frame.SetTitle then
@@ -1154,7 +1530,8 @@ EnsureTitleChrome = function(frame)
       tt:ClearAllPoints()
       local anchor = frame.TitleContainer or frame
       tt:SetPoint("LEFT", anchor, "LEFT", 10, 0)
-      tt:SetPoint("RIGHT", frame, "RIGHT", -(CHROME_BTN_W * 2 + 40), 0)
+      -- Room for broom + gear + Close (~3×32).
+      tt:SetPoint("RIGHT", frame, "RIGHT", -110, 0)
       if tt.SetJustifyH then
         tt:SetJustifyH("LEFT")
       end
@@ -1162,99 +1539,14 @@ EnsureTitleChrome = function(frame)
     end
   end)
 
-  local strip = frame._bbChrome
-  if not strip or frame._bbChromeVer ~= CHROME_VER then
-    if strip then
-      pcall(strip.Hide, strip)
-    end
-    strip = CreateFrame("Frame", "BetterBackpackTitleChrome", frame)
-    frame._bbChrome = strip
-    frame._bbChromeVer = CHROME_VER
-  end
-  strip:SetParent(frame)
-  strip:ClearAllPoints()
-  -- Top-right title band: LEFT of X, TOP-aligned (not floating mid-panel).
-  if close then
-    strip:SetPoint("TOPRIGHT", close, "TOPLEFT", -2, -4)
-  else
-    strip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -28, -6)
-  end
-  strip:SetSize(CHROME_BTN_W * 2 + 4, CHROME_BTN_H)
-  strip:SetFrameStrata(frame:GetFrameStrata() or "DIALOG")
-  strip:SetFrameLevel((frame:GetFrameLevel() or 1) + 500)
-  strip:EnableMouse(true)
-  strip:Show()
-
-  -- Nastavení closest to X
-  local gear = frame.settingsBtn or strip.settingsBtn
-  if not gear then
-    gear = CreateFrame("Button", "BetterBackpackSettingsButton", strip)
-  end
-  gear:SetParent(strip)
-  gear:ClearAllPoints()
-  gear:SetPoint("RIGHT", strip, "RIGHT", 0, 0)
-  StyleTextChromeButton(gear, "Nastavení")
-  gear:SetFrameLevel(strip:GetFrameLevel() + 2)
-  gear:SetScript("OnEnter", function(self)
-    if GameTooltip then
-      GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-      GameTooltip:SetText("Nastavení")
-      GameTooltip:AddLine("Zapnout / vypnout kategorie.", 0.7, 0.7, 0.7, true)
-      GameTooltip:AddLine("Skrytá kategorie → položky do Other.", 0.7, 0.7, 0.7, true)
-      GameTooltip:Show()
-    end
-  end)
-  gear:SetScript("OnLeave", function()
-    if GameTooltip then
-      GameTooltip:Hide()
-    end
-  end)
-  gear:SetScript("OnClick", function()
-    local S = BetterBackpack.Modules.Settings
-    if S and S.Toggle then
-      S.Toggle()
-    end
-  end)
-  gear:Show()
-  strip.settingsBtn = gear
-  frame.settingsBtn = gear
-  frame.gear = gear
+  local tidy, gear = EnsureBagShelvesTitleChrome(frame, close)
+  sortBtn = tidy
   settingsBtn = gear
 
-  -- Úklid left of Nastavení
-  local tidy = frame.sortBtn or strip.sortBtn
-  if not tidy then
-    tidy = CreateFrame("Button", "BetterBackpackSortButton", strip)
+  if frame._bbChrome then
+    pcall(frame._bbChrome.Hide, frame._bbChrome)
   end
-  tidy:SetParent(strip)
-  tidy:ClearAllPoints()
-  tidy:SetPoint("RIGHT", gear, "LEFT", -4, 0)
-  StyleTextChromeButton(tidy, "Úklid")
-  tidy:SetFrameLevel(strip:GetFrameLevel() + 2)
-  tidy:SetScript("OnEnter", function(self)
-    if GameTooltip then
-      GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-      GameTooltip:SetText("Úklid")
-      GameTooltip:AddLine("SortBags + stack. Mimo boj.", 0.7, 0.7, 0.7, true)
-      GameTooltip:Show()
-    end
-  end)
-  tidy:SetScript("OnLeave", function()
-    if GameTooltip then
-      GameTooltip:Hide()
-    end
-  end)
-  tidy:SetScript("OnClick", function()
-    local Tidy = BetterBackpack.Modules.Tidy
-    if Tidy and Tidy.SortBags then
-      Tidy.SortBags()
-    end
-  end)
-  tidy:Show()
-  strip.sortBtn = tidy
-  frame.sortBtn = tidy
-  frame.tidy = tidy
-  sortBtn = tidy
+  frame._bbChromeVer = CHROME_VER
 
   pcall(function()
     if frame.TitleContainer then
@@ -1291,7 +1583,7 @@ function Layout.EnsureMain()
     InstallBagHoverHighlight()
     return main
   end
-  built:SetSize(400, 320)
+  built:SetSize(456, 360)
   built:SetFrameStrata("DIALOG")
   built:SetFrameLevel(200)
   built:SetMovable(true)
@@ -1369,35 +1661,34 @@ function Layout.EnsureMain()
     end)
   end
 
-  -- Big Úklid + Nastavení left of X (high frame level strip).
+  -- Native CombinedBags chrome (AutoSort + gear).
   EnsureTitleChrome(built)
 
   -- Footer on main (not Inset) — stable when main:SetSize runs.
   local footer = CreateFrame("Frame", nil, built)
   footer:SetHeight(FOOTER_H)
   footer:EnableMouse(false)
-  footer:SetPoint("BOTTOMLEFT", built, "BOTTOMLEFT", 10, 6)
-  footer:SetPoint("BOTTOMRIGHT", built, "BOTTOMRIGHT", -10, 6)
+  footer:SetPoint("BOTTOMLEFT", built, "BOTTOMLEFT", 8, 6)
+  footer:SetPoint("BOTTOMRIGHT", built, "BOTTOMRIGHT", -8, 6)
   footer:SetFrameLevel((built:GetFrameLevel() or 1) + 5)
 
+  -- CombinedBags CountContainer: NumberFontNormalSmall.
   local fs
   pcall(function()
-    fs = footer:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    fs = footer:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
   end)
   if not fs then
     fs = footer:CreateFontString(nil, "OVERLAY")
     pcall(function()
-      fs:SetFontObject(GameFontHighlight)
+      fs:SetFontObject(NumberFontNormalSmall or GameFontHighlightSmall)
     end)
   end
-  -- Center N/M in footer strip (vertical + sit on left).
   fs:ClearAllPoints()
   fs:SetPoint("LEFT", footer, "LEFT", 4, 0)
   fs:SetPoint("TOP", footer, "TOP", 0, 0)
   fs:SetPoint("BOTTOM", footer, "BOTTOM", 0, 0)
   fs:SetJustifyH("LEFT")
   fs:SetJustifyV("MIDDLE")
-  fs:SetWidth(72)
   fs:SetText("0/0")
   fs:SetTextColor(0.25, 0.85, 0.35)
   fs:SetDrawLayer("OVERLAY", 7)
@@ -1436,6 +1727,14 @@ function Layout.EnsureMain()
   contentFrame:EnableMouse(false)
   contentFrame:SetPoint("TOPLEFT", built, "TOPLEFT", INSET_X, -TOP_CHROME)
   contentFrame:SetSize(100, 100)
+  contentFrame:SetFrameLevel((built:GetFrameLevel() or 200) + 40)
+  contentFrame:Show()
+  pcall(function()
+    if built.Inset then
+      built.Inset:SetFrameLevel((built:GetFrameLevel() or 200) + 1)
+      built.Inset:EnableMouse(false)
+    end
+  end)
 
   local empty = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   empty:SetPoint("TOPLEFT", 4, -4)
@@ -1476,18 +1775,26 @@ function Layout.Show()
     return false
   end
 
-  main:SetParent(UIParent)
-  main:SetFrameStrata("DIALOG")
-  main:SetFrameLevel(200)
-  main:SetAlpha(1)
-  main:SetScale(1)
+  pcall(function()
+    if main:GetParent() ~= UIParent then
+      main:SetParent(UIParent)
+    end
+  end)
+  pcall(function()
+    main:SetFrameStrata("DIALOG")
+    main:SetFrameLevel(200)
+    main:SetAlpha(1)
+    main:SetScale(1)
+  end)
   if not main:GetWidth() or main:GetWidth() < 100 then
-    main:SetSize(400, 320)
+    pcall(function()
+      main:SetSize(456, 360)
+    end)
   end
   PlaceOnScreen()
   KillPortrait(main)
   ApplyCombinedBagsChrome(main)
-  EnsureTitleChrome(main)
+  pcall(EnsureTitleChrome, main)
   InstallBagHoverHighlight()
   main:Show()
   pcall(function()
@@ -1498,19 +1805,19 @@ function Layout.Show()
   main:Show()
   PlaceOnScreen()
   ApplyCombinedBagsChrome(main)
-  EnsureTitleChrome(main)
+  -- After layout: remount chrome + clone Close GetWidth/Height exactly.
+  pcall(EnsureTitleChrome, main)
   UpdateFreeSpace()
   UpdateMoney()
   pcall(function()
     main:Raise()
   end)
-  -- Re-raise chrome after Raise() so TitleContainer cannot bury it.
-  EnsureTitleChrome(main)
   UpdateFreeSpace()
   return main:IsShown() and true or false
 end
 
 function Layout.Hide()
+  focusBagID = nil
   ClearBagMatchGlows()
   local S = BetterBackpack.Modules.Settings
   if S and S.Hide then
@@ -1616,7 +1923,9 @@ function Layout.DiagnoseBags()
       filled = filled + 1
     end
   end
-  local ranges = Slots.BagRanges()
+  local ranges = (Slots.InventoryBagRanges and Slots.InventoryBagRanges())
+    or (Slots.PlayerBagRanges and Slots.PlayerBagRanges())
+    or Slots.BagRanges()
   local total, free = 0, 0
   local hasReb = false
   for i = 1, #ranges do

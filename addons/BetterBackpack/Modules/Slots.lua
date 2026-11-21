@@ -1,6 +1,7 @@
 --[[
   BetterBackpack.Slots — 1:1 bag:slot SecureActionButtons (path B CS-RMB).
   Never shared pool. Create/SetAttribute OOC only. Never harvest CombinedBags.Items.
+  All visible slots forced to SLOT×SLOT (37) — one grid for every category.
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -144,64 +145,158 @@ function Slots.AttrBagSlot(bag, slot)
 end
 
 function Slots.NumSlotsForBag(bag)
-  if not (C_Container and C_Container.GetContainerNumSlots) then
-    return 0
-  end
-  local ok, res = pcall(C_Container.GetContainerNumSlots, bag)
-  if not ok or type(res) ~= "number" then
-    if Slots.IsReagentBag(bag) then
-      return 36
+  if C_Container and C_Container.GetContainerNumSlots then
+    local ok, res = pcall(C_Container.GetContainerNumSlots, bag)
+    if ok and type(res) == "number" and not IsSecret(res) and res > 0 and res <= 96 then
+      return res
     end
-    if Slots.IsKeyringBag(bag) then
-      return 32
-    end
-    return 0
   end
-  if IsSecret(res) then
-    if Slots.IsKeyringBag(bag) then
-      return 32
+  -- Reagent bag on Forever may secret GetContainerNumSlots — recover via free+occupied.
+  if Slots.IsReagentBag(bag) then
+    local free
+    if C_Container and C_Container.GetContainerNumFreeSlots then
+      local ok, f = pcall(C_Container.GetContainerNumFreeSlots, bag)
+      if ok and type(f) == "number" and not IsSecret(f) and f >= 0 then
+        free = f
+      end
     end
-    return 36
+    local occ = 0
+    local maxOcc = 0
+    for slot = 1, 36 do
+      if Slots.SlotOccupied(bag, slot) then
+        occ = occ + 1
+        maxOcc = slot
+      end
+    end
+    if free ~= nil then
+      local total = occ + free
+      if total > 0 and total <= 98 then
+        return total
+      end
+    end
+    if maxOcc > 0 then
+      return maxOcc
+    end
   end
-  return res > 0 and res or 0
+  return 0
 end
 
-function Slots.BagRanges()
-  local ranges = {}
-  local reb = Slots.ReagentBagIndex()
-  local key = Slots.KeyringBagIndex()
-  local bags = { 0, 1, 2, 3, 4, reb, key }
-  if not Slots.IsReagentBag(5) then
-    bags[#bags + 1] = 5
+-- Backpack + worn bags: 0 .. NUM_BAG_SLOTS. No bank/keyring.
+function Slots.PlayerBagLastIndex()
+  local last = NUM_BAG_SLOTS
+  if type(last) ~= "number" or last < 0 or last > 12 then
+    last = 4
   end
-  for i = 1, #bags do
-    local bag = bags[i]
-    local already = false
-    for j = 1, #ranges do
-      local match = false
-      pcall(function()
-        if ranges[j].bag == bag then
-          match = true
-        end
-      end)
-      if match
-          or (Slots.IsReagentBag(ranges[j].bag) and Slots.IsReagentBag(bag))
-          or (Slots.IsKeyringBag(ranges[j].bag) and Slots.IsKeyringBag(bag))
-      then
-        already = true
-        break
+  return last
+end
+
+function Slots.IsPlayerBagIndex(bag)
+  local b = SafeNum(bag, nil)
+  if b == nil then
+    return false
+  end
+  if Slots.IsKeyringBag(b) then
+    return false
+  end
+  return b >= 0 and b <= Slots.PlayerBagLastIndex()
+end
+
+function Slots.PlayerBagRanges()
+  local ranges = {}
+  local last = Slots.PlayerBagLastIndex()
+  for bag = 0, last do
+    local n = Slots.NumSlotsForBag(bag)
+    if n > 0 then
+      ranges[#ranges + 1] = {
+        bag = bag,
+        slots = n,
+        reagent = false,
+        keyring = false,
+      }
+    end
+  end
+  return ranges
+end
+
+-- Footer + Materials: player bags 0..NUM_BAG_SLOTS + reagent. Never keyring invent.
+function Slots.InventoryBagRanges()
+  local ranges = Slots.PlayerBagRanges()
+  local seen = {}
+  for i = 1, #ranges do
+    seen[ranges[i].bag] = true
+  end
+  local reb = Slots.ReagentBagIndex()
+  local already = false
+  for i = 1, #ranges do
+    if ranges[i].reagent or (reb ~= nil and ranges[i].bag == reb) or Slots.IsReagentBag(ranges[i].bag) then
+      already = true
+      break
+    end
+  end
+  if not already and reb ~= nil then
+    local n = Slots.NumSlotsForBag(reb)
+    if n > 0 then
+      ranges[#ranges + 1] = {
+        bag = reb,
+        slots = n,
+        reagent = true,
+        keyring = false,
+      }
+    end
+  end
+  return ranges
+end
+
+-- Footer used/total (player + reagent). Chat parts include R=n.
+function Slots.CountPlayerSlots()
+  local parts = {}
+  local total, free = 0, 0
+  local ranges = Slots.InventoryBagRanges()
+  for i = 1, #ranges do
+    local bag, n = ranges[i].bag, ranges[i].slots
+    if ranges[i].reagent then
+      parts[#parts + 1] = string.format("R=%d", n)
+    else
+      parts[#parts + 1] = string.format("%d=%d", bag, n)
+    end
+    total = total + n
+    for slot = 1, n do
+      if not Slots.SlotOccupied(bag, slot) then
+        free = free + 1
       end
     end
-    if not already then
-      local n = Slots.NumSlotsForBag(bag)
-      if n > 0 then
-        ranges[#ranges + 1] = {
-          bag = bag,
-          slots = n,
-          reagent = Slots.IsReagentBag(bag),
-          keyring = Slots.IsKeyringBag(bag),
-        }
+  end
+  local used = total - free
+  if used < 0 then
+    used = 0
+  end
+  return used, total, free, table.concat(parts, " ")
+end
+
+-- Layout lanes: inventory (player+reagent) + keyring when real API reports slots.
+function Slots.BagRanges()
+  local ranges = Slots.InventoryBagRanges()
+  local seen = {}
+  for i = 1, #ranges do
+    seen[ranges[i].bag] = true
+  end
+  local key = Slots.KeyringBagIndex()
+  if key ~= nil and not seen[key] then
+    -- only add keyring if GetContainerNumSlots returns real (no probe invent)
+    local n = 0
+    if C_Container and C_Container.GetContainerNumSlots then
+      local ok, res = pcall(C_Container.GetContainerNumSlots, key)
+      if ok and type(res) == "number" and not IsSecret(res) and res > 0 and res <= 96 then
+        n = res
       end
+    end
+    if n > 0 then
+      ranges[#ranges + 1] = {
+        bag = key,
+        slots = n,
+        reagent = false,
+        keyring = true,
+      }
     end
   end
   return ranges
@@ -227,12 +322,19 @@ end
 
 local function EnsureHost()
   if host then
+    -- Never keep park host Hidden — SecureActionButtons created under a
+    -- Hidden parent can refuse to paint after SetParent to a shown frame.
+    host:Show()
+    host:SetAlpha(0)
+    host:EnableMouse(false)
     return host
   end
   host = CreateFrame("Frame", "BetterBackpackSlotHost", UIParent)
-  host:SetSize(1, 1)
+  host:SetSize(SLOT, SLOT)
   host:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -9000, 0)
-  host:Hide()
+  host:SetAlpha(0)
+  host:EnableMouse(false)
+  host:Show()
   return host
 end
 
@@ -359,6 +461,46 @@ local function ResolveStackCount(info, bag, slot)
   return 1
 end
 
+local function ResolveIconTexture(info, bag, slot)
+  if type(info) == "table" then
+    local file = info.iconFileID
+    if file ~= nil and not IsSecret(file) then
+      return file
+    end
+    local id = info.itemID
+    if type(id) == "number" and not IsSecret(id) then
+      if C_Item and C_Item.GetItemIconByID then
+        local ok, tex = pcall(C_Item.GetItemIconByID, id)
+        if ok and tex ~= nil and not IsSecret(tex) then
+          return tex
+        end
+      end
+      if GetItemIcon then
+        local ok, tex = pcall(GetItemIcon, id)
+        if ok and tex ~= nil and not IsSecret(tex) then
+          return tex
+        end
+      end
+    end
+  end
+  -- Legacy GetContainerItemInfo texture (non-secret string/number).
+  if GetContainerItemInfo then
+    local ok, a = pcall(GetContainerItemInfo, bag, slot)
+    if ok then
+      if type(a) == "string" and a ~= "" and not IsSecret(a) then
+        return a
+      end
+      if type(a) == "number" and not IsSecret(a) then
+        return a
+      end
+      if type(a) == "table" and a.iconFileID ~= nil and not IsSecret(a.iconFileID) then
+        return a.iconFileID
+      end
+    end
+  end
+  return nil
+end
+
 function Slots.SyncVisual(btn, bag, slot)
   if not btn then
     return
@@ -371,8 +513,9 @@ function Slots.SyncVisual(btn, bag, slot)
         info = res
       end
     end
-    if not info then
-      local icon = btn.icon or btn.Icon
+    local icon = btn.icon or btn.Icon
+    local tex = ResolveIconTexture(info, bag, slot)
+    if not info and not tex then
       if icon then
         icon:SetTexture(nil)
       end
@@ -382,13 +525,20 @@ function Slots.SyncVisual(btn, bag, slot)
         fs:Hide()
       end
       Slots.SyncCooldown(btn, bag, slot)
+      if Slots.Normalize then
+        Slots.Normalize(btn)
+      end
       return
     end
-    local icon = btn.icon or btn.Icon
-    if icon and info.iconFileID and not IsSecret(info.iconFileID) then
-      icon:SetTexture(info.iconFileID)
-    elseif icon and not info.iconFileID then
-      icon:SetTexture(nil)
+    if icon then
+      if tex ~= nil then
+        icon:SetTexture(tex)
+        icon:SetAlpha(1)
+        icon:Show()
+      elseif not info or not info.iconFileID then
+        icon:SetTexture(nil)
+      end
+      -- secret iconFileID with no itemID fallback: leave prior tex; never SetTexture(secret)
     end
     local count = ResolveStackCount(info, bag, slot)
     local fs = EnsureCountFs(btn)
@@ -412,6 +562,9 @@ function Slots.SyncVisual(btn, bag, slot)
       fs:Show()
     end
     Slots.SyncCooldown(btn, bag, slot)
+    if Slots.Normalize then
+      Slots.Normalize(btn)
+    end
   end)
 end
 
@@ -653,6 +806,10 @@ local function MakeVisualOnly(name, parent)
   pcall(function()
     btn = CreateFrame("ItemButton", name, parent, "ItemButtonTemplate")
   end)
+  if btn then
+    btn:SetSize(SLOT, SLOT)
+    btn:SetScale(1)
+  end
   if not btn then
     btn = CreateFrame("Button", name, parent)
     btn:SetSize(SLOT, SLOT)
@@ -787,14 +944,10 @@ function Slots.PreCreate()
     return false
   end
   EnsureHost()
-  local bags = { 0, 1, 2, 3, 4, Slots.ReagentBagIndex(), Slots.KeyringBagIndex() }
-  if not Slots.IsReagentBag(5) then
-    bags[#bags + 1] = 5
-  end
-  for i = 1, #bags do
-    local bag = bags[i]
-    local maxSlots = Slots.IsKeyringBag(bag) and 32 or 36
-    for slot = 1, maxSlots do
+  local ranges = Slots.BagRanges()
+  for i = 1, #ranges do
+    local bag, n = ranges[i].bag, ranges[i].slots
+    for slot = 1, n do
       local btn = Slots.Acquire(bag, slot)
       Slots.SyncAttrs(btn, bag, slot)
     end
@@ -807,6 +960,88 @@ function Slots.IsPreCreated()
   return preCreated
 end
 
+-- One grid size for every category (ItemButtonTemplate / quality border drift).
+local function NormalizeSlotVisual(btn)
+  if not btn then
+    return
+  end
+  pcall(function()
+    btn:SetScale(1)
+    if btn.SetIgnoreParentScale then
+      btn:SetIgnoreParentScale(false)
+    end
+    btn:SetSize(SLOT, SLOT)
+    btn:SetWidth(SLOT)
+    btn:SetHeight(SLOT)
+    if btn.SetHitRectInsets then
+      btn:SetHitRectInsets(0, 0, 0, 0)
+    end
+  end)
+  local ic = btn.icon or btn.Icon or btn.IconTexture
+  if ic then
+    pcall(function()
+      ic:ClearAllPoints()
+      ic:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
+      ic:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
+      ic:SetSize(SLOT, SLOT)
+      ic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+      if ic.SetDrawLayer then
+        ic:SetDrawLayer("ARTWORK", 0)
+      end
+      ic:SetAlpha(1)
+      ic:Show()
+    end)
+  end
+  pcall(function()
+    local nt = btn.GetNormalTexture and btn:GetNormalTexture()
+    if nt then
+      nt:ClearAllPoints()
+      nt:SetAllPoints(btn)
+      nt:SetSize(SLOT, SLOT)
+    end
+    local pt = btn.GetPushedTexture and btn:GetPushedTexture()
+    if pt then
+      pt:ClearAllPoints()
+      pt:SetAllPoints(btn)
+    end
+    local ht = btn.GetHighlightTexture and btn:GetHighlightTexture()
+    if ht then
+      ht:ClearAllPoints()
+      ht:SetAllPoints(btn)
+    end
+  end)
+  -- Quality / overlay chrome must not inflate past SLOT.
+  for _, key in ipairs({ "IconBorder", "IconOverlay", "IconOverlay2", "IconQuestTexture", "flash" }) do
+    local r = btn[key]
+    if r and r.ClearAllPoints then
+      pcall(function()
+        r:ClearAllPoints()
+        r:SetAllPoints(btn)
+        if r.SetSize then
+          r:SetSize(SLOT, SLOT)
+        end
+      end)
+    end
+  end
+  if btn.Count then
+    pcall(function()
+      btn.Count:ClearAllPoints()
+      btn.Count:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -1, 1)
+    end)
+  end
+  if btn.cooldown or btn.Cooldown then
+    pcall(function()
+      local cd = btn.cooldown or btn.Cooldown
+      cd:ClearAllPoints()
+      cd:SetAllPoints(btn)
+    end)
+  end
+end
+
+function Slots.Normalize(btn)
+  NormalizeSlotVisual(btn)
+end
+
 function Slots.Place(btn, parent, x, y, shown)
   if not btn then
     return
@@ -816,24 +1051,39 @@ function Slots.Place(btn, parent, x, y, shown)
     shown = true
   end
   pcall(function()
-    btn:SetParent(parent or EnsureHost())
+    parent = parent or EnsureHost()
+    parent:Show()
+    btn:Show()
+    btn:SetParent(parent)
     btn:ClearAllPoints()
+    -- TOPLEFT + explicit 37×37 (dual-anchor stretched some ItemButtons unevenly).
     btn:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -y)
-    btn:SetSize(SLOT, SLOT)
-    btn:SetFrameLevel((parent:GetFrameLevel() or 1) + 10)
+    NormalizeSlotVisual(btn)
+    pcall(function()
+      btn:SetFrameStrata(parent:GetFrameStrata() or "DIALOG")
+    end)
+    local base = (parent.GetFrameLevel and parent:GetFrameLevel()) or 1
+    btn:SetFrameLevel(base + 80)
     local mouseOn = shown and (btn._bbSecure or not inCombat)
     btn:EnableMouse(mouseOn and true or false)
     if shown then
       btn:SetAlpha(1)
       btn:Show()
+      NormalizeSlotVisual(btn)
       Slots.SyncVisual(btn, btn._bbBag, btn._bbSlot)
+      -- SetItemButtonQuality can resize IconBorder — normalize again after.
+      NormalizeSlotVisual(btn)
+      btn:SetAlpha(1)
+      btn:Show()
       if btn._bbSecure and not inCombat then
         Slots.SyncAttrs(btn, btn._bbBag, btn._bbSlot)
       end
+      NormalizeSlotVisual(btn)
     else
       btn:SetAlpha(0)
       btn:EnableMouse(false)
       btn:Show()
+      NormalizeSlotVisual(btn)
     end
   end)
 end

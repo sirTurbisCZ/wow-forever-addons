@@ -121,7 +121,8 @@ function Search.EnsureChrome(main)
 
   box = CreateFrame("Frame", "BetterBackpackSearchBox", main)
   box:SetSize(140, 20)
-  box:SetPoint("TOPRIGHT", main, "TOPRIGHT", -88, -8)
+  -- Sit in title band left of AutoSort-twin gear/broom + Close (0.4.x chrome).
+  box:SetPoint("TOPRIGHT", main, "TOPRIGHT", -110, -18)
   box:SetFrameLevel((main:GetFrameLevel() or 1) + 8)
 
   local bg = box:CreateTexture(nil, "BACKGROUND")

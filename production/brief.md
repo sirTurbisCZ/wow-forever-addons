@@ -1,5 +1,9 @@
-# Playtest brief — BetterBackpack 0.2.4
+# Playtest brief — BetterBackpack 0.4.2
 
-**Bugs fixed:** bag-bar/OpenBag click opens BB; Keys/keyring lane; N/M centered in footer; hug-content layout polish.
+**Keep:** footer ~/70 · 10-col width.
 
-**Done when:** `/reload` → `loaded v0.2.4` · click bag icons opens UI · Keys section if keyring has items · N/M centered · no empty black under Other.
+**Bug:** glowing pixelated gear ≠ broom.
+
+**Fix:** settings = AutoSort twin — same native WxH as broom, atlas `Gear` (not UI-OptionsButton), **no** ADD MouseHilight glow.
+
+**Done when:** `/reload` → gear matches broom size/style, no glow · footer ~/70.

@@ -6,7 +6,7 @@ Category-lane bags for **World of Warcraft Forever** (Interface 16001) with comb
 
 1. Put this folder in `Interface/AddOns/BetterBackpack/` (or symlink via `./scripts/link-addon.sh BetterBackpack`).
 2. Enable at character select if needed.
-3. `/reload` in game — chat should show `loaded v0.3.0-nth` on the feature branch (or the version on whatever branch you linked).
+3. `/reload` in game — chat should show `loaded v0.5.0` (0.4.2 BagShelves chrome + nice-to-have search/filter/merge/pins).
 
 ## Slash
 
@@ -30,9 +30,9 @@ Category-lane bags for **World of Warcraft Forever** (Interface 16001) with comb
 | `/bb selftest` | Wiring check (still need 1× manual combat RMB) |
 | `/bb bags` | Reagent / free-space probe |
 
-Also `/betterbackpack`. Úklid / Nastavení labels stay Czech on the chrome buttons.
+Also `/betterbackpack`. Úklid / Nastavení stay Czech on chrome.
 
-## Nice-to-have modules (0.3.0-nth)
+## Nice-to-have modules (0.5.0)
 
 | File | Job |
 |------|-----|
@@ -43,13 +43,7 @@ Also `/betterbackpack`. Úklid / Nastavení labels stay Czech on the chrome butt
 | `Modules/Pins.lua` | Red ghost for unowned pins |
 | `Modules/LayoutModes.lua` | lanes vs dense columns |
 
-Layout talks to them only through optional `Feat("Name")` lookups so a merge can drop TOC lines without hard nil crashes.
-
-### Merge notes (bug branch ↔ this branch)
-
-- **Do not** rewrite OpenClose / title-chrome fixes here — leave those to the bug worker on main.
-- Likely touch conflicts: `Layout.lua`, `Config.lua`, `BetterBackpack.toc`, `Core.lua`, `Locale/enUS.lua`, `Settings.lua`, docs.
-- Re-apply hooks after taking bug-fixed Layout: `CollectBuckets` (Search/Filter), `ClassifyBagSlot` (CustomCategories), `DoLayout` (StackMerge/Pins/Search chrome), `Columns` (LayoutModes).
+Layout talks to them only through optional `Feat("Name")` lookups. OpenClose / AutoSort-twin chrome stays on the main 0.4.x path — NTH does not rewrite it.
 
 ## Playtest (T0–T3)
 

@@ -45,9 +45,9 @@ end
 
 --- Override columns for dense mode (still respects profile.columns floor).
 function LayoutModes.Columns(base)
-  base = tonumber(base) or 8
+  base = tonumber(base) or 10 -- CombinedBags/BagShelves default
   if LayoutModes.Get() == "dense" then
-    return math.min(16, math.max(base + 4, 12))
+    return math.min(16, math.max(base + 2, 12))
   end
   return base
 end
