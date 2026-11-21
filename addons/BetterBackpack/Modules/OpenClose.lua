@@ -1,5 +1,5 @@
 --[[
-  BetterBackpack.OpenClose — B + /bb (0.5.62 — same as 0.5.60)
+  BetterBackpack.OpenClose — B + /bb (0.5.64 — combat via Layout.CombatShow/Hide)
 
   ToggleAllBags + ToggleBackpack → onBagKey XOR (same handler). ToggleBag / ToggleKeyRing = Blizzard.
   Bag-bar native: never park/blackout ContainerFrame*; RestoreNativeBagFrames on close only.
@@ -585,23 +585,16 @@ OpenOurs = function()
   ParkBlizzardForOverlay()
 
   if InCombat() then
-    local global = _G.BetterBackpackFrame
     local shown = false
-    if global then
-      if Layout and Layout.ForceCombatShow then
-        shown = Layout.ForceCombatShow() and true or false
-      elseif Layout and Layout.ShowCombatMinimal then
-        shown = Layout.ShowCombatMinimal() and true or false
-      else
-        pcall(function()
-          global:SetAlpha(1)
-          global:EnableMouse(true)
-          global:Show()
-        end)
-        shown = global:IsShown() and true or false
-      end
+    if Layout and Layout.CombatShow then
+      shown = Layout.CombatShow() and true or false
+    elseif Layout and Layout.ShowCombatMinimal then
+      shown = Layout.ShowCombatMinimal() and true or false
     else
-      CombatTraceOnce("OpenOurs", "no BetterBackpackFrame global")
+      CombatTraceOnce("OpenOurs", "no CombatShow")
+    end
+    if not shown and (not Layout or not Layout.IsColdPreloaded or not Layout.IsColdPreloaded()) then
+      CombatTraceOnce("OpenOurs", "cold preload missing — /reload OOC")
     end
     openBusy = false
     OpenClose._openBusy = false
@@ -617,6 +610,7 @@ OpenOurs = function()
     end
     bagsOpen = false
     ParkBlizzardForOverlay()
+    local global = _G.BetterBackpackFrame
     local built = global and tostring(global._bbBuilt) or "nil"
     local alpha = global and tostring(global:GetAlpha()) or "nil"
     CombatTraceOnce("OpenOurs", string.format("show failed shown=%s visible=%s built=%s alpha=%s", tostring(shown), tostring(visible), built, alpha))

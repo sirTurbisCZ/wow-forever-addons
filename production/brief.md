@@ -1,4 +1,14 @@
-# Playtest brief — BetterBackpack 0.5.62 (revert 0.5.61)
+# Playtest brief — BetterBackpack 0.5.64 (combat B)
+
+**0.5.64**
+- **Cold preload** at login/world enter OOC: `Layout.ColdPreload` (slots + frame + one DoLayout, alpha 0).
+- **Combat B:** open = `CombatShow` (alpha 1); close = `CombatHide` (alpha 0, no `Hide()`). XOR should work after cold preload.
+- Playtest: `/reload` OOC wait 1s → pull combat → **B** open/close ×3. No `BetterBackpackFrame:Hide()` in `/felog` lastBlocked.
+
+**0.5.63**
+- **Lane header RMB (OOC):** at vendor → sell all in lane; mailbox send → attach all; bank open → deposit all (throttled queue). Tooltip on header when context open. OpenClose untouched.
+- **Auto-sell junk:** Settings → Features · sell poor/grey at `MERCHANT_SHOW` (default off). Opt-in second checkbox = non-grey in **Junk lane** only (not Trash destroy).
+- **B XOR:** unchanged (0.5.62 OpenClose).
 
 **0.5.62**
 - **0.5.61 rolled back:** `OpenClose.lua` = exact git `a6367fd` (0.5.60). No keyring ToggleBag/KeyRing replace. **Playtest B XOR first.**

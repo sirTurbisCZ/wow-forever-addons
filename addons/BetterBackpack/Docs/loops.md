@@ -1,7 +1,7 @@
 # BetterBackpack — smyčky a grafy
 
 **Kód:** `Core.lua`, `Modules/{Slots,Layout,Context,OpenClose,Tidy,Settings,Search,Filter,CustomCategories,Trash,StackMerge,Pins,LayoutModes}.lua`  
-**Verze reference:** 0.5.63 (lane header bulk transfer · vendor auto-sell grey · 0.5.21 Trash drop: itemID před pickup · header drop bez collapse · Junk≠Trash · 0.5.20 Trash jen click-only destroy · 0.5.19 Trash lane auto-destroy + ghosts + `/bb trashtest` · Shift/Ctrl+LMB = nativní link / dress-up / split · prázdné custom lanes kreslené jako drop target · drag-teach lanes · custom lanes v Settings · Settings v chrome bagu · broom = stejná plate jako gear/X · sticky velikost okna · broom/gear v chrome Close · bank RMB secure type2=item · SearchBoxTemplate search · gear na nativní broom plate · nativní AutoSort reparent · footer hairline · pevná velikost = plný rozbalený bag · dense grid PAD 2 · NumberFontNormalSmall counts · broom/gear jako CombinedBags · footer N/M = font peněz · fill wells default off)  
+**Verze reference:** 0.5.64 (combat B alpha hide + cold preload · 0.5.63 lane bulk · 0.5.21 Trash drop: itemID před pickup · header drop bez collapse · Junk≠Trash · 0.5.20 Trash jen click-only destroy · 0.5.19 Trash lane auto-destroy + ghosts + `/bb trashtest` · Shift/Ctrl+LMB = nativní link / dress-up / split · prázdné custom lanes kreslené jako drop target · drag-teach lanes · custom lanes v Settings · Settings v chrome bagu · broom = stejná plate jako gear/X · sticky velikost okna · broom/gear v chrome Close · bank RMB secure type2=item · SearchBoxTemplate search · gear na nativní broom plate · nativní AutoSort reparent · footer hairline · pevná velikost = plný rozbalený bag · dense grid PAD 2 · NumberFontNormalSmall counts · broom/gear jako CombinedBags · footer N/M = font peněz · fill wells default off)  
 **Stabilita:** Project `docs/bag-addon-brief.md` + Scenario Maps `docs/scenarios/BetterBackpack/`  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never path C harvest).
 
@@ -99,23 +99,25 @@ Title chrome / AutoSort twins remain the 0.4.x path — NTH does not own OpenClo
 
 ---
 
-## 3. Combat RMB (CS-RMB)
+## 3. Combat RMB + B in lockdown (0.5.64)
 
 ```mermaid
 sequenceDiagram
-  participant P as Player
   participant C as Core
+  participant L as Layout
   participant S as Slots
+  participant OC as OpenClose
 
-  Note over S: LOGIN OOC PreCreate 0–4+reagent ×36<br/>SecureActionButton type2=item
-  P->>C: B / open
-  C->>S: Layout + SyncAttrs
-  P->>C: enter combat
-  Note over C,S: Freeze protected mutates · mouse on secure
-  P->>P: RMB potion → secure use
-  P->>C: leave combat
-  C->>S: Flush attrs + full Layout
+  Note over C,S: LOGIN/ENTERING_WORLD OOC<br/>ColdPreload: PreCreate + EnsureMain + DoLayout once<br/>end alpha=0 (frame left Shown)
+  C->>L: CombatShow = alpha 1 + Raise
+  OC->>L: CombatHide = alpha 0 (never Hide)
+  Note over L: IsBagFrameVisible = alpha + flag (XOR works in combat)
+  Note over S: SecureActionButton type2=item · no SetAttribute in combat
+  C->>S: PLAYER_REGEN_ENABLED → SyncAllAttrs + Refresh
 ```
+
+- **Industry pattern (Bagnon/AdiBags):** build bag frames **OOC**; in combat avoid `Hide()`/`CreateFrame` on secure tree — **alpha / visibility** toggles on existing frame.
+- **B XOR:** unchanged Toggle* wiring; combat path calls `Layout.CombatShow` / `Layout.Hide` → `CombatHide`.
 
 ---
 
