@@ -127,6 +127,14 @@ function Context.TrySpecialRmb(self)
   if not b or not s then
     return false
   end
+  local shift = (IsShiftKeyDown and IsShiftKeyDown()) or self._bbShiftDown == true
+  local merged = type(self._bbMergedStacks) == "number" and self._bbMergedStacks > 1
+  if shift or merged then
+    local BT = BetterBackpack.Modules and BetterBackpack.Modules.BulkTransfer
+    if BT and BT.TransferMergeGroup then
+      return BT.TransferMergeGroup(b, s) and true or false
+    end
+  end
   if not PickupSlotToCursor(b, s) then
     return false
   end
@@ -136,6 +144,13 @@ function Context.TrySpecialRmb(self)
   end
   if ctx == "mail" and ClickSendMailItemButton then
     pcall(ClickSendMailItemButton)
+    local BT = BetterBackpack.Modules and BetterBackpack.Modules.BulkTransfer
+    if BT and BT.MaybeFillMailSubject then
+      BT.MaybeFillMailSubject(b, s)
+    end
+    if ClearCursor then
+      pcall(ClearCursor)
+    end
     return true
   end
   if ClearCursor then

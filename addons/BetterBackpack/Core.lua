@@ -271,7 +271,7 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
     OpenClose = OC() or OpenClose
     BulkTransfer = BT() or BulkTransfer
     if BulkTransfer and BulkTransfer.TransferLane then
-      Print("BulkTransfer ok · Shift+RMB lane header at vendor/mail/bank")
+      Print("BulkTransfer ok · Ctrl+Shift+RMB lane header · Shift+RMB merged stack at vendor/mail")
     end
     if ModuleWanted() then
       if OpenClose and OpenClose.InstallHooks then
@@ -318,6 +318,10 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
   if event == "PLAYER_ENTERING_WORLD" then
     if ModuleWanted() and OpenClose and OpenClose.EnsureBagKeyReplace then
       SafeCall("hooks", OpenClose.EnsureBagKeyReplace)
+    end
+    local CC = BetterBackpack.Modules.CustomCategories
+    if CC and CC.OnCharacterActive then
+      SafeCall("charLanes", CC.OnCharacterActive)
     end
     return
   end

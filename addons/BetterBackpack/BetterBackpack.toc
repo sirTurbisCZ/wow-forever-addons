@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 1.2.1 — stack merge splits locked vs unlocked same itemID.
+## Notes: 1.2.6 — custom lanes per character.
 ## Author: tuma
-## Version: 1.2.1
+## Version: 1.2.6
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled

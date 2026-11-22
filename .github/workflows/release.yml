@@ -58,14 +58,14 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: ForeverErrorLog ${{ steps.meta.outputs.version }}
+          name: ${{ steps.meta.outputs.addon }} ${{ steps.meta.outputs.version }}
           body: |
-            ## ForeverErrorLog ${{ steps.meta.outputs.version }}
+            ## ${{ steps.meta.outputs.addon }} ${{ steps.meta.outputs.version }}
 
-            Install: extract so `Interface/AddOns/ForeverErrorLog/` exists, then `/reload`.
+            Install: extract so `Interface/AddOns/${{ steps.meta.outputs.addon }}/` exists, then `/reload`.
 
-            Slash: `/felog help|list|dump|clear|reset`
+            Changelog: `addons/${{ steps.meta.outputs.addon }}/Docs/CHANGELOG.md`
 
-            Asset root is the `ForeverErrorLog/` folder.
+            Asset root is the `${{ steps.meta.outputs.addon }}/` folder.
           files: dist/${{ steps.meta.outputs.asset }}
           fail_on_unmatched_files: true

@@ -1,4 +1,4 @@
--- BulkTransfer - lane header Shift+RMB bulk (OOC only).
+-- BulkTransfer — Ctrl+Shift+RMB lane header; Shift+RMB merged slot stack (OOC only).
 -- Context: merchant = sell, mail = attach, bank = UseContainerItem deposit.
 -- Never touches OpenClose / Toggle* globals.
 
@@ -260,6 +260,72 @@ local function TransferMerchant(bag, slot)
   return false
 end
 
+local function SubjectEditBox()
+  if SendMailSubjectEditBox then
+    return SendMailSubjectEditBox
+  end
+  if SendMailFrame then
+    return SendMailFrame.SubjectEditBox or SendMailFrame.MailSubjectEditBox
+  end
+  return nil
+end
+
+local function MailSubjectIsEmpty()
+  local eb = SubjectEditBox()
+  if not eb or not eb.GetText then
+    return false
+  end
+  local ok, text = pcall(eb.GetText, eb)
+  if not ok or text == nil or text == "" then
+    return true
+  end
+  return not tostring(text):find("%S", 1, true)
+end
+
+local function SlotDisplayName(bag, slot)
+  local b, s = ContainerAPI(bag, slot)
+  local id = ItemID(b, s)
+  if not id then
+    return nil
+  end
+  if C_Item and C_Item.GetItemNameByID then
+    local ok, name = pcall(C_Item.GetItemNameByID, id)
+    if ok and name and name ~= "" then
+      return name
+    end
+  end
+  local fn = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+  if fn then
+    local ok, name = pcall(fn, id)
+    if ok and name and name ~= "" then
+      return name
+    end
+  end
+  return nil
+end
+
+function BulkTransfer.MaybeFillMailSubject(bag, slot)
+  if DetectContext() ~= "mail" then
+    return false
+  end
+  if not MailSubjectIsEmpty() then
+    return false
+  end
+  local name = SlotDisplayName(bag, slot)
+  if not name or name == "" then
+    return false
+  end
+  local Slots = SlotsMod()
+  if Slots and Slots.IsSecret and Slots.IsSecret(name) then
+    return false
+  end
+  local eb = SubjectEditBox()
+  if not eb or not eb.SetText then
+    return false
+  end
+  return select(1, pcall(eb.SetText, eb, name)) and true or false
+end
+
 local function TransferMail(bag, slot)
   local b, s = ContainerAPI(bag, slot)
   if SlotLocked(b, s) then
@@ -274,6 +340,7 @@ local function TransferMail(bag, slot)
   if ClearCursor then
     pcall(ClearCursor)
   end
+  BulkTransfer.MaybeFillMailSubject(bag, slot)
   return true
 end
 
@@ -324,7 +391,17 @@ function BulkTransfer.HeaderTooltipLine()
   if not verb then
     return nil
   end
-  return "Shift+RMB header - " .. verb
+  return "Ctrl+Shift+RMB header - " .. verb
+end
+
+function BulkTransfer.SlotShiftTooltipLine(ctx)
+  if ctx == "merchant" then
+    return "Shift+RMB = sell all merged stacks"
+  end
+  if ctx == "mail" then
+    return "Shift+RMB = attach all merged stacks"
+  end
+  return nil
 end
 
 local function BulkPrint(msg)
@@ -579,6 +656,36 @@ function BulkTransfer.LaneHeaderRmb(laneKey)
   return BulkTransfer.TransferLane(laneKey)
 end
 
+function BulkTransfer.TransferMergeGroup(bag, slot)
+  BulkPrint(string.format("TransferMergeGroup · %s:%s", tostring(bag), tostring(slot)))
+  if not OOC() then
+    BulkPrint("abort · in combat lockdown")
+    return false
+  end
+  local ctx = DetectContext()
+  if not ctx then
+    BulkPrint("abort · open vendor, mail, or bank first")
+    return false
+  end
+  local StackMerge = BetterBackpack.Modules and BetterBackpack.Modules.StackMerge
+  local slots
+  if StackMerge and StackMerge.CollectMergeGroup then
+    slots = StackMerge.CollectMergeGroup(bag, slot)
+  else
+    slots = { { bag = bag, slot = slot } }
+  end
+  if #slots == 0 then
+    slots = { { bag = bag, slot = slot } }
+  end
+  if #slots == 1 then
+    BulkPrint("merge group · 1 slot — single transfer")
+    return TransferOne(slots[1].bag, slots[1].slot, ctx)
+  end
+  local label = string.format("merged stack (%d)", #slots)
+  BulkPrint(string.format("%s · %s · %d stacks · queue…", label, tostring(ActionVerb(ctx) or ctx), #slots))
+  return StartQueue(ctx, slots, label, ctx == "merchant" and MerchantProbe(slots[1]) or nil)
+end
+
 function BulkTransfer.TransferSlot(bag, slot, ctx)
   if not OOC() then
     return false
@@ -597,6 +704,21 @@ end
 
 function BulkTransfer.MerchantCanSell(bag, slot)
   return MerchantAllowed(bag, slot)
+end
+
+function BulkTransfer.TransferSlotList(slots, label)
+  if not OOC() then
+    return false
+  end
+  if not slots or #slots == 0 then
+    return false
+  end
+  local ctx = DetectContext() or "merchant"
+  if ctx ~= "merchant" and ctx ~= "mail" and ctx ~= "bank" then
+    ctx = "merchant"
+  end
+  label = label or "transfer"
+  return StartQueue(ctx, slots, label, ctx == "merchant" and MerchantProbe(slots[1]) or nil)
 end
 
 return BulkTransfer
