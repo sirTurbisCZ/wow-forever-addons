@@ -14,7 +14,8 @@ Append **only** party/nearby foreign harmful DoTs that native DebuffList omits, 
 | **Never** `ClearAllPoints` / `SetPoint` on `UnitFrame.name` | 0.1.8–0.1.11 broke Forever plates (Golm/Pichy / “completely broken”) |
 | **Never** `ClearAllPoints` / `SetPoint` / `Hide` / `SetAlpha(0)` on DebuffList | Forever FORBIDDEN / sacred native band |
 | **Never** duplicate player-owned on native row | Dedupe via native public texture keys (`NativeKeySet`) |
-| **Target enemy** personal gap | Paint player harmful from `C_UnitAuras` + TF when key not on native |
+| **Target enemy** personal gap | `C_UnitAuras` when player harmful count > native kids (`NativeKeySet` dedupe) |
+| **Fallback parent** | Nameplate `UnitFrame` only — never `UIParent` / action bars / chat |
 | **No CLEU** as core | Forever policy |
 | Bags stay in **BetterBackpack** | Three-addon split; Plateband plates-only |
 

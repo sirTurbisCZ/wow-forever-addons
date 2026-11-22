@@ -34,6 +34,24 @@ local lastDiagAt = 0
 local lastChatSig = nil
 local platesSeen = 0
 local overlayUpdates = 0
+local lastAuraRefreshAt = 0
+local AURA_REFRESH_MIN = 0.12
+
+local GLOBAL_UI = {
+  UIParent = true,
+  PlayerFrame = true,
+  TargetFrame = true,
+  MainMenuBar = true,
+  MainStatusTrackingBarContainer = true,
+  MultiBarBottomLeft = true,
+  MultiBarBottomRight = true,
+  MultiBarLeft = true,
+  MultiBarRight = true,
+  StanceBar = true,
+  PetActionBar = true,
+  ChatFrame1 = true,
+  ChatFrame2 = true,
+}
 
 local function Profile()
   return ns.Config.GetProfile()
@@ -121,6 +139,31 @@ local function IsForbiddenPlate(plate)
     end
   end)
   return forbidden
+end
+
+local function FrameIsGlobalChrome(frame)
+  if not frame or frame == UIParent then
+    return true
+  end
+  local chrome = false
+  pcall(function()
+    local n = frame.GetName and frame:GetName()
+    if type(n) == "string" and GLOBAL_UI[n] then
+      chrome = true
+    end
+  end)
+  return chrome
+end
+
+local function SafeFallbackParent(plate)
+  if not plate or IsForbiddenPlate(plate) then
+    return nil
+  end
+  local uf = plate.UnitFrame
+  if not uf or FrameIsGlobalChrome(uf) then
+    return nil
+  end
+  return uf
 end
 
 local function SameUnit(a, b)
@@ -1030,15 +1073,19 @@ local function EnsureOverlay(unit)
   return holder
 end
 
-local function EnsureFallback(unit, parent)
+local function EnsureFallback(unit, plate)
+  local parent = SafeFallbackParent(plate)
+  if not parent then
+    return nil
+  end
   local fb = fallbacks[unit]
   if fb then
-    if parent and fb:GetParent() ~= parent then
+    if fb:GetParent() ~= parent then
       pcall(fb.SetParent, fb, parent)
     end
     return fb
   end
-  fb = CreateFrame("Frame", nil, parent or UIParent)
+  fb = CreateFrame("Frame", nil, parent)
   fb:EnableMouse(false)
   fb:Hide()
   fb.icons = {}
@@ -1272,6 +1319,26 @@ local function AuraLooksForeign(data)
 end
 
 --- Player harmful on target when native DebuffList is empty (Forever omits personal on plate).
+local function CountPlayerOwnedHarmful(unitToken)
+  if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
+    return 0
+  end
+  local n = 0
+  for i = 1, 40 do
+    local data
+    local ok = pcall(function()
+      data = C_UnitAuras.GetAuraDataByIndex(unitToken, i, "HARMFUL")
+    end)
+    if not ok or not data then
+      break
+    end
+    if AuraIsPlayerOwned(data) == true then
+      n = n + 1
+    end
+  end
+  return n
+end
+
 local function CollectPlayerOwnedHarmful(unitToken, skipKeys, out, maxN)
   if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
     return
@@ -1463,6 +1530,9 @@ local function ScrapeTargetFrameIconsBrute(skipKeys, out, maxN)
     if not frame or depth > 12 or #out >= maxN then
       return
     end
+    if FrameIsGlobalChrome(frame) then
+      return
+    end
     if isCastBar(frame) then
       return
     end
@@ -1598,9 +1668,8 @@ end
 
 --- Paint only missing (others') icons beside native DebuffList — never replace native.
 local function PaintMergeMissing(unit, plate)
-  local uf = plate and plate.UnitFrame
-  local parent = uf or plate
-  if not parent then
+  if not plate or not SafeFallbackParent(plate) then
+    ClearFallback(unit)
     return 0
   end
 
@@ -1625,12 +1694,13 @@ local function PaintMergeMissing(unit, plate)
 
   -- Target plate: merge TF + unit auras Blizzard omitted from DebuffList.
   if isTarget then
-    -- Personal not on native row (partial or empty DebuffList) — dedupe via NativeKeySet only.
-    CollectPlayerOwnedHarmful("target", skipKeys, missing, maxN)
-    if type(unit) == "string" and unit ~= "target" then
-      CollectPlayerOwnedHarmful(unit, skipKeys, missing, maxN)
+    local playerHarmN = CountPlayerOwnedHarmful("target")
+    if playerHarmN > nativeN then
+      CollectPlayerOwnedHarmful("target", skipKeys, missing, maxN)
+      if type(unit) == "string" and unit ~= "target" then
+        CollectPlayerOwnedHarmful(unit, skipKeys, missing, maxN)
+      end
     end
-    CollectTargetFramePlayerOwned(skipKeys, missing, maxN)
     CollectPlayerOwnedKeys("target", skipKeys)
     if type(unit) == "string" and unit ~= "target" then
       CollectPlayerOwnedKeys(unit, skipKeys)
@@ -1650,7 +1720,10 @@ local function PaintMergeMissing(unit, plate)
     return 0
   end
 
-  local fb = EnsureFallback(unit, parent)
+  local fb = EnsureFallback(unit, plate)
+  if not fb then
+    return 0
+  end
   local sz = IconSize()
   local painted = 0
   for i = 1, #missing do
@@ -1722,7 +1795,13 @@ local function UpdateOverlay(unit, plate)
     return
   end
 
-  PaintMergeMissing(unit, plate)
+  local okPaint, errPaint = pcall(PaintMergeMissing, unit, plate)
+  if not okPaint then
+    ClearFallback(unit)
+    if ns.RecordError then
+      ns.RecordError("paint", errPaint)
+    end
+  end
 end
 
 -- Forward decl for auto-diag after RefreshAll
@@ -2060,6 +2139,11 @@ local function OnEvent(_, event, arg1)
       return
     end
     if unit == "target" or unit == "focus" then
+      local now = GetTime and GetTime() or 0
+      if (now - lastAuraRefreshAt) < AURA_REFRESH_MIN then
+        return
+      end
+      lastAuraRefreshAt = now
       Defer(function()
         RefreshAll()
         MaybeAutoDiagnose("aura_target", false)

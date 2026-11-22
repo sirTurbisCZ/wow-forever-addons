@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## 0.1.19 (urgent — UI safe)
+
+- Fallback parent **nameplate UnitFrame only** — never `UIParent` / HUD frames.
+- Personal gap: `C_UnitAuras` when `playerHarmful > nativeKids` (no TF personal walk).
+- `pcall(PaintMergeMissing)`; TF brute skips global chrome; `UNIT_AURA` debounce.
+
 ## 0.1.18
 
 - **Partial native row:** paint personal harmful beside native when Blizzard only shows some of your DoTs (`native=1`, TF=3). Removed `nativeN==0` gate; dedupe stays `NativeKeySet`.
