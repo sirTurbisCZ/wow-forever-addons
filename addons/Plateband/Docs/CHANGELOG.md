@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## 0.1.20
+
+- **Safety revert:** removed personal / TF personal fallback paint (0.1.17–0.1.19) — **foreign-only** merge beside native again.
+- **Kept:** 0.1.16 merge row anchor; 0.1.19 `SafeFallbackParent` (no `UIParent`/HUD), `pcall` paint, aura debounce, chrome guard on TF brute.
+
 ## 0.1.19 (urgent — UI safe)
 
 - Fallback parent **nameplate UnitFrame only** — never `UIParent` / HUD frames.

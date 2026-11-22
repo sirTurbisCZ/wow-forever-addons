@@ -1318,104 +1318,6 @@ local function AuraLooksForeign(data)
   return true
 end
 
---- Player harmful on target when native DebuffList is empty (Forever omits personal on plate).
-local function CountPlayerOwnedHarmful(unitToken)
-  if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
-    return 0
-  end
-  local n = 0
-  for i = 1, 40 do
-    local data
-    local ok = pcall(function()
-      data = C_UnitAuras.GetAuraDataByIndex(unitToken, i, "HARMFUL")
-    end)
-    if not ok or not data then
-      break
-    end
-    if AuraIsPlayerOwned(data) == true then
-      n = n + 1
-    end
-  end
-  return n
-end
-
-local function CollectPlayerOwnedHarmful(unitToken, skipKeys, out, maxN)
-  if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
-    return
-  end
-  for i = 1, 40 do
-    if #out >= maxN then
-      return
-    end
-    local data
-    local ok = pcall(function()
-      data = C_UnitAuras.GetAuraDataByIndex(unitToken, i, "HARMFUL")
-    end)
-    if not ok or not data then
-      break
-    end
-    if AuraIsPlayerOwned(data) == true then
-      local icon = data.icon
-      local key = AuraDedupeKey(data, icon)
-      if not key then
-        key = "po:" .. tostring(unitToken) .. ":" .. tostring(i)
-      end
-      if key and not skipKeys[key] then
-        out[#out + 1] = icon
-        skipKeys[key] = true
-      end
-    end
-  end
-end
-
---- TargetFrame personal debuffs when native nameplate row is empty.
-local function CollectTargetFramePlayerOwned(skipKeys, out, maxN)
-  if not TargetFrame or #out >= maxN then
-    return
-  end
-  local buttons = {}
-  CollectTargetFrameButtons(buttons, maxN)
-  local seenBtn = {}
-  for i = 1, #buttons do
-    if #out >= maxN then
-      return
-    end
-    local btn = buttons[i]
-    local bid = tostring(btn)
-    if not seenBtn[bid] then
-      seenBtn[bid] = true
-      local icon, _, gotIcon = ButtonAuraIcon(btn, true)
-      if gotIcon then
-        local key = PublicTexKey(icon)
-        if not key then
-          key = "tfp:" .. bid
-        end
-        if key and not skipKeys[key] then
-          out[#out + 1] = icon
-          skipKeys[key] = true
-        end
-      end
-    end
-  end
-  if TargetFrame and type(TargetFrame.activeDebuffs) == "table" then
-    pcall(function()
-      for _, aura in pairs(TargetFrame.activeDebuffs) do
-        if #out >= maxN then
-          return
-        end
-        if type(aura) == "table" and AuraIsPlayerOwned(aura) == true then
-          local icon = aura.icon
-          local key = AuraDedupeKey(aura, icon) or ("tfadpo:" .. tostring(aura))
-          if key and not skipKeys[key] then
-            out[#out + 1] = icon
-            skipKeys[key] = true
-          end
-        end
-      end
-    end)
-  end
-end
-
 --- All harmful Blizzard may omit: other players (party or not). Not party-only.
 --- allowSecretUnknown: target/enemy path — take secret icons when ownership isn't clearly ours.
 local function CollectUnitAuraMissing(unitToken, skipKeys, out, maxN, allowSecretUnknown)
@@ -1461,8 +1363,7 @@ end
 
 --- Pull icon texture from a TF aura button (secret FileIDs OK for SetTexture).
 --- Returns icon, skippedPersonal, gotIcon — never compare icon to nil (secret throws).
---- wantPersonal: TF scrape for personal gaps (native row partial).
-local function ButtonAuraIcon(btn, wantPersonal)
+local function ButtonAuraIcon(btn)
   if not btn then
     return nil, false, false
   end
@@ -1475,10 +1376,6 @@ local function ButtonAuraIcon(btn, wantPersonal)
       if type(data) == "table" then
         if AuraIsPlayerOwned(data) == true then
           skippedPersonal = true
-          if wantPersonal then
-            icon = data.icon
-            got = icon ~= nil
-          end
           return
         end
         icon = data.icon
@@ -1692,15 +1589,8 @@ local function PaintMergeMissing(unit, plate)
   -- Secret guess only when native row is empty — after personal DoT, native owns ours (public or secret).
   local allowSecretUnknown = nativeN == 0
 
-  -- Target plate: merge TF + unit auras Blizzard omitted from DebuffList.
+  -- Target plate: foreign missing only — personal stays on native DebuffList.
   if isTarget then
-    local playerHarmN = CountPlayerOwnedHarmful("target")
-    if playerHarmN > nativeN then
-      CollectPlayerOwnedHarmful("target", skipKeys, missing, maxN)
-      if type(unit) == "string" and unit ~= "target" then
-        CollectPlayerOwnedHarmful(unit, skipKeys, missing, maxN)
-      end
-    end
     CollectPlayerOwnedKeys("target", skipKeys)
     if type(unit) == "string" and unit ~= "target" then
       CollectPlayerOwnedKeys(unit, skipKeys)
