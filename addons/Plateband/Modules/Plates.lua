@@ -1753,55 +1753,324 @@ local function ButtonAuraIconAny(btn)
   return nil, false
 end
 
---- Brute TF walk — Forever often paints icons while auraPools/GetFramesByIndex are empty.
-local function ScrapeTargetFrameIconsBrute(skipKeys, out, maxN)
-  if not TargetFrame or #out >= maxN then
+--- Retinue-style TF harvest (read-only). Forever 16001 paths 0.2.6 missed.
+local function AuraIconPresent(icon)
+  local present = false
+  pcall(function()
+    if IsSecret(icon) then
+      present = true
+      return
+    end
+    if icon ~= nil then
+      present = true
+    end
+  end)
+  return present
+end
+
+local function FrameIsShownSafe(frame)
+  if not frame or not frame.IsShown then
+    return true
+  end
+  local ok, shown = pcall(frame.IsShown, frame)
+  if not ok or IsSecret(shown) then
+    return true
+  end
+  return shown and true or false
+end
+
+local function IsCastOrSpellBarFrame(frame)
+  if not frame then
+    return false
+  end
+  local p = frame
+  for _ = 1, 8 do
+    if not p then
+      return false
+    end
+    local n
+    pcall(function()
+      n = p.GetName and p:GetName()
+    end)
+    if type(n) == "string" then
+      local l = n:lower()
+      if l:find("castingbar", 1, true) or l:find("spellbar", 1, true) or l:find("castbar", 1, true) then
+        return true
+      end
+    end
+    if p == TargetFrameSpellBar or p == CastingBarFrame then
+      return true
+    end
+    pcall(function()
+      p = p.GetParent and p:GetParent()
+    end)
+    if not p or p == UIParent then
+      return false
+    end
+  end
+  return false
+end
+
+local function IsLikelyBuffFrame(frame)
+  if not frame or IsCastOrSpellBarFrame(frame) then
+    return true
+  end
+  local buffish = false
+  pcall(function()
+    local flag = frame.isBuff
+    if flag ~= nil and not IsSecret(flag) and flag then
+      buffish = true
+    end
+  end)
+  if buffish then
+    return true
+  end
+  pcall(function()
+    local flag = frame.isHelpful
+    if flag ~= nil and not IsSecret(flag) and flag then
+      buffish = true
+    end
+  end)
+  return buffish
+end
+
+local function TextureHasArt(iconTex)
+  if not iconTex then
+    return false
+  end
+  local ok = false
+  pcall(function()
+    if iconTex.GetTexture then
+      local path = iconTex:GetTexture()
+      if IsSecret(path) or (type(path) == "number" and path > 0) or (type(path) == "string" and path ~= "") then
+        ok = true
+      end
+    end
+  end)
+  return ok
+end
+
+local function IsUsableSpellIcon(path, allowSecret)
+  local ok = false
+  pcall(function()
+    if IsSecret(path) then
+      ok = allowSecret and true or false
+      return
+    end
+    if type(path) == "number" then
+      ok = path > 0
+    elseif type(path) == "string" and path ~= "" then
+      ok = true
+    end
+  end)
+  return ok
+end
+
+local function TfRowKey(row)
+  if type(row) ~= "table" then
+    return nil
+  end
+  if type(row._key) == "string" then
+    return row._key
+  end
+  local sid = row.spellId
+  if sid ~= nil and not IsSecret(sid) then
+    return "s:" .. tostring(sid)
+  end
+  local aid = row.auraInstanceID
+  if aid ~= nil and not IsSecret(aid) then
+    return "a:" .. tostring(aid)
+  end
+  local k = PublicTexKey(row.icon)
+  if k then
+    return k
+  end
+  return nil
+end
+
+local function PushTfAuraFrame(frame, rows, maxN)
+  if not frame or #rows >= maxN or IsLikelyBuffFrame(frame) then
     return
   end
-  local function isCastBar(frame)
-    local hit = false
+  pcall(function()
+    local icon, sid, aid
+    local tex = frame.Icon or frame.icon
     pcall(function()
-      local n = frame.GetName and frame:GetName()
-      if type(n) == "string" and (n:find("Casting", 1, true) or n:find("SpellBar", 1, true)
-        or n:find("CastBar", 1, true)) then
-        hit = true
+      if frame.GetAuraInstance then
+        local _, data = frame:GetAuraInstance()
+        if type(data) == "table" then
+          icon = data.icon
+          sid = data.spellId
+          aid = data.auraInstanceID
+        end
       end
     end)
-    return hit
-  end
-  local function scan(frame, depth)
-    if not frame or depth > 12 or #out >= maxN then
+    if not IsUsableSpellIcon(icon, true) and tex and tex.GetTexture then
+      pcall(function()
+        icon = tex:GetTexture()
+      end)
+    end
+    local liveBtn = false
+    pcall(function()
+      if IsSecret(aid) or IsSecret(sid) or aid ~= nil or sid ~= nil then
+        liveBtn = true
+      end
+    end)
+    if not IsUsableSpellIcon(icon, true) and not liveBtn and not TextureHasArt(tex) then
       return
     end
-    if isCastBar(frame) then
+    local key = TfRowKey({ spellId = sid, auraInstanceID = aid, icon = icon })
+    if not key then
+      key = "tf:" .. tostring(frame)
+    end
+    for i = 1, #rows do
+      if rows[i]._key == key then
+        return
+      end
+    end
+    rows[#rows + 1] = {
+      icon = icon,
+      iconTex = tex,
+      spellId = sid,
+      auraInstanceID = aid,
+      _key = key,
+      fromTargetFrame = true,
+    }
+  end)
+end
+
+local function HarvestTfAuraPool(pools, rows, maxN)
+  if type(pools) ~= "table" then
+    return
+  end
+  local function take(frame)
+    if frame and not IsLikelyBuffFrame(frame) then
+      PushTfAuraFrame(frame, rows, maxN)
+    end
+  end
+  pcall(function()
+    if pools.EnumerateActiveAuraButtons then
+      for btn in pools:EnumerateActiveAuraButtons() do
+        take(btn)
+      end
+    end
+  end)
+  pcall(function()
+    if pools.EnumerateActive then
+      for f in pools:EnumerateActive() do
+        take(f)
+      end
+    end
+  end)
+  for _, pool in pairs(pools) do
+    if type(pool) == "table" and #rows < maxN then
+      pcall(function()
+        if pool.EnumerateActiveAuraButtons then
+          for btn in pool.EnumerateActiveAuraButtons() do
+            take(btn)
+          end
+        elseif pool.EnumerateActive then
+          for f in pool:EnumerateActive() do
+            take(f)
+          end
+        end
+      end)
+    end
+  end
+end
+
+local function CollectTfActiveDebuffs(rows, maxN)
+  if not TargetFrame or type(TargetFrame.activeDebuffs) ~= "table" then
+    return
+  end
+  pcall(function()
+    for key, aura in pairs(TargetFrame.activeDebuffs) do
+      if #rows >= maxN then
+        return
+      end
+      if type(aura) == "table" and (aura.Icon or aura.icon or aura.GetAuraInstance) then
+        PushTfAuraFrame(aura, rows, maxN)
+      elseif type(aura) == "number" and C_UnitAuras and C_UnitAuras.GetAuraDataByAuraInstanceID then
+        local ok, data = pcall(C_UnitAuras.GetAuraDataByAuraInstanceID, "target", aura)
+        if ok and type(data) == "table" and AuraIconPresent(data.icon) then
+          local row = {
+            icon = data.icon,
+            spellId = data.spellId,
+            auraInstanceID = data.auraInstanceID or key,
+            fromTargetFrame = true,
+          }
+          row._key = TfRowKey(row) or ("tfaid:" .. tostring(aura))
+          rows[#rows + 1] = row
+        end
+      end
+    end
+  end)
+end
+
+local function CollectTfAuraSlots(rows, maxN)
+  if not C_UnitAuras or not C_UnitAuras.GetAuraSlots then
+    return
+  end
+  local pack = { pcall(C_UnitAuras.GetAuraSlots, "target", "HARMFUL") }
+  if not pack[1] then
+    return
+  end
+  for i = 3, #pack do
+    if #rows >= maxN then
+      break
+    end
+    local slot = pack[i]
+    local data
+    if C_UnitAuras.GetAuraDataBySlot then
+      local ok, d = pcall(C_UnitAuras.GetAuraDataBySlot, "target", slot)
+      if ok then
+        data = d
+      end
+    end
+    if type(data) == "table" and AuraIconPresent(data.icon) then
+      local row = {
+        icon = data.icon,
+        spellId = data.spellId,
+        auraInstanceID = data.auraInstanceID,
+        fromUnitApi = true,
+      }
+      row._key = TfRowKey(row) or ("slot:" .. tostring(i))
+      local dup = false
+      for r = 1, #rows do
+        if rows[r]._key == row._key then
+          dup = true
+          break
+        end
+      end
+      if not dup then
+        rows[#rows + 1] = row
+      end
+    end
+  end
+end
+
+local function ScrapeTargetFrameBrute(rows, maxN)
+  if not TargetFrame then
+    return
+  end
+  local function scan(frame, depth)
+    if not frame or depth > 14 or #rows >= maxN or IsCastOrSpellBarFrame(frame) then
       return
     end
     pcall(function()
-      if not SafeShown(frame) then
+      if not FrameIsShownSafe(frame) then
         return
       end
       local iconTex = frame.Icon or frame.icon
-      if not iconTex then
-        return
-      end
-      local w
-      pcall(function()
-        w = frame:GetWidth()
-      end)
-      if type(w) == "number" and not IsSecret(w) and (w < 12 or w > 48) then
-        return
-      end
-      local icon, gotIcon = ButtonAuraIconAny(frame)
-      if not gotIcon then
-        return
-      end
-      local key = PublicTexKey(icon)
-      if not key then
-        key = "tfbrute:" .. tostring(frame)
-      end
-      if key and not skipKeys[key] then
-        out[#out + 1] = icon
-        skipKeys[key] = true
+      if iconTex then
+        local w
+        pcall(function()
+          w = frame:GetWidth()
+        end)
+        if type(w) == "number" and not IsSecret(w) and (w < 12 or w > 48) then
+          return
+        end
+        PushTfAuraFrame(frame, rows, maxN)
       end
     end)
     local ok, kids = pcall(function()
@@ -1810,9 +2079,6 @@ local function ScrapeTargetFrameIconsBrute(skipKeys, out, maxN)
     if ok and type(kids) == "table" then
       for i = 1, #kids do
         scan(kids[i], depth + 1)
-        if #out >= maxN then
-          return
-        end
       end
     end
   end
@@ -1820,85 +2086,154 @@ local function ScrapeTargetFrameIconsBrute(skipKeys, out, maxN)
   if container then
     scan(container, 0)
   end
-  -- Contextual Auras only — never whole TargetFrame (scoops cast bar).
 end
 
---- TargetFrame scrape via Forever auraPools (+ brute + public/secret textures).
---- Dedupe via skipKeys only — do not drop buttons with mis-tagged player ownership.
-local function CollectTargetFrameMissing(skipKeys, out, maxN)
-  local buttons = {}
-  CollectTargetFrameButtons(buttons, maxN)
-  local seenBtn = {}
-  for i = 1, #buttons do
-    if #out >= maxN then
-      return
-    end
-    local btn = buttons[i]
-    local bid = tostring(btn)
-    if not seenBtn[bid] then
-      seenBtn[bid] = true
-      local icon, gotIcon = ButtonAuraIconAny(btn)
-      if gotIcon then
-        local key = PublicTexKey(icon)
-        if not key then
-          pcall(function()
-            if btn.GetAuraInstance then
-              local _, data = btn:GetAuraInstance()
-              key = AuraDedupeKey(data, icon)
-            end
-          end)
-        end
-        if not key then
-          key = "tf:" .. bid
-        end
-        if key and not skipKeys[key] then
-          out[#out + 1] = icon
-          skipKeys[key] = true
-        end
-      end
-    end
-  end
-  if #out < maxN then
-    ScrapeTargetFrameIconsBrute(skipKeys, out, maxN)
-  end
-  -- activeDebuffs table (Forever)
-  if TargetFrame and type(TargetFrame.activeDebuffs) == "table" and #out < maxN then
+local function CollectTargetHarmfulRows(maxN)
+  maxN = maxN or MaxIcons()
+  local rows = {}
+  local container = GetTargetAuraContainer()
+  if container then
     pcall(function()
-      for _, aura in pairs(TargetFrame.activeDebuffs) do
-        if #out >= maxN then
-          return
-        end
-        if type(aura) == "table" and AuraCountsAsForeignGaps(aura) then
-          local icon = aura.icon
-          if not icon and (aura.Icon or aura.icon) then
-            local asBtn = aura
-            icon = select(1, ButtonAuraIconAny(asBtn))
-          end
-          if icon then
-            local key = AuraDedupeKey(aura, icon)
-            if not key then
-              key = "tfad:" .. tostring(aura)
-            end
-            if key and not skipKeys[key] then
-              out[#out + 1] = icon
-              skipKeys[key] = true
-            end
-          end
+      local group = container.debuffAuraGroup
+      local frames = group and group.GetFramesByIndex and group:GetFramesByIndex()
+      if type(frames) == "table" then
+        for i = 1, #frames do
+          PushTfAuraFrame(frames[i], rows, maxN)
         end
       end
     end)
+    pcall(function()
+      local group = container.debuffAuraGroup
+      local auras = group and group.GetAuras and group:GetAuras()
+      if auras and auras.Iterate then
+        auras:Iterate(function(_id, data)
+          if #rows >= maxN then
+            return true
+          end
+          if type(data) == "table" and AuraIconPresent(data.icon) then
+            local row = {
+              icon = data.icon,
+              spellId = data.spellId,
+              auraInstanceID = data.auraInstanceID,
+              fromTargetFrame = true,
+            }
+            row._key = TfRowKey(row) or ("tfit:" .. tostring(#rows + 1))
+            rows[#rows + 1] = row
+          end
+          return false
+        end)
+      end
+    end)
+    pcall(HarvestTfAuraPool, container.auraPools, rows, maxN)
+  end
+  for i = 1, 16 do
+    local f = _G["TargetFrameDebuff" .. i]
+    if f then
+      PushTfAuraFrame(f, rows, maxN)
+    end
+  end
+  if TargetFrame and TargetFrame.auraPools then
+    pcall(HarvestTfAuraPool, TargetFrame.auraPools, rows, maxN)
+  end
+  CollectTfActiveDebuffs(rows, maxN)
+  CollectTfAuraSlots(rows, maxN)
+  if #rows == 0 then
+    ScrapeTargetFrameBrute(rows, maxN)
+  elseif #rows < maxN then
+    ScrapeTargetFrameBrute(rows, maxN)
+  end
+  return rows
+end
+
+local function AppendGapRow(skipKeys, out, maxN, stats, row, countForeign)
+  if #out >= maxN or type(row) ~= "table" then
+    return
+  end
+  local key = TfRowKey(row)
+  if not key then
+    key = "gap:" .. tostring(#out + 1)
+  end
+  if skipKeys[key] then
+    return
+  end
+  local icon = row.icon
+  if not AuraIconPresent(icon) and row.iconTex then
+    pcall(function()
+      icon = row.iconTex:GetTexture()
+    end)
+  end
+  if AuraIconPresent(icon) then
+    out[#out + 1] = icon
+  elseif row.iconTex then
+    out[#out + 1] = { iconTex = row.iconTex, icon = icon }
+  else
+    return
+  end
+  skipKeys[key] = true
+  if stats and countForeign then
+    stats.foreign = (stats.foreign or 0) + 1
+  end
+end
+
+--- TF mirror minus plate skipKeys — party DoTs (Retinue CollectFromTargetFrame parity).
+local function CollectTargetFrameMissing(skipKeys, out, maxN, stats)
+  local rows = CollectTargetHarmfulRows(maxN)
+  for i = 1, #rows do
+    if #out >= maxN then
+      return
+    end
+    AppendGapRow(skipKeys, out, maxN, stats, rows[i], true)
+  end
+end
+
+local function CollectAuraSlotsGaps(unitToken, skipKeys, out, maxN, stats)
+  if unitToken ~= "target" or not C_UnitAuras or not C_UnitAuras.GetAuraSlots then
+    return
+  end
+  local pack = { pcall(C_UnitAuras.GetAuraSlots, unitToken, "HARMFUL") }
+  if not pack[1] then
+    return
+  end
+  for i = 3, #pack do
+    if #out >= maxN then
+      break
+    end
+    local slot = pack[i]
+    local data
+    if C_UnitAuras.GetAuraDataBySlot then
+      local ok, d = pcall(C_UnitAuras.GetAuraDataBySlot, unitToken, slot)
+      if ok then
+        data = d
+      end
+    end
+    if type(data) == "table" and AuraCountsAsForeignGaps(data) then
+      local row = {
+        icon = data.icon,
+        spellId = data.spellId,
+        auraInstanceID = data.auraInstanceID,
+      }
+      AppendGapRow(skipKeys, out, maxN, stats, row, true)
+    end
   end
 end
 
 local function SetIconTexture(icon, t)
   local okSet = false
   pcall(function()
+    if type(t) == "table" and t.iconTex and t.iconTex.GetTexture then
+      icon:SetTexture(t.iconTex:GetTexture())
+      okSet = true
+      return
+    end
+    if type(t) == "table" and t.icon ~= nil then
+      t = t.icon
+    end
     if type(t) == "table" or type(t) == "userdata" then
       if t.GetTexture then
         icon:SetTexture(t:GetTexture())
         okSet = true
       end
-    else
+    elseif t ~= nil then
       icon:SetTexture(t)
       okSet = true
     end
@@ -1947,6 +2282,7 @@ local function PaintMergeMissing(unit, plate)
       CollectPlayerOwnedKeys(unit, foreignSkip)
     end
     CollectForeignAuraGaps("target", foreignSkip, missing, maxN, allowSecret, stats)
+    CollectAuraSlotsGaps("target", foreignSkip, missing, maxN, stats)
     if type(unit) == "string" and unit ~= "target" then
       CollectForeignAuraGaps(unit, foreignSkip, missing, maxN, allowSecret, stats)
     end
@@ -1954,7 +2290,7 @@ local function PaintMergeMissing(unit, plate)
     for k, v in pairs(foreignSkip) do
       tfDedupe[k] = v
     end
-    CollectTargetFrameMissing(tfDedupe, missing, maxN)
+    CollectTargetFrameMissing(tfDedupe, missing, maxN, stats)
   else
     if type(unit) == "string" then
       CollectPersonalAuraGaps(unit, paintKeys, missing, maxN, stats)
@@ -2247,7 +2583,10 @@ SnapshotDiagnose = function(reason, opts)
 
   local tf = 0
   if targetYes then
-    tf = CountTargetFrameAuras()
+    tf = #CollectTargetHarmfulRows(MaxIcons())
+    if tf == 0 then
+      tf = CountTargetFrameAuras()
+    end
   end
 
   local overlayN = 0

@@ -1,5 +1,18 @@
 # Plateband changelog
 
+## 0.2.7 (HUD gate — Retinue TF harvest)
+
+- **Root fix:** replace thin `CollectTargetFrameButtons` / `ButtonAuraIconAny` scrape with **Retinue parity** harvest: `debuffAuraGroup:GetFramesByIndex`, **`GetAuras():Iterate`**, `auraPools`, **`C_UnitAuras.GetAuraSlots`**, numeric **`activeDebuffs` → GetAuraDataByAuraInstanceID**, live-button brute with secret icon support.
+- **TF gaps:** mirror full TF harmful row, subtract `paintKeys` (native + personal) — party warlock DoTs paint when TF shows them.
+- **Paint:** `SetIconTexture` accepts `{ iconTex }` wrapper for secret/atlas TF buttons.
+- **Diagnose:** `tf=` uses `CollectTargetHarmfulRows` count (falls back to legacy counter if 0).
+
+### Playtest (0.2.7)
+
+1. `/reload` → `/pb diagnose` → **`ver=0.2.7`** · **`tf≥2`** when TF shows personal + warlock.
+2. Target mob: your DoT + **party warlock DoT** on TF → nameplate row shows **both** (`fb` includes warlock).
+3. Solo target → no junk icons; UI intact after `/reload`.
+
 ## 0.2.6 (HUD gate — foreign / party DoTs)
 
 - **TF supplement:** `CollectTargetFrameMissing` uses `ButtonAuraIconAny` — dedupe via `skipKeys` only, not ownership skip (party warlock DoTs were dropped when `isFromPlayerOrPlayerPet` mis-tagged).

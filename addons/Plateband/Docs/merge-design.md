@@ -1,9 +1,9 @@
 # Plateband — safe merge design (no name mutation)
 
-**Status:** v0.2.6 P0+P1 (`pb-old-vs-peers-dots.md` §5) · **default ON** (`mergeMissing=true`, schema 7+)  
+**Status:** v0.2.7 P0+P1 (`pb-old-vs-peers-dots.md` §5) · **default ON** (`mergeMissing=true`, schema 7+)  
 **Baseline:** `plateband-v0.1.15` data contract + **0.2** beside-native layout · HUD gate before main merge
 
-## Product rule (0.2.5)
+## Product rule (0.2.7)
 
 **One native-looking harmful row** on enemy **target** nameplates (e.g. Rake + timer left of health): Blizzard `DebuffList` / `auraPools` kids first; Plateband paints **personal gaps** (player DoTs missing from native) then **foreign gaps**. Dedupe **only** `NativeKeySet` for personal; `CollectPlayerOwnedKeys` applies to **foreign** skip set only. Gaps match **native kid size** (`NativeAuraMetrics`), appended **RIGHT of rightmost native** with **BOTTOM** band align. Gap icons are texture-only (timers on native). **No** AuraContainer overlay row.
 
@@ -29,8 +29,8 @@ flowchart TD
   row -->|no| skip
   row -->|yes| native[NativeKeySet pools + children]
   native --> per[CollectPersonalAuraGaps + TF personal if not in native]
-  per --> api[CollectForeignAuraGaps C_UnitAuras foreignSkip]
-  api --> tf[CollectTargetFrameMissing read-only on target]
+  per --> api[CollectForeignAuraGaps + GetAuraSlots]
+  api --> tf[CollectTargetHarmfulRows Retinue TF mirror minus paintKeys]
   tf --> sticky[Gap sticky TTL optional]
   sticky --> paint[Fallback textures DebuffList parent]
   paint --> metrics[NativeAuraMetrics]

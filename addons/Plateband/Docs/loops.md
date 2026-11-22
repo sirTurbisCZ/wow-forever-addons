@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.6** (foreign TF dedupe + party mis-tag; see merge-design)
+Version: **0.2.7** (Retinue TF harvest + aura slots; see merge-design)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 
