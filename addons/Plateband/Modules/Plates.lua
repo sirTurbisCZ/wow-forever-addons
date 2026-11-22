@@ -619,6 +619,60 @@ local function HarvestAuraPoolButtons(pools, out, maxN)
   end
 end
 
+--- Nameplate harmful pools (Forever — DebuffList GetChildren often empty while pools paint).
+local function PlateAuraPools(plate)
+  local pools
+  pcall(function()
+    local uf = plate and plate.UnitFrame
+    local af = uf and uf.AurasFrame
+    if af and af.auraPools then
+      pools = af.auraPools
+    end
+    local list = NativeDebuffList(plate)
+    if not pools and list and list.auraPools then
+      pools = list.auraPools
+    end
+  end)
+  return pools
+end
+
+local function CollectPlateDebuffButtons(plate, out, maxN)
+  if not plate or not out then
+    return
+  end
+  maxN = maxN or MaxIcons()
+  local pools = PlateAuraPools(plate)
+  if pools then
+    HarvestAuraPoolButtons(pools, out, maxN)
+  end
+  if #out >= maxN then
+    return
+  end
+  local list = NativeDebuffList(plate)
+  if not list then
+    return
+  end
+  local ok, kids = pcall(function()
+    return { list:GetChildren() }
+  end)
+  if not ok or type(kids) ~= "table" then
+    return
+  end
+  for i = 1, #kids do
+    if #out >= maxN then
+      return
+    end
+    local child = kids[i]
+    if child and (child.Icon or child.icon or child.GetAuraInstance) and SafeShown(child) then
+      out[#out + 1] = child
+    end
+  end
+end
+
+local function FallbackParent(plate)
+  return NativeDebuffList(plate) or NativeDebuffAnchorList(plate) or SafeFallbackParent(plate)
+end
+
 local function CollectTargetFrameButtons(out, maxN)
   maxN = maxN or MaxIcons()
   local container = GetTargetAuraContainer()
@@ -1042,6 +1096,13 @@ local function LayoutMergeBesideNative(unit, plate, mergeFb, painted)
       mergeFb:SetPoint("LEFT", anchor, "RIGHT", pad, 0)
       mergeFb:SetPoint("BOTTOM", anchor, "BOTTOM", 0, 0)
     end)
+  else
+    local bar = HealthBar(plate)
+    if bar then
+      pcall(function()
+        mergeFb:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", 0, OVERLAY_GAP_ABOVE)
+      end)
+    end
   end
 end
 
@@ -1084,7 +1145,7 @@ local function EnsureOverlay(unit)
 end
 
 local function EnsureFallback(unit, plate)
-  local parent = SafeFallbackParent(plate)
+  local parent = FallbackParent(plate)
   if not parent then
     return nil
   end
@@ -1181,6 +1242,27 @@ local function NativeKeySet(plate)
       keys[k] = true
     end
   end
+  local buttons = {}
+  CollectPlateDebuffButtons(plate, buttons, MaxIcons())
+  for i = 1, #buttons do
+    local icon, _, gotIcon = ButtonAuraIcon(buttons[i])
+    if gotIcon and icon then
+      local k = PublicTexKey(icon)
+      if not k then
+        pcall(function()
+          if buttons[i].GetAuraInstance then
+            local _, data = buttons[i]:GetAuraInstance()
+            if data then
+              k = AuraDedupeKey(data, icon)
+            end
+          end
+        end)
+      end
+      if k then
+        keys[k] = true
+      end
+    end
+  end
   return keys
 end
 
@@ -1195,6 +1277,28 @@ local function NativeAuraMetrics(plate)
   local ok, kids = pcall(function()
     return { list:GetChildren() }
   end)
+  local buttons = {}
+  CollectPlateDebuffButtons(plate, buttons, MaxIcons())
+  for i = 1, #buttons do
+    local child = buttons[i]
+    if child and SafeShown(child) then
+      pcall(function()
+        local w = child:GetWidth()
+        local h = child:GetHeight()
+        if type(w) == "number" and not IsSecret(w) and w >= 8 and w <= 64 then
+          sz = w
+        end
+        if type(h) == "number" and not IsSecret(h) and h >= 8 and h <= 64 then
+          if type(w) == "number" and not IsSecret(w) then
+            sz = w
+          else
+            sz = h
+          end
+        end
+      end)
+      break
+    end
+  end
   if ok and type(kids) == "table" then
     for i = 1, #kids do
       local child = kids[i]
@@ -1220,34 +1324,45 @@ local function NativeAuraMetrics(plate)
   return sz, pad
 end
 
+local function PickRightmostAuraFrame(frames)
+  local rightmost, bestRight
+  for i = 1, #frames do
+    local child = frames[i]
+    if child and SafeShown(child) and (child.Icon or child.icon or child.GetAuraInstance) then
+      local r
+      pcall(function()
+        r = child:GetRight()
+      end)
+      if type(r) == "number" and not IsSecret(r) then
+        if not bestRight or r > bestRight then
+          bestRight = r
+          rightmost = child
+        end
+      elseif not rightmost then
+        rightmost = child
+      end
+    end
+  end
+  return rightmost
+end
+
 --- Rightmost shown native aura button (or DebuffListFrame) — merge anchors beside it.
 NativeBandRightAnchor = function(plate)
   local list = NativeDebuffList(plate)
   if not list then
     return nil
   end
-  local rightmost, bestRight
+  local buttons = {}
+  CollectPlateDebuffButtons(plate, buttons, MaxIcons())
+  local rightmost = PickRightmostAuraFrame(buttons)
+  if rightmost then
+    return rightmost
+  end
   local ok, kids = pcall(function()
     return { list:GetChildren() }
   end)
   if ok and type(kids) == "table" then
-    for i = 1, #kids do
-      local child = kids[i]
-      if child and SafeShown(child) and (child.Icon or child.icon or child.GetAuraInstance) then
-        local r
-        pcall(function()
-          r = child:GetRight()
-        end)
-        if type(r) == "number" and not IsSecret(r) then
-          if not bestRight or r > bestRight then
-            bestRight = r
-            rightmost = child
-          end
-        elseif not rightmost then
-          rightmost = child
-        end
-      end
-    end
+    rightmost = PickRightmostAuraFrame(kids)
   end
   if rightmost then
     return rightmost
@@ -1364,9 +1479,8 @@ local function AuraLooksForeign(data)
   return true
 end
 
---- v0.2.2 — C_UnitAuras gaps: personal when not on native; foreign when not clearly ours
---- (matches 0.1.15 allowSecretUnknown — no nativeN gate that dropped secret foreign).
-local function CollectHarmfulGaps(unitToken, skipKeys, out, maxN, allowSecretUnknown, stats)
+--- v0.2.3 — C_UnitAuras gaps; playerOnly keys dedupe foreign, not personal gaps on plate.
+local function CollectHarmfulGaps(unitToken, skipKeys, playerOnly, out, maxN, allowSecretUnknown, stats)
   if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
     return
   end
@@ -1398,12 +1512,13 @@ local function CollectHarmfulGaps(unitToken, skipKeys, out, maxN, allowSecretUnk
         end
       end
     else
-      if key and not skipKeys[key] then
+      local blocked = playerOnly and playerOnly[key]
+      if key and not skipKeys[key] and not blocked then
         take = true
       elseif not key then
         if owned == false or AuraLooksForeign(data) or allowSecretUnknown then
           key = "sec:" .. tostring(i) .. ":" .. tostring(unitToken)
-          if not skipKeys[key] then
+          if not skipKeys[key] and not (playerOnly and playerOnly[key]) then
             take = true
           end
         end
@@ -1625,7 +1740,7 @@ end
 
 --- Paint gap harmful (personal + foreign) beside native — C_UnitAuras only (0.2.0).
 local function PaintMergeMissing(unit, plate)
-  if not plate or not SafeFallbackParent(plate) then
+  if not plate or not FallbackParent(plate) then
     ClearFallback(unit)
     return 0
   end
@@ -1644,6 +1759,7 @@ local function PaintMergeMissing(unit, plate)
   end
 
   local skipKeys = NativeKeySet(plate)
+  local playerOnly = {}
   local maxN = MaxIcons()
   local missing = {}
   local stats = { personal = 0, foreign = 0 }
@@ -1651,18 +1767,20 @@ local function PaintMergeMissing(unit, plate)
   local allowSecret = true
 
   if isTarget then
-    CollectPlayerOwnedKeys("target", skipKeys)
+    CollectPlayerOwnedKeys("target", playerOnly)
     if type(unit) == "string" and unit ~= "target" then
-      CollectPlayerOwnedKeys(unit, skipKeys)
+      CollectPlayerOwnedKeys(unit, playerOnly)
     end
-    CollectHarmfulGaps("target", skipKeys, missing, maxN, allowSecret, stats)
+    CollectHarmfulGaps("target", skipKeys, playerOnly, missing, maxN, allowSecret, stats)
     if type(unit) == "string" and unit ~= "target" then
-      CollectHarmfulGaps(unit, skipKeys, missing, maxN, allowSecret, stats)
+      CollectHarmfulGaps(unit, skipKeys, playerOnly, missing, maxN, allowSecret, stats)
     end
+    -- TF shows party/warlock DoTs Forever often omits from plate/API — always supplement gaps.
+    CollectTargetFrameMissing(skipKeys, missing, maxN)
   else
     if type(unit) == "string" then
-      CollectPlayerOwnedKeys(unit, skipKeys)
-      CollectHarmfulGaps(unit, skipKeys, missing, maxN, allowSecret, stats)
+      CollectPlayerOwnedKeys(unit, playerOnly)
+      CollectHarmfulGaps(unit, skipKeys, playerOnly, missing, maxN, allowSecret, stats)
     end
   end
 
@@ -1675,7 +1793,7 @@ local function PaintMergeMissing(unit, plate)
   if not fb then
     return 0
   end
-  local parent = SafeFallbackParent(plate)
+  local parent = FallbackParent(plate)
   local sz, pad = NativeAuraMetrics(plate)
   local painted = 0
   for i = 1, #missing do
@@ -1720,12 +1838,17 @@ local function PaintMergeMissing(unit, plate)
     local lvl = 50
     pcall(function()
       if nativeList.GetFrameLevel then
-        lvl = (nativeList:GetFrameLevel() or 1) + 1
+        lvl = (nativeList:GetFrameLevel() or 1) + 3
       elseif parent then
         lvl = (parent:GetFrameLevel() or 1) + 15
       end
     end)
     fb:SetFrameLevel(lvl)
+    pcall(function()
+      if fb.SetClipsChildren then
+        fb:SetClipsChildren(false)
+      end
+    end)
     fb:Show()
   end)
   fb._painted = painted

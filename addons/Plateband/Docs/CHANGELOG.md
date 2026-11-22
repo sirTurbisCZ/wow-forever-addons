@@ -1,5 +1,13 @@
 # Plateband changelog
 
+## 0.2.3 (HUD gate)
+
+- **Paint path:** TF read-only gap supplement on target (`CollectTargetFrameMissing`) always after API gaps.
+- **Gate:** `FallbackParent` (DebuffList/AurasFrame) — not `SafeFallbackParent`-only early exit.
+- **Native detect:** nameplate `auraPools` + `CollectPlateDebuffButtons` for `NativeKeySet`, metrics, anchor.
+- **Dedupe:** `CollectPlayerOwnedKeys` → `playerOnly` (foreign path only); personal gaps use native keys only.
+- **Visibility:** fallback parent `DebuffList`/`AurasFrame`; higher frame level; layout health-bar fallback.
+
 ## 0.2.2 (HUD gate)
 
 - **Fix foreign DoTs missing:** `CollectHarmfulGaps` restored 0.1.15 eligibility — skip only `owned==true` in foreign path; `allowSecretUnknown` on target/nameplate; re-added `CollectPlayerOwnedKeys` before paint.
