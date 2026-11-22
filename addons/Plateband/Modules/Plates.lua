@@ -36,6 +36,8 @@ local platesSeen = 0
 local overlayUpdates = 0
 local lastAuraRefreshAt = 0
 local AURA_DEBOUNCE_SEC = 0.12
+local GAP_STICKY_SEC = 0.4 -- brief hold when UNIT_AURA/API flickers empty (Retinue lesson; no CLEU)
+local gapSticky = {} -- [unit] = { icons = {}, at = number }
 
 local GLOBAL_UI = {
   UIParent = true,
@@ -1049,6 +1051,7 @@ local function ClearFallback(unit)
   end
   fb:Hide()
   fb:ClearAllPoints()
+  gapSticky[unit] = nil
 end
 
 local function PlateNameFS(plate)
@@ -1479,8 +1482,8 @@ local function AuraLooksForeign(data)
   return true
 end
 
---- v0.2.3 — C_UnitAuras gaps; playerOnly keys dedupe foreign, not personal gaps on plate.
-local function CollectHarmfulGaps(unitToken, skipKeys, playerOnly, out, maxN, allowSecretUnknown, stats)
+--- v0.2.4 P0 — 0.1.15 foreign API pass: skip owned==true (personal stays native-only).
+local function CollectForeignAuraGaps(unitToken, skipKeys, out, maxN, allowSecretUnknown, stats)
   if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
     return
   end
@@ -1497,46 +1500,58 @@ local function CollectHarmfulGaps(unitToken, skipKeys, playerOnly, out, maxN, al
     end
 
     local owned = AuraIsPlayerOwned(data)
-    local icon = data.icon
-    local key = AuraDedupeKey(data, icon)
-    local take = false
-
     if owned == true then
-      -- Personal gap only — native / CollectPlayerOwnedKeys already in skipKeys.
-      if key and not skipKeys[key] then
-        take = true
-      elseif not key and allowSecretUnknown then
-        key = "po:" .. tostring(unitToken) .. ":" .. tostring(i)
-        if not skipKeys[key] then
-          take = true
-        end
-      end
+      -- skip — native DebuffList owns personal (Phase A / 0.1.15)
     else
-      local blocked = playerOnly and playerOnly[key]
-      if key and not skipKeys[key] and not blocked then
+      local icon = data.icon
+      local key = AuraDedupeKey(data, icon)
+      local take = false
+      if key and not skipKeys[key] then
         take = true
       elseif not key then
         if owned == false or AuraLooksForeign(data) or allowSecretUnknown then
           key = "sec:" .. tostring(i) .. ":" .. tostring(unitToken)
-          if not skipKeys[key] and not (playerOnly and playerOnly[key]) then
+          if not skipKeys[key] then
             take = true
           end
         end
       end
-    end
-
-    if take and key and not skipKeys[key] then
-      out[#out + 1] = icon
-      skipKeys[key] = true
-      if stats then
-        if owned == true then
-          stats.personal = (stats.personal or 0) + 1
-        else
+      if take and key and not skipKeys[key] then
+        out[#out + 1] = icon
+        skipKeys[key] = true
+        if stats then
           stats.foreign = (stats.foreign or 0) + 1
         end
       end
     end
   end
+end
+
+local function ApplyGapSticky(unit, missing, isTarget)
+  if not isTarget or not unit or #missing > 0 then
+    return
+  end
+  local c = gapSticky[unit]
+  if not c or type(c.icons) ~= "table" or #c.icons == 0 then
+    return
+  end
+  local now = GetTime and GetTime() or 0
+  if type(c.at) == "number" and (now - c.at) <= GAP_STICKY_SEC then
+    for i = 1, #c.icons do
+      missing[#missing + 1] = c.icons[i]
+    end
+  end
+end
+
+local function RememberGapSticky(unit, icons)
+  if not unit or type(icons) ~= "table" or #icons == 0 then
+    return
+  end
+  local copy = {}
+  for i = 1, #icons do
+    copy[i] = icons[i]
+  end
+  gapSticky[unit] = { icons = copy, at = GetTime and GetTime() or 0 }
 end
 
 --- Pull icon texture from a TF aura button (secret FileIDs OK for SetTexture).
@@ -1738,7 +1753,7 @@ local function SetIconTexture(icon, t)
   return okSet
 end
 
---- Paint gap harmful (personal + foreign) beside native — C_UnitAuras only (0.2.0).
+--- Paint foreign gaps beside native — 0.1.15 sources + 0.2 layout (§5 P0).
 local function PaintMergeMissing(unit, plate)
   if not plate or not FallbackParent(plate) then
     ClearFallback(unit)
@@ -1759,7 +1774,6 @@ local function PaintMergeMissing(unit, plate)
   end
 
   local skipKeys = NativeKeySet(plate)
-  local playerOnly = {}
   local maxN = MaxIcons()
   local missing = {}
   local stats = { personal = 0, foreign = 0 }
@@ -1767,22 +1781,23 @@ local function PaintMergeMissing(unit, plate)
   local allowSecret = true
 
   if isTarget then
-    CollectPlayerOwnedKeys("target", playerOnly)
+    CollectPlayerOwnedKeys("target", skipKeys)
     if type(unit) == "string" and unit ~= "target" then
-      CollectPlayerOwnedKeys(unit, playerOnly)
+      CollectPlayerOwnedKeys(unit, skipKeys)
     end
-    CollectHarmfulGaps("target", skipKeys, playerOnly, missing, maxN, allowSecret, stats)
+    CollectForeignAuraGaps("target", skipKeys, missing, maxN, allowSecret, stats)
     if type(unit) == "string" and unit ~= "target" then
-      CollectHarmfulGaps(unit, skipKeys, playerOnly, missing, maxN, allowSecret, stats)
+      CollectForeignAuraGaps(unit, skipKeys, missing, maxN, allowSecret, stats)
     end
-    -- TF shows party/warlock DoTs Forever often omits from plate/API — always supplement gaps.
     CollectTargetFrameMissing(skipKeys, missing, maxN)
   else
     if type(unit) == "string" then
-      CollectPlayerOwnedKeys(unit, playerOnly)
-      CollectHarmfulGaps(unit, skipKeys, playerOnly, missing, maxN, allowSecret, stats)
+      CollectPlayerOwnedKeys(unit, skipKeys)
+      CollectForeignAuraGaps(unit, skipKeys, missing, maxN, allowSecret, stats)
     end
   end
+
+  ApplyGapSticky(unit, missing, isTarget)
 
   if #missing == 0 then
     ClearFallback(unit)
@@ -1856,6 +1871,13 @@ local function PaintMergeMissing(unit, plate)
   fb._gapForeign = stats.foreign or 0
 
   pcall(LayoutMergeBesideNative, unit, plate, fb, painted)
+  if painted > 0 then
+    local kept = {}
+    for i = 1, painted do
+      kept[i] = missing[i]
+    end
+    RememberGapSticky(unit, kept)
+  end
   return painted
 end
 

@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.3** (gap row; see merge-design product rule)
+Version: **0.2.4** (P0 foreign row; see merge-design product rule)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 
@@ -13,8 +13,8 @@ flowchart TD
   upd --> clear[ClearFallback only]
   upd --> mergeFlag{mergeMissing?}
   mergeFlag -->|false /pb merge off| stop[Stop — Blizzard name+DebuffList untouched]
-  mergeFlag -->|true opt-in| paint[PaintMergeMissing]
-  paint --> layout[LayoutMergeBesideNative on Plateband frame only]
+  mergeFlag -->|true opt-in| paint[PaintMergeMissing foreign+TF]
+  paint --> layout[LayoutMergeBesideNative + NativeAuraMetrics]
 ```
 
 ## Hard rules (three-addon refactor)

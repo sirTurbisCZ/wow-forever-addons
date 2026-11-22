@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## 0.2.4 (HUD gate — P0 §5)
+
+- **0.1.15 data contract:** `CollectForeignAuraGaps` skips `owned==true` (no personal fallback); `CollectPlayerOwnedKeys` → `skipKeys`; target always `CollectTargetFrameMissing` after API + `nameplateN`.
+- **0.2 layout retained:** `NativeAuraMetrics`, pools anchor, `FallbackParent`, beside-native only.
+- **Gap sticky** ~0.4s on target when API flickers empty (no CLEU).
+
 ## 0.2.3 (HUD gate)
 
 - **Paint path:** TF read-only gap supplement on target (`CollectTargetFrameMissing`) always after API gaps.
