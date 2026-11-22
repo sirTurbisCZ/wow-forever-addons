@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 1.2.2 — Shift+RMB merged stack sell; Recipes lane; Ctrl+Shift+RMB lane bulk.
+## Notes: 1.2.3 — recipe classify, stable merge slots, fix merge-group vendor/mail.
 ## Author: tuma
-## Version: 1.2.2
+## Version: 1.2.3
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled

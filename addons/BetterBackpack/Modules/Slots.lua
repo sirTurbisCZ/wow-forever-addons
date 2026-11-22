@@ -1265,6 +1265,7 @@ local function WireScripts(btn)
       if button == "RightButton" and Context and Context.NeedsInsecureSpecialRmb and Context.NeedsInsecureSpecialRmb() then
         Slots.ClearRmbUse(self)
         self._bbSpecialRmb = true
+        self._bbShiftDown = (IsShiftKeyDown and IsShiftKeyDown()) or false
         return
       end
       if button ~= "LeftButton" then
@@ -1285,6 +1286,7 @@ local function WireScripts(btn)
           end
         end
         self._bbSpecialRmb = nil
+        self._bbShiftDown = nil
         return
       end
       if button == "LeftButton" and self._bbLmbDown and not self._bbDragging then
@@ -1330,9 +1332,12 @@ local function WireScripts(btn)
       GameTooltip:AddLine("RMB = use / learn", 0.6, 0.8, 1, true)
     end
     local BT = BetterBackpack.Modules.BulkTransfer
-    local shiftHint = BT and BT.SlotShiftTooltipLine and BT.SlotShiftTooltipLine(ctx)
-    if shiftHint and self._bbMergedStacks and self._bbMergedStacks > 1 then
-      GameTooltip:AddLine(shiftHint, 0.2, 1, 0.4, true)
+    if self._bbMergedStacks and self._bbMergedStacks > 1 then
+      if ctx == "merchant" then
+        GameTooltip:AddLine("RMB = sell all merged stacks", 0.2, 1, 0.4, true)
+      elseif ctx == "mail" then
+        GameTooltip:AddLine("RMB = attach all merged stacks", 0.2, 1, 0.4, true)
+      end
     end
     GameTooltip:Show()
   end)

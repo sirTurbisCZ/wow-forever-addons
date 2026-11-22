@@ -110,6 +110,46 @@ local function MergeGroupKey(id, bag, slot, info)
   return id .. ":" .. (locked and "L" or "U")
 end
 
+local mergeAnchors = {} -- mergeKey → last stable representative bag:slot
+
+local function SortBagSlots(list)
+  if type(list) ~= "table" then
+    return
+  end
+  table.sort(list, function(a, b)
+    local ba, bb = a.bag or 0, b.bag or 0
+    if ba ~= bb then
+      return ba < bb
+    end
+    return (a.slot or 0) < (b.slot or 0)
+  end)
+end
+
+local function SlotStillOccupied(bag, slot)
+  if not Slots or not Slots.SlotOccupied then
+    return true
+  end
+  return Slots.SlotOccupied(bag, slot) and true or false
+end
+
+local function PickStableAnchor(mergeKey, mergedFrom)
+  SortBagSlots(mergedFrom)
+  if #mergedFrom == 0 then
+    return nil
+  end
+  local anchor = mergeAnchors[mergeKey]
+  if anchor and SlotStillOccupied(anchor.bag, anchor.slot) then
+    for i = 1, #mergedFrom do
+      if mergedFrom[i].bag == anchor.bag and mergedFrom[i].slot == anchor.slot then
+        return anchor
+      end
+    end
+  end
+  local pick = mergedFrom[1]
+  mergeAnchors[mergeKey] = { bag = pick.bag, slot = pick.slot }
+  return pick
+end
+
 --- Collapse list of {bag,slot} into entries with displayCount / mergedFrom.
 function StackMerge.Collapse(list)
   if not StackMerge.IsEnabled() or type(list) ~= "table" or #list == 0 then
@@ -145,7 +185,16 @@ function StackMerge.Collapse(list)
   end
   local out = {}
   for i = 1, #order do
-    out[#out + 1] = groups[order[i]]
+    local key = order[i]
+    local g = groups[key]
+    if g and g.mergedFrom and #g.mergedFrom > 0 then
+      local anchor = PickStableAnchor(key, g.mergedFrom)
+      if anchor then
+        g.bag = anchor.bag
+        g.slot = anchor.slot
+      end
+    end
+    out[#out + 1] = g
   end
   for i = 1, #noId do
     out[#out + 1] = noId[i]
@@ -205,32 +254,37 @@ function StackMerge.CollectMergeGroup(anchorBag, anchorSlot)
     return single
   end
   for ri = 1, #ranges do
-    local fromB, toB = ranges[ri].from, ranges[ri].to
-    if fromB and toB then
-      for b = fromB, toB do
-        local numSlots
-        if C_Container and C_Container.GetContainerNumSlots then
-          local okN, n = pcall(C_Container.GetContainerNumSlots, b)
-          if okN then
-            numSlots = n
-          end
-        elseif GetContainerNumSlots then
-          local okN, n = pcall(GetContainerNumSlots, b)
-          if okN then
-            numSlots = n
-          end
+    local b = ranges[ri].bag
+    local numSlots = ranges[ri].slots
+    if b ~= nil and type(numSlots) ~= "number" then
+      if Slots and Slots.NumSlotsForBag then
+        numSlots = Slots.NumSlotsForBag(b)
+      elseif C_Container and C_Container.GetContainerNumSlots then
+        local okN, n = pcall(C_Container.GetContainerNumSlots, b)
+        if okN then
+          numSlots = n
         end
-        if type(numSlots) == "number" and numSlots > 0 then
-          for s = 1, numSlots do
-            local id, info = ResolveItemID(b, s)
-            if id and MergeGroupKey(id, b, s, info) == anchorKey then
-              out[#out + 1] = { bag = b, slot = s }
-            end
+      elseif GetContainerNumSlots then
+        local okN, n = pcall(GetContainerNumSlots, b)
+        if okN then
+          numSlots = n
+        end
+      end
+    end
+    if b ~= nil and type(numSlots) == "number" and numSlots > 0 then
+      for s = 1, numSlots do
+        if Slots and Slots.SlotOccupied and not Slots.SlotOccupied(b, s) then
+          -- skip empty
+        else
+          local id, info = ResolveItemID(b, s)
+          if id and MergeGroupKey(id, b, s, info) == anchorKey then
+            out[#out + 1] = { bag = b, slot = s }
           end
         end
       end
     end
   end
+  SortBagSlots(out)
   if #out == 0 then
     return single
   end

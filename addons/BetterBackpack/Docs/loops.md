@@ -118,8 +118,8 @@ flowchart TD
   Queue --> Sell[merchant/mail per slot]
 ```
 
-- **RMB** (no Shift) on slot = one physical stack (first merge representative).
-- **Shift+RMB** on merged icon at vendor/mail = all slots with same **itemID + isLocked** merge key (`StackMerge.CollectMergeGroup`).
+- **RMB** on a **merged** icon at vendor/mail = all stacks in merge group (`CollectMergeGroup`; shift optional via latch).
+- Single-stack slot (not merged) = one physical stack on RMB.
 
 ---
 

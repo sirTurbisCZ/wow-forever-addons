@@ -283,13 +283,49 @@ local function MapTypeString(itemType, itemSubType)
   return nil
 end
 
-local function ItemLooksRecipe(itemID, itemType, itemSubType, classID)
+local function ItemLooksRecipe(itemID, itemType, itemSubType, classID, subClassID)
+  if itemID and (classID == nil or itemType == nil) then
+    if C_Item and C_Item.GetItemClassAndSubClass then
+      local ok, c, s = pcall(C_Item.GetItemClassAndSubClass, itemID)
+      if ok then
+        classID = classID or c
+        subClassID = subClassID or s
+      end
+    end
+    local cid, sid, it, ist = InstantClass(itemID)
+    classID = classID or cid
+    subClassID = subClassID or sid
+    itemType = itemType or it
+    itemSubType = itemSubType or ist
+  end
+  if itemID and C_Item and C_Item.IsRecipeItem then
+    local ok, yes = pcall(C_Item.IsRecipeItem, itemID)
+    if ok and yes then
+      return true
+    end
+  end
   if type(classID) == "number" and classID == CLASS.Recipe then
     return true
   end
   local EC = Enum and Enum.ItemClass
   if EC and type(EC.Recipe) == "number" and classID == EC.Recipe then
     return true
+  end
+  if classID == CLASS.Tradegoods and type(itemSubType) == "string" then
+    local st = itemSubType:lower()
+    if st:find("recipe", 1, true) or st == "recipe" then
+      return true
+    end
+  end
+  if itemID and C_Item and C_Item.GetItemName then
+    local ok, name = pcall(C_Item.GetItemName, itemID)
+    if ok and type(name) == "string" then
+      local l = name:lower()
+      if l:find("^recipe:", 1) or l:find("^pattern:", 1) or l:find("^plans:", 1)
+          or l:find("^schematic:", 1) or l:find("^formula:", 1) then
+        return true
+      end
+    end
   end
   local blob = (itemType or ""):lower() .. " " .. (itemSubType or ""):lower()
   if blob:find("recipe", 1, true) or blob:find("pattern", 1, true) or blob:find("plans", 1, true)
@@ -327,7 +363,7 @@ end
 local function ClassifyNatural(bag, slot, info, itemID)
   local quality = SafeNum(info.quality)
   local classID, subClassID, itemType, itemSubType, equipLoc = InstantClass(itemID)
-  if ItemLooksRecipe(itemID, itemType, itemSubType, classID) then
+  if ItemLooksRecipe(itemID, itemType, itemSubType, classID, subClassID) then
     return "recipe"
   end
   local mapped = MapClassID(classID, subClassID, quality)
@@ -641,6 +677,14 @@ local function CollectBuckets(unfiltered)
         end
       end
     end
+  end
+  for _, list in pairs(buckets) do
+    table.sort(list, function(a, b)
+      if a.bag ~= b.bag then
+        return a.bag < b.bag
+      end
+      return a.slot < b.slot
+    end)
   end
   return buckets
 end

@@ -1,5 +1,19 @@
 # BetterBackpack changelog
 
+## 1.2.3 — playtest fixes (WFA-33/34/35)
+
+- **Recipes (WFA-34):** broader detection — `C_Item.IsRecipeItem`, `GetItemClassAndSubClass`, trade-goods recipe subtype, `Recipe:` / `Pattern:` name prefixes; still respects taught rules and Settings lane toggle.
+- **Merge layout (WFA-35):** lane lists sorted by bag/slot; merge **stable anchor** per merge key so opening one stack does not jump siblings; representative stays put until that slot empties.
+- **Vendor/mail merge (WFA-33):** `CollectMergeGroup` scanned wrong bag ranges (`from`/`to` vs `bag`/`slots`) → always found 1 slot. Fixed inventory scan; shift latched on RMB down; merged icons transfer **whole group** on RMB at vendor/mail.
+
+### Playtest (1.2.3)
+
+1. `/reload` → `loaded v1.2.3`.
+2. **Recipe** in bag → **Recipes** lane (disable lane in Settings → **Other**).
+3. **3× same item** (stack merge): open/use one → other merged icons **same grid cells**.
+4. Vendor: **RMB** merged icon → chat `moved N / N` or `sold N / N` for **all** stacks; mail same.
+5. **Ctrl+Shift+RMB** lane header still bulk lane only.
+
 ## 1.2.2 — merged stack sell + Recipes lane
 
 - **Vendor/mail:** **Shift+RMB** on a **stack-merged** slot sells/attaches **every physical stack** in that merge group (`StackMerge.CollectMergeGroup` → `BulkTransfer.TransferMergeGroup`). Plain **RMB** still moves one stack.

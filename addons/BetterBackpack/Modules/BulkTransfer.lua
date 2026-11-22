@@ -611,6 +611,7 @@ function BulkTransfer.TransferMergeGroup(bag, slot)
     slots = { { bag = bag, slot = slot } }
   end
   if #slots == 1 then
+    BulkPrint("merge group · 1 slot — single transfer")
     return TransferOne(slots[1].bag, slots[1].slot, ctx)
   end
   local label = string.format("merged stack (%d)", #slots)

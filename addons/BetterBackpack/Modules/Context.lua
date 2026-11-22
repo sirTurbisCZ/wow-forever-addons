@@ -127,7 +127,9 @@ function Context.TrySpecialRmb(self)
   if not b or not s then
     return false
   end
-  if IsShiftKeyDown and IsShiftKeyDown() then
+  local shift = (IsShiftKeyDown and IsShiftKeyDown()) or self._bbShiftDown == true
+  local merged = type(self._bbMergedStacks) == "number" and self._bbMergedStacks > 1
+  if shift or merged then
     local BT = BetterBackpack.Modules and BetterBackpack.Modules.BulkTransfer
     if BT and BT.TransferMergeGroup then
       return BT.TransferMergeGroup(b, s) and true or false
