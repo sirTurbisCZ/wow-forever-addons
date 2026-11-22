@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 1.2.3 — recipe classify, stable merge slots, fix merge-group vendor/mail.
+## Notes: 1.2.4 — vendor auto-sell queue, per-char prefs, item list in Settings.
 ## Author: tuma
-## Version: 1.2.3
+## Version: 1.2.4
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled

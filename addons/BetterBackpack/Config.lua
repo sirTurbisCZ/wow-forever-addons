@@ -2,7 +2,7 @@
 
 BetterBackpack = BetterBackpack or {}
 
-local CURRENT_SCHEMA = 7
+local CURRENT_SCHEMA = 8
 local MAX_ERRORS = 40
 local MAX_MSG = 2000
 
@@ -12,7 +12,17 @@ local Config = BetterBackpack.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "1.2.3"
+Config.VERSION = "1.2.4"
+
+local function CharVendorDefaults()
+  return {
+    autoSellJunk = false,
+    autoSellJunkLane = false,
+    autoSellMarked = {}, -- [itemID] = true — always sell at vendor (this character)
+  }
+end
+
+Config.CharVendorDefaults = CharVendorDefaults
 
 local function ProfileDefaults()
   return {
@@ -175,6 +185,38 @@ function Config.EnsureDB()
     from = 7
   end
 
+  -- 1.2.4: vendor auto-sell prefs per character (migrate current char from account profile).
+  if from < 8 then
+    EnsureProfile(db)
+    db.chars = type(db.chars) == "table" and db.chars or {}
+    local key
+    if UnitName then
+      local name = UnitName("player")
+      local realm = (GetRealmName and GetRealmName()) or ""
+      if name and name ~= "" then
+        key = tostring(name) .. "-" .. tostring(realm)
+      end
+    end
+    if key and type(db.profile) == "table" then
+      local c = db.chars[key]
+      if type(c) ~= "table" then
+        c = {}
+        db.chars[key] = c
+      end
+      if c.autoSellJunk == nil then
+        c.autoSellJunk = db.profile.autoSellJunk == true
+      end
+      if c.autoSellJunkLane == nil then
+        c.autoSellJunkLane = db.profile.autoSellJunkLane == true
+      end
+      if type(c.autoSellMarked) ~= "table" then
+        c.autoSellMarked = {}
+      end
+    end
+    db.schemaVersion = 8
+    from = 8
+  end
+
   EnsureProfile(db)
   if type(db.errors) ~= "table" then
     db.errors = {}
@@ -190,4 +232,51 @@ end
 
 function Config.GetProfile()
   return Config.EnsureDB().profile
+end
+
+function Config.CharKey()
+  if not UnitName then
+    return nil
+  end
+  local name = UnitName("player")
+  if not name or name == "" then
+    return nil
+  end
+  local realm = (GetRealmName and GetRealmName()) or ""
+  return tostring(name) .. "-" .. tostring(realm)
+end
+
+function Config.EnsureCharProfile(db, key)
+  if not key or key == "" then
+    return nil
+  end
+  db.chars = type(db.chars) == "table" and db.chars or {}
+  local c = db.chars[key]
+  if type(c) ~= "table" then
+    c = {}
+    db.chars[key] = c
+  end
+  local d = CharVendorDefaults()
+  for k, v in pairs(d) do
+    if c[k] == nil then
+      c[k] = v
+    end
+  end
+  if type(c.autoSellMarked) ~= "table" then
+    c.autoSellMarked = {}
+  end
+  return c
+end
+
+function Config.GetCharProfile()
+  local db = Config.EnsureDB()
+  local key = Config.CharKey()
+  if not key then
+    db._charVendorStub = db._charVendorStub or CharVendorDefaults()
+    if type(db._charVendorStub.autoSellMarked) ~= "table" then
+      db._charVendorStub.autoSellMarked = {}
+    end
+    return db._charVendorStub
+  end
+  return Config.EnsureCharProfile(db, key)
 end

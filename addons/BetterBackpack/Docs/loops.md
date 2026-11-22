@@ -104,7 +104,7 @@ flowchart TD
 
 - **RMB** without modifiers = lane collapse only.
 - **Ctrl+Shift+RMB** lane header: full lane via `Layout.ListLaneSlots(unfiltered)` (vendor/mail/bank).
-- **Auto-sell:** `MERCHANT_SHOW` + Settings — greys only; optional Junk lane non-grey (`VendorJunk`).
+- **Auto-sell:** `MERCHANT_SHOW` → `VendorJunk` collects inventory slots → `BulkTransfer.TransferSlotList` (merchant queue). **Per character** (`BetterBackpackDB.chars`): grey toggle, optional Junk lane non-grey, optional **marked** itemIDs (Settings → Features drag row). Settings preview lists items in bags that will sell.
 
 ### 4c. Merged stack bulk (Shift+RMB slot, OOC)
 

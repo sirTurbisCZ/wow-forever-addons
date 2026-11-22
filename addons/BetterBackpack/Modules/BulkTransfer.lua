@@ -639,4 +639,19 @@ function BulkTransfer.MerchantCanSell(bag, slot)
   return MerchantAllowed(bag, slot)
 end
 
+function BulkTransfer.TransferSlotList(slots, label)
+  if not OOC() then
+    return false
+  end
+  if not slots or #slots == 0 then
+    return false
+  end
+  local ctx = DetectContext() or "merchant"
+  if ctx ~= "merchant" and ctx ~= "mail" and ctx ~= "bank" then
+    ctx = "merchant"
+  end
+  label = label or "transfer"
+  return StartQueue(ctx, slots, label, ctx == "merchant" and MerchantProbe(slots[1]) or nil)
+end
+
 return BulkTransfer

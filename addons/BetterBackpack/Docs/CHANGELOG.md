@@ -1,5 +1,19 @@
 # BetterBackpack changelog
 
+## 1.2.4 — vendor auto-sell (WFA-36)
+
+- **Auto-sell reliability:** `MERCHANT_SHOW` uses the same `BulkTransfer` merchant **queue** as lane/merge sells (sync pump), re-scanning bag slots at sell time instead of one-off `TransferSlot` timer steps.
+- **Per character:** grey toggle, Junk-lane toggle, and **marked itemIDs** live in `BetterBackpackDB.chars["Name-Realm"]` (schema **8** migrates the logged-in character from account `profile`).
+- **Settings → Features:** lists **marked** items (drag row to teach, Remove) and **in bags now** preview with icons, names, stack count, and reason (grey / junk lane / marked). Chat summary names up to 6 items.
+
+### Playtest (1.2.4)
+
+1. `/reload` → `loaded v1.2.4`.
+2. **Char A:** Settings → Features → enable **Auto-sell grey**; open Features — see grey junk in **In bags now** with icons.
+3. Vendor → greys sell; chat `Bulk sold N / N · auto-sell` and item names (not count only).
+4. **Char B:** disable grey, mark one item (drag to auto-sell row) → preview shows marked; vendor sells marked only.
+5. Char A vs B toggles/marked lists differ after `/reload` (per character).
+
 ## 1.2.3 — playtest fixes (WFA-33/34/35)
 
 - **Recipes (WFA-34):** broader detection — `C_Item.IsRecipeItem`, `GetItemClassAndSubClass`, trade-goods recipe subtype, `Recipe:` / `Pattern:` name prefixes; still respects taught rules and Settings lane toggle.
