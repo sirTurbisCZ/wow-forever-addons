@@ -1511,6 +1511,21 @@ local function AuraLooksForeign(data)
   return true
 end
 
+--- Foreign gap when not clearly personal-only (party DoTs may mis-flag owned on Forever).
+local function AuraCountsAsForeignGaps(data)
+  if not data then
+    return true
+  end
+  local owned = AuraIsPlayerOwned(data)
+  if owned == true then
+    return AuraLooksForeign(data) == true
+  end
+  if owned == false then
+    return true
+  end
+  return true
+end
+
 --- v0.2.4 P0 — 0.1.15 foreign API pass: skip owned==true (personal stays native-only).
 local function CollectForeignAuraGaps(unitToken, skipKeys, out, maxN, allowSecretUnknown, stats)
   if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
@@ -1528,11 +1543,11 @@ local function CollectForeignAuraGaps(unitToken, skipKeys, out, maxN, allowSecre
       break
     end
 
-    local owned = AuraIsPlayerOwned(data)
-    if owned == true then
-      -- skip — native DebuffList owns personal (Phase A / 0.1.15)
+    if not AuraCountsAsForeignGaps(data) then
+      -- personal-only — native or personal gap pass owns it
     else
       local icon = data.icon
+      local owned = AuraIsPlayerOwned(data)
       local key = AuraDedupeKey(data, icon)
       local take = false
       if key and not skipKeys[key] then
@@ -1701,6 +1716,43 @@ local function ButtonAuraIcon(btn, mode)
   return nil, false, false
 end
 
+--- TF supplement: ownership-agnostic icon read; skipKeys dedupes personal already painted.
+local function ButtonAuraIconAny(btn)
+  if not btn then
+    return nil, false
+  end
+  local icon
+  local got = false
+  pcall(function()
+    if btn.GetAuraInstance then
+      local _, data = btn:GetAuraInstance()
+      if type(data) == "table" and data.icon then
+        icon = data.icon
+        got = true
+      end
+    end
+  end)
+  if got then
+    return icon, true
+  end
+  local tex = btn.Icon or btn.icon
+  if tex then
+    local file
+    local gotFile = false
+    pcall(function()
+      if tex.GetTexture then
+        file = tex:GetTexture()
+        gotFile = true
+      end
+    end)
+    if gotFile then
+      return file, true
+    end
+    return tex, true
+  end
+  return nil, false
+end
+
 --- Brute TF walk — Forever often paints icons while auraPools/GetFramesByIndex are empty.
 local function ScrapeTargetFrameIconsBrute(skipKeys, out, maxN)
   if not TargetFrame or #out >= maxN then
@@ -1739,8 +1791,8 @@ local function ScrapeTargetFrameIconsBrute(skipKeys, out, maxN)
       if type(w) == "number" and not IsSecret(w) and (w < 12 or w > 48) then
         return
       end
-      local icon, skippedPersonal, gotIcon = ButtonAuraIcon(frame)
-      if skippedPersonal or not gotIcon then
+      local icon, gotIcon = ButtonAuraIconAny(frame)
+      if not gotIcon then
         return
       end
       local key = PublicTexKey(icon)
@@ -1772,6 +1824,7 @@ local function ScrapeTargetFrameIconsBrute(skipKeys, out, maxN)
 end
 
 --- TargetFrame scrape via Forever auraPools (+ brute + public/secret textures).
+--- Dedupe via skipKeys only — do not drop buttons with mis-tagged player ownership.
 local function CollectTargetFrameMissing(skipKeys, out, maxN)
   local buttons = {}
   CollectTargetFrameButtons(buttons, maxN)
@@ -1784,9 +1837,17 @@ local function CollectTargetFrameMissing(skipKeys, out, maxN)
     local bid = tostring(btn)
     if not seenBtn[bid] then
       seenBtn[bid] = true
-      local icon, skippedPersonal, gotIcon = ButtonAuraIcon(btn)
-      if not skippedPersonal and gotIcon then
+      local icon, gotIcon = ButtonAuraIconAny(btn)
+      if gotIcon then
         local key = PublicTexKey(icon)
+        if not key then
+          pcall(function()
+            if btn.GetAuraInstance then
+              local _, data = btn:GetAuraInstance()
+              key = AuraDedupeKey(data, icon)
+            end
+          end)
+        end
         if not key then
           key = "tf:" .. bid
         end
@@ -1807,22 +1868,13 @@ local function CollectTargetFrameMissing(skipKeys, out, maxN)
         if #out >= maxN then
           return
         end
-        if type(aura) == "table" and (aura.icon or aura.Icon or aura.GetAuraInstance) then
-          if aura.Icon or aura.icon or aura.GetAuraInstance then
+        if type(aura) == "table" and AuraCountsAsForeignGaps(aura) then
+          local icon = aura.icon
+          if not icon and (aura.Icon or aura.icon) then
             local asBtn = aura
-            if asBtn.GetAuraInstance or asBtn.Icon or asBtn.icon then
-              local icon, skippedPersonal, gotIcon = ButtonAuraIcon(asBtn)
-              if not skippedPersonal and gotIcon then
-                local key = PublicTexKey(icon) or ("tfadbtn:" .. tostring(aura))
-                if not skipKeys[key] then
-                  out[#out + 1] = icon
-                  skipKeys[key] = true
-                end
-              end
-            end
+            icon = select(1, ButtonAuraIconAny(asBtn))
           end
-          if AuraIsPlayerOwned(aura) ~= true then
-            local icon = aura.icon
+          if icon then
             local key = AuraDedupeKey(aura, icon)
             if not key then
               key = "tfad:" .. tostring(aura)
@@ -1898,7 +1950,11 @@ local function PaintMergeMissing(unit, plate)
     if type(unit) == "string" and unit ~= "target" then
       CollectForeignAuraGaps(unit, foreignSkip, missing, maxN, allowSecret, stats)
     end
-    CollectTargetFrameMissing(foreignSkip, missing, maxN)
+    local tfDedupe = CopyKeySet(paintKeys)
+    for k, v in pairs(foreignSkip) do
+      tfDedupe[k] = v
+    end
+    CollectTargetFrameMissing(tfDedupe, missing, maxN)
   else
     if type(unit) == "string" then
       CollectPersonalAuraGaps(unit, paintKeys, missing, maxN, stats)

@@ -1,6 +1,6 @@
 # Plateband — safe merge design (no name mutation)
 
-**Status:** v0.2.5 P0+P1 (`pb-old-vs-peers-dots.md` §5) · **default ON** (`mergeMissing=true`, schema 7+)  
+**Status:** v0.2.6 P0+P1 (`pb-old-vs-peers-dots.md` §5) · **default ON** (`mergeMissing=true`, schema 7+)  
 **Baseline:** `plateband-v0.1.15` data contract + **0.2** beside-native layout · HUD gate before main merge
 
 ## Product rule (0.2.5)

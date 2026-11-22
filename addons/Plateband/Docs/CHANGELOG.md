@@ -1,5 +1,17 @@
 # Plateband changelog
 
+## 0.2.6 (HUD gate — foreign / party DoTs)
+
+- **TF supplement:** `CollectTargetFrameMissing` uses `ButtonAuraIconAny` — dedupe via `skipKeys` only, not ownership skip (party warlock DoTs were dropped when `isFromPlayerOrPlayerPet` mis-tagged).
+- **API foreign:** `AuraCountsAsForeignGaps` — party-sourced harmful with `owned==true` still counts as foreign (`AuraLooksForeign`).
+- **TF dedupe:** `tfDedupe` = painted keys + API foreign keys; personal already in `paintKeys` prevents duplicate Rake.
+
+### Playtest (0.2.6)
+
+1. `/reload` → `ver=0.2.6`.
+2. Target mob with **your Rake + party warlock DoT** on TF → plate row shows **both** (`fb≥2` or native+rake + fb foreign).
+3. Solo pull (no foreign) → no duplicate personal icons.
+
 ## 0.2.5 (HUD gate — P1 personal gaps)
 
 - **Personal gaps (§5.2 Phase B):** when native `DebuffList` / pools show **0** harmful (Forever omits player DoTs on plate), paint player-owned HARMFUL from `C_UnitAuras` + TF buttons **only if ∉ NativeKeySet** — no `CollectPlayerOwnedKeys` on the same set used for personal eligibility.
