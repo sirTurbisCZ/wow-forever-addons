@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 1.2.5 — mail subject auto-fill on first attach.
+## Notes: 1.2.6 — custom lanes per character.
 ## Author: tuma
-## Version: 1.2.5
+## Version: 1.2.6
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled

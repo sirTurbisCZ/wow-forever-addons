@@ -1,5 +1,18 @@
 # BetterBackpack changelog
 
+## 1.2.6 — custom lanes per character
+
+- **Custom lanes** (`custom_*`), their **item assignments**, and drag-teach rules targeting those lanes live in `BetterBackpackDB.chars["Name-Realm"]` (schema **9**). Built-in lane toggles (`categories`, `hiddenDefaults`) and teachings to **default** lanes stay on account `profile`.
+- **Upgrade:** first login after 1.2.6 copies `profile.customCategories` + `profile.itemRules` (custom_* only) into the **current** character, then clears account-wide custom storage.
+
+### Playtest (1.2.6)
+
+1. `/reload` → `loaded v1.2.6`.
+2. Char A: Settings → Custom lanes → create lane + assign item → lane visible in bag.
+3. Log to Char B → **no** Char A custom lane header.
+4. Back to Char A → custom lane and assignments still there.
+5. Built-in lane toggles (Recipes on/off) still shared unless you change them (expected).
+
 ## 1.2.5 — mail subject from first attach
 
 - **Send mail:** when the subject field is **empty**, attaching an item (RMB, Shift merged stack, Ctrl+Shift lane bulk) sets the subject to that item’s **display name**. First successful attach wins; existing subject text is never overwritten.

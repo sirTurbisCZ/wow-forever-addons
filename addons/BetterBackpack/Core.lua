@@ -319,6 +319,10 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
     if ModuleWanted() and OpenClose and OpenClose.EnsureBagKeyReplace then
       SafeCall("hooks", OpenClose.EnsureBagKeyReplace)
     end
+    local CC = BetterBackpack.Modules.CustomCategories
+    if CC and CC.OnCharacterActive then
+      SafeCall("charLanes", CC.OnCharacterActive)
+    end
     return
   end
 

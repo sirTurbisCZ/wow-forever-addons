@@ -2,7 +2,7 @@
 
 BetterBackpack = BetterBackpack or {}
 
-local CURRENT_SCHEMA = 8
+local CURRENT_SCHEMA = 9
 local MAX_ERRORS = 40
 local MAX_MSG = 2000
 
@@ -12,13 +12,15 @@ local Config = BetterBackpack.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "1.2.5"
+Config.VERSION = "1.2.6"
 
 local function CharVendorDefaults()
   return {
     autoSellJunk = false,
     autoSellJunkLane = false,
     autoSellMarked = {}, -- [itemID] = true — always sell at vendor (this character)
+    customCategories = {}, -- { { id, name, itemIDs = {} } } per character
+    itemRules = {}, -- drag-teach → custom_* lanes (per character)
   }
 end
 
@@ -217,6 +219,78 @@ function Config.EnsureDB()
     from = 8
   end
 
+  -- 1.2.6: custom lanes + custom item rules per character; migrate current char from profile.
+  if from < 9 then
+    EnsureProfile(db)
+    db.chars = type(db.chars) == "table" and db.chars or {}
+    local key
+    if UnitName then
+      local name = UnitName("player")
+      local realm = (GetRealmName and GetRealmName()) or ""
+      if name and name ~= "" then
+        key = tostring(name) .. "-" .. tostring(realm)
+      end
+    end
+    local function CopyCustomCategories(src)
+      local out = {}
+      if type(src) ~= "table" then
+        return out
+      end
+      for i = 1, #src do
+        local e = src[i]
+        if type(e) == "table" and type(e.id) == "string" then
+          local itemIDs = {}
+          if type(e.itemIDs) == "table" then
+            for k, v in pairs(e.itemIDs) do
+              itemIDs[k] = v
+            end
+          end
+          out[#out + 1] = {
+            id = e.id,
+            name = e.name or e.id,
+            itemIDs = itemIDs,
+          }
+        end
+      end
+      return out
+    end
+    if key and type(db.profile) == "table" then
+      local c = db.chars[key]
+      if type(c) ~= "table" then
+        c = {}
+        db.chars[key] = c
+      end
+      local hadCustom = type(db.profile.customCategories) == "table" and #db.profile.customCategories > 0
+      if hadCustom then
+        if type(c.customCategories) ~= "table" or #c.customCategories == 0 then
+          c.customCategories = CopyCustomCategories(db.profile.customCategories)
+        end
+      end
+      if type(c.itemRules) ~= "table" then
+        c.itemRules = {}
+      end
+      if type(db.profile.itemRules) == "table" then
+        for itemID, rule in pairs(db.profile.itemRules) do
+          if type(rule) == "string" and rule:find("^custom_", 1) then
+            if c.itemRules[itemID] == nil then
+              c.itemRules[itemID] = rule
+            end
+          end
+        end
+      end
+      db.profile.customCategories = {}
+      if type(db.profile.itemRules) == "table" then
+        for itemID, rule in pairs(db.profile.itemRules) do
+          if type(rule) == "string" and rule:find("^custom_", 1) then
+            db.profile.itemRules[itemID] = nil
+          end
+        end
+      end
+    end
+    db.schemaVersion = 9
+    from = 9
+  end
+
   EnsureProfile(db)
   if type(db.errors) ~= "table" then
     db.errors = {}
@@ -265,6 +339,12 @@ function Config.EnsureCharProfile(db, key)
   if type(c.autoSellMarked) ~= "table" then
     c.autoSellMarked = {}
   end
+  if type(c.customCategories) ~= "table" then
+    c.customCategories = {}
+  end
+  if type(c.itemRules) ~= "table" then
+    c.itemRules = {}
+  end
   return c
 end
 
@@ -273,10 +353,17 @@ function Config.GetCharProfile()
   local key = Config.CharKey()
   if not key then
     db._charVendorStub = db._charVendorStub or CharVendorDefaults()
-    if type(db._charVendorStub.autoSellMarked) ~= "table" then
-      db._charVendorStub.autoSellMarked = {}
+    local s = db._charVendorStub
+    if type(s.autoSellMarked) ~= "table" then
+      s.autoSellMarked = {}
     end
-    return db._charVendorStub
+    if type(s.customCategories) ~= "table" then
+      s.customCategories = {}
+    end
+    if type(s.itemRules) ~= "table" then
+      s.itemRules = {}
+    end
+    return s
   end
   return Config.EnsureCharProfile(db, key)
 end

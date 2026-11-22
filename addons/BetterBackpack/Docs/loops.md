@@ -55,6 +55,8 @@ flowchart TD
 
 Optional feature modules: `Feat("Name")` lookups — Layout does not crash if a module is omitted from TOC.
 
+- **Custom lanes:** `BetterBackpackDB.chars["Name-Realm"].customCategories` + char `itemRules` (custom_*). Built-in lane toggles remain on `profile`. `PLAYER_ENTERING_WORLD` → `CustomCategories.OnCharacterActive` refreshes layout on character switch.
+
 ---
 
 ## 3. Combat RMB (CS-RMB)
