@@ -1,6 +1,18 @@
-# Playtest brief — BetterBackpack 1.2.2
+# Playtest brief — BetterBackpack 1.2.6
 
-Release gate — combat B, ESC, vendor bulk, auto-sell, English UI.
+Release gate — combat B, ESC, vendor/mail bulk, per-char prefs, English UI.
+
+**1.2.6**
+- Custom lanes + assignments **per character** (schema 9); built-in lane toggles still account profile.
+
+**1.2.5**
+- Mail send: empty subject → first attach sets item display name.
+
+**1.2.4**
+- Vendor auto-sell queue; Settings item preview; auto-sell prefs per character.
+
+**1.2.3**
+- Recipes classify; stable merge slots; merge-group vendor/mail transfer fix.
 
 **1.2.2**
 - **Shift+RMB** merged stack at vendor/mail → all merge-key slots move.

@@ -1,5 +1,17 @@
 # BetterBackpack changelog
 
+## GitHub release 1.2.6 (PR merge `cursor/bb-shift-stack-recipe-9374`)
+
+Tag `betterbackpack-v1.2.6` · includes **1.2.2–1.2.6**:
+
+| Version | Highlights |
+|---------|------------|
+| **1.2.2** | Shift+RMB merged stack sell/mail; Recipes lane; Ctrl+Shift+RMB lane bulk |
+| **1.2.3** | Recipe detection; stable merge anchors; merge-group transfer scan fix |
+| **1.2.4** | Vendor auto-sell queue; per-char auto-sell + Settings preview (schema 8) |
+| **1.2.5** | Mail subject from first attach when empty |
+| **1.2.6** | Custom lanes + rules per character (schema 9) |
+
 ## 1.2.6 — custom lanes per character
 
 - **Custom lanes** (`custom_*`), their **item assignments**, and drag-teach rules targeting those lanes live in `BetterBackpackDB.chars["Name-Realm"]` (schema **9**). Built-in lane toggles (`categories`, `hiddenDefaults`) and teachings to **default** lanes stay on account `profile`.

@@ -25,7 +25,7 @@ Player docs live next to each addon (`Docs/README.md`). Development notes and Sc
 ./scripts/package-addon.sh BetterBackpack
 ```
 
-Release tags look like `felog-v0.1.0` / `plateband-v0.1.0` and produce a zip whose root is the addon folder.
+Release tags look like `betterbackpack-v1.2.6` / `felog-v0.1.0` / `plateband-v0.1.0` and produce a zip whose root is the addon folder.
 
 ## License
 
