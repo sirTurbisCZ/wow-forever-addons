@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## 0.2.0 (HUD gate — branch zip, not main)
+
+- **Native-row gap:** personal + foreign harmful via `C_UnitAuras` only; dedupe `NativeKeySet`.
+- **Safety:** `SafeFallbackParent`, debounce `UNIT_AURA`, `pcall` paint; no TF scrape in paint path; no health-TOP merge anchor.
+- **Requires** `DebuffListFrame` on plate to paint gaps.
+
 ## 0.1.15
 
 - **Default merge on:** `mergeMissing=true` (schema 7 migrates older saves from schema 6 off).

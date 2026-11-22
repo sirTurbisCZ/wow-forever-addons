@@ -34,6 +34,22 @@ local lastDiagAt = 0
 local lastChatSig = nil
 local platesSeen = 0
 local overlayUpdates = 0
+local lastAuraRefreshAt = 0
+local AURA_DEBOUNCE_SEC = 0.12
+
+local GLOBAL_UI = {
+  UIParent = true,
+  PlayerFrame = true,
+  TargetFrame = true,
+  MainMenuBar = true,
+  MultiBarBottomLeft = true,
+  MultiBarBottomRight = true,
+  MultiBarLeft = true,
+  MultiBarRight = true,
+  StanceBar = true,
+  PetActionBar = true,
+  ChatFrame1 = true,
+}
 
 local function Profile()
   return ns.Config.GetProfile()
@@ -121,6 +137,31 @@ local function IsForbiddenPlate(plate)
     end
   end)
   return forbidden
+end
+
+local function FrameIsGlobalChrome(frame)
+  if not frame or frame == UIParent then
+    return true
+  end
+  local chrome = false
+  pcall(function()
+    local n = frame.GetName and frame:GetName()
+    if type(n) == "string" and GLOBAL_UI[n] then
+      chrome = true
+    end
+  end)
+  return chrome
+end
+
+local function SafeFallbackParent(plate)
+  if not plate or IsForbiddenPlate(plate) then
+    return nil
+  end
+  local uf = plate.UnitFrame
+  if not uf or FrameIsGlobalChrome(uf) then
+    return nil
+  end
+  return uf
 end
 
 local function SameUnit(a, b)
@@ -975,19 +1016,14 @@ local function LayoutMergeBesideNative(unit, plate, mergeFb, painted)
     return
   end
 
-  local bar = HealthBar(plate)
   local native = NativeDebuffList(plate)
   mergeFb:ClearAllPoints()
   local right = NativeBandRightAnchor(plate)
   if right then
     -- Same band as native: continue LEFT→RIGHT of rightmost native icon.
     mergeFb:SetPoint("LEFT", right, "RIGHT", OVERLAY_PAD, 0)
-  elseif native and SafeShown(native) then
+  elseif native then
     mergeFb:SetPoint("LEFT", native, "RIGHT", OVERLAY_PAD, 0)
-  elseif bar then
-    mergeFb:SetPoint("BOTTOM", bar, "TOP", 0, OVERLAY_GAP_ABOVE)
-  else
-    mergeFb:SetPoint("BOTTOM", plate, "TOP", 0, OVERLAY_GAP_ABOVE)
   end
 end
 
@@ -1029,15 +1065,19 @@ local function EnsureOverlay(unit)
   return holder
 end
 
-local function EnsureFallback(unit, parent)
+local function EnsureFallback(unit, plate)
+  local parent = SafeFallbackParent(plate)
+  if not parent then
+    return nil
+  end
   local fb = fallbacks[unit]
   if fb then
-    if parent and fb:GetParent() ~= parent then
+    if fb:GetParent() ~= parent then
       pcall(fb.SetParent, fb, parent)
     end
     return fb
   end
-  fb = CreateFrame("Frame", nil, parent or UIParent)
+  fb = CreateFrame("Frame", nil, parent)
   fb:EnableMouse(false)
   fb:Hide()
   fb.icons = {}
@@ -1270,9 +1310,21 @@ local function AuraLooksForeign(data)
   return true
 end
 
---- All harmful Blizzard may omit: other players (party or not). Not party-only.
---- allowSecretUnknown: target/enemy path — take secret icons when ownership isn't clearly ours.
-local function CollectUnitAuraMissing(unitToken, skipKeys, out, maxN, allowSecretUnknown)
+--- v0.2.0 — single C_UnitAuras pass: personal + foreign gaps beside native DebuffList.
+local function GapAuraEligible(data, owned, nativeN)
+  if owned == true then
+    return true
+  end
+  if owned == false or AuraLooksForeign(data) then
+    return true
+  end
+  if nativeN == 0 and owned == nil then
+    return true
+  end
+  return false
+end
+
+local function CollectHarmfulGaps(unitToken, skipKeys, out, maxN, nativeN, stats)
   if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
     return
   end
@@ -1287,27 +1339,25 @@ local function CollectUnitAuraMissing(unitToken, skipKeys, out, maxN, allowSecre
     if not ok or not data then
       break
     end
-
     local owned = AuraIsPlayerOwned(data)
-    -- Skip only clearly *our* auras — native DebuffList owns those.
-    if owned == true then
+    if not GapAuraEligible(data, owned, nativeN) then
       -- skip
     else
       local icon = data.icon
       local key = AuraDedupeKey(data, icon)
-      local take = false
-      if key and not skipKeys[key] then
-        take = true
-      elseif not key then
-        -- Secret FileID: take when not ours, foreign source, or target allow-secret path.
-        if owned == false or AuraLooksForeign(data) or allowSecretUnknown then
-          take = true
-          key = "sec:" .. tostring(i) .. ":" .. tostring(unitToken)
-        end
+      if not key then
+        key = "gap:" .. tostring(unitToken) .. ":" .. tostring(i)
       end
-      if take and key and not skipKeys[key] then
+      if key and not skipKeys[key] then
         out[#out + 1] = icon
         skipKeys[key] = true
+        if stats then
+          if owned == true then
+            stats.personal = (stats.personal or 0) + 1
+          else
+            stats.foreign = (stats.foreign or 0) + 1
+          end
+        end
       end
     end
   end
@@ -1512,43 +1562,42 @@ local function SetIconTexture(icon, t)
   return okSet
 end
 
---- Paint only missing (others') icons beside native DebuffList — never replace native.
+--- Paint gap harmful (personal + foreign) beside native — C_UnitAuras only (0.2.0).
 local function PaintMergeMissing(unit, plate)
-  local uf = plate and plate.UnitFrame
-  local parent = uf or plate
-  if not parent then
+  if not plate or not SafeFallbackParent(plate) then
+    ClearFallback(unit)
+    return 0
+  end
+  local nativeList = NativeDebuffList(plate)
+  if not nativeList then
+    ClearFallback(unit)
     return 0
   end
 
   EnsureNativeVisible(plate)
   RestoreNameShift(unit, plate)
 
-  -- Friend/party plates: never merge.
   if IsPlayerOrFriendPlate(unit, plate) then
     ClearFallback(unit)
     return 0
   end
 
-  -- skipKeys = native DebuffList + known player-owned (never re-paint personal).
   local skipKeys = NativeKeySet(plate)
   local maxN = MaxIcons()
   local missing = {}
+  local nativeN = CountShownAuraKids(nativeList)
+  local stats = { personal = 0, foreign = 0 }
   local isTarget = IsTargetPlate(unit, plate)
 
-  -- Target plate: merge TF + unit auras Blizzard omitted from DebuffList.
   if isTarget then
-    CollectPlayerOwnedKeys("target", skipKeys)
+    CollectHarmfulGaps("target", skipKeys, missing, maxN, nativeN, stats)
     if type(unit) == "string" and unit ~= "target" then
-      CollectPlayerOwnedKeys(unit, skipKeys)
+      CollectHarmfulGaps(unit, skipKeys, missing, maxN, nativeN, stats)
     end
-    CollectUnitAuraMissing("target", skipKeys, missing, maxN, true)
-    if type(unit) == "string" and unit ~= "target" then
-      CollectUnitAuraMissing(unit, skipKeys, missing, maxN, true)
-    end
-    CollectTargetFrameMissing(skipKeys, missing, maxN)
   else
-    CollectPlayerOwnedKeys(unit, skipKeys)
-    CollectUnitAuraMissing(unit, skipKeys, missing, maxN, true)
+    if type(unit) == "string" then
+      CollectHarmfulGaps(unit, skipKeys, missing, maxN, nativeN, stats)
+    end
   end
 
   if #missing == 0 then
@@ -1556,7 +1605,11 @@ local function PaintMergeMissing(unit, plate)
     return 0
   end
 
-  local fb = EnsureFallback(unit, parent)
+  local fb = EnsureFallback(unit, plate)
+  if not fb then
+    return 0
+  end
+  local parent = SafeFallbackParent(plate)
   local sz = IconSize()
   local painted = 0
   for i = 1, #missing do
@@ -1565,37 +1618,45 @@ local function PaintMergeMissing(unit, plate)
     end
     painted = painted + 1
     local icon = fb.icons[painted]
-    icon:ClearAllPoints()
-    icon:SetSize(sz, sz)
-    icon:SetPoint("LEFT", fb, "LEFT", (painted - 1) * (sz + OVERLAY_PAD), 0)
-    if SetIconTexture(icon, missing[i]) then
-      icon:Show()
+    local okLay = pcall(function()
+      icon:ClearAllPoints()
+      icon:SetSize(sz, sz)
+      icon:SetPoint("LEFT", fb, "LEFT", (painted - 1) * (sz + OVERLAY_PAD), 0)
+    end)
+    if not okLay then
+      painted = painted - 1
+    elseif SetIconTexture(icon, missing[i]) then
+      pcall(icon.Show, icon)
     else
-      icon:Hide()
+      pcall(icon.Hide, icon)
       painted = painted - 1
     end
   end
   for i = painted + 1, #fb.icons do
-    fb.icons[i]:Hide()
+    pcall(fb.icons[i].Hide, fb.icons[i])
   end
 
   if painted == 0 then
-    fb:Hide()
+    pcall(fb.Hide, fb)
     fb._painted = 0
     return 0
   end
 
-  fb:SetSize(math.max(1, painted * (sz + OVERLAY_PAD)), sz)
-  fb:SetFrameStrata("MEDIUM")
-  local lvl = 50
   pcall(function()
-    lvl = (parent:GetFrameLevel() or 1) + 15
+    fb:SetSize(math.max(1, painted * (sz + OVERLAY_PAD)), sz)
+    fb:SetFrameStrata("MEDIUM")
+    local lvl = 50
+    if parent then
+      lvl = (parent:GetFrameLevel() or 1) + 15
+    end
+    fb:SetFrameLevel(lvl)
+    fb:Show()
   end)
-  fb:SetFrameLevel(lvl)
-  fb:Show()
   fb._painted = painted
+  fb._gapPersonal = stats.personal or 0
+  fb._gapForeign = stats.foreign or 0
 
-  LayoutMergeBesideNative(unit, plate, fb, painted)
+  pcall(LayoutMergeBesideNative, unit, plate, fb, painted)
   return painted
 end
 
@@ -1628,7 +1689,13 @@ local function UpdateOverlay(unit, plate)
     return
   end
 
-  PaintMergeMissing(unit, plate)
+  local okPaint, errPaint = pcall(PaintMergeMissing, unit, plate)
+  if not okPaint then
+    ClearFallback(unit)
+    if ns.RecordError then
+      ns.RecordError("paint", errPaint)
+    end
+  end
 end
 
 -- Forward decl for auto-diag after RefreshAll
@@ -1966,6 +2033,11 @@ local function OnEvent(_, event, arg1)
       return
     end
     if unit == "target" or unit == "focus" then
+      local now = GetTime and GetTime() or 0
+      if (now - lastAuraRefreshAt) < AURA_DEBOUNCE_SEC then
+        return
+      end
+      lastAuraRefreshAt = now
       Defer(function()
         RefreshAll()
         MaybeAutoDiagnose("aura_target", false)
