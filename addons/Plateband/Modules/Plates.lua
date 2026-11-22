@@ -433,6 +433,21 @@ local function NativeDebuffList(plate)
   return list
 end
 
+--- Layout anchor when DebuffListFrame missing but AurasFrame exists (Forever variants).
+local function NativeDebuffAnchorList(plate)
+  local list = NativeDebuffList(plate)
+  if list then
+    return list
+  end
+  pcall(function()
+    local uf = plate and plate.UnitFrame
+    if uf and uf.AurasFrame then
+      list = uf.AurasFrame
+    end
+  end)
+  return list
+end
+
 local function NativeBuffList(plate)
   local list
   pcall(function()
@@ -1349,21 +1364,9 @@ local function AuraLooksForeign(data)
   return true
 end
 
---- v0.2.0 — single C_UnitAuras pass: personal + foreign gaps beside native DebuffList.
-local function GapAuraEligible(data, owned, nativeN)
-  if owned == true then
-    return true
-  end
-  if owned == false or AuraLooksForeign(data) then
-    return true
-  end
-  if nativeN == 0 and owned == nil then
-    return true
-  end
-  return false
-end
-
-local function CollectHarmfulGaps(unitToken, skipKeys, out, maxN, nativeN, stats)
+--- v0.2.2 — C_UnitAuras gaps: personal when not on native; foreign when not clearly ours
+--- (matches 0.1.15 allowSecretUnknown — no nativeN gate that dropped secret foreign).
+local function CollectHarmfulGaps(unitToken, skipKeys, out, maxN, allowSecretUnknown, stats)
   if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
     return
   end
@@ -1378,24 +1381,43 @@ local function CollectHarmfulGaps(unitToken, skipKeys, out, maxN, nativeN, stats
     if not ok or not data then
       break
     end
+
     local owned = AuraIsPlayerOwned(data)
-    if not GapAuraEligible(data, owned, nativeN) then
-      -- skip
-    else
-      local icon = data.icon
-      local key = AuraDedupeKey(data, icon)
-      if not key then
-        key = "gap:" .. tostring(unitToken) .. ":" .. tostring(i)
-      end
+    local icon = data.icon
+    local key = AuraDedupeKey(data, icon)
+    local take = false
+
+    if owned == true then
+      -- Personal gap only — native / CollectPlayerOwnedKeys already in skipKeys.
       if key and not skipKeys[key] then
-        out[#out + 1] = icon
-        skipKeys[key] = true
-        if stats then
-          if owned == true then
-            stats.personal = (stats.personal or 0) + 1
-          else
-            stats.foreign = (stats.foreign or 0) + 1
+        take = true
+      elseif not key and allowSecretUnknown then
+        key = "po:" .. tostring(unitToken) .. ":" .. tostring(i)
+        if not skipKeys[key] then
+          take = true
+        end
+      end
+    else
+      if key and not skipKeys[key] then
+        take = true
+      elseif not key then
+        if owned == false or AuraLooksForeign(data) or allowSecretUnknown then
+          key = "sec:" .. tostring(i) .. ":" .. tostring(unitToken)
+          if not skipKeys[key] then
+            take = true
           end
+        end
+      end
+    end
+
+    if take and key and not skipKeys[key] then
+      out[#out + 1] = icon
+      skipKeys[key] = true
+      if stats then
+        if owned == true then
+          stats.personal = (stats.personal or 0) + 1
+        else
+          stats.foreign = (stats.foreign or 0) + 1
         end
       end
     end
@@ -1607,7 +1629,7 @@ local function PaintMergeMissing(unit, plate)
     ClearFallback(unit)
     return 0
   end
-  local nativeList = NativeDebuffList(plate)
+  local nativeList = NativeDebuffAnchorList(plate)
   if not nativeList then
     ClearFallback(unit)
     return 0
@@ -1624,18 +1646,23 @@ local function PaintMergeMissing(unit, plate)
   local skipKeys = NativeKeySet(plate)
   local maxN = MaxIcons()
   local missing = {}
-  local nativeN = CountShownAuraKids(nativeList)
   local stats = { personal = 0, foreign = 0 }
   local isTarget = IsTargetPlate(unit, plate)
+  local allowSecret = true
 
   if isTarget then
-    CollectHarmfulGaps("target", skipKeys, missing, maxN, nativeN, stats)
+    CollectPlayerOwnedKeys("target", skipKeys)
     if type(unit) == "string" and unit ~= "target" then
-      CollectHarmfulGaps(unit, skipKeys, missing, maxN, nativeN, stats)
+      CollectPlayerOwnedKeys(unit, skipKeys)
+    end
+    CollectHarmfulGaps("target", skipKeys, missing, maxN, allowSecret, stats)
+    if type(unit) == "string" and unit ~= "target" then
+      CollectHarmfulGaps(unit, skipKeys, missing, maxN, allowSecret, stats)
     end
   else
     if type(unit) == "string" then
-      CollectHarmfulGaps(unit, skipKeys, missing, maxN, nativeN, stats)
+      CollectPlayerOwnedKeys(unit, skipKeys)
+      CollectHarmfulGaps(unit, skipKeys, missing, maxN, allowSecret, stats)
     end
   end
 

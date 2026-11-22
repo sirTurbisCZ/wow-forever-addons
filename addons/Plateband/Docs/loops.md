@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.1** (gap row; see merge-design product rule)
+Version: **0.2.2** (gap row; see merge-design product rule)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 

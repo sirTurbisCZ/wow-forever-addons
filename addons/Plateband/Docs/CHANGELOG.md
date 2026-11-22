@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## 0.2.2 (HUD gate)
+
+- **Fix foreign DoTs missing:** `CollectHarmfulGaps` restored 0.1.15 eligibility — skip only `owned==true` in foreign path; `allowSecretUnknown` on target/nameplate; re-added `CollectPlayerOwnedKeys` before paint.
+- Removed `GapAuraEligible` `nativeN` gate that dropped secret-ownership party DoTs when any native kid showed.
+- `NativeDebuffAnchorList` — layout when `AurasFrame` exists without `DebuffListFrame`.
+
 ## 0.2.1 (HUD gate)
 
 - Gap icons **match native debuff metrics** (`NativeAuraMetrics`) — same size/row as Rake-style chrome left of health.

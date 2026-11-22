@@ -1,9 +1,9 @@
 # Plateband — safe merge design (no name mutation)
 
-**Status:** v0.2.1 native-row gap fill · **default ON** (`mergeMissing=true`, schema 7+)  
+**Status:** v0.2.2 native-row gap fill · **default ON** (`mergeMissing=true`, schema 7+)  
 **Baseline:** `plateband-v0.1.15` · HUD gate before main merge
 
-## Product rule (0.2.1)
+## Product rule (0.2.2)
 
 **One native-looking harmful row** on enemy nameplates (Forever band **left of health**, e.g. Rake + timer): Blizzard `DebuffList` kids first, then Plateband gap icons (personal + foreign) **matching native kid size** via `NativeAuraMetrics` (fallback: profile `iconSize`), appended **RIGHT of rightmost native** with **BOTTOM** band align. Gap icons texture-only; timers stay on native buttons. No TargetFrame scrape. No AuraContainer overlay row.
 
@@ -50,7 +50,7 @@ flowchart TD
 | Other enemy | `C_UnitAuras` on `nameplateN` |
 | Friend / party | No merge |
 
-Secret ownership: personal always eligible if key ∉ native; foreign when `owned==false` or `AuraLooksForeign`; unknown secrets only when `nativeN==0`.
+Secret ownership: personal gap when `owned==true` and key ∉ native; foreign when `owned~=true` (false / foreign source / `allowSecretUnknown` on target+nameplate tokens). No TF scrape in paint path.
 
 ## `/pb merge off`
 
