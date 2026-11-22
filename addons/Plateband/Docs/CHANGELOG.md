@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## 0.1.18
+
+- **Partial native row:** paint personal harmful beside native when Blizzard only shows some of your DoTs (`native=1`, TF=3). Removed `nativeN==0` gate; dedupe stays `NativeKeySet`.
+- **TF personal scrape:** `ButtonAuraIcon(..., wantPersonal)` so TargetFrame buttons contribute personal icons missing from the plate.
+
 ## 0.1.17
 
 - **Personal DoTs on plate:** when native `DebuffList` shows no aura kids (`native=0`) but TargetFrame has your harmful (Corruption/Agony etc.), paint them on the fallback band — SV had `tf>0` on frame vs `native=0`/`fb=0` on plate.

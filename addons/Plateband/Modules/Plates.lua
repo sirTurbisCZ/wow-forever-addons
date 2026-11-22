@@ -1317,8 +1317,8 @@ local function CollectTargetFramePlayerOwned(skipKeys, out, maxN)
     local bid = tostring(btn)
     if not seenBtn[bid] then
       seenBtn[bid] = true
-      local icon, skippedPersonal, gotIcon = ButtonAuraIcon(btn)
-      if skippedPersonal and gotIcon then
+      local icon, _, gotIcon = ButtonAuraIcon(btn, true)
+      if gotIcon then
         local key = PublicTexKey(icon)
         if not key then
           key = "tfp:" .. bid
@@ -1394,7 +1394,8 @@ end
 
 --- Pull icon texture from a TF aura button (secret FileIDs OK for SetTexture).
 --- Returns icon, skippedPersonal, gotIcon — never compare icon to nil (secret throws).
-local function ButtonAuraIcon(btn)
+--- wantPersonal: TF scrape for personal gaps (native row partial).
+local function ButtonAuraIcon(btn, wantPersonal)
   if not btn then
     return nil, false, false
   end
@@ -1407,6 +1408,10 @@ local function ButtonAuraIcon(btn)
       if type(data) == "table" then
         if AuraIsPlayerOwned(data) == true then
           skippedPersonal = true
+          if wantPersonal then
+            icon = data.icon
+            got = icon ~= nil
+          end
           return
         end
         icon = data.icon
@@ -1620,14 +1625,12 @@ local function PaintMergeMissing(unit, plate)
 
   -- Target plate: merge TF + unit auras Blizzard omitted from DebuffList.
   if isTarget then
-  -- Forever: personal DoTs on TargetFrame but native DebuffList kid count 0 on plate — paint ours first.
-    if nativeN == 0 then
-      CollectPlayerOwnedHarmful("target", skipKeys, missing, maxN)
-      if type(unit) == "string" and unit ~= "target" then
-        CollectPlayerOwnedHarmful(unit, skipKeys, missing, maxN)
-      end
-      CollectTargetFramePlayerOwned(skipKeys, missing, maxN)
+    -- Personal not on native row (partial or empty DebuffList) — dedupe via NativeKeySet only.
+    CollectPlayerOwnedHarmful("target", skipKeys, missing, maxN)
+    if type(unit) == "string" and unit ~= "target" then
+      CollectPlayerOwnedHarmful(unit, skipKeys, missing, maxN)
     end
+    CollectTargetFramePlayerOwned(skipKeys, missing, maxN)
     CollectPlayerOwnedKeys("target", skipKeys)
     if type(unit) == "string" and unit ~= "target" then
       CollectPlayerOwnedKeys(unit, skipKeys)
