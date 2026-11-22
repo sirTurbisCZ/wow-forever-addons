@@ -1,4 +1,4 @@
--- BulkTransfer - lane header Shift+RMB bulk (OOC only).
+-- BulkTransfer — Ctrl+Shift+RMB lane header; Shift+RMB merged slot stack (OOC only).
 -- Context: merchant = sell, mail = attach, bank = UseContainerItem deposit.
 -- Never touches OpenClose / Toggle* globals.
 
@@ -324,7 +324,17 @@ function BulkTransfer.HeaderTooltipLine()
   if not verb then
     return nil
   end
-  return "Shift+RMB header - " .. verb
+  return "Ctrl+Shift+RMB header - " .. verb
+end
+
+function BulkTransfer.SlotShiftTooltipLine(ctx)
+  if ctx == "merchant" then
+    return "Shift+RMB = sell all merged stacks"
+  end
+  if ctx == "mail" then
+    return "Shift+RMB = attach all merged stacks"
+  end
+  return nil
 end
 
 local function BulkPrint(msg)
@@ -577,6 +587,35 @@ end
 
 function BulkTransfer.LaneHeaderRmb(laneKey)
   return BulkTransfer.TransferLane(laneKey)
+end
+
+function BulkTransfer.TransferMergeGroup(bag, slot)
+  BulkPrint(string.format("TransferMergeGroup · %s:%s", tostring(bag), tostring(slot)))
+  if not OOC() then
+    BulkPrint("abort · in combat lockdown")
+    return false
+  end
+  local ctx = DetectContext()
+  if not ctx then
+    BulkPrint("abort · open vendor, mail, or bank first")
+    return false
+  end
+  local StackMerge = BetterBackpack.Modules and BetterBackpack.Modules.StackMerge
+  local slots
+  if StackMerge and StackMerge.CollectMergeGroup then
+    slots = StackMerge.CollectMergeGroup(bag, slot)
+  else
+    slots = { { bag = bag, slot = slot } }
+  end
+  if #slots == 0 then
+    slots = { { bag = bag, slot = slot } }
+  end
+  if #slots == 1 then
+    return TransferOne(slots[1].bag, slots[1].slot, ctx)
+  end
+  local label = string.format("merged stack (%d)", #slots)
+  BulkPrint(string.format("%s · %s · %d stacks · queue…", label, tostring(ActionVerb(ctx) or ctx), #slots))
+  return StartQueue(ctx, slots, label, ctx == "merchant" and MerchantProbe(slots[1]) or nil)
 end
 
 function BulkTransfer.TransferSlot(bag, slot, ctx)

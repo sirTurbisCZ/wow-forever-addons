@@ -1,6 +1,11 @@
-# Playtest brief — BetterBackpack 1.1.9
+# Playtest brief — BetterBackpack 1.2.2
 
 Release gate — combat B, ESC, vendor bulk, auto-sell, English UI.
+
+**1.2.2**
+- **Shift+RMB** merged stack at vendor/mail → all merge-key slots move.
+- **Ctrl+Shift+RMB** lane header → whole lane (Shift+RMB header no longer bulk).
+- **Recipes** lane + Settings toggle.
 
 **1.1.9**
 - Combat **B** in lockdown (keep-shown warm shell).
@@ -9,7 +14,7 @@ Release gate — combat B, ESC, vendor bulk, auto-sell, English UI.
 **1.0.0**
 - Version **1.0.0**; docs and UI English-only.
 - Combat **B** (keep-shown shell).
-- Vendor **Shift+RMB** lane bulk + `sold N/M`.
+- Vendor **Ctrl+Shift+RMB** lane bulk + `sold N/M`.
 - Vendor **OpenAllBags** → BetterBackpack.
 - Optional grey **auto-sell** at merchant.
 

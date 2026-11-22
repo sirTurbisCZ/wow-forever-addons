@@ -181,5 +181,58 @@ function StackMerge.ApplyDisplayCount(btn, entry)
   local n = entry.mergedFrom and #entry.mergedFrom or 1
   if n > 1 then
     btn._bbMergedStacks = n
+    btn._bbMergedFrom = entry.mergedFrom
+  else
+    btn._bbMergedStacks = nil
+    btn._bbMergedFrom = nil
   end
+end
+
+--- All bag:slot stacks sharing the same merge key as anchor (inventory scan).
+function StackMerge.CollectMergeGroup(anchorBag, anchorSlot)
+  local single = { { bag = anchorBag, slot = anchorSlot } }
+  if not StackMerge.IsEnabled() then
+    return single
+  end
+  local anchorID, anchorInfo = ResolveItemID(anchorBag, anchorSlot)
+  if not anchorID then
+    return single
+  end
+  local anchorKey = MergeGroupKey(anchorID, anchorBag, anchorSlot, anchorInfo)
+  local out = {}
+  local ranges = Slots and Slots.InventoryBagRanges and Slots.InventoryBagRanges()
+  if type(ranges) ~= "table" then
+    return single
+  end
+  for ri = 1, #ranges do
+    local fromB, toB = ranges[ri].from, ranges[ri].to
+    if fromB and toB then
+      for b = fromB, toB do
+        local numSlots
+        if C_Container and C_Container.GetContainerNumSlots then
+          local okN, n = pcall(C_Container.GetContainerNumSlots, b)
+          if okN then
+            numSlots = n
+          end
+        elseif GetContainerNumSlots then
+          local okN, n = pcall(GetContainerNumSlots, b)
+          if okN then
+            numSlots = n
+          end
+        end
+        if type(numSlots) == "number" and numSlots > 0 then
+          for s = 1, numSlots do
+            local id, info = ResolveItemID(b, s)
+            if id and MergeGroupKey(id, b, s, info) == anchorKey then
+              out[#out + 1] = { bag = b, slot = s }
+            end
+          end
+        end
+      end
+    end
+  end
+  if #out == 0 then
+    return single
+  end
+  return out
 end

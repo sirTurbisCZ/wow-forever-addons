@@ -1329,6 +1329,11 @@ local function WireScripts(btn)
     else
       GameTooltip:AddLine("RMB = use / learn", 0.6, 0.8, 1, true)
     end
+    local BT = BetterBackpack.Modules.BulkTransfer
+    local shiftHint = BT and BT.SlotShiftTooltipLine and BT.SlotShiftTooltipLine(ctx)
+    if shiftHint and self._bbMergedStacks and self._bbMergedStacks > 1 then
+      GameTooltip:AddLine(shiftHint, 0.2, 1, 0.4, true)
+    end
     GameTooltip:Show()
   end)
   btn:SetScript("OnLeave", function()

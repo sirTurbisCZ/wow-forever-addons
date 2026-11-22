@@ -1,7 +1,7 @@
 # BetterBackpack — workflows and diagrams
 
 **Code:** `Core.lua`, `Modules/{Slots,Layout,Context,BulkTransfer,VendorJunk,OpenClose,Tidy,Settings,Search,Filter,CustomCategories,Trash,StackMerge,Pins,LayoutModes}.lua`  
-**Version reference:** 1.2.1 (stack merge lock split · quest bang · combat B/ESC · vendor bulk)  
+**Version reference:** 1.2.2 (merged stack Shift+RMB · Recipes lane · Ctrl+Shift+RMB lane bulk)  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never harvest CombinedBags items).
 
 ---
@@ -88,23 +88,38 @@ flowchart LR
   Close[CLOSED] --> Restore[ForceRestore type2=item]
 ```
 
-### 4b. Lane header bulk (Shift+RMB, OOC)
+### 4b. Lane header bulk (Ctrl+Shift+RMB, OOC)
 
 ```mermaid
 flowchart TD
-  Down[RMB down capture Shift] --> Up[MouseUp / OnClick]
-  Up --> Shift{Shift held?}
-  Shift -->|no| Collapse[RMB collapse only]
-  Shift -->|yes| RMB[TransferLane bulk]
+  Down[RMB down capture Shift+Ctrl] --> Up[MouseUp / OnClick]
+  Up --> Mod{Ctrl+Shift held?}
+  Mod -->|no| Collapse[RMB collapse only]
+  Mod -->|yes| RMB[TransferLane bulk]
   RMB --> Ctx{Context open?}
-  Ctx -->|merchant| Sell[sync in click · Pickup+SellCursor / UseContainerItem]
+  Ctx -->|merchant| Sell[sync/queue · Pickup+SellCursor / UseContainerItem]
   Ctx -->|mail| Mail[sync Pickup+ClickSendMail]
   Ctx -->|bank| Bank[UseContainerItem per slot async]
 ```
 
-- **RMB** without Shift = lane collapse only.
-- **Shift+RMB** at vendor: full lane via `Layout.ListLaneSlots(unfiltered)`; sells run **synchronously** in the header click (Forever blocks deferred Pickup/Sell).
+- **RMB** without modifiers = lane collapse only.
+- **Ctrl+Shift+RMB** lane header: full lane via `Layout.ListLaneSlots(unfiltered)` (vendor/mail/bank).
 - **Auto-sell:** `MERCHANT_SHOW` + Settings — greys only; optional Junk lane non-grey (`VendorJunk`).
+
+### 4c. Merged stack bulk (Shift+RMB slot, OOC)
+
+```mermaid
+flowchart TD
+  SlotRMB[Shift+RMB merged icon] --> CTX[Context.TrySpecialRmb]
+  CTX --> Col[StackMerge.CollectMergeGroup]
+  Col --> Q{count > 1?}
+  Q -->|yes| Queue[BulkTransfer.StartQueue]
+  Q -->|no| One[TransferOne single stack]
+  Queue --> Sell[merchant/mail per slot]
+```
+
+- **RMB** (no Shift) on slot = one physical stack (first merge representative).
+- **Shift+RMB** on merged icon at vendor/mail = all slots with same **itemID + isLocked** merge key (`StackMerge.CollectMergeGroup`).
 
 ---
 

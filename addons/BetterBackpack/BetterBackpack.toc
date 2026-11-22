@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 1.2.1 — stack merge splits locked vs unlocked same itemID.
+## Notes: 1.2.2 — Shift+RMB merged stack sell; Recipes lane; Ctrl+Shift+RMB lane bulk.
 ## Author: tuma
-## Version: 1.2.1
+## Version: 1.2.2
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled

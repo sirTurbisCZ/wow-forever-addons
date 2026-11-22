@@ -127,6 +127,12 @@ function Context.TrySpecialRmb(self)
   if not b or not s then
     return false
   end
+  if IsShiftKeyDown and IsShiftKeyDown() then
+    local BT = BetterBackpack.Modules and BetterBackpack.Modules.BulkTransfer
+    if BT and BT.TransferMergeGroup then
+      return BT.TransferMergeGroup(b, s) and true or false
+    end
+  end
   if not PickupSlotToCursor(b, s) then
     return false
   end

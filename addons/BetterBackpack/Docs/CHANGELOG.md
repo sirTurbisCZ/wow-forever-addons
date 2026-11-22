@@ -1,5 +1,18 @@
 # BetterBackpack changelog
 
+## 1.2.2 — merged stack sell + Recipes lane
+
+- **Vendor/mail:** **Shift+RMB** on a **stack-merged** slot sells/attaches **every physical stack** in that merge group (`StackMerge.CollectMergeGroup` → `BulkTransfer.TransferMergeGroup`). Plain **RMB** still moves one stack.
+- **Lane bulk:** moved to **Ctrl+Shift+RMB** on the lane header (Shift+RMB alone no longer sells the whole lane).
+- **Recipes lane:** built-in lane **Recipes** (`recipe` category); class **Recipe**, type/subtype heuristics, and **Learn** use-spell detection. Toggle in Settings → Lanes like other categories. Schema **7** adds `categories.recipe=true` for existing profiles.
+
+### Playtest (1.2.2)
+
+1. `/reload` → chat `loaded v1.2.2` · bulk hint mentions Ctrl+Shift header + Shift merged stack.
+2. Duplicate stacks of one item (stack merge on) → vendor → **Shift+RMB** icon → all copies sell; **RMB** → one stack only.
+3. **Ctrl+Shift+RMB** Materials (or other) header → whole lane sells; **Shift+RMB** header without Ctrl → collapse only (no lane sell).
+4. Carry a recipe / pattern item → appears under **Recipes**; disable lane in Settings → item goes to **Other** (or next classifier).
+
 ## 1.2.1 — stack merge + lock state
 
 - **StackMerge:** merge key is **`itemID` + `isLocked`** — locked and unlocked copies of the same item (e.g. lockboxes) show as **separate** visual stacks instead of one misleading icon.

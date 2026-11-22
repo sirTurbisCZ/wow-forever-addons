@@ -2,7 +2,7 @@
 
 BetterBackpack = BetterBackpack or {}
 
-local CURRENT_SCHEMA = 6
+local CURRENT_SCHEMA = 7
 local MAX_ERRORS = 40
 local MAX_MSG = 2000
 
@@ -12,7 +12,7 @@ local Config = BetterBackpack.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "1.2.1"
+Config.VERSION = "1.2.2"
 
 local function ProfileDefaults()
   return {
@@ -26,6 +26,7 @@ local function ProfileDefaults()
     categories = {
       junk = true,
       consumable = true,
+      recipe = true,
       reagent = true,
       gem = true,
       gear = true,
@@ -160,6 +161,18 @@ function Config.EnsureDB()
     end
     db.schemaVersion = 6
     from = 6
+  end
+
+  -- 1.2.2: Recipes lane enabled for existing profiles.
+  if from < 7 then
+    EnsureProfile(db)
+    if type(db.profile) == "table" and type(db.profile.categories) == "table" then
+      if db.profile.categories.recipe == nil then
+        db.profile.categories.recipe = true
+      end
+    end
+    db.schemaVersion = 7
+    from = 7
   end
 
   EnsureProfile(db)

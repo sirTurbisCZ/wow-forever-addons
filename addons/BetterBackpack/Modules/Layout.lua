@@ -40,7 +40,7 @@ local CLASSIC_BORDER = {
 }
 
 local CATEGORY_ORDER = {
-  "junk", "consumable", "reagent", "gem", "gear", "quest", "keys", "container", "trash", "other",
+  "junk", "consumable", "recipe", "reagent", "gem", "gear", "quest", "keys", "container", "trash", "other",
 }
 
 local TRASH = "trash"
@@ -49,6 +49,7 @@ local CATEGORY_LABELS = {
   trash = "Trash",
   junk = "Junk",
   consumable = "Consumables",
+  recipe = "Recipes",
   reagent = "Materials",
   gem = "Gems",
   gear = "Gear",
@@ -215,10 +216,12 @@ local function MapClassID(classID, subClassID, quality)
   if eq(EC and EC.Consumable, CLASS.Consumable) then
     return "consumable"
   end
+  if eq(EC and EC.Recipe, CLASS.Recipe) or classID == CLASS.Recipe then
+    return "recipe"
+  end
   if eq(EC and EC.Reagent, CLASS.Reagent)
       or eq(EC and EC.Tradegoods, CLASS.Tradegoods)
       or eq(EC and EC.TradeGoods, CLASS.Tradegoods)
-      or classID == CLASS.Recipe
       or classID == CLASS.ItemEnhancement
       or classID == CLASS.Glyph
   then
@@ -255,6 +258,11 @@ local function MapTypeString(itemType, itemSubType)
   if blob:find("consumable", 1, true) or blob:find("food", 1, true) or blob:find("potion", 1, true) then
     return "consumable"
   end
+  if blob:find("recipe", 1, true) or blob:find("pattern", 1, true) or blob:find("plans", 1, true)
+      or blob:find("schematic", 1, true) or blob:find("formula", 1, true)
+  then
+    return "recipe"
+  end
   if blob:find("trade", 1, true) or blob:find("reagent", 1, true) or blob:find("cloth", 1, true)
       or blob:find("herb", 1, true) or blob:find("ore", 1, true) or blob:find("leather", 1, true)
   then
@@ -275,10 +283,53 @@ local function MapTypeString(itemType, itemSubType)
   return nil
 end
 
+local function ItemLooksRecipe(itemID, itemType, itemSubType, classID)
+  if type(classID) == "number" and classID == CLASS.Recipe then
+    return true
+  end
+  local EC = Enum and Enum.ItemClass
+  if EC and type(EC.Recipe) == "number" and classID == EC.Recipe then
+    return true
+  end
+  local blob = (itemType or ""):lower() .. " " .. (itemSubType or ""):lower()
+  if blob:find("recipe", 1, true) or blob:find("pattern", 1, true) or blob:find("plans", 1, true)
+      or blob:find("schematic", 1, true) or blob:find("formula", 1, true)
+  then
+    return true
+  end
+  if itemID and C_Item and C_Item.GetItemSpell then
+    local ok, spellName, spellID = pcall(C_Item.GetItemSpell, itemID)
+    if ok and type(spellName) == "string" and spellName:lower():find("learn", 1, true) then
+      return true
+    end
+    if ok and spellID and tonumber(spellID) then
+      local name
+      if C_Spell and C_Spell.GetSpellName then
+        local okN, n = pcall(C_Spell.GetSpellName, spellID)
+        if okN then
+          name = n
+        end
+      elseif GetSpellInfo then
+        local okN, n = pcall(GetSpellInfo, spellID)
+        if okN then
+          name = n
+        end
+      end
+      if type(name) == "string" and name:lower():find("learn", 1, true) then
+        return true
+      end
+    end
+  end
+  return false
+end
+
 -- Category from item class alone (no learned / custom rules).
 local function ClassifyNatural(bag, slot, info, itemID)
   local quality = SafeNum(info.quality)
   local classID, subClassID, itemType, itemSubType, equipLoc = InstantClass(itemID)
+  if ItemLooksRecipe(itemID, itemType, itemSubType, classID) then
+    return "recipe"
+  end
   local mapped = MapClassID(classID, subClassID, quality)
   if mapped then
     return mapped
@@ -1009,10 +1060,23 @@ local function HeaderShiftDown(header)
   return header and header._bbShiftDown == true
 end
 
+local function HeaderCtrlDown(header)
+  if IsControlKeyDown and IsControlKeyDown() then
+    return true
+  end
+  return header and header._bbCtrlDown == true
+end
+
+--- Lane-wide bulk: Ctrl+Shift+RMB (Shift alone = collapse / drop only on header).
+local function HeaderLaneBulkDown(header)
+  return HeaderShiftDown(header) and HeaderCtrlDown(header)
+end
+
 local function HeaderInvokeBulkTransfer(header, laneKey)
   header._bbShiftDown = nil
+  header._bbCtrlDown = nil
   if BetterBackpack.Print then
-    BetterBackpack.Print("|cff88ccffBulk|r header Shift+RMB · lane=" .. tostring(laneKey))
+    BetterBackpack.Print("|cff88ccffBulk|r header Ctrl+Shift+RMB · lane=" .. tostring(laneKey))
   end
   local BT = BetterBackpack.Modules.BulkTransfer or Feat("BulkTransfer")
   if BT and BT.TransferLane then
@@ -1030,11 +1094,12 @@ local function HeaderShiftRmb(header, laneKey)
   if CursorHoldingItem() then
     return false
   end
-  if not HeaderShiftDown(header) then
+  if not HeaderLaneBulkDown(header) then
     return false
   end
   if Layout.DropOnLane(laneKey) then
     header._bbShiftDown = nil
+    header._bbCtrlDown = nil
     return true
   end
   return HeaderInvokeBulkTransfer(header, laneKey)
@@ -1049,8 +1114,10 @@ local function WireSectionHeader(key, header)
   header:SetScript("OnMouseDown", function(self, button)
     if button == "RightButton" then
       self._bbShiftDown = (IsShiftKeyDown and IsShiftKeyDown()) or false
+      self._bbCtrlDown = (IsControlKeyDown and IsControlKeyDown()) or false
     elseif not (IsShiftKeyDown and IsShiftKeyDown()) then
       self._bbShiftDown = nil
+      self._bbCtrlDown = nil
     end
   end)
   header:SetScript("OnMouseUp", function(self, button)
@@ -1059,17 +1126,18 @@ local function WireSectionHeader(key, header)
       return
     end
     if button == "RightButton" then
-      local shift = HeaderShiftDown(self)
-      if shift and not CursorHoldingItem() then
+      local bulk = HeaderLaneBulkDown(self)
+      if bulk and not CursorHoldingItem() then
         if BetterBackpack.Print then
           BetterBackpack.Print(string.format(
-            "|cff88ccffBulk|r header MouseUp · lane=%s shift=%s",
+            "|cff88ccffBulk|r header MouseUp · lane=%s ctrl+shift=%s",
             tostring(key),
-            tostring(shift)
+            tostring(bulk)
           ))
         end
         if Layout.DropOnLane(key) then
           self._bbShiftDown = nil
+          self._bbCtrlDown = nil
           self._bbBulkHandled = true
           return
         end

@@ -271,7 +271,7 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
     OpenClose = OC() or OpenClose
     BulkTransfer = BT() or BulkTransfer
     if BulkTransfer and BulkTransfer.TransferLane then
-      Print("BulkTransfer ok · Shift+RMB lane header at vendor/mail/bank")
+      Print("BulkTransfer ok · Ctrl+Shift+RMB lane header · Shift+RMB merged stack at vendor/mail")
     end
     if ModuleWanted() then
       if OpenClose and OpenClose.InstallHooks then
