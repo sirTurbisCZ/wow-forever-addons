@@ -1,5 +1,9 @@
 # Plateband changelog
 
+## 0.1.17
+
+- **Personal DoTs on plate:** when native `DebuffList` shows no aura kids (`native=0`) but TargetFrame has your harmful (Corruption/Agony etc.), paint them on the fallback band — SV had `tf>0` on frame vs `native=0`/`fb=0` on plate.
+
 ## 0.1.16
 
 - **Merge layout:** anchor fallback band to native `DebuffListFrame` (not health-bar `TOP`) so adding a personal DoT does not jump the foreign row.
