@@ -1,11 +1,11 @@
 # Plateband — safe merge design (no name mutation)
 
-**Status:** v0.2.0 native-row gap fill · **default ON** (`mergeMissing=true`, schema 7+)  
+**Status:** v0.2.1 native-row gap fill · **default ON** (`mergeMissing=true`, schema 7+)  
 **Baseline:** `plateband-v0.1.15` · HUD gate before main merge
 
-## Product rule (0.2.0)
+## Product rule (0.2.1)
 
-**One native-looking harmful row** on enemy nameplates: Blizzard `DebuffList` kids first, then Plateband gap icons (personal + foreign) **same size/pad** as profile `iconSize`, anchored on the **debuff row only**. No TargetFrame scrape. No AuraContainer overlay row.
+**One native-looking harmful row** on enemy nameplates (Forever band **left of health**, e.g. Rake + timer): Blizzard `DebuffList` kids first, then Plateband gap icons (personal + foreign) **matching native kid size** via `NativeAuraMetrics` (fallback: profile `iconSize`), appended **RIGHT of rightmost native** with **BOTTOM** band align. Gap icons texture-only; timers stay on native buttons. No TargetFrame scrape. No AuraContainer overlay row.
 
 ## Hard rules (non-negotiable)
 
@@ -31,7 +31,8 @@ flowchart TD
   row -->|no| skip
   row -->|yes| collect[CollectHarmfulGaps C_UnitAuras]
   collect --> paint[Fallback textures on UnitFrame child]
-  paint --> layout[LEFT of native rightmost / DebuffList RIGHT]
+  paint --> metrics[NativeAuraMetrics size pad]
+  metrics --> layout[LEFT+BOTTOM of rightmost native]
 ```
 
 ## Layout

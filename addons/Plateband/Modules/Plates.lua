@@ -1017,13 +1017,16 @@ local function LayoutMergeBesideNative(unit, plate, mergeFb, painted)
   end
 
   local native = NativeDebuffList(plate)
+  local _, pad = NativeAuraMetrics(plate)
   mergeFb:ClearAllPoints()
   local right = NativeBandRightAnchor(plate)
-  if right then
-    -- Same band as native: continue LEFT→RIGHT of rightmost native icon.
-    mergeFb:SetPoint("LEFT", right, "RIGHT", OVERLAY_PAD, 0)
-  elseif native then
-    mergeFb:SetPoint("LEFT", native, "RIGHT", OVERLAY_PAD, 0)
+  local anchor = right or native
+  if anchor then
+    -- Same horizontal band as native (left-of-health row): continue after rightmost icon.
+    pcall(function()
+      mergeFb:SetPoint("LEFT", anchor, "RIGHT", pad, 0)
+      mergeFb:SetPoint("BOTTOM", anchor, "BOTTOM", 0, 0)
+    end)
   end
 end
 
@@ -1164,6 +1167,42 @@ local function NativeKeySet(plate)
     end
   end
   return keys
+end
+
+--- Match native debuff chrome (e.g. Rake left of health): size + spacing from shown kid.
+local function NativeAuraMetrics(plate)
+  local list = NativeDebuffList(plate)
+  local sz = IconSize()
+  local pad = OVERLAY_PAD
+  if not list then
+    return sz, pad
+  end
+  local ok, kids = pcall(function()
+    return { list:GetChildren() }
+  end)
+  if ok and type(kids) == "table" then
+    for i = 1, #kids do
+      local child = kids[i]
+      if child and SafeShown(child) and (child.Icon or child.icon or child.GetAuraInstance) then
+        pcall(function()
+          local w = child:GetWidth()
+          local h = child:GetHeight()
+          if type(w) == "number" and not IsSecret(w) and w >= 8 and w <= 64 then
+            sz = w
+          end
+          if type(h) == "number" and not IsSecret(h) and h >= 8 and h <= 64 then
+            if type(w) == "number" and not IsSecret(w) then
+              sz = w
+            else
+              sz = h
+            end
+          end
+        end)
+        break
+      end
+    end
+  end
+  return sz, pad
 end
 
 --- Rightmost shown native aura button (or DebuffListFrame) — merge anchors beside it.
@@ -1610,7 +1649,7 @@ local function PaintMergeMissing(unit, plate)
     return 0
   end
   local parent = SafeFallbackParent(plate)
-  local sz = IconSize()
+  local sz, pad = NativeAuraMetrics(plate)
   local painted = 0
   for i = 1, #missing do
     if painted >= maxN then
@@ -1621,7 +1660,7 @@ local function PaintMergeMissing(unit, plate)
     local okLay = pcall(function()
       icon:ClearAllPoints()
       icon:SetSize(sz, sz)
-      icon:SetPoint("LEFT", fb, "LEFT", (painted - 1) * (sz + OVERLAY_PAD), 0)
+      icon:SetPoint("LEFT", fb, "LEFT", (painted - 1) * (sz + pad), 0)
     end)
     if not okLay then
       painted = painted - 1
@@ -1643,12 +1682,22 @@ local function PaintMergeMissing(unit, plate)
   end
 
   pcall(function()
-    fb:SetSize(math.max(1, painted * (sz + OVERLAY_PAD)), sz)
-    fb:SetFrameStrata("MEDIUM")
+    fb:SetSize(math.max(1, painted * (sz + pad)), sz)
+    local strata = "MEDIUM"
+    pcall(function()
+      if nativeList.GetFrameStrata then
+        strata = nativeList:GetFrameStrata() or strata
+      end
+    end)
+    fb:SetFrameStrata(strata)
     local lvl = 50
-    if parent then
-      lvl = (parent:GetFrameLevel() or 1) + 15
-    end
+    pcall(function()
+      if nativeList.GetFrameLevel then
+        lvl = (nativeList:GetFrameLevel() or 1) + 1
+      elseif parent then
+        lvl = (parent:GetFrameLevel() or 1) + 15
+      end
+    end)
     fb:SetFrameLevel(lvl)
     fb:Show()
   end)

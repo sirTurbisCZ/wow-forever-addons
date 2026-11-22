@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## 0.2.1 (HUD gate)
+
+- Gap icons **match native debuff metrics** (`NativeAuraMetrics`) — same size/row as Rake-style chrome left of health.
+- Layout: `LEFT` of rightmost native + **BOTTOM** align; strata/level from `DebuffListFrame`.
+
 ## 0.2.0 (HUD gate — branch zip, not main)
 
 - **Native-row gap:** personal + foreign harmful via `C_UnitAuras` only; dedupe `NativeKeySet`.
