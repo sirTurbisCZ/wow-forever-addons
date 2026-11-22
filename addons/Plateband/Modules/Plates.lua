@@ -506,6 +506,35 @@ local function CountNativeAuraRow(plate)
     + CountShownAuraKids(NativeBuffList(plate))
 end
 
+--- Shown harmful on plate — pools enumerate what GetChildren misses on Forever.
+local function CountPlateHarmfulShown(plate)
+  if not plate then
+    return 0
+  end
+  local buttons = {}
+  CollectPlateDebuffButtons(plate, buttons, MaxIcons())
+  local n = 0
+  for i = 1, #buttons do
+    if SafeShown(buttons[i]) then
+      n = n + 1
+    end
+  end
+  if n > 0 then
+    return n
+  end
+  return CountShownAuraKids(NativeDebuffList(plate))
+end
+
+local function CopyKeySet(src)
+  local t = {}
+  if type(src) == "table" then
+    for k, v in pairs(src) do
+      t[k] = v
+    end
+  end
+  return t
+end
+
 --- Friend / player plates: name must sit above auras (preference).
 local function IsPlayerOrFriendPlate(unit, plate)
   if not unit then
@@ -1527,6 +1556,71 @@ local function CollectForeignAuraGaps(unitToken, skipKeys, out, maxN, allowSecre
   end
 end
 
+--- Phase B — personal gaps when native DebuffList omits player DoTs (§5.2).
+local function CollectPersonalAuraGaps(unitToken, paintKeys, out, maxN, stats)
+  if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
+    return
+  end
+  for i = 1, 40 do
+    if #out >= maxN then
+      return
+    end
+    local data
+    local ok = pcall(function()
+      data = C_UnitAuras.GetAuraDataByIndex(unitToken, i, "HARMFUL")
+    end)
+    if not ok or not data then
+      break
+    end
+    if AuraIsPlayerOwned(data) ~= true then
+      -- foreign handled elsewhere
+    else
+      local icon = data.icon
+      local key = AuraDedupeKey(data, icon)
+      if not key then
+        key = "per:" .. tostring(i) .. ":" .. tostring(unitToken)
+      end
+      if key and not paintKeys[key] then
+        out[#out + 1] = icon
+        paintKeys[key] = true
+        if stats then
+          stats.personal = (stats.personal or 0) + 1
+        end
+      end
+    end
+  end
+end
+
+local function CollectTargetFramePersonalGaps(paintKeys, out, maxN, stats)
+  local buttons = {}
+  CollectTargetFrameButtons(buttons, maxN)
+  local seenBtn = {}
+  for i = 1, #buttons do
+    if #out >= maxN then
+      return
+    end
+    local btn = buttons[i]
+    local bid = tostring(btn)
+    if not seenBtn[bid] then
+      seenBtn[bid] = true
+      local icon, skipped, gotIcon = ButtonAuraIcon(btn, "personal")
+      if not skipped and gotIcon then
+        local key = PublicTexKey(icon)
+        if not key then
+          key = "tfper:" .. bid
+        end
+        if key and not paintKeys[key] then
+          out[#out + 1] = icon
+          paintKeys[key] = true
+          if stats then
+            stats.personal = (stats.personal or 0) + 1
+          end
+        end
+      end
+    end
+  end
+end
+
 local function ApplyGapSticky(unit, missing, isTarget)
   if not isTarget or not unit or #missing > 0 then
     return
@@ -1555,8 +1649,9 @@ local function RememberGapSticky(unit, icons)
 end
 
 --- Pull icon texture from a TF aura button (secret FileIDs OK for SetTexture).
+--- mode: nil/"foreign" skips personal; "personal" skips non-personal.
 --- Returns icon, skippedPersonal, gotIcon — never compare icon to nil (secret throws).
-local function ButtonAuraIcon(btn)
+local function ButtonAuraIcon(btn, mode)
   if not btn then
     return nil, false, false
   end
@@ -1567,7 +1662,13 @@ local function ButtonAuraIcon(btn)
     if btn.GetAuraInstance then
       local _, data = btn:GetAuraInstance()
       if type(data) == "table" then
-        if AuraIsPlayerOwned(data) == true then
+        local owned = AuraIsPlayerOwned(data)
+        if mode == "personal" then
+          if owned ~= true then
+            skippedPersonal = true
+            return
+          end
+        elseif owned == true then
           skippedPersonal = true
           return
         end
@@ -1753,7 +1854,7 @@ local function SetIconTexture(icon, t)
   return okSet
 end
 
---- Paint foreign gaps beside native — 0.1.15 sources + 0.2 layout (§5 P0).
+--- Paint personal + foreign gaps beside native — 0.1.15 sources + 0.2 layout (§5 P0/P1).
 local function PaintMergeMissing(unit, plate)
   if not plate or not FallbackParent(plate) then
     ClearFallback(unit)
@@ -1773,27 +1874,37 @@ local function PaintMergeMissing(unit, plate)
     return 0
   end
 
-  local skipKeys = NativeKeySet(plate)
+  local paintKeys = NativeKeySet(plate)
   local maxN = MaxIcons()
   local missing = {}
   local stats = { personal = 0, foreign = 0 }
   local isTarget = IsTargetPlate(unit, plate)
-  local allowSecret = true
+  local nativeN = CountPlateHarmfulShown(plate)
+  local allowSecret = isTarget or nativeN == 0
 
   if isTarget then
-    CollectPlayerOwnedKeys("target", skipKeys)
+    CollectPersonalAuraGaps("target", paintKeys, missing, maxN, stats)
     if type(unit) == "string" and unit ~= "target" then
-      CollectPlayerOwnedKeys(unit, skipKeys)
+      CollectPersonalAuraGaps(unit, paintKeys, missing, maxN, stats)
     end
-    CollectForeignAuraGaps("target", skipKeys, missing, maxN, allowSecret, stats)
+    CollectTargetFramePersonalGaps(paintKeys, missing, maxN, stats)
+
+    local foreignSkip = CopyKeySet(paintKeys)
+    CollectPlayerOwnedKeys("target", foreignSkip)
     if type(unit) == "string" and unit ~= "target" then
-      CollectForeignAuraGaps(unit, skipKeys, missing, maxN, allowSecret, stats)
+      CollectPlayerOwnedKeys(unit, foreignSkip)
     end
-    CollectTargetFrameMissing(skipKeys, missing, maxN)
+    CollectForeignAuraGaps("target", foreignSkip, missing, maxN, allowSecret, stats)
+    if type(unit) == "string" and unit ~= "target" then
+      CollectForeignAuraGaps(unit, foreignSkip, missing, maxN, allowSecret, stats)
+    end
+    CollectTargetFrameMissing(foreignSkip, missing, maxN)
   else
     if type(unit) == "string" then
-      CollectPlayerOwnedKeys(unit, skipKeys)
-      CollectForeignAuraGaps(unit, skipKeys, missing, maxN, allowSecret, stats)
+      CollectPersonalAuraGaps(unit, paintKeys, missing, maxN, stats)
+      local foreignSkip = CopyKeySet(paintKeys)
+      CollectPlayerOwnedKeys(unit, foreignSkip)
+      CollectForeignAuraGaps(unit, foreignSkip, missing, maxN, allowSecret, stats)
     end
   end
 
@@ -2068,10 +2179,10 @@ SnapshotDiagnose = function(reason, opts)
     end
   end
   if plate then
-    native = CountShownAuraKids(NativeDebuffList(plate))
+    native = CountPlateHarmfulShown(plate)
   elseif plateCount > 0 then
     for i = 1, #live do
-      local n = CountShownAuraKids(NativeDebuffList(live[i].plate))
+      local n = CountPlateHarmfulShown(live[i].plate)
       if n > native then
         native = n
       end

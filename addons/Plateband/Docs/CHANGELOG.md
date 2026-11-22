@@ -1,5 +1,18 @@
 # Plateband changelog
 
+## 0.2.5 (HUD gate — P1 personal gaps)
+
+- **Personal gaps (§5.2 Phase B):** when native `DebuffList` / pools show **0** harmful (Forever omits player DoTs on plate), paint player-owned HARMFUL from `C_UnitAuras` + TF buttons **only if ∉ NativeKeySet** — no `CollectPlayerOwnedKeys` on the same set used for personal eligibility.
+- **Foreign path unchanged:** `CollectForeignAuraGaps` + `CollectTargetFrameMissing` with separate `foreignSkip` after personal pass.
+- **Diagnose:** `native=` counts pool-enumerated harmful buttons (`CountPlateHarmfulShown`).
+
+### Playtest (0.2.5)
+
+1. `/reload` → `/pb diagnose` → `ver=0.2.5`.
+2. Hunter pet DoT / Mark on **Ashenvale Bear** (or any `native=0` target) → plate shows **≥1** icon (`fb≥1`); TF parity for personal.
+3. Party warlock DoT on same target → `fb` includes foreign; no duplicate if native already shows spell.
+4. `/reload` UI intact (no name/DebuffList SetPoint).
+
 ## 0.2.4 (HUD gate — P0 §5)
 
 - **0.1.15 data contract:** `CollectForeignAuraGaps` skips `owned==true` (no personal fallback); `CollectPlayerOwnedKeys` → `skipKeys`; target always `CollectTargetFrameMissing` after API + `nameplateN`.
