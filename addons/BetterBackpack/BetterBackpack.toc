@@ -2,7 +2,7 @@
 ## Title: BetterBackpack
 ## Notes: 1.2.1 — stack merge splits locked vs unlocked same itemID.
 ## Author: tuma
-## Version: 1.2.1
+## Version: 1.2.2
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled

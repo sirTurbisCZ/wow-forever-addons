@@ -201,11 +201,11 @@ local function SmallButton(parent, text, w)
   return b
 end
 
-local function LearnedLabel(n)
+local function LearnedRulesLabel(n)
   if n == 1 then
-    return "1 item"
+    return "1 rule"
   end
-  return n .. " items"
+  return n .. " rules"
 end
 
 local function PaintLanes(y)
@@ -225,7 +225,7 @@ local function PaintLanes(y)
     row.laneKey = key
     row.label:SetText(CategoryLabel(key) .. (key == "trash" and "  |cffff5050(auto-destroy)|r" or ""))
     local learned = CC and CC.CountLaneRules and CC.CountLaneRules(key) or 0
-    row.extra:SetText(learned > 0 and LearnedLabel(learned) or "")
+    row.extra:SetText(learned > 0 and LearnedRulesLabel(learned) or "")
     if key == "other" then
       row.check:SetChecked(true)
       row.check:Disable()
@@ -447,7 +447,7 @@ local function PaintLearned(y)
   end
   fs:ClearAllPoints()
   fs:SetPoint("TOPLEFT", Content(), "TOPLEFT", 2, -y)
-  fs:SetText(n > 0 and (LearnedLabel(n) .. " taught") or "Nothing taught yet")
+  fs:SetText(n > 0 and (LearnedRulesLabel(n) .. " taught") or "Nothing taught yet")
   fs:Show()
   y = y + 24
   local forget = panel.forgetBtn

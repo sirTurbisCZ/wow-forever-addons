@@ -44,7 +44,7 @@ flowchart TD
   L[Layout Relayout]
   L --> Class[ClassifyBagSlot + CustomCategories.Resolve]
   Class --> Buckets[CollectBuckets]
-  Buckets --> SF[Search.Passes + Filter.Passes]
+  Buckets --> SF[Search.Passes + Filter.Passes<br/>lanes with 0 matches hidden<br/>Other header if unfiltered Other non-empty]
   SF --> Merge[StackMerge.Collapse per lane<br/>key = itemID + isLocked]
   Merge --> Place[Slots.Acquire + Place]
   Place --> Visual[SyncVisual + quest bang if questID and not isActive]

@@ -1318,7 +1318,9 @@ local function DoLayout()
       local key = order[i]
       if CategoryEnabled(key) then
         local list = lists[key] or {}
-        if #list > 0 or (IsCustom(key) and not filtering) then
+        local sizingList = sizing[key] or {}
+        local showOtherWhileSearch = key == "other" and filtering and #sizingList > 0
+        if #list > 0 or (IsCustom(key) and not filtering) or showOtherWhileSearch then
           any = true
           local sf = EnsureSection(key)
           sf:ClearAllPoints()
@@ -1329,6 +1331,9 @@ local function DoLayout()
           local shownCount = #list
           if key == TRASH and not filtering then
             shownCount = #ghostIDs
+          elseif showOtherWhileSearch and shownCount == 0 then
+            -- Header visible: items exist in Other but current search/filter matched none.
+            shownCount = 0
           end
           SetHeaderState(sf.header, Layout.GetCategoryLabel(key), shownCount, collapsed)
           y = y + HEADER_H + HEADER_PAD

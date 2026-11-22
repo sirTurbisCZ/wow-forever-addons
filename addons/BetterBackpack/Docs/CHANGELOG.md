@@ -1,5 +1,10 @@
 # BetterBackpack changelog
 
+## 1.2.2 — search vs Other lane UX
+
+- **Settings:** lane sidebar counts are **taught rules**, labeled `N rules` (not bag item count).
+- **Search:** **Other** header stays visible while search/filter active when unfiltered Other still has items (count **0** = no match — clear search).
+
 ## 1.2.1 — stack merge + lock state
 
 - **StackMerge:** merge key is **`itemID` + `isLocked`** — locked and unlocked copies of the same item (e.g. lockboxes) show as **separate** visual stacks instead of one misleading icon.
