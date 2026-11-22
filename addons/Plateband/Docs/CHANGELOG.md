@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## 0.1.16
+
+- **Merge layout:** anchor fallback band to native `DebuffListFrame` (not health-bar `TOP`) so adding a personal DoT does not jump the foreign row.
+- **Merge collect:** `allowSecretUnknown` only when native debuff row is empty — avoids duplicate personal icons on fallback after your DoT lands on native.
+
 ## 0.1.15
 
 - **Default merge on:** `mergeMissing=true` (schema 7 migrates older saves from schema 6 off).

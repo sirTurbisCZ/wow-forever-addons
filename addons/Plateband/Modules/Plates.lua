@@ -982,7 +982,8 @@ local function LayoutMergeBesideNative(unit, plate, mergeFb, painted)
   if right then
     -- Same band as native: continue LEFT→RIGHT of rightmost native icon.
     mergeFb:SetPoint("LEFT", right, "RIGHT", OVERLAY_PAD, 0)
-  elseif native and SafeShown(native) then
+  elseif native then
+    -- Stay on Blizzard debuff row even at 0 kids — avoids health-TOP → native jump when personal DoT lands.
     mergeFb:SetPoint("LEFT", native, "RIGHT", OVERLAY_PAD, 0)
   elseif bar then
     mergeFb:SetPoint("BOTTOM", bar, "TOP", 0, OVERLAY_GAP_ABOVE)
@@ -1534,6 +1535,10 @@ local function PaintMergeMissing(unit, plate)
   local maxN = MaxIcons()
   local missing = {}
   local isTarget = IsTargetPlate(unit, plate)
+  local nativeList = NativeDebuffList(plate)
+  local nativeN = CountShownAuraKids(nativeList)
+  -- Secret guess only when native row is empty — after personal DoT, native owns ours (public or secret).
+  local allowSecretUnknown = nativeN == 0
 
   -- Target plate: merge TF + unit auras Blizzard omitted from DebuffList.
   if isTarget then
@@ -1541,14 +1546,14 @@ local function PaintMergeMissing(unit, plate)
     if type(unit) == "string" and unit ~= "target" then
       CollectPlayerOwnedKeys(unit, skipKeys)
     end
-    CollectUnitAuraMissing("target", skipKeys, missing, maxN, true)
+    CollectUnitAuraMissing("target", skipKeys, missing, maxN, allowSecretUnknown)
     if type(unit) == "string" and unit ~= "target" then
-      CollectUnitAuraMissing(unit, skipKeys, missing, maxN, true)
+      CollectUnitAuraMissing(unit, skipKeys, missing, maxN, allowSecretUnknown)
     end
     CollectTargetFrameMissing(skipKeys, missing, maxN)
   else
     CollectPlayerOwnedKeys(unit, skipKeys)
-    CollectUnitAuraMissing(unit, skipKeys, missing, maxN, true)
+    CollectUnitAuraMissing(unit, skipKeys, missing, maxN, allowSecretUnknown)
   end
 
   if #missing == 0 then

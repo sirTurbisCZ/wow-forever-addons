@@ -38,7 +38,7 @@ flowchart TD
 
 1. Native DebuffList stays where Blizzard put it (above bar / engine layout).
 2. Plateband fallback frame parents to plate `UnitFrame` (non-forbidden) with `EnableMouse(false)`.
-3. Anchor: `mergeFb LEFT → rightmost shown native aura RIGHT` (+ pad). Fallback: `BOTTOM` of health `TOP` if no native kids.
+3. Anchor: `mergeFb LEFT → rightmost shown native aura RIGHT` (+ pad). If no native kids yet: `LEFT` of `DebuffListFrame` `RIGHT` (not health `TOP`) so personal DoT does not relocate the merge row.
 4. **Name text:** leave alone. Overlap with native auras is an engine/CVar concern — not fixed by Plateband SetPoint.
 
 ## Sources (target vs non-target)
