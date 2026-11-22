@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 1.2.4 — vendor auto-sell queue, per-char prefs, item list in Settings.
+## Notes: 1.2.5 — mail subject auto-fill on first attach.
 ## Author: tuma
-## Version: 1.2.4
+## Version: 1.2.5
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled

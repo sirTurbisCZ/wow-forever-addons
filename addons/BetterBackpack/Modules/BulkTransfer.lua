@@ -260,6 +260,72 @@ local function TransferMerchant(bag, slot)
   return false
 end
 
+local function SubjectEditBox()
+  if SendMailSubjectEditBox then
+    return SendMailSubjectEditBox
+  end
+  if SendMailFrame then
+    return SendMailFrame.SubjectEditBox or SendMailFrame.MailSubjectEditBox
+  end
+  return nil
+end
+
+local function MailSubjectIsEmpty()
+  local eb = SubjectEditBox()
+  if not eb or not eb.GetText then
+    return false
+  end
+  local ok, text = pcall(eb.GetText, eb)
+  if not ok or text == nil or text == "" then
+    return true
+  end
+  return not tostring(text):find("%S", 1, true)
+end
+
+local function SlotDisplayName(bag, slot)
+  local b, s = ContainerAPI(bag, slot)
+  local id = ItemID(b, s)
+  if not id then
+    return nil
+  end
+  if C_Item and C_Item.GetItemNameByID then
+    local ok, name = pcall(C_Item.GetItemNameByID, id)
+    if ok and name and name ~= "" then
+      return name
+    end
+  end
+  local fn = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+  if fn then
+    local ok, name = pcall(fn, id)
+    if ok and name and name ~= "" then
+      return name
+    end
+  end
+  return nil
+end
+
+function BulkTransfer.MaybeFillMailSubject(bag, slot)
+  if DetectContext() ~= "mail" then
+    return false
+  end
+  if not MailSubjectIsEmpty() then
+    return false
+  end
+  local name = SlotDisplayName(bag, slot)
+  if not name or name == "" then
+    return false
+  end
+  local Slots = SlotsMod()
+  if Slots and Slots.IsSecret and Slots.IsSecret(name) then
+    return false
+  end
+  local eb = SubjectEditBox()
+  if not eb or not eb.SetText then
+    return false
+  end
+  return select(1, pcall(eb.SetText, eb, name)) and true or false
+end
+
 local function TransferMail(bag, slot)
   local b, s = ContainerAPI(bag, slot)
   if SlotLocked(b, s) then
@@ -274,6 +340,7 @@ local function TransferMail(bag, slot)
   if ClearCursor then
     pcall(ClearCursor)
   end
+  BulkTransfer.MaybeFillMailSubject(bag, slot)
   return true
 end
 

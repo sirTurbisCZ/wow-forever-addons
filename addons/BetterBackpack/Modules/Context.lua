@@ -144,6 +144,13 @@ function Context.TrySpecialRmb(self)
   end
   if ctx == "mail" and ClickSendMailItemButton then
     pcall(ClickSendMailItemButton)
+    local BT = BetterBackpack.Modules and BetterBackpack.Modules.BulkTransfer
+    if BT and BT.MaybeFillMailSubject then
+      BT.MaybeFillMailSubject(b, s)
+    end
+    if ClearCursor then
+      pcall(ClearCursor)
+    end
     return true
   end
   if ClearCursor then

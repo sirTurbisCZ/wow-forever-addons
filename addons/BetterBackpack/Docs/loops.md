@@ -98,7 +98,7 @@ flowchart TD
   Mod -->|yes| RMB[TransferLane bulk]
   RMB --> Ctx{Context open?}
   Ctx -->|merchant| Sell[sync/queue · Pickup+SellCursor / UseContainerItem]
-  Ctx -->|mail| Mail[sync Pickup+ClickSendMail]
+  Ctx -->|mail| Mail[sync Pickup+ClickSendMail + empty subject → item name]
   Ctx -->|bank| Bank[UseContainerItem per slot async]
 ```
 
@@ -119,6 +119,7 @@ flowchart TD
 ```
 
 - **RMB** on a **merged** icon at vendor/mail = all stacks in merge group (`CollectMergeGroup`; shift optional via latch).
+- **Mail subject:** `BulkTransfer.MaybeFillMailSubject` — if `SendMailSubjectEditBox` is empty, first attach sets localized item display name (single RMB via `Context.TrySpecialRmb`, bulk via `TransferMail` queue).
 - Single-stack slot (not merged) = one physical stack on RMB.
 
 ---

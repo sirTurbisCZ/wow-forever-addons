@@ -1,5 +1,17 @@
 # BetterBackpack changelog
 
+## 1.2.5 — mail subject from first attach
+
+- **Send mail:** when the subject field is **empty**, attaching an item (RMB, Shift merged stack, Ctrl+Shift lane bulk) sets the subject to that item’s **display name**. First successful attach wins; existing subject text is never overwritten.
+
+### Playtest (1.2.5)
+
+1. `/reload` → `loaded v1.2.5`.
+2. Mailbox → Send; leave subject blank → **RMB** an item in BB → subject = item name.
+3. Clear subject → **Shift+RMB** merged stack → subject = first stack’s item name.
+4. New mail, blank subject → **Ctrl+Shift+RMB** lane header → subject = first attached item name.
+5. Type a custom subject first → attach items → subject unchanged.
+
 ## 1.2.4 — vendor auto-sell (WFA-36)
 
 - **Auto-sell reliability:** `MERCHANT_SHOW` uses the same `BulkTransfer` merchant **queue** as lane/merge sells (sync pump), re-scanning bag slots at sell time instead of one-off `TransferSlot` timer steps.
