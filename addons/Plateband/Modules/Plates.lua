@@ -38,6 +38,17 @@ local lastAuraRefreshAt = 0
 local AURA_DEBOUNCE_SEC = 0.12
 local GAP_STICKY_SEC = 0.4 -- brief hold when UNIT_AURA/API flickers empty (Retinue lesson; no CLEU)
 local gapSticky = {} -- [unit] = { icons = {}, at = number }
+local lastPaintDebug = {} -- diagnose: last PaintMergeMissing / Refresh snapshot
+
+local function OverlayUnitKey(unit, plate)
+  if type(unit) == "string" and unit ~= "" and not unit:match("^pb:") then
+    return unit
+  end
+  if plate then
+    return "pb:" .. tostring(plate)
+  end
+  return nil
+end
 
 local GLOBAL_UI = {
   UIParent = true,
@@ -236,11 +247,10 @@ local function EnumerateLivePlates()
             seen[unit] = true
             out[#out + 1] = { plate = plate, unit = unit }
           elseif not unit then
-            -- Plate without public token — still try to attach via synthetic key.
-            local key = tostring(plate)
-            if not seen[key] then
+            local key = OverlayUnitKey(nil, plate)
+            if key and not seen[key] then
               seen[key] = true
-              out[#out + 1] = { plate = plate, unit = nil }
+              out[#out + 1] = { plate = plate, unit = key }
             end
           end
         end
@@ -702,6 +712,23 @@ end
 
 local function FallbackParent(plate)
   return NativeDebuffList(plate) or NativeDebuffAnchorList(plate) or SafeFallbackParent(plate)
+end
+
+--- When native harmful row is empty, parent on health bar (hidden DebuffList parents clip icons).
+local function FallbackPaintParent(plate)
+  local nativeN = CountPlateHarmfulShown(plate)
+  if nativeN > 0 then
+    return FallbackParent(plate)
+  end
+  local bar = HealthBar(plate)
+  if bar and not FrameIsGlobalChrome(bar) then
+    return bar
+  end
+  local uf = plate and plate.UnitFrame
+  if uf and not FrameIsGlobalChrome(uf) then
+    return uf
+  end
+  return FallbackParent(plate)
 end
 
 local function CollectTargetFrameButtons(out, maxN)
@@ -1177,7 +1204,7 @@ local function EnsureOverlay(unit)
 end
 
 local function EnsureFallback(unit, plate)
-  local parent = FallbackParent(plate)
+  local parent = FallbackPaintParent(plate)
   if not parent then
     return nil
   end
@@ -1186,6 +1213,7 @@ local function EnsureFallback(unit, plate)
     if fb:GetParent() ~= parent then
       pcall(fb.SetParent, fb, parent)
     end
+    fb._pbPlate = plate
     return fb
   end
   fb = CreateFrame("Frame", nil, parent)
@@ -1202,6 +1230,7 @@ local function EnsureFallback(unit, plate)
     fb.icons[i] = tex
   end
   fb._pbFallback = true
+  fb._pbPlate = plate
   fallbacks[unit] = fb
   return fb
 end
@@ -1443,6 +1472,23 @@ local function IsTargetPlate(unit, plate)
     if n == 1 and onlyU == unit and onlyP == plate then
       return true
     end
+  end
+  return false
+end
+
+local function ShouldUseTargetAuraSource(unit, plate)
+  if not HasTarget() then
+    return false
+  end
+  if IsTargetPlate(unit, plate) then
+    return true
+  end
+  local tp = PlateFor("target")
+  if tp and plate and tp == plate then
+    return true
+  end
+  if unit == "target" then
+    return true
   end
   return false
 end
@@ -2308,10 +2354,25 @@ local function PaintMergeMissing(unit, plate)
   local missing = {}
   local stats = { personal = 0, foreign = 0 }
   local isTarget = IsTargetPlate(unit, plate)
+  local useTargetSrc = ShouldUseTargetAuraSource(unit, plate)
   local nativeN = CountPlateHarmfulShown(plate)
-  local allowSecret = isTarget or nativeN == 0
+  local allowSecret = useTargetSrc or nativeN == 0
 
-  if isTarget then
+  -- TF-first: mirror harmful row when target plate (party DoTs + personal when native=0).
+  if useTargetSrc then
+    local harv = CollectTargetHarmfulRows(maxN)
+    lastPaintDebug.harv = #harv
+    lastPaintDebug.tgtSrc = 1
+    local skip = CopyKeySet(paintKeys)
+    for i = 1, #harv do
+      AppendGapRow(skip, missing, maxN, stats, harv[i], false)
+    end
+  else
+    lastPaintDebug.tgtSrc = 0
+    lastPaintDebug.harv = 0
+  end
+
+  if useTargetSrc then
     CollectPersonalAuraGaps("target", paintKeys, missing, maxN, stats)
     if type(unit) == "string" and unit ~= "target" then
       CollectPersonalAuraGaps(unit, paintKeys, missing, maxN, stats)
@@ -2343,18 +2404,25 @@ local function PaintMergeMissing(unit, plate)
     end
   end
 
-  ApplyGapSticky(unit, missing, isTarget)
+  ApplyGapSticky(unit, missing, useTargetSrc)
+
+  lastPaintDebug.miss = #missing
+  lastPaintDebug.unit = tostring(unit)
+  lastPaintDebug.nativeN = nativeN
 
   if #missing == 0 then
+    lastPaintDebug.painted = 0
     ClearFallback(unit)
     return 0
   end
 
   local fb = EnsureFallback(unit, plate)
   if not fb then
+    lastPaintDebug.painted = 0
+    lastPaintDebug.parent = "nil"
     return 0
   end
-  local parent = FallbackParent(plate)
+  lastPaintDebug.parent = nativeN > 0 and "nativeRow" or "healthBar"
   local sz, pad = NativeAuraMetrics(plate)
   local painted = 0
   for i = 1, #missing do
@@ -2424,14 +2492,19 @@ local function PaintMergeMissing(unit, plate)
     end
     RememberGapSticky(unit, kept)
   end
+  lastPaintDebug.painted = painted
   return painted
 end
 
 local function UpdateOverlay(unit, plate)
+  plate = plate or (unit and PlateFor(unit))
+  unit = OverlayUnitKey(unit, plate)
   if not ModuleActive() or not unit then
     return
   end
-  plate = plate or PlateFor(unit)
+  if not plate and type(unit) == "string" and unit:match("^nameplate%d+") then
+    plate = PlateFor(unit)
+  end
   if not plate or IsForbiddenPlate(plate) then
     ClearOverlay(unit)
     return
@@ -2485,12 +2558,18 @@ local function RefreshAll()
       end
     end
   end
-  -- Always try target plate explicitly (secret UnitIsUnit fallbacks).
+  -- Always try target plate explicitly (secret UnitIsUnit / missing nameplate token).
   if ModuleActive() and HasTarget() then
-    local tu = NameplateUnitFor("target")
-    if tu then
+    local tp = PlateFor("target")
+  local tu = NameplateUnitFor("target") or (tp and UnitTokenFromPlate(tp))
+    tu = OverlayUnitKey(tu, tp)
+    if tu and tp then
       live[tu] = true
-      UpdateOverlay(tu, PlateFor(tu) or PlateFor("target"))
+      UpdateOverlay(tu, tp)
+    elseif tp then
+      local pk = OverlayUnitKey(nil, tp)
+      live[pk] = true
+      UpdateOverlay(pk, tp)
     end
   end
   for unit in pairs(overlays) do
@@ -2655,8 +2734,9 @@ SnapshotDiagnose = function(reason, opts)
   end
 
   local mergeOn = Profile().mergeMissing == true and "1" or "0"
+  local lpd = lastPaintDebug or {}
   local card = string.format(
-    "PLATEBAND_CARD ver=%s reason=%s target=%s plate=%s plates=%s overlays=%s ac=%s fb=%s kids=%s tf=%s native=%s merge=%s acFail=%s enabled=%s safe=%s watch=%s seen=%s upd=%s blocked=%s",
+    "PLATEBAND_CARD ver=%s reason=%s target=%s plate=%s plates=%s overlays=%s ac=%s fb=%s kids=%s tf=%s native=%s merge=%s harv=%s miss=%s painted=%s tgtSrc=%s punit=%s acFail=%s enabled=%s safe=%s watch=%s seen=%s upd=%s blocked=%s",
     tostring(ns.Config.VERSION),
     tostring(reason or "manual"),
     targetYes and "yes" or "no",
@@ -2669,6 +2749,11 @@ SnapshotDiagnose = function(reason, opts)
     tostring(tf),
     tostring(native),
     mergeOn,
+    tostring(lpd.harv or "?"),
+    tostring(lpd.miss or "?"),
+    tostring(lpd.painted or "?"),
+    tostring(lpd.tgtSrc or "?"),
+    tostring(lpd.unit or plateUnit or "?"),
     acCreateFailed and "1" or "0",
     tostring(Profile().enabled),
     tostring(Profile().safeMode),

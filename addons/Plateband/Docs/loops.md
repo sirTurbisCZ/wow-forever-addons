@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.8** (TF mirror when native harmful row empty; see merge-design)
+Version: **0.2.9** (target plate TF-first + health-bar parent when native=0; see merge-design)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 

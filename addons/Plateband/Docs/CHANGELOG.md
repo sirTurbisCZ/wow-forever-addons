@@ -1,5 +1,20 @@
 # Plateband changelog
 
+## 0.2.9 (HUD gate — target plate paint path)
+
+- **Unit key:** plates without a public `nameplateN` token use stable `pb:<plate>` keys — `UpdateOverlay` no longer no-ops on `unit=nil`.
+- **Target refresh:** always paints `PlateFor("target")` even when `NameplateUnitFor` fails (Forever secret `UnitIsUnit`).
+- **TF-first:** `ShouldUseTargetAuraSource` (plate pointer / sole enemy / tokens) mirrors full `CollectTargetHarmfulRows` before API gap passes — Tidecaller/Murloc with TF harmful≥3 → `harv≥3`.
+- **Parent:** when `native=0`, fallback parents to **health bar** (hidden `DebuffList` was clipping painted textures).
+- **Diagnose:** `harv` / `miss` / `painted` / `tgtSrc` / `punit` on card; confirm **`ver=0.2.9`**.
+
+### Playtest (0.2.9)
+
+1. Replace zip (not symlink to old tree) → `/reload` → chat **`Plateband 0.2.9`**.
+2. **`/pb merge on`** if `merge=0` in diagnose.
+3. Target **Murloc** with TF harmful icons → **`/pb diagnose`** → `ver=0.2.9` · `tf≥3` · `harv≥3` · `miss≥3` · **`painted≥3`** · `fb≥3` · `tgtSrc=1`.
+4. Nameplate row shows icons above health bar matching TF.
+
 ## 0.2.8 (HUD gate — empty native + TF mirror)
 
 - **Paint abort:** no longer requires `AurasFrame`/`DebuffListFrame` at gate — `FallbackParent` (incl. `UnitFrame`) is enough; layout anchor falls back to health bar when native row empty.
