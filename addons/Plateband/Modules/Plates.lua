@@ -1419,6 +1419,31 @@ local function IsTargetPlate(unit, plate)
   if plate and PlateFor("target") == plate then
     return true
   end
+  if plate and unit and HasTarget() then
+    local tp = PlateFor("target")
+    if tp and tp == plate then
+      return true
+    end
+    local live = EnumerateLivePlates()
+    local onlyU, onlyP, n = nil, nil, 0
+    for i = 1, #live do
+      local u = live[i].unit
+      local pl = live[i].plate
+      if u and pl and not SameUnit(u, "player") and not IsPlayerOrFriendPlate(u, pl) then
+        n = n + 1
+        onlyU = u
+        onlyP = pl
+        if n > 1 then
+          onlyU = nil
+          onlyP = nil
+          break
+        end
+      end
+    end
+    if n == 1 and onlyU == unit and onlyP == plate then
+      return true
+    end
+  end
   return false
 end
 
@@ -2241,17 +2266,34 @@ local function SetIconTexture(icon, t)
   return okSet
 end
 
+local function TfSupplementSkipKeys(paintKeys, missing)
+  local skip = CopyKeySet(paintKeys)
+  if type(missing) == "table" then
+    for i = 1, #missing do
+      local k = PublicTexKey(missing[i])
+      if not k and type(missing[i]) == "table" then
+        k = TfRowKey(missing[i])
+      end
+      if k then
+        skip[k] = true
+      end
+    end
+  end
+  return skip
+end
+
 --- Paint personal + foreign gaps beside native — 0.1.15 sources + 0.2 layout (§5 P0/P1).
 local function PaintMergeMissing(unit, plate)
-  if not plate or not FallbackParent(plate) then
+  if not plate then
     ClearFallback(unit)
     return 0
   end
-  local nativeList = NativeDebuffAnchorList(plate)
-  if not nativeList then
+  local parent = FallbackParent(plate)
+  if not parent then
     ClearFallback(unit)
     return 0
   end
+  local nativeList = NativeDebuffAnchorList(plate) or parent
 
   EnsureNativeVisible(plate)
   RestoreNameShift(unit, plate)
@@ -2286,11 +2328,12 @@ local function PaintMergeMissing(unit, plate)
     if type(unit) == "string" and unit ~= "target" then
       CollectForeignAuraGaps(unit, foreignSkip, missing, maxN, allowSecret, stats)
     end
-    local tfDedupe = CopyKeySet(paintKeys)
-    for k, v in pairs(foreignSkip) do
-      tfDedupe[k] = v
+    -- TF mirror: dedupe native + already queued only — not CollectPlayerOwnedKeys
+    -- (0.2.7 skipped every TF row when native empty because spell keys were pre-blocked).
+    CollectTargetFrameMissing(TfSupplementSkipKeys(paintKeys, missing), missing, maxN, stats)
+    if nativeN == 0 and #missing == 0 and HasTarget() then
+      CollectTargetFrameMissing(CopyKeySet(paintKeys), missing, maxN, stats)
     end
-    CollectTargetFrameMissing(tfDedupe, missing, maxN, stats)
   else
     if type(unit) == "string" then
       CollectPersonalAuraGaps(unit, paintKeys, missing, maxN, stats)

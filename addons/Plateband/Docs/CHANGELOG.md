@@ -1,5 +1,18 @@
 # Plateband changelog
 
+## 0.2.8 (HUD gate — empty native + TF mirror)
+
+- **Paint abort:** no longer requires `AurasFrame`/`DebuffListFrame` at gate — `FallbackParent` (incl. `UnitFrame`) is enough; layout anchor falls back to health bar when native row empty.
+- **TF dedupe fix:** `CollectTargetFrameMissing` dedupes against **native keys + icons already queued**, not `CollectPlayerOwnedKeys` — fixes Bellygrub-style targets where TF shows 2 harmful icons but plate native=0 and `fb=0` (0.2.7 pre-skipped owned spells).
+- **Target detect:** sole hostile nameplate while targeting counts as target plate when `UnitIsUnit` is secret.
+- **Note:** stray level-like text above a plate (e.g. “26”) is not Plateband — we paint textures only, no `SetText` on nameplates.
+
+### Playtest (0.2.8)
+
+1. `/reload` → `/pb diagnose` → **`ver=0.2.8`** · targeting mob with TF harmful≥2 → **`tf≥2`** · **`fb≥2`** (or **`native`+`fb`**).
+2. **Bellygrub** (or any `native=0`): TF DoTs visible on plate row above/beside health bar — matches TF harmful icons.
+3. UI intact — no DebuffList/name `ClearAllPoints`.
+
 ## 0.2.7 (HUD gate — Retinue TF harvest)
 
 - **Root fix:** replace thin `CollectTargetFrameButtons` / `ButtonAuraIconAny` scrape with **Retinue parity** harvest: `debuffAuraGroup:GetFramesByIndex`, **`GetAuras():Iterate`**, `auraPools`, **`C_UnitAuras.GetAuraSlots`**, numeric **`activeDebuffs` → GetAuraDataByAuraInstanceID**, live-button brute with secret icon support.
