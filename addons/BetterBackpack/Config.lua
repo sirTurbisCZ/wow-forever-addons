@@ -2,7 +2,7 @@
 
 BetterBackpack = BetterBackpack or {}
 
-local CURRENT_SCHEMA = 9
+local CURRENT_SCHEMA = 10
 local MAX_ERRORS = 40
 local MAX_MSG = 2000
 
@@ -12,7 +12,7 @@ local Config = BetterBackpack.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "1.2.6"
+Config.VERSION = "1.2.10"
 
 local function CharVendorDefaults()
   return {
@@ -64,6 +64,9 @@ local function ProfileDefaults()
     autoSellJunkLane = false, -- vendor: also sell non-grey items in Junk lane (opt-in)
     pos = nil, -- { point, relPoint, x, y } when user-moved
     userMoved = false,
+    -- Silent session trace → BetterBackpackDB (no bulk/vendor chat spam).
+    silentTrace = true,
+    actionTraceOn = true,
   }
 end
 
@@ -74,7 +77,25 @@ local function Defaults()
     errors = {},
     lastSelftest = nil,
     lastBlocked = nil,
+    sessionLog = { startedAt = 0, lines = {}, export = "" },
+    actionTrace = { startedAt = 0, entries = {}, export = "" },
+    lastActionTrace = nil,
   }
+end
+
+local function EnsureSessionLog(db)
+  if type(db.sessionLog) ~= "table" then
+    db.sessionLog = { startedAt = 0, lines = {}, export = "" }
+  end
+  if type(db.sessionLog.lines) ~= "table" then
+    db.sessionLog.lines = {}
+  end
+  if type(db.actionTrace) ~= "table" then
+    db.actionTrace = { startedAt = 0, entries = {}, export = "" }
+  end
+  if type(db.actionTrace.entries) ~= "table" then
+    db.actionTrace.entries = {}
+  end
 end
 
 Config.Defaults = Defaults
@@ -291,10 +312,27 @@ function Config.EnsureDB()
     from = 9
   end
 
+  -- 1.2.7: silent ACTION trace (agent-readable SV, wipe each login).
+  if from < 10 then
+    EnsureProfile(db)
+    if type(db.profile) == "table" then
+      if db.profile.silentTrace == nil then
+        db.profile.silentTrace = true
+      end
+      if db.profile.actionTraceOn == nil then
+        db.profile.actionTraceOn = true
+      end
+    end
+    EnsureSessionLog(db)
+    db.schemaVersion = 10
+    from = 10
+  end
+
   EnsureProfile(db)
   if type(db.errors) ~= "table" then
     db.errors = {}
   end
+  EnsureSessionLog(db)
 
   return db
 end

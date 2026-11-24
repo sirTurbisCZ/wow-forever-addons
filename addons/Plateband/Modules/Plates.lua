@@ -34,12 +34,175 @@ local lastDiagAt = 0
 local lastChatSig = nil
 local platesSeen = 0
 local overlayUpdates = 0
+local lastAuraRefreshAt = 0
+local AURA_DEBOUNCE_SEC = 0.12
+local GAP_STICKY_SEC = 3.0 -- hold when UNIT_AURA/API flickers empty on target paint (melee refresh)
+local SILENT_SWEEP_SEC = 0.5
+local gapSticky = {} -- [unit] = { icons = {}, at = number }
+local lastPaintDebug = {} -- diagnose: last PaintMergeMissing / Refresh snapshot
+local lastSilentSweepAt = 0
+-- Forward decl — module fns use assignment form (Lua 5.1: locals invisible above `local function`).
+local AnchorBand
+local AppendGapRow
+local ApplyGapSticky
+local AuraCountsAsForeignGaps
+local AuraDedupeKey
+local AuraIconPresent
+local AuraIsOurPersonalOnly
+local AuraIsPlayerOwned
+local AuraLooksForeign
+local BindUnit
+local BuildPaintTraceLine
+local ButtonAuraIcon
+local ButtonAuraIconAny
+local ClearFallback
+local ClearOverlay
+local CollectAuraSlotsGaps
+local CollectAuraTextures
+local CollectForeignAuraGaps
+local CollectPersonalAuraGaps
+local CollectPlateDebuffButtons
+local CollectPlayerOwnedKeys
+local CollectTargetFrameButtons
+local CollectTargetFrameMissing
+local CollectTargetFramePersonalGaps
+local CollectTargetHarmfulFromApi
+local CountHarmfulAuraSlots
+local CountTargetHarmfulApi
+local CountTargetHarmfulExpected
+local CollectTargetHarmfulRows
+local CollectUnitHarmfulMirror
+local DeduplicateHarmfulRows
+local CollectTfActiveDebuffs
+local CollectTfAuraSlots
+local CopyKeySet
+local CountNativeAuraRow
+local CountPlateHarmfulShown
+local CountShownAuraKids
+local CountTargetFrameAuras
+local ApplyGapAuraVisual
+local EnrichGapAuraEntry
+local GapAuraLive
+local PruneInactiveGapRows
+local CreateBandContainer
+local CreateGapAuraButton
+local CanonicalGapKey
+local EnsureTargetHarmfulParity
+local EnsureUnitHarmfulParity
+local MergeFriendPlatesEnabled
+local GapAuraKey
+local MergeRowIconSize
+local DedupeGapIcons
+local Defer
+local EnsureFallback
+local EnsureNativeVisible
+local EnsureOverlay
+local EnsureTicker
+local EnsureWatchTicker
+local EnumerateLivePlates
+local FallbackPaintParent
+local FallbackParent
+local FrameIsGlobalChrome
+local FrameIsShownSafe
+local GetTargetAuraContainer
+local HarvestAuraPoolButtons
+local HarvestTfAuraPool
+local HasTarget
+local HealthBar
+local IconSize
+local InitAuraButton
+local IsCastOrSpellBarFrame
+local IsForbiddenPlate
+local IsLikelyBuffFrame
+local IsPlayerOrFriendPlate
+local IsSecret
+local IsTargetPlate
+local IsUsableSpellIcon
+local LayoutMergeBesideNative
+local MaxIcons
+local MaybeAutoDiagnose
+local ModuleActive
+local NameplateUnitFor
+local NativeAuraMetrics
+local NativeBandRightAnchor
+local NativeBuffList
+local NativeDebuffAnchorList
+local NativeDebuffList
+local NativeKeySet
+local NativeShownKeySet
+local ReconcileTfHarmfulCoverage
+local ReconcileTargetFrameUiButtons
+local IsTargetDebuffAuraFrame
+local ForceFillTargetFrameGaps
+local ResolvePartyTokenForPlate
+local OnEvent
+local OverlayUnitKey
+local PaintMergeMissing
+local PickRightmostAuraFrame
+local PlateAuraPools
+local PlateFor
+local PlateNameFS
+local Profile
+local PublicString
+local PublicTexKey
+local PushTfAuraFrame
+local RawChildCount
+local RefreshAll
+local SamplePlateNativeDebuffSize
+local SampleTfDebuffIconSize
+local RememberGapSticky
+local RefreshHeldGapFallback
+local RestoreNameShift
+local SafeFallbackParent
+local SafeShown
+local SafeUnitExists
+local SameUnit
+local SaveNamePoints
+local ScrapeTargetFrameBrute
+local SetIconTexture
+local ShouldUseTargetAuraSource
+local SilentTraceEnabled
+local SilentTracePaint
+local SilentTraceSweep
+local SnapshotDiagnose
+local StopTicker
+local StopWatchTicker
+local TextureHasArt
+local TfRowKey
+local TfSupplementSkipKeys
+local UnitTokenFromPlate
+local UpdateOverlay
+local WatchInterval
 
-local function Profile()
+OverlayUnitKey = function(unit, plate)
+  if type(unit) == "string" and unit ~= "" and not unit:match("^pb:") then
+    return unit
+  end
+  if plate then
+    return "pb:" .. tostring(plate)
+  end
+  return nil
+end
+
+local GLOBAL_UI = {
+  UIParent = true,
+  PlayerFrame = true,
+  TargetFrame = true,
+  MainMenuBar = true,
+  MultiBarBottomLeft = true,
+  MultiBarBottomRight = true,
+  MultiBarLeft = true,
+  MultiBarRight = true,
+  StanceBar = true,
+  PetActionBar = true,
+  ChatFrame1 = true,
+}
+
+Profile = function()
   return ns.Config.GetProfile()
 end
 
-local function IsSecret(v)
+IsSecret = function(v)
   if type(issecretvalue) == "function" then
     local ok, secret = pcall(issecretvalue, v)
     return ok and secret and true or false
@@ -48,7 +211,7 @@ local function IsSecret(v)
 end
 
 --- Forever: UnitExists / UnitIsUnit results may be secret — never raw truthy-test secrets.
-local function SafeUnitExists(unit)
+SafeUnitExists = function(unit)
   if type(unit) ~= "string" or unit == "" then
     return false
   end
@@ -88,7 +251,7 @@ local function SafeUnitExists(unit)
   return exists and true or false
 end
 
-local function SafeShown(frame)
+SafeShown = function(frame)
   if not frame then
     return false
   end
@@ -99,7 +262,7 @@ local function SafeShown(frame)
   return shown and true or false
 end
 
-local function PlateFor(unit)
+PlateFor = function(unit)
   if not unit or not C_NamePlate or not C_NamePlate.GetNamePlateForUnit then
     return nil
   end
@@ -110,7 +273,7 @@ local function PlateFor(unit)
   return nil
 end
 
-local function IsForbiddenPlate(plate)
+IsForbiddenPlate = function(plate)
   if not plate then
     return true
   end
@@ -123,7 +286,32 @@ local function IsForbiddenPlate(plate)
   return forbidden
 end
 
-local function SameUnit(a, b)
+FrameIsGlobalChrome = function(frame)
+  if not frame or frame == UIParent then
+    return true
+  end
+  local chrome = false
+  pcall(function()
+    local n = frame.GetName and frame:GetName()
+    if type(n) == "string" and GLOBAL_UI[n] then
+      chrome = true
+    end
+  end)
+  return chrome
+end
+
+SafeFallbackParent = function(plate)
+  if not plate or IsForbiddenPlate(plate) then
+    return nil
+  end
+  local uf = plate.UnitFrame
+  if not uf or FrameIsGlobalChrome(uf) then
+    return nil
+  end
+  return uf
+end
+
+SameUnit = function(a, b)
   if not a or not b then
     return false
   end
@@ -134,7 +322,7 @@ local function SameUnit(a, b)
   return same and true or false
 end
 
-local function PublicString(v)
+PublicString = function(v)
   if type(v) ~= "string" then
     return nil
   end
@@ -147,7 +335,7 @@ local function PublicString(v)
   return v
 end
 
-local function UnitTokenFromPlate(plate)
+UnitTokenFromPlate = function(plate)
   if not plate then
     return nil
   end
@@ -180,7 +368,7 @@ local function UnitTokenFromPlate(plate)
 end
 
 --- Prefer C_NamePlate.GetNamePlates(); fall back to nameplate1..40.
-local function EnumerateLivePlates()
+EnumerateLivePlates = function()
   local out = {}
   local seen = {}
   if C_NamePlate and C_NamePlate.GetNamePlates then
@@ -193,11 +381,10 @@ local function EnumerateLivePlates()
             seen[unit] = true
             out[#out + 1] = { plate = plate, unit = unit }
           elseif not unit then
-            -- Plate without public token — still try to attach via synthetic key.
-            local key = tostring(plate)
-            if not seen[key] then
+            local key = OverlayUnitKey(nil, plate)
+            if key and not seen[key] then
               seen[key] = true
-              out[#out + 1] = { plate = plate, unit = nil }
+              out[#out + 1] = { plate = plate, unit = key }
             end
           end
         end
@@ -222,7 +409,7 @@ local function EnumerateLivePlates()
 end
 
 --- Forever: GetNamePlateForUnit("target") / UnitIsUnit often secret after DoT.
-local function NameplateUnitFor(token)
+NameplateUnitFor = function(token)
   if not token then
     return nil
   end
@@ -348,7 +535,7 @@ local function NameplateUnitFor(token)
   return nil
 end
 
-local function HasTarget()
+HasTarget = function()
   if PlateFor("target") then
     return true
   end
@@ -361,7 +548,7 @@ local function HasTarget()
   return false
 end
 
-local function HealthBar(plate)
+HealthBar = function(plate)
   local uf = plate and plate.UnitFrame
   if not uf then
     return nil
@@ -377,7 +564,7 @@ local function HealthBar(plate)
   return bar
 end
 
-local function NativeDebuffList(plate)
+NativeDebuffList = function(plate)
   local list
   pcall(function()
     local uf = plate and plate.UnitFrame
@@ -392,7 +579,22 @@ local function NativeDebuffList(plate)
   return list
 end
 
-local function NativeBuffList(plate)
+--- Layout anchor when DebuffListFrame missing but AurasFrame exists (Forever variants).
+NativeDebuffAnchorList = function(plate)
+  local list = NativeDebuffList(plate)
+  if list then
+    return list
+  end
+  pcall(function()
+    local uf = plate and plate.UnitFrame
+    if uf and uf.AurasFrame then
+      list = uf.AurasFrame
+    end
+  end)
+  return list
+end
+
+NativeBuffList = function(plate)
   local list
   pcall(function()
     local uf = plate and plate.UnitFrame
@@ -407,7 +609,7 @@ local function NativeBuffList(plate)
   return list
 end
 
-local function CountShownAuraKids(frame)
+CountShownAuraKids = function(frame)
   if not frame then
     return 0
   end
@@ -430,7 +632,7 @@ local function CountShownAuraKids(frame)
   return n
 end
 
-local function RawChildCount(frame)
+RawChildCount = function(frame)
   if not frame then
     return 0
   end
@@ -443,15 +645,81 @@ local function RawChildCount(frame)
   return #kids
 end
 
-local function CountNativeAuraRow(plate)
+CountNativeAuraRow = function(plate)
   return CountShownAuraKids(NativeDebuffList(plate))
     + CountShownAuraKids(NativeBuffList(plate))
 end
 
+--- Shown harmful on plate — pools enumerate what GetChildren misses on Forever.
+CountPlateHarmfulShown = function(plate)
+  if not plate then
+    return 0
+  end
+  local buttons = {}
+  CollectPlateDebuffButtons(plate, buttons, MaxIcons())
+  local n = 0
+  for i = 1, #buttons do
+    if SafeShown(buttons[i]) then
+      n = n + 1
+    end
+  end
+  if n > 0 then
+    return n
+  end
+  return CountShownAuraKids(NativeDebuffList(plate))
+end
+
+CopyKeySet = function(src)
+  local t = {}
+  if type(src) == "table" then
+    for k, v in pairs(src) do
+      t[k] = v
+    end
+  end
+  return t
+end
+
+MergeFriendPlatesEnabled = function()
+  local p = Profile()
+  if p.mergeMissing ~= true then
+    return false
+  end
+  return p.mergeFriendPlates ~= false
+end
+
+--- Map party/raid unit token ↔ visible nameplate (Forever SameUnit often fails).
+ResolvePartyTokenForPlate = function(plate)
+  if not plate then
+    return nil
+  end
+  for i = 1, 4 do
+    local pt = "party" .. i
+    if SafeUnitExists(pt) then
+      local pl = PlateFor(pt)
+      if pl and pl == plate then
+        return pt
+      end
+    end
+  end
+  for i = 1, 40 do
+    local rt = "raid" .. i
+    if SafeUnitExists(rt) then
+      local pl = PlateFor(rt)
+      if pl and pl == plate then
+        return rt
+      end
+    end
+  end
+  return nil
+end
+
 --- Friend / player plates: name must sit above auras (preference).
-local function IsPlayerOrFriendPlate(unit, plate)
+IsPlayerOrFriendPlate = function(unit, plate)
   if not unit then
     return false
+  end
+  if plate and ResolvePartyTokenForPlate(plate) then
+    return true
   end
   if SameUnit(unit, "player") then
     return true
@@ -460,16 +728,71 @@ local function IsPlayerOrFriendPlate(unit, plate)
   pcall(function()
     local okP, isPlayer = pcall(UnitIsPlayer, unit)
     if okP and not IsSecret(isPlayer) and isPlayer then
-      hit = true
-      return
+      local canAttack
+      pcall(function()
+        canAttack = UnitCanAttack("player", unit)
+      end)
+      if canAttack == false and not IsSecret(canAttack) then
+        hit = true
+        return
+      end
     end
     local okF, isFriend = pcall(UnitIsFriend, "player", unit)
     if okF and not IsSecret(isFriend) and isFriend then
+      hit = true
+      return
+    end
+    local reaction
+    pcall(function()
+      reaction = UnitReaction("player", unit)
+    end)
+    if reaction ~= nil and not IsSecret(reaction) and reaction >= 4 then
       hit = true
     end
   end)
   if hit then
     return true
+  end
+  pcall(function()
+    if UnitInParty and UnitInParty(unit) then
+      hit = true
+    end
+    if UnitInRaid and UnitInRaid(unit) then
+      hit = true
+    end
+  end)
+  if hit then
+    return true
+  end
+  local guid
+  pcall(function()
+    guid = UnitGUID(unit)
+  end)
+  if guid and not IsSecret(guid) then
+    for i = 1, 4 do
+      local pu = "party" .. i
+      if SafeUnitExists(pu) then
+        local g
+        pcall(function()
+          g = UnitGUID(pu)
+        end)
+        if g and not IsSecret(g) and g == guid then
+          return true
+        end
+      end
+    end
+    for i = 1, 40 do
+      local ru = "raid" .. i
+      if SafeUnitExists(ru) then
+        local g
+        pcall(function()
+          g = UnitGUID(ru)
+        end)
+        if g and not IsSecret(g) and g == guid then
+          return true
+        end
+      end
+    end
   end
   for i = 1, 4 do
     if SameUnit(unit, "party" .. i) then
@@ -484,7 +807,7 @@ local function IsPlayerOrFriendPlate(unit, plate)
   return false
 end
 
-local function GetTargetAuraContainer()
+GetTargetAuraContainer = function()
   local c
   pcall(function()
     if TargetFrame and TargetFrame.GetAuraContainer then
@@ -502,12 +825,9 @@ local function GetTargetAuraContainer()
   return c
 end
 
--- Forward decls: TF harvest must see these locals (Lua scope — nil global = dead merge).
-local IconSize
-local MaxIcons
 
 --- Forever TF auras live in auraPools — GetChildren() alone often yields tf=0.
-local function HarvestAuraPoolButtons(pools, out, maxN)
+HarvestAuraPoolButtons = function(pools, out, maxN)
   if type(pools) ~= "table" or not out then
     return
   end
@@ -563,7 +883,78 @@ local function HarvestAuraPoolButtons(pools, out, maxN)
   end
 end
 
-local function CollectTargetFrameButtons(out, maxN)
+--- Nameplate harmful pools (Forever — DebuffList GetChildren often empty while pools paint).
+PlateAuraPools = function(plate)
+  local pools
+  pcall(function()
+    local uf = plate and plate.UnitFrame
+    local af = uf and uf.AurasFrame
+    if af and af.auraPools then
+      pools = af.auraPools
+    end
+    local list = NativeDebuffList(plate)
+    if not pools and list and list.auraPools then
+      pools = list.auraPools
+    end
+  end)
+  return pools
+end
+
+CollectPlateDebuffButtons = function(plate, out, maxN)
+  if not plate or not out then
+    return
+  end
+  maxN = maxN or MaxIcons()
+  local pools = PlateAuraPools(plate)
+  if pools then
+    HarvestAuraPoolButtons(pools, out, maxN)
+  end
+  if #out >= maxN then
+    return
+  end
+  local list = NativeDebuffList(plate)
+  if not list then
+    return
+  end
+  local ok, kids = pcall(function()
+    return { list:GetChildren() }
+  end)
+  if not ok or type(kids) ~= "table" then
+    return
+  end
+  for i = 1, #kids do
+    if #out >= maxN then
+      return
+    end
+    local child = kids[i]
+    if child and (child.Icon or child.icon or child.GetAuraInstance) and SafeShown(child) then
+      out[#out + 1] = child
+    end
+  end
+end
+
+FallbackParent = function(plate)
+  return NativeDebuffList(plate) or NativeDebuffAnchorList(plate) or SafeFallbackParent(plate)
+end
+
+--- When native harmful row is empty, parent on health bar (hidden DebuffList parents clip icons).
+FallbackPaintParent = function(plate)
+  local nativeN = CountPlateHarmfulShown(plate)
+  if nativeN > 0 then
+    return FallbackParent(plate)
+  end
+  local bar = HealthBar(plate)
+  if bar and not FrameIsGlobalChrome(bar) then
+    return bar
+  end
+  local uf = plate and plate.UnitFrame
+  if uf and not FrameIsGlobalChrome(uf) then
+    return uf
+  end
+  return FallbackParent(plate)
+end
+
+CollectTargetFrameButtons = function(out, maxN)
   maxN = maxN or MaxIcons()
   local container = GetTargetAuraContainer()
   if container then
@@ -605,18 +996,35 @@ local function CollectTargetFrameButtons(out, maxN)
   if TargetFrame then
     pcall(HarvestAuraPoolButtons, TargetFrame.auraPools, out, maxN)
   end
-  for i = 1, 16 do
+  for i = 1, 40 do
     if #out >= maxN then
       break
     end
     local frame = _G["TargetFrameDebuff" .. i]
-    if frame and SafeShown(frame) then
+    if frame and (frame.Icon or frame.icon or frame.GetAuraInstance) then
       out[#out + 1] = frame
     end
   end
 end
 
-local function CountTargetFrameAuras()
+IsTargetDebuffAuraFrame = function(frame)
+  if not frame then
+    return false
+  end
+  local n
+  pcall(function()
+    n = frame.GetName and frame:GetName()
+  end)
+  if type(n) == "string" then
+    local l = n:lower()
+    if l:find("debuff", 1, true) or l:find("aurabutton", 1, true) or l:find("targetaura", 1, true) then
+      return true
+    end
+  end
+  return frame.Icon ~= nil or frame.icon ~= nil or frame.GetAuraInstance ~= nil
+end
+
+CountTargetFrameAuras = function()
   local buttons = {}
   CollectTargetFrameButtons(buttons, MaxIcons())
   local n = 0
@@ -678,7 +1086,31 @@ MaxIcons = function()
   return n
 end
 
-local function InitAuraButton(button, size)
+local GAP_AURA_TEMPLATES = {
+  "DebuffButtonTemplate",
+  "BuffButtonTemplate",
+  "TargetDebuffFrameTemplate",
+  "TargetBuffFrameTemplate",
+}
+
+CreateGapAuraButton = function(parent, size)
+  size = size or IconSize()
+  for i = 1, #GAP_AURA_TEMPLATES do
+    local tpl = GAP_AURA_TEMPLATES[i]
+    local ok, btn = pcall(CreateFrame, "Button", nil, parent, tpl)
+    if ok and btn then
+      btn:Hide()
+      pcall(InitAuraButton, btn, size)
+      return btn
+    end
+  end
+  local frame = CreateFrame("Frame", nil, parent)
+  frame:Hide()
+  pcall(InitAuraButton, frame, size)
+  return frame
+end
+
+InitAuraButton = function(button, size)
   -- Forever aura icons are often masked: SetTexCoord → FE flood
   -- "Texture:SetTextCoord(): Cannot set tex coords when texture has mask"
   -- and broken initializeFrame leaves AuraContainer empty (ac=0).
@@ -739,7 +1171,7 @@ local function InitAuraButton(button, size)
   end
 end
 
-local function CreateBandContainer(parent, size)
+CreateBandContainer = function(parent, size)
   if acCreateFailed then
     return nil
   end
@@ -824,7 +1256,7 @@ end
 
 --- Always keep native DebuffList fully visible (solo native-first).
 --- Never ClearAllPoints on DebuffList — 0.1.8 orphaned icons when SetPoint FORBIDDEN.
-local function EnsureNativeVisible(plate)
+EnsureNativeVisible = function(plate)
   local function restore(list)
     if not list then
       return
@@ -844,7 +1276,7 @@ local function EnsureNativeVisible(plate)
   restore(NativeBuffList(plate))
 end
 
-local function AnchorBand(container, unit, plate)
+AnchorBand = function(container, unit, plate)
   plate = plate or PlateFor(unit)
   if not plate or not container then
     return false
@@ -894,7 +1326,7 @@ local function AnchorBand(container, unit, plate)
   return ok and true or false
 end
 
-local function BindUnit(container, unit)
+BindUnit = function(container, unit)
   if not container or not container.SetUnit then
     return
   end
@@ -922,12 +1354,12 @@ local function BindUnit(container, unit)
   pcall(container.UpdateAllAuras, container)
 end
 
-local function ModuleActive()
+ModuleActive = function()
   local p = Profile()
   return p.enabled and not p.safeMode and p.showBand and not acCreateFailed
 end
 
-local function ClearFallback(unit)
+ClearFallback = function(unit, keepSticky)
   local fb = fallbacks[unit]
   if not fb then
     return
@@ -939,9 +1371,13 @@ local function ClearFallback(unit)
   end
   fb:Hide()
   fb:ClearAllPoints()
+  fb._painted = 0
+  if not keepSticky then
+    gapSticky[unit] = nil
+  end
 end
 
-local function PlateNameFS(plate)
+PlateNameFS = function(plate)
   local name
   pcall(function()
     local uf = plate and plate.UnitFrame
@@ -952,46 +1388,49 @@ end
 
 --- Intentionally no-ops: three-addon refactor forbids any name ClearAllPoints/SetPoint.
 --- Prior versions saved/restored name anchors and broke Forever plates; /reload resets Blizzard layout.
-local function SaveNamePoints(unit, nameFS)
+SaveNamePoints = function(unit, nameFS)
   return
 end
 
-local function RestoreNameShift(unit, plate)
+RestoreNameShift = function(unit, plate)
   if unit then
     nameShifts[unit] = nil
   end
 end
 
--- Forward decl: Layout anchors merge beside native (defined below).
-local NativeBandRightAnchor
 
 --- Opt-in merge layout: only move Plateband fallback frame — never name / DebuffList.
-local function LayoutMergeBesideNative(unit, plate, mergeFb, painted)
+LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
   painted = tonumber(painted) or 0
-  if IsPlayerOrFriendPlate(unit, plate) then
+  if IsPlayerOrFriendPlate(unit, plate) and not MergeFriendPlatesEnabled() then
     return
   end
   if not mergeFb or painted <= 0 then
     return
   end
 
-  local bar = HealthBar(plate)
   local native = NativeDebuffList(plate)
+  local _, pad = MergeRowIconSize(plate)
   mergeFb:ClearAllPoints()
   local right = NativeBandRightAnchor(plate)
-  if right then
-    -- Same band as native: continue LEFT→RIGHT of rightmost native icon.
-    mergeFb:SetPoint("LEFT", right, "RIGHT", OVERLAY_PAD, 0)
-  elseif native and SafeShown(native) then
-    mergeFb:SetPoint("LEFT", native, "RIGHT", OVERLAY_PAD, 0)
-  elseif bar then
-    mergeFb:SetPoint("BOTTOM", bar, "TOP", 0, OVERLAY_GAP_ABOVE)
+  local anchor = right or native
+  if anchor then
+    -- Same horizontal band as native (left-of-health row): continue after rightmost icon.
+    pcall(function()
+      mergeFb:SetPoint("LEFT", anchor, "RIGHT", pad, 0)
+      mergeFb:SetPoint("BOTTOM", anchor, "BOTTOM", 0, 0)
+    end)
   else
-    mergeFb:SetPoint("BOTTOM", plate, "TOP", 0, OVERLAY_GAP_ABOVE)
+    local bar = HealthBar(plate)
+    if bar then
+      pcall(function()
+        mergeFb:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", 0, OVERLAY_GAP_ABOVE)
+      end)
+    end
   end
 end
 
-local function ClearOverlay(unit)
+ClearOverlay = function(unit)
   local plate = unit and PlateFor(unit)
   if plate then
     EnsureNativeVisible(plate)
@@ -1006,7 +1445,7 @@ local function ClearOverlay(unit)
   ClearFallback(unit)
 end
 
-local function EnsureOverlay(unit)
+EnsureOverlay = function(unit)
   if not unit then
     return nil
   end
@@ -1029,28 +1468,48 @@ local function EnsureOverlay(unit)
   return holder
 end
 
-local function EnsureFallback(unit, parent)
+EnsureFallback = function(unit, plate)
+  local parent = FallbackPaintParent(plate)
+  if not parent then
+    return nil
+  end
   local fb = fallbacks[unit]
   if fb then
-    if parent and fb:GetParent() ~= parent then
-      pcall(fb.SetParent, fb, parent)
+    if fb._pbGapVer ~= 2 or not fb.icons or not fb.icons[1] then
+      fb._pbGapVer = nil
+    elseif fb.icons[1] and fb.icons[1].SetTexture and not (fb.icons[1].icon or fb.icons[1].Icon) then
+      fb._pbGapVer = nil
     end
-    return fb
+    if not fb._pbGapVer then
+      if fb.icons then
+        for i = 1, #fb.icons do
+          pcall(fb.icons[i].Hide, fb.icons[i])
+        end
+      end
+      fb.icons = nil
+    else
+      if fb:GetParent() ~= parent then
+        pcall(fb.SetParent, fb, parent)
+      end
+      fb._pbPlate = plate
+      return fb
+    end
   end
-  fb = CreateFrame("Frame", nil, parent or UIParent)
+  fb = CreateFrame("Frame", nil, parent)
   fb:EnableMouse(false)
   fb:Hide()
   fb.icons = {}
   local maxN = MaxIcons()
-  local sz = IconSize()
+  local sz = MergeRowIconSize(plate)
+  fb._pbPlate = plate
   for i = 1, maxN do
-    local tex = fb:CreateTexture(nil, "ARTWORK")
-    tex:SetSize(sz, sz)
-    tex:Hide()
-    -- No SetTexCoord — Forever masks.
-    fb.icons[i] = tex
+    local btn = CreateGapAuraButton(fb, sz)
+    btn._pbPlate = plate
+    fb.icons[i] = btn
   end
   fb._pbFallback = true
+  fb._pbGapVer = 2
+  fb._pbPlate = plate
   fallbacks[unit] = fb
   return fb
 end
@@ -1058,7 +1517,7 @@ end
 --- Collect aura icon textures from a frame tree (native DebuffList / TF).
 --- Pass textures straight into SetTexture — never compare secret FileIDs.
 --- Direct aura buttons only — no deep recurse (nested Icon frames caused dup stacks).
-local function CollectAuraTextures(root, out, maxN)
+CollectAuraTextures = function(root, out, maxN)
   if not root or #out >= maxN then
     return
   end
@@ -1094,7 +1553,7 @@ local function CollectAuraTextures(root, out, maxN)
 end
 
 --- Public texture key for dedupe — nil when secret / unkeyable (skip paint to avoid dups).
-local function PublicTexKey(t)
+PublicTexKey = function(t)
   local key
   pcall(function()
     if type(t) == "number" or type(t) == "string" then
@@ -1113,17 +1572,257 @@ local function PublicTexKey(t)
   return key
 end
 
-local function NativeKeySet(plate)
+NativeKeySet = function(plate)
   local keys = {}
   local texes = {}
   CollectAuraTextures(NativeDebuffList(plate), texes, MaxIcons())
   for i = 1, #texes do
     local k = PublicTexKey(texes[i])
     if k then
-      keys[k] = true
+      keys["tex:" .. tostring(k)] = true
+    end
+  end
+  local buttons = {}
+  CollectPlateDebuffButtons(plate, buttons, MaxIcons())
+  for i = 1, #buttons do
+    local icon, _, gotIcon = ButtonAuraIcon(buttons[i])
+    if gotIcon and icon then
+      local k
+      pcall(function()
+        if buttons[i].GetAuraInstance then
+          local _, data = buttons[i]:GetAuraInstance()
+          if data then
+            k = GapAuraKey(data, icon)
+          end
+        end
+      end)
+      if not k then
+        k = GapAuraKey(nil, icon)
+      end
+      if k then
+        keys[k] = true
+      end
     end
   end
   return keys
+end
+
+--- Skip keys for gap paint — only **shown** native harmful (pooled kids were overskipping TF rows).
+NativeShownKeySet = function(plate)
+  local keys = {}
+  if not plate then
+    return keys
+  end
+  local buttons = {}
+  CollectPlateDebuffButtons(plate, buttons, MaxIcons())
+  for i = 1, #buttons do
+    local btn = buttons[i]
+    if btn and SafeShown(btn) then
+      local icon, _, gotIcon = ButtonAuraIcon(btn)
+      if gotIcon and icon then
+        local k
+        pcall(function()
+          if btn.GetAuraInstance then
+            local _, data = btn:GetAuraInstance()
+            if data then
+              k = GapAuraKey(data, icon)
+            end
+          end
+        end)
+        if not k then
+          k = GapAuraKey(nil, icon)
+        end
+        if k then
+          keys[k] = true
+        end
+      end
+    end
+  end
+  return keys
+end
+
+local function AuraChromeWidth(frame)
+  if not frame then
+    return nil
+  end
+  local w
+  pcall(function()
+    w = frame:GetWidth()
+  end)
+  if type(w) ~= "number" or IsSecret(w) then
+    return nil
+  end
+  if w < 12 or w > 48 then
+    return nil
+  end
+  -- Plate/container chrome can report wider than the icon; prefer art child.
+  if w > 28 then
+    local art = frame.icon or frame.Icon
+    if art then
+      local iw
+      pcall(function()
+        iw = art:GetWidth()
+      end)
+      if type(iw) == "number" and not IsSecret(iw) and iw >= 12 and iw <= 32 then
+        return iw
+      end
+    end
+  end
+  return w
+end
+
+SamplePlateNativeDebuffSize = function(plate)
+  if not plate then
+    return nil
+  end
+  local buttons = {}
+  CollectPlateDebuffButtons(plate, buttons, MaxIcons())
+  local best
+  for i = 1, #buttons do
+    local btn = buttons[i]
+    if btn and SafeShown(btn) then
+      local w = AuraChromeWidth(btn)
+      if w and (not best or w < best) then
+        best = w
+      end
+    end
+  end
+  return best
+end
+
+SampleTfDebuffIconSize = function()
+  local best
+  for i = 1, 16 do
+    local f = _G["TargetFrameDebuff" .. i]
+    if f and SafeShown(f) then
+      local w = AuraChromeWidth(f)
+      if w and (not best or w < best) then
+        best = w
+      end
+    end
+  end
+  local container = GetTargetAuraContainer()
+  if container and container.debuffAuraGroup and container.debuffAuraGroup.GetFramesByIndex then
+    local frames
+    pcall(function()
+      frames = container.debuffAuraGroup:GetFramesByIndex()
+    end)
+    if type(frames) == "table" then
+      for j = 1, #frames do
+        local w = AuraChromeWidth(frames[j])
+        if w and (not best or w < best) then
+          best = w
+        end
+      end
+    end
+  end
+  return best
+end
+
+--- Match native debuff chrome — reject oversized chrome (stack parent, not aura kid).
+NativeAuraMetrics = function(plate)
+  local pad = OVERLAY_PAD
+  local sz = IconSize()
+  local widths = {}
+  local buttons = {}
+  CollectPlateDebuffButtons(plate, buttons, MaxIcons())
+  for i = 1, #buttons do
+    local w = AuraChromeWidth(buttons[i])
+    if w and w <= 36 then
+      widths[#widths + 1] = w
+    end
+  end
+  if #widths > 0 then
+    table.sort(widths)
+    sz = widths[1]
+    if widths[#widths] - widths[1] > 4 then
+      local mid = widths[math.ceil(#widths / 2)]
+      if mid and mid >= 12 and mid <= 32 then
+        sz = mid
+      end
+    end
+  else
+    local tf = SampleTfDebuffIconSize()
+    if tf then
+      sz = tf
+    end
+  end
+  local bar = HealthBar(plate)
+  if bar then
+    pcall(function()
+      local bh = bar:GetHeight()
+      if type(bh) == "number" and not IsSecret(bh) and bh > 0 then
+        local cap = math.floor(bh * 0.92)
+        if cap >= 12 and sz > cap then
+          sz = cap
+        end
+      end
+    end)
+  end
+  if sz < 12 then
+    sz = 12
+  elseif sz > 32 then
+    sz = 32
+  end
+  return sz, pad
+end
+
+--- Gap icons match native plate personal kids when native row visible; else TF personal chrome.
+MergeRowIconSize = function(plate, fb)
+  local pad = OVERLAY_PAD
+  local nativeN = plate and CountPlateHarmfulShown(plate) or 0
+  local sz
+  if nativeN > 0 then
+    sz = SamplePlateNativeDebuffSize(plate) or select(1, NativeAuraMetrics(plate))
+  elseif HasTarget() then
+    sz = SampleTfDebuffIconSize() or select(1, NativeAuraMetrics(plate))
+  else
+    sz = select(1, NativeAuraMetrics(plate))
+  end
+  if fb then
+    if nativeN > 0 then
+      -- Own DoT on native row sets band size — gap foreign must match (grow lock).
+      fb._pbLockedSz = sz
+    elseif type(fb._pbLockedSz) == "number" then
+      if sz > fb._pbLockedSz then
+        sz = fb._pbLockedSz
+      else
+        fb._pbLockedSz = sz
+      end
+    else
+      fb._pbLockedSz = sz
+    end
+    sz = fb._pbLockedSz
+  end
+  local cap = nativeN > 0 and 40 or 32
+  if sz < 12 then
+    sz = 12
+  elseif sz > cap then
+    sz = cap
+  end
+  return sz, pad
+end
+
+PickRightmostAuraFrame = function(frames)
+  local rightmost, bestRight
+  for i = 1, #frames do
+    local child = frames[i]
+    if child and SafeShown(child) and (child.Icon or child.icon or child.GetAuraInstance) then
+      local r
+      pcall(function()
+        r = child:GetRight()
+      end)
+      if type(r) == "number" and not IsSecret(r) then
+        if not bestRight or r > bestRight then
+          bestRight = r
+          rightmost = child
+        end
+      elseif not rightmost then
+        rightmost = child
+      end
+    end
+  end
+  return rightmost
 end
 
 --- Rightmost shown native aura button (or DebuffListFrame) — merge anchors beside it.
@@ -1132,28 +1831,17 @@ NativeBandRightAnchor = function(plate)
   if not list then
     return nil
   end
-  local rightmost, bestRight
+  local buttons = {}
+  CollectPlateDebuffButtons(plate, buttons, MaxIcons())
+  local rightmost = PickRightmostAuraFrame(buttons)
+  if rightmost then
+    return rightmost
+  end
   local ok, kids = pcall(function()
     return { list:GetChildren() }
   end)
   if ok and type(kids) == "table" then
-    for i = 1, #kids do
-      local child = kids[i]
-      if child and SafeShown(child) and (child.Icon or child.icon or child.GetAuraInstance) then
-        local r
-        pcall(function()
-          r = child:GetRight()
-        end)
-        if type(r) == "number" and not IsSecret(r) then
-          if not bestRight or r > bestRight then
-            bestRight = r
-            rightmost = child
-          end
-        elseif not rightmost then
-          rightmost = child
-        end
-      end
-    end
+    rightmost = PickRightmostAuraFrame(kids)
   end
   if rightmost then
     return rightmost
@@ -1164,7 +1852,7 @@ NativeBandRightAnchor = function(plate)
   return list
 end
 
-local function IsTargetPlate(unit, plate)
+IsTargetPlate = function(unit, plate)
   if not HasTarget() then
     return false
   end
@@ -1178,11 +1866,56 @@ local function IsTargetPlate(unit, plate)
   if plate and PlateFor("target") == plate then
     return true
   end
+  if plate and unit and HasTarget() then
+    local tp = PlateFor("target")
+    if tp and tp == plate then
+      return true
+    end
+    local live = EnumerateLivePlates()
+    local onlyU, onlyP, n = nil, nil, 0
+    for i = 1, #live do
+      local u = live[i].unit
+      local pl = live[i].plate
+      if u and pl and not SameUnit(u, "player") and not IsPlayerOrFriendPlate(u, pl) then
+        n = n + 1
+        onlyU = u
+        onlyP = pl
+        if n > 1 then
+          onlyU = nil
+          onlyP = nil
+          break
+        end
+      end
+    end
+    if n == 1 and onlyU == unit and onlyP == plate then
+      return true
+    end
+  end
+  return false
+end
+
+ShouldUseTargetAuraSource = function(unit, plate)
+  if not HasTarget() then
+    return false
+  end
+  if IsTargetPlate(unit, plate) then
+    return true
+  end
+  local tp = PlateFor("target")
+  if tp and plate and tp == plate then
+    return true
+  end
+  if unit == "target" then
+    return true
+  end
+  if type(unit) == "string" and lastTargetPlateUnit and unit == lastTargetPlateUnit then
+    return true
+  end
   return false
 end
 
 --- True when aura data is publicly player/pet-owned (nil = unknown/secret).
-local function AuraIsPlayerOwned(data)
+AuraIsPlayerOwned = function(data)
   if not data then
     return nil
   end
@@ -1208,8 +1941,19 @@ local function AuraIsPlayerOwned(data)
   return nil
 end
 
+--- Local player/pet harmful only — party DoTs must not land here (0.2.16 coexist).
+AuraIsOurPersonalOnly = function(data)
+  if AuraIsPlayerOwned(data) ~= true then
+    return false
+  end
+  if AuraLooksForeign(data) then
+    return false
+  end
+  return true
+end
+
 --- Public texture keys known to be player-owned (skip even if native keys are secret).
-local function CollectPlayerOwnedKeys(unitToken, into)
+CollectPlayerOwnedKeys = function(unitToken, into)
   if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
     return
   end
@@ -1221,38 +1965,49 @@ local function CollectPlayerOwnedKeys(unitToken, into)
     if not ok or not data then
       break
     end
-    if AuraIsPlayerOwned(data) == true then
-      local key = PublicTexKey(data.icon)
+    if AuraIsOurPersonalOnly(data) then
+      local key = AuraDedupeKey(data, data.icon)
       if key then
         into[key] = true
+      end
+      if type(CanonicalGapKey) == "function" then
+        local ck = CanonicalGapKey({ icon = data.icon, spellId = data.spellId, auraInstanceID = data.auraInstanceID })
+        if ck then
+          into[ck] = true
+        end
       end
     end
   end
 end
 
---- Dedupe key: public texture, else public spellId, else nil (caller may still paint).
-local function AuraDedupeKey(data, icon)
-  local key = PublicTexKey(icon)
-  if key then
-    return key
-  end
-  if data then
-    local spellKey
-    pcall(function()
-      local id = data.spellId
-      if type(id) == "number" and not IsSecret(id) then
-        spellKey = "spell:" .. tostring(id)
-      end
-    end)
-    if spellKey then
-      return spellKey
+--- Instance → spellId → texture (never collapse unlike spells by icon file).
+GapAuraKey = function(data, icon)
+  if type(data) == "table" then
+    local aid = data.auraInstanceID
+    if aid ~= nil and not IsSecret(aid) then
+      return "inst:" .. tostring(aid)
     end
+    local sid = data.spellId
+    if sid ~= nil and not IsSecret(sid) then
+      return "spell:" .. tostring(sid)
+    end
+    if data.icon ~= nil and icon == nil then
+      icon = data.icon
+    end
+  end
+  local tk = PublicTexKey(icon)
+  if tk then
+    return "tex:" .. tostring(tk)
   end
   return nil
 end
 
+AuraDedupeKey = function(data, icon)
+  return GapAuraKey(data, icon)
+end
+
 --- Source looks like another unit (not local player/pet) — include foreign like "Ours".
-local function AuraLooksForeign(data)
+AuraLooksForeign = function(data)
   if not data then
     return false
   end
@@ -1270,9 +2025,16 @@ local function AuraLooksForeign(data)
   return true
 end
 
---- All harmful Blizzard may omit: other players (party or not). Not party-only.
---- allowSecretUnknown: target/enemy path — take secret icons when ownership isn't clearly ours.
-local function CollectUnitAuraMissing(unitToken, skipKeys, out, maxN, allowSecretUnknown)
+--- Gap paint candidate for foreign/API pass — anything except our personal-only row.
+AuraCountsAsForeignGaps = function(data)
+  if not data then
+    return true
+  end
+  return not AuraIsOurPersonalOnly(data)
+end
+
+--- v0.2.4 P0 — 0.1.15 foreign API pass: skip owned==true (personal stays native-only).
+CollectForeignAuraGaps = function(unitToken, skipKeys, out, maxN, allowSecretUnknown, stats)
   if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
     return
   end
@@ -1288,34 +2050,476 @@ local function CollectUnitAuraMissing(unitToken, skipKeys, out, maxN, allowSecre
       break
     end
 
-    local owned = AuraIsPlayerOwned(data)
-    -- Skip only clearly *our* auras — native DebuffList owns those.
-    if owned == true then
-      -- skip
+    if not AuraCountsAsForeignGaps(data) then
+      -- personal-only — native or personal gap pass owns it
     else
       local icon = data.icon
+      local owned = AuraIsPlayerOwned(data)
       local key = AuraDedupeKey(data, icon)
       local take = false
       if key and not skipKeys[key] then
         take = true
       elseif not key then
-        -- Secret FileID: take when not ours, foreign source, or target allow-secret path.
         if owned == false or AuraLooksForeign(data) or allowSecretUnknown then
-          take = true
           key = "sec:" .. tostring(i) .. ":" .. tostring(unitToken)
+          if not skipKeys[key] then
+            take = true
+          end
         end
       end
-      if take and key and not skipKeys[key] then
-        out[#out + 1] = icon
+      local ck = CanonicalGapKey({ icon = icon, spellId = data.spellId, auraInstanceID = data.auraInstanceID })
+      if ck and skipKeys[ck] then
+        -- dup
+      elseif take and key and not skipKeys[key] then
+        out[#out + 1] = {
+          icon = icon,
+          spellId = data.spellId,
+          auraInstanceID = data.auraInstanceID,
+          applications = data.applications,
+          expirationTime = data.expirationTime,
+          duration = data.duration,
+        }
         skipKeys[key] = true
+        if ck then
+          skipKeys[ck] = true
+        end
+        if stats then
+          stats.foreign = (stats.foreign or 0) + 1
+        end
       end
     end
   end
 end
 
+--- Phase B — personal gaps when native DebuffList omits player DoTs (§5.2).
+CollectPersonalAuraGaps = function(unitToken, paintKeys, out, maxN, stats)
+  if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
+    return
+  end
+  for i = 1, 40 do
+    if #out >= maxN then
+      return
+    end
+    local data
+    local ok = pcall(function()
+      data = C_UnitAuras.GetAuraDataByIndex(unitToken, i, "HARMFUL")
+    end)
+    if not ok or not data then
+      break
+    end
+    if not AuraIsOurPersonalOnly(data) then
+      -- party / foreign / unknown — foreign+TF passes
+    else
+      local icon = data.icon
+      local key = AuraDedupeKey(data, icon)
+      if not key then
+        key = "per:" .. tostring(i) .. ":" .. tostring(unitToken)
+      end
+      local ck = CanonicalGapKey({ icon = icon, spellId = data.spellId, auraInstanceID = data.auraInstanceID })
+      if ck and paintKeys[ck] then
+        -- already queued (TF harvest / texture dedupe)
+      elseif key and not paintKeys[key] then
+        out[#out + 1] = {
+          icon = icon,
+          spellId = data.spellId,
+          auraInstanceID = data.auraInstanceID,
+          applications = data.applications,
+          expirationTime = data.expirationTime,
+          duration = data.duration,
+        }
+        paintKeys[key] = true
+        if ck then
+          paintKeys[ck] = true
+        end
+        if stats then
+          stats.personal = (stats.personal or 0) + 1
+        end
+      end
+    end
+  end
+end
+
+CollectTargetFramePersonalGaps = function(paintKeys, out, maxN, stats)
+  local buttons = {}
+  CollectTargetFrameButtons(buttons, maxN)
+  local seenBtn = {}
+  for i = 1, #buttons do
+    if #out >= maxN then
+      return
+    end
+    local btn = buttons[i]
+    local bid = tostring(btn)
+    if not seenBtn[bid] then
+      seenBtn[bid] = true
+      local icon, skipped, gotIcon = ButtonAuraIcon(btn, "personal")
+      if not skipped and gotIcon then
+        local key = PublicTexKey(icon)
+        if not key then
+          key = "tfper:" .. bid
+        end
+        local ck = CanonicalGapKey({ icon = icon })
+        if ck and paintKeys[ck] then
+          -- dup
+        elseif key and not paintKeys[key] then
+          out[#out + 1] = icon
+          paintKeys[key] = true
+          if ck then
+            paintKeys[ck] = true
+          end
+          if stats then
+            stats.personal = (stats.personal or 0) + 1
+          end
+        end
+      end
+    end
+  end
+end
+
+ApplyGapSticky = function(unit, missing, isTarget, unitToken)
+  if not isTarget or not unit or #missing > 0 then
+    return
+  end
+  local c = gapSticky[unit]
+  if not c or type(c.icons) ~= "table" or #c.icons == 0 then
+    return
+  end
+  local now = GetTime and GetTime() or 0
+  if type(c.at) == "number" and (now - c.at) <= GAP_STICKY_SEC then
+    unitToken = unitToken or "target"
+    local live = {}
+    for i = 1, #c.icons do
+      if GapAuraLive(c.icons[i], unitToken) then
+        live[#live + 1] = c.icons[i]
+        missing[#missing + 1] = c.icons[i]
+      end
+    end
+    if #live == 0 then
+      gapSticky[unit] = nil
+      return
+    end
+    c.icons = live
+    DedupeGapIcons(missing, MaxIcons())
+  end
+end
+
+local function CopyGapRow(row)
+  if type(row) ~= "table" then
+    return row
+  end
+  return {
+    icon = row.icon,
+    iconTex = row.iconTex,
+    spellId = row.spellId,
+    auraInstanceID = row.auraInstanceID,
+    applications = row.applications,
+    expirationTime = row.expirationTime,
+    duration = row.duration,
+    _key = row._key,
+    fromTargetFrame = row.fromTargetFrame,
+    fromUnitApi = row.fromUnitApi,
+  }
+end
+
+EnrichGapAuraEntry = function(entry, unitToken)
+  if type(entry) ~= "table" or not unitToken or not C_UnitAuras then
+    return entry
+  end
+  if entry.auraInstanceID and C_UnitAuras.GetAuraDataByAuraInstanceID then
+    local ok, data = pcall(C_UnitAuras.GetAuraDataByAuraInstanceID, unitToken, entry.auraInstanceID)
+    if ok and type(data) == "table" then
+      if data.expirationTime ~= nil then
+        entry.expirationTime = data.expirationTime
+      end
+      if data.duration ~= nil then
+        entry.duration = data.duration
+      end
+      if data.applications ~= nil then
+        entry.applications = data.applications
+      end
+      if data.icon ~= nil then
+        entry.icon = data.icon
+      end
+      return entry
+    end
+  end
+  if entry.spellId and C_UnitAuras.GetAuraDataBySpellID then
+    local ok, data = pcall(C_UnitAuras.GetAuraDataBySpellID, unitToken, entry.spellId)
+    if ok and type(data) == "table" and data.expirationTime then
+      entry.expirationTime = data.expirationTime
+      entry.duration = data.duration or entry.duration
+      entry.applications = data.applications or entry.applications
+      return entry
+    end
+  end
+  if C_UnitAuras.GetAuraDataByIndex then
+    for idx = 1, 40 do
+      local ok, data = pcall(C_UnitAuras.GetAuraDataByIndex, unitToken, idx, "HARMFUL")
+      if not ok or not data then
+        break
+      end
+      local match = false
+      if entry.auraInstanceID and data.auraInstanceID == entry.auraInstanceID then
+        match = true
+      elseif entry.spellId and data.spellId == entry.spellId then
+        match = true
+      end
+      if match then
+        entry.expirationTime = data.expirationTime
+        entry.duration = data.duration
+        entry.applications = data.applications
+        entry.auraInstanceID = entry.auraInstanceID or data.auraInstanceID
+        break
+      end
+    end
+  end
+  return entry
+end
+
+--- Drop expired or unit-absent rows (sticky must not ghost party DoTs).
+GapAuraLive = function(entry, unitToken)
+  if type(entry) ~= "table" then
+    return false
+  end
+  EnrichGapAuraEntry(entry, unitToken)
+  local now = GetTime and GetTime() or 0
+  local exp = entry.expirationTime
+  if type(exp) == "number" and not IsSecret(exp) and exp > 0 then
+    if now >= exp then
+      return false
+    end
+    return true
+  end
+  if entry.auraInstanceID and unitToken and C_UnitAuras and C_UnitAuras.GetAuraDataByAuraInstanceID then
+    local ok, data = pcall(C_UnitAuras.GetAuraDataByAuraInstanceID, unitToken, entry.auraInstanceID)
+    if ok and type(data) == "table" then
+      local e2 = data.expirationTime
+      if type(e2) == "number" and not IsSecret(e2) and e2 > 0 and now >= e2 then
+        return false
+      end
+      return true
+    end
+    -- Stale instance on TF row — keep until explicit expiry (Forever secrets).
+  end
+  if entry.spellId and unitToken and C_UnitAuras and C_UnitAuras.GetAuraDataBySpellID then
+    local ok, data = pcall(C_UnitAuras.GetAuraDataBySpellID, unitToken, entry.spellId)
+    if ok and type(data) == "table" then
+      local e2 = data.expirationTime
+      if type(e2) == "number" and not IsSecret(e2) and e2 > 0 and now >= e2 then
+        return false
+      end
+      return true
+    end
+  end
+  return true
+end
+
+PruneInactiveGapRows = function(rows, unitToken, maxN)
+  if type(rows) ~= "table" or not unitToken then
+    return 0
+  end
+  maxN = maxN or MaxIcons()
+  local out = {}
+  for i = 1, #rows do
+    if #out >= maxN then
+      break
+    end
+    if GapAuraLive(rows[i], unitToken) then
+      out[#out + 1] = rows[i]
+    end
+  end
+  for i = #out + 1, #rows do
+    rows[i] = nil
+  end
+  for i = 1, #out do
+    rows[i] = out[i]
+  end
+  return #out
+end
+
+RememberGapSticky = function(unit, icons, unitToken)
+  if not unit or type(icons) ~= "table" or #icons == 0 then
+    return
+  end
+  unitToken = unitToken or (unit == "target" and "target" or unit)
+  local copy = {}
+  for i = 1, #icons do
+    local row = CopyGapRow(icons[i])
+    if GapAuraLive(row, unitToken) then
+      copy[#copy + 1] = row
+    end
+  end
+  if #copy == 0 then
+    gapSticky[unit] = nil
+    return
+  end
+  DedupeGapIcons(copy, MaxIcons())
+  gapSticky[unit] = { icons = copy, at = GetTime and GetTime() or 0 }
+end
+
+RefreshHeldGapFallback = function(unit, plate, fb, icons, auraUnit)
+  if not fb or type(icons) ~= "table" or #icons == 0 then
+    return 0, 0
+  end
+  auraUnit = auraUnit or "target"
+  local live = {}
+  for i = 1, #icons do
+    if GapAuraLive(icons[i], auraUnit) then
+      live[#live + 1] = icons[i]
+    end
+  end
+  if #live == 0 then
+    return 0, 0
+  end
+  icons = live
+  local maxN = MaxIcons()
+  local sz, pad = MergeRowIconSize(plate, fb)
+  fb._pbPlate = plate
+  local painted = math.min(#live, maxN, tonumber(fb._painted) or #live)
+  local cdN = 0
+  for i = 1, painted do
+    local row = live[i]
+    EnrichGapAuraEntry(row, auraUnit)
+    local slot = fb.icons[i]
+    if slot and slot.SetSize then
+      if slot._pbSz ~= sz then
+        pcall(InitAuraButton, slot, sz)
+        slot._pbSz = sz
+      end
+      pcall(function()
+        slot:SetSize(sz, sz)
+        slot:SetPoint("LEFT", fb, "LEFT", (i - 1) * (sz + pad), 0)
+      end)
+      local _, cdSet = ApplyGapAuraVisual(slot, row, auraUnit)
+      if cdSet then
+        cdN = cdN + 1
+      end
+      pcall(slot.Show, slot)
+    end
+  end
+  for i = painted + 1, #(fb.icons or {}) do
+    local slot = fb.icons[i]
+    if slot then
+      pcall(slot.Hide, slot)
+    end
+  end
+  pcall(function()
+    fb:SetSize(math.max(1, painted * (sz + pad)), sz)
+    fb:Show()
+  end)
+  fb._painted = painted
+  pcall(LayoutMergeBesideNative, unit, plate, fb, painted)
+  lastPaintDebug.gapSz = sz
+  lastPaintDebug.lockSz = fb._pbLockedSz
+  lastPaintDebug.cdN = cdN
+  lastPaintDebug.painted = painted
+  return painted, cdN
+end
+
+CountHarmfulAuraSlots = function(unitToken)
+  if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraSlots then
+    return 0
+  end
+  local pack = { pcall(C_UnitAuras.GetAuraSlots, unitToken, "HARMFUL") }
+  if not pack[1] then
+    return 0
+  end
+  local n = 0
+  for i = 3, #pack do
+    if pack[i] ~= nil then
+      n = n + 1
+    end
+  end
+  return n
+end
+
+CountTargetHarmfulApi = function(unitToken)
+  unitToken = unitToken or "target"
+  if not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
+    return 0
+  end
+  local n = 0
+  for idx = 1, 40 do
+    local data
+    local ok = pcall(function()
+      data = C_UnitAuras.GetAuraDataByIndex(unitToken, idx, "HARMFUL")
+    end)
+    if not ok or not data then
+      break
+    end
+    n = n + 1
+  end
+  local slots = CountHarmfulAuraSlots(unitToken)
+  if slots > n then
+    n = slots
+  end
+  return n
+end
+
+CountTargetHarmfulExpected = function(unitToken, harvestN)
+  unitToken = unitToken or "target"
+  if unitToken == "target" and not HasTarget() then
+    return 0
+  end
+  if unitToken ~= "target" and type(unitToken) == "string" and not SafeUnitExists(unitToken) then
+    return 0
+  end
+  local api = CountTargetHarmfulApi(unitToken)
+  local harvest = tonumber(harvestN) or 0
+  local tfUi = 0
+  if unitToken == "target" then
+    tfUi = CountTargetFrameAuras()
+  end
+  return math.max(api, harvest, tfUi)
+end
+
+CollectTargetHarmfulFromApi = function(rows, maxN, unitToken)
+  if type(rows) ~= "table" or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
+    return
+  end
+  maxN = maxN or MaxIcons()
+  unitToken = unitToken or "target"
+  for idx = 1, 40 do
+    if #rows >= maxN then
+      return
+    end
+    local data
+    local ok = pcall(function()
+      data = C_UnitAuras.GetAuraDataByIndex(unitToken, idx, "HARMFUL")
+    end)
+    if not ok or not data then
+      break
+    end
+    if not AuraIconPresent(data.icon) then
+      -- still queue secret/live rows
+    end
+    local row = {
+      icon = data.icon,
+      spellId = data.spellId,
+      auraInstanceID = data.auraInstanceID,
+      applications = data.applications,
+      expirationTime = data.expirationTime,
+      duration = data.duration,
+      fromUnitApi = true,
+    }
+    row._key = CanonicalGapKey(row) or TfRowKey(row) or ("api:" .. tostring(idx))
+    local rowKey = CanonicalGapKey(row)
+    local dup = false
+    for r = 1, #rows do
+      if rowKey and CanonicalGapKey(rows[r]) == rowKey then
+        dup = true
+        break
+      end
+    end
+    if not dup then
+      rows[#rows + 1] = row
+    end
+  end
+end
+
 --- Pull icon texture from a TF aura button (secret FileIDs OK for SetTexture).
+--- mode: nil/"foreign" skips personal; "personal" skips non-personal.
 --- Returns icon, skippedPersonal, gotIcon — never compare icon to nil (secret throws).
-local function ButtonAuraIcon(btn)
+ButtonAuraIcon = function(btn, mode)
   if not btn then
     return nil, false, false
   end
@@ -1326,7 +2530,13 @@ local function ButtonAuraIcon(btn)
     if btn.GetAuraInstance then
       local _, data = btn:GetAuraInstance()
       if type(data) == "table" then
-        if AuraIsPlayerOwned(data) == true then
+        local owned = AuraIsPlayerOwned(data)
+        if mode == "personal" then
+          if owned ~= true then
+            skippedPersonal = true
+            return
+          end
+        elseif owned == true then
           skippedPersonal = true
           return
         end
@@ -1359,55 +2569,816 @@ local function ButtonAuraIcon(btn)
   return nil, false, false
 end
 
---- Brute TF walk — Forever often paints icons while auraPools/GetFramesByIndex are empty.
-local function ScrapeTargetFrameIconsBrute(skipKeys, out, maxN)
-  if not TargetFrame or #out >= maxN then
-    return
+--- TF supplement: ownership-agnostic icon read; skipKeys dedupes personal already painted.
+ButtonAuraIconAny = function(btn)
+  if not btn then
+    return nil, false
   end
-  local function isCastBar(frame)
-    local hit = false
+  local icon
+  local got = false
+  pcall(function()
+    if btn.GetAuraInstance then
+      local _, data = btn:GetAuraInstance()
+      if type(data) == "table" and data.icon then
+        icon = data.icon
+        got = true
+      end
+    end
+  end)
+  if got then
+    return icon, true
+  end
+  local tex = btn.Icon or btn.icon
+  if tex then
+    local file
+    local gotFile = false
     pcall(function()
-      local n = frame.GetName and frame:GetName()
-      if type(n) == "string" and (n:find("Casting", 1, true) or n:find("SpellBar", 1, true)
-        or n:find("CastBar", 1, true)) then
-        hit = true
+      if tex.GetTexture then
+        file = tex:GetTexture()
+        gotFile = true
       end
     end)
-    return hit
+    if gotFile then
+      return file, true
+    end
+    return tex, true
   end
-  local function scan(frame, depth)
-    if not frame or depth > 12 or #out >= maxN then
+  return nil, false
+end
+
+--- Retinue-style TF harvest (read-only). Forever 16001 paths 0.2.6 missed.
+AuraIconPresent = function(icon)
+  local present = false
+  pcall(function()
+    if IsSecret(icon) then
+      present = true
       return
     end
-    if isCastBar(frame) then
+    if icon ~= nil then
+      present = true
+    end
+  end)
+  return present
+end
+
+FrameIsShownSafe = function(frame)
+  if not frame or not frame.IsShown then
+    return true
+  end
+  local ok, shown = pcall(frame.IsShown, frame)
+  if not ok or IsSecret(shown) then
+    return true
+  end
+  return shown and true or false
+end
+
+IsCastOrSpellBarFrame = function(frame)
+  if not frame then
+    return false
+  end
+  local p = frame
+  for _ = 1, 8 do
+    if not p then
+      return false
+    end
+    local n
+    pcall(function()
+      n = p.GetName and p:GetName()
+    end)
+    if type(n) == "string" then
+      local l = n:lower()
+      if l:find("castingbar", 1, true) or l:find("spellbar", 1, true) or l:find("castbar", 1, true) then
+        return true
+      end
+    end
+    if p == TargetFrameSpellBar or p == CastingBarFrame then
+      return true
+    end
+    pcall(function()
+      p = p.GetParent and p:GetParent()
+    end)
+    if not p or p == UIParent then
+      return false
+    end
+  end
+  return false
+end
+
+IsLikelyBuffFrame = function(frame)
+  if not frame or IsCastOrSpellBarFrame(frame) then
+    return true
+  end
+  local buffish = false
+  pcall(function()
+    local flag = frame.isBuff
+    if flag ~= nil and not IsSecret(flag) and flag then
+      buffish = true
+    end
+  end)
+  if buffish then
+    return true
+  end
+  pcall(function()
+    local flag = frame.isHelpful
+    if flag ~= nil and not IsSecret(flag) and flag then
+      buffish = true
+    end
+  end)
+  return buffish
+end
+
+TextureHasArt = function(iconTex)
+  if not iconTex then
+    return false
+  end
+  local ok = false
+  pcall(function()
+    if iconTex.GetTexture then
+      local path = iconTex:GetTexture()
+      if IsSecret(path) or (type(path) == "number" and path > 0) or (type(path) == "string" and path ~= "") then
+        ok = true
+      end
+    end
+  end)
+  return ok
+end
+
+IsUsableSpellIcon = function(path, allowSecret)
+  local ok = false
+  pcall(function()
+    if IsSecret(path) then
+      ok = allowSecret and true or false
+      return
+    end
+    if type(path) == "number" then
+      ok = path > 0
+    elseif type(path) == "string" and path ~= "" then
+      ok = true
+    end
+  end)
+  return ok
+end
+
+TfRowKey = function(row)
+  if type(row) ~= "table" then
+    return nil
+  end
+  if type(row._key) == "string" then
+    return row._key
+  end
+  local sid = row.spellId
+  if sid ~= nil and not IsSecret(sid) then
+    return "s:" .. tostring(sid)
+  end
+  local aid = row.auraInstanceID
+  if aid ~= nil and not IsSecret(aid) then
+    return "a:" .. tostring(aid)
+  end
+  local k = PublicTexKey(row.icon)
+  if k then
+    return k
+  end
+  return nil
+end
+
+--- One harmful aura = one plate icon — instance/spell before texture.
+CanonicalGapKey = function(row)
+  if type(row) == "table" then
+    local k = GapAuraKey(row, row.icon)
+    if k then
+      return k
+    end
+  end
+  return GapAuraKey(nil, row)
+end
+
+--- TF harmful minus native plate + gap queue — recovers drops when own DoT joins native.
+ReconcileTfHarmfulCoverage = function(plate, missing, skipKeys, maxN, stats, unitToken)
+  if not plate or type(missing) ~= "table" or not skipKeys then
+    return 0
+  end
+  unitToken = unitToken or "target"
+  local nativeKeys = NativeShownKeySet(plate)
+  local added = 0
+  local function covered(ck)
+    if not ck then
+      return false
+    end
+    if nativeKeys[ck] then
+      return true
+    end
+    for j = 1, #missing do
+      if CanonicalGapKey(missing[j]) == ck then
+        return true
+      end
+    end
+    return false
+  end
+  local tfRows = CollectTargetHarmfulRows(maxN)
+  for i = 1, #tfRows do
+    if #missing >= maxN then
+      break
+    end
+    local row = tfRows[i]
+    EnrichGapAuraEntry(row, unitToken)
+    local ck = CanonicalGapKey(row) or TfRowKey(row)
+    if ck and not covered(ck) then
+      local before = #missing
+      AppendGapRow(skipKeys, missing, maxN, stats, row, true)
+      if #missing > before then
+        added = added + 1
+      end
+    end
+  end
+  if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
+    for idx = 1, 40 do
+      if #missing >= maxN then
+        break
+      end
+      local data
+      local ok = pcall(function()
+        data = C_UnitAuras.GetAuraDataByIndex(unitToken, idx, "HARMFUL")
+      end)
+      if not ok or not data then
+        break
+      end
+      local ck = GapAuraKey(data, data.icon)
+      if ck and not covered(ck) then
+        local row = {
+          icon = data.icon,
+          spellId = data.spellId,
+          auraInstanceID = data.auraInstanceID,
+          applications = data.applications,
+          expirationTime = data.expirationTime,
+          duration = data.duration,
+          fromUnitApi = true,
+        }
+        local before = #missing
+        if AuraIsOurPersonalOnly(data) then
+          AppendGapRow(skipKeys, missing, maxN, stats, row, false)
+        else
+          AppendGapRow(skipKeys, missing, maxN, stats, row, true)
+        end
+        if #missing > before then
+          added = added + 1
+        end
+      end
+    end
+  end
+  return added
+end
+
+--- One TF debuff button = one gap row when API index undercounts (secret icon / slot lag).
+ReconcileTargetFrameUiButtons = function(plate, missing, skipKeys, maxN, stats)
+  if not plate or type(missing) ~= "table" or not skipKeys or not HasTarget() then
+    return 0
+  end
+  local nativeKeys = NativeShownKeySet(plate)
+  local added = 0
+  local covered = function(ck)
+    if not ck then
+      return false
+    end
+    if nativeKeys[ck] or skipKeys[ck] then
+      return true
+    end
+    for j = 1, #missing do
+      if missing[j]._key == ck or CanonicalGapKey(missing[j]) == ck or TfRowKey(missing[j]) == ck then
+        return true
+      end
+    end
+    return false
+  end
+  local buttons = {}
+  CollectTargetFrameButtons(buttons, maxN)
+  for i = 1, #buttons do
+    if #missing >= maxN then
+      break
+    end
+    local btn = buttons[i]
+    if not btn or IsCastOrSpellBarFrame(btn) or (IsLikelyBuffFrame(btn) and not IsTargetDebuffAuraFrame(btn)) then
+      -- skip
+    else
+      local icon, sid, aid, tex, expTime, dur, apps
+      tex = btn.Icon or btn.icon
+      pcall(function()
+        if btn.GetAuraInstance then
+          local _, data = btn:GetAuraInstance()
+          if type(data) == "table" then
+            icon = data.icon
+            sid = data.spellId
+            aid = data.auraInstanceID
+            expTime = data.expirationTime
+            dur = data.duration
+            apps = data.applications
+          end
+        end
+      end)
+      if not AuraIconPresent(icon) and tex then
+        local got
+        pcall(function()
+          if tex.GetTexture then
+            icon = tex:GetTexture()
+            got = true
+          end
+        end)
+        if not got then
+          icon = tex
+        end
+      end
+      local liveBtn = SafeShown(btn) or btn.GetAuraInstance ~= nil
+      if not AuraIconPresent(icon) and not liveBtn and not TextureHasArt(tex) then
+        -- empty chrome
+      else
+        local row = {
+          icon = icon,
+          iconTex = tex,
+          spellId = sid,
+          auraInstanceID = aid,
+          applications = apps,
+          expirationTime = expTime,
+          duration = dur,
+          fromTargetFrame = true,
+          _key = "tfbtn:" .. tostring(i) .. ":" .. tostring(btn),
+        }
+        local ck = CanonicalGapKey(row) or row._key
+        if not covered(ck) and not covered(row._key) then
+          local before = #missing
+          AppendGapRow(skipKeys, missing, maxN, stats, row, true)
+          if #missing > before then
+            added = added + 1
+          elseif not covered(row._key) then
+            skipKeys[row._key] = true
+            missing[#missing + 1] = row
+            added = added + 1
+            if stats then
+              stats.foreign = (stats.foreign or 0) + 1
+            end
+          end
+        end
+      end
+    end
+  end
+  return added
+end
+
+--- Last resort when API harvest empty but TF still shows harmful chrome.
+ForceFillTargetFrameGaps = function(missing, skipKeys, maxN, stats)
+  if type(missing) ~= "table" or not skipKeys or not HasTarget() then
+    return 0
+  end
+  local added = 0
+  local scrape = {}
+  pcall(ScrapeTargetFrameBrute, scrape, maxN)
+  for i = 1, #scrape do
+    if #missing >= maxN then
+      break
+    end
+    local row = scrape[i]
+  row._key = row._key or ("tffill:" .. tostring(i))
+    local before = #missing
+    AppendGapRow(skipKeys, missing, maxN, stats, row, true)
+    if #missing <= before then
+      skipKeys[row._key] = true
+      missing[#missing + 1] = row
+      added = added + 1
+      if stats then
+        stats.foreign = (stats.foreign or 0) + 1
+      end
+    else
+      added = added + (#missing - before)
+    end
+  end
+  local buttons = {}
+  CollectTargetFrameButtons(buttons, maxN)
+  for i = 1, #buttons do
+    if #missing >= maxN then
+      break
+    end
+    local btn = buttons[i]
+    if btn and IsTargetDebuffAuraFrame(btn) and not IsCastOrSpellBarFrame(btn) then
+      local row = { iconTex = btn.Icon or btn.icon, fromTargetFrame = true, _tfFrame = btn, _key = "tfforce:" .. tostring(i) }
+      pcall(function()
+        if btn.GetAuraInstance then
+          local _, data = btn:GetAuraInstance()
+          if type(data) == "table" then
+            row.icon = data.icon
+            row.spellId = data.spellId
+            row.auraInstanceID = data.auraInstanceID
+            row.applications = data.applications
+            row.expirationTime = data.expirationTime
+            row.duration = data.duration
+          end
+        end
+      end)
+      local before = #missing
+      AppendGapRow(skipKeys, missing, maxN, stats, row, true)
+      if #missing <= before then
+        skipKeys[row._key] = true
+        missing[#missing + 1] = row
+        added = added + 1
+      else
+        added = added + (#missing - before)
+      end
+    end
+  end
+  return added
+end
+
+EnsureTargetHarmfulParity = function(plate, missing, skipKeys, maxN, stats)
+  if not plate or not missing or not skipKeys then
+    return
+  end
+  local nativeKeys = NativeShownKeySet(plate)
+  local tfRows = CollectTargetHarmfulRows(maxN)
+  for i = 1, #tfRows do
+    if #missing >= maxN then
+      return
+    end
+    local row = tfRows[i]
+    local ck = CanonicalGapKey(row)
+    if not ck then
+      ck = TfRowKey(row)
+    end
+    if ck and nativeKeys[ck] then
+      -- Blizzard already shows on plate DebuffList
+    elseif ck and skipKeys[ck] then
+      -- already queued
+    else
+      local inMissing = false
+      for j = 1, #missing do
+        if CanonicalGapKey(missing[j]) == ck then
+          inMissing = true
+          break
+        end
+      end
+      if not inMissing then
+        local isPersonal = false
+        if row.spellId and C_UnitAuras and C_UnitAuras.GetAuraDataBySpellID then
+          pcall(function()
+            local data = C_UnitAuras.GetAuraDataBySpellID("target", row.spellId)
+            if data and AuraIsOurPersonalOnly(data) then
+              isPersonal = true
+            end
+          end)
+        end
+        AppendGapRow(skipKeys, missing, maxN, stats, row, not isPersonal)
+      end
+    end
+  end
+  if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
+    for idx = 1, 40 do
+      if #missing >= maxN then
+        return
+      end
+      local data
+      local ok = pcall(function()
+        data = C_UnitAuras.GetAuraDataByIndex("target", idx, "HARMFUL")
+      end)
+      if not ok or not data then
+        break
+      end
+      local ck = GapAuraKey(data, data.icon)
+      if ck and nativeKeys[ck] then
+        -- native
+      elseif ck and skipKeys[ck] then
+        -- queued
+      else
+        local inMissing = false
+        for j = 1, #missing do
+          if CanonicalGapKey(missing[j]) == ck then
+            inMissing = true
+            break
+          end
+        end
+        if not inMissing then
+          local row = {
+            icon = data.icon,
+            spellId = data.spellId,
+            auraInstanceID = data.auraInstanceID,
+            applications = data.applications,
+            expirationTime = data.expirationTime,
+            duration = data.duration,
+          }
+          local personal = AuraIsOurPersonalOnly(data)
+          if personal then
+            AppendGapRow(skipKeys, missing, maxN, stats, row, false)
+          elseif AuraCountsAsForeignGaps(data) then
+            AppendGapRow(skipKeys, missing, maxN, stats, row, true)
+          end
+        end
+      end
+    end
+  end
+end
+
+--- Nameplate unit token (party/friend/player) — full harmful row from C_UnitAuras.
+EnsureUnitHarmfulParity = function(unitToken, plate, missing, skipKeys, maxN, stats)
+  if not unitToken or not plate or not missing or not skipKeys then
+    return
+  end
+  if not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
+    return
+  end
+  local nativeKeys = NativeShownKeySet(plate)
+  for idx = 1, 40 do
+    if #missing >= maxN then
+      return
+    end
+    local data
+    local ok = pcall(function()
+      data = C_UnitAuras.GetAuraDataByIndex(unitToken, idx, "HARMFUL")
+    end)
+    if not ok or not data then
+      break
+    end
+    local ck = GapAuraKey(data, data.icon)
+    if ck and nativeKeys[ck] then
+      -- native DebuffList
+    elseif ck and skipKeys[ck] then
+      -- queued
+    else
+      local inMissing = false
+      for j = 1, #missing do
+        if CanonicalGapKey(missing[j]) == ck then
+          inMissing = true
+          break
+        end
+      end
+      if not inMissing then
+        local row = {
+          icon = data.icon,
+          spellId = data.spellId,
+          auraInstanceID = data.auraInstanceID,
+          applications = data.applications,
+          expirationTime = data.expirationTime,
+          duration = data.duration,
+          fromUnitApi = true,
+        }
+        if AuraIsOurPersonalOnly(data) then
+          AppendGapRow(skipKeys, missing, maxN, stats, row, false)
+        else
+          AppendGapRow(skipKeys, missing, maxN, stats, row, true)
+        end
+      end
+    end
+  end
+end
+
+DedupeGapIcons = function(missing, maxN)
+  if type(missing) ~= "table" then
+    return missing
+  end
+  maxN = maxN or MaxIcons()
+  local seen = {}
+  local out = {}
+  for i = 1, #missing do
+    if #out >= maxN then
+      break
+    end
+    local entry = missing[i]
+    local key = CanonicalGapKey(entry)
+    if not key then
+      key = "tex:" .. tostring(i)
+    end
+    if not seen[key] then
+      seen[key] = true
+      out[#out + 1] = entry
+    end
+  end
+  for i = #out + 1, #missing do
+    missing[i] = nil
+  end
+  for i = 1, #out do
+    missing[i] = out[i]
+  end
+  return missing
+end
+
+DeduplicateHarmfulRows = function(rows, maxN)
+  if type(rows) ~= "table" then
+    return rows
+  end
+  maxN = maxN or MaxIcons()
+  local seen = {}
+  local out = {}
+  for i = 1, #rows do
+    if #out >= maxN then
+      break
+    end
+    local row = rows[i]
+    local key = CanonicalGapKey(row)
+    if not key then
+      key = "row:" .. tostring(i)
+    end
+    if not seen[key] then
+      seen[key] = true
+      row._key = key
+      out[#out + 1] = row
+    end
+  end
+  return out
+end
+
+PushTfAuraFrame = function(frame, rows, maxN)
+  if not frame or #rows >= maxN or IsCastOrSpellBarFrame(frame) then
+    return
+  end
+  if IsLikelyBuffFrame(frame) and not IsTargetDebuffAuraFrame(frame) then
+    return
+  end
+  pcall(function()
+    local icon, sid, aid
+    local tex = frame.Icon or frame.icon
+    local expTime
+    local dur
+    local apps
+    pcall(function()
+      if frame.GetAuraInstance then
+        local _, data = frame:GetAuraInstance()
+        if type(data) == "table" then
+          icon = data.icon
+          sid = data.spellId
+          aid = data.auraInstanceID
+          expTime = data.expirationTime
+          dur = data.duration
+          apps = data.applications
+        end
+      end
+    end)
+    if not IsUsableSpellIcon(icon, true) and tex and tex.GetTexture then
+      pcall(function()
+        icon = tex:GetTexture()
+      end)
+    end
+    local liveBtn = false
+    pcall(function()
+      if IsSecret(aid) or IsSecret(sid) or aid ~= nil or sid ~= nil then
+        liveBtn = true
+      end
+    end)
+    if not liveBtn and SafeShown(frame) and (tex or frame.Icon or frame.icon or frame.GetAuraInstance) then
+      liveBtn = true
+    end
+    if not IsUsableSpellIcon(icon, true) and not liveBtn and not TextureHasArt(tex) then
+      return
+    end
+    local rowTmp = { spellId = sid, auraInstanceID = aid, icon = icon, iconTex = tex }
+    local key = CanonicalGapKey(rowTmp)
+    if not key then
+      key = "tf:" .. tostring(frame)
+    end
+    for i = 1, #rows do
+      if rows[i]._key == key or CanonicalGapKey(rows[i]) == key then
+        return
+      end
+    end
+    rows[#rows + 1] = {
+      icon = icon,
+      iconTex = tex,
+      spellId = sid,
+      auraInstanceID = aid,
+      applications = apps,
+      expirationTime = expTime,
+      duration = dur,
+      _key = key,
+      fromTargetFrame = true,
+    }
+  end)
+end
+
+HarvestTfAuraPool = function(pools, rows, maxN)
+  if type(pools) ~= "table" then
+    return
+  end
+  local function take(frame)
+    if frame and not IsLikelyBuffFrame(frame) then
+      PushTfAuraFrame(frame, rows, maxN)
+    end
+  end
+  pcall(function()
+    if pools.EnumerateActiveAuraButtons then
+      for btn in pools:EnumerateActiveAuraButtons() do
+        take(btn)
+      end
+    end
+  end)
+  pcall(function()
+    if pools.EnumerateActive then
+      for f in pools:EnumerateActive() do
+        take(f)
+      end
+    end
+  end)
+  for _, pool in pairs(pools) do
+    if type(pool) == "table" and #rows < maxN then
+      pcall(function()
+        if pool.EnumerateActiveAuraButtons then
+          for btn in pool.EnumerateActiveAuraButtons() do
+            take(btn)
+          end
+        elseif pool.EnumerateActive then
+          for f in pool:EnumerateActive() do
+            take(f)
+          end
+        end
+      end)
+    end
+  end
+end
+
+CollectTfActiveDebuffs = function(rows, maxN)
+  if not TargetFrame or type(TargetFrame.activeDebuffs) ~= "table" then
+    return
+  end
+  pcall(function()
+    for key, aura in pairs(TargetFrame.activeDebuffs) do
+      if #rows >= maxN then
+        return
+      end
+      if type(aura) == "table" and (aura.Icon or aura.icon or aura.GetAuraInstance) then
+        PushTfAuraFrame(aura, rows, maxN)
+      elseif type(aura) == "number" and C_UnitAuras and C_UnitAuras.GetAuraDataByAuraInstanceID then
+        local ok, data = pcall(C_UnitAuras.GetAuraDataByAuraInstanceID, "target", aura)
+        if ok and type(data) == "table" and AuraIconPresent(data.icon) then
+          local row = {
+            icon = data.icon,
+            spellId = data.spellId,
+            auraInstanceID = data.auraInstanceID or key,
+            fromTargetFrame = true,
+          }
+          row._key = TfRowKey(row) or ("tfaid:" .. tostring(aura))
+          rows[#rows + 1] = row
+        end
+      end
+    end
+  end)
+end
+
+CollectTfAuraSlots = function(rows, maxN)
+  if not C_UnitAuras or not C_UnitAuras.GetAuraSlots then
+    return
+  end
+  local pack = { pcall(C_UnitAuras.GetAuraSlots, "target", "HARMFUL") }
+  if not pack[1] then
+    return
+  end
+  for i = 3, #pack do
+    if #rows >= maxN then
+      break
+    end
+    local slot = pack[i]
+    local data
+    if C_UnitAuras.GetAuraDataBySlot then
+      local ok, d = pcall(C_UnitAuras.GetAuraDataBySlot, "target", slot)
+      if ok then
+        data = d
+      end
+    end
+    if type(data) == "table" and AuraIconPresent(data.icon) then
+      local row = {
+        icon = data.icon,
+        spellId = data.spellId,
+        auraInstanceID = data.auraInstanceID,
+        fromUnitApi = true,
+      }
+      row._key = TfRowKey(row) or ("slot:" .. tostring(i))
+      local dup = false
+      for r = 1, #rows do
+        if rows[r]._key == row._key then
+          dup = true
+          break
+        end
+      end
+      if not dup then
+        rows[#rows + 1] = row
+      end
+    end
+  end
+end
+
+ScrapeTargetFrameBrute = function(rows, maxN)
+  if not TargetFrame then
+    return
+  end
+  local function scan(frame, depth)
+    if not frame or depth > 14 or #rows >= maxN or IsCastOrSpellBarFrame(frame) then
       return
     end
     pcall(function()
-      if not SafeShown(frame) then
+      if not FrameIsShownSafe(frame) then
         return
       end
       local iconTex = frame.Icon or frame.icon
-      if not iconTex then
-        return
-      end
-      local w
-      pcall(function()
-        w = frame:GetWidth()
-      end)
-      if type(w) == "number" and not IsSecret(w) and (w < 12 or w > 48) then
-        return
-      end
-      local icon, skippedPersonal, gotIcon = ButtonAuraIcon(frame)
-      if skippedPersonal or not gotIcon then
-        return
-      end
-      local key = PublicTexKey(icon)
-      if not key then
-        key = "tfbrute:" .. tostring(frame)
-      end
-      if key and not skipKeys[key] then
-        out[#out + 1] = icon
-        skipKeys[key] = true
+      if iconTex then
+        local w
+        pcall(function()
+          w = frame:GetWidth()
+        end)
+        if type(w) == "number" and not IsSecret(w) and (w < 12 or w > 48) then
+          return
+        end
+        PushTfAuraFrame(frame, rows, maxN)
       end
     end)
     local ok, kids = pcall(function()
@@ -1416,9 +3387,6 @@ local function ScrapeTargetFrameIconsBrute(skipKeys, out, maxN)
     if ok and type(kids) == "table" then
       for i = 1, #kids do
         scan(kids[i], depth + 1)
-        if #out >= maxN then
-          return
-        end
       end
     end
   end
@@ -1426,85 +3394,205 @@ local function ScrapeTargetFrameIconsBrute(skipKeys, out, maxN)
   if container then
     scan(container, 0)
   end
-  -- Contextual Auras only — never whole TargetFrame (scoops cast bar).
+  scan(TargetFrame, 0)
+  pcall(function()
+    local content = TargetFrame.TargetFrameContent
+    if content then
+      scan(content, 0)
+    end
+  end)
 end
 
---- TargetFrame scrape via Forever auraPools (+ brute + public/secret textures).
-local function CollectTargetFrameMissing(skipKeys, out, maxN)
-  local buttons = {}
-  CollectTargetFrameButtons(buttons, maxN)
-  local seenBtn = {}
-  for i = 1, #buttons do
+--- API mirror when TF scrape returns empty but target has HARMFUL (native plate empty).
+CollectUnitHarmfulMirror = function(unitToken, skipKeys, out, maxN, stats)
+  if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
+    return
+  end
+  for i = 1, 40 do
     if #out >= maxN then
       return
     end
-    local btn = buttons[i]
-    local bid = tostring(btn)
-    if not seenBtn[bid] then
-      seenBtn[bid] = true
-      local icon, skippedPersonal, gotIcon = ButtonAuraIcon(btn)
-      if not skippedPersonal and gotIcon then
-        local key = PublicTexKey(icon)
-        if not key then
-          key = "tf:" .. bid
-        end
-        if key and not skipKeys[key] then
-          out[#out + 1] = icon
-          skipKeys[key] = true
-        end
-      end
-    end
-  end
-  if #out < maxN then
-    ScrapeTargetFrameIconsBrute(skipKeys, out, maxN)
-  end
-  -- activeDebuffs table (Forever)
-  if TargetFrame and type(TargetFrame.activeDebuffs) == "table" and #out < maxN then
-    pcall(function()
-      for _, aura in pairs(TargetFrame.activeDebuffs) do
-        if #out >= maxN then
-          return
-        end
-        if type(aura) == "table" and (aura.icon or aura.Icon or aura.GetAuraInstance) then
-          if aura.Icon or aura.icon or aura.GetAuraInstance then
-            local asBtn = aura
-            if asBtn.GetAuraInstance or asBtn.Icon or asBtn.icon then
-              local icon, skippedPersonal, gotIcon = ButtonAuraIcon(asBtn)
-              if not skippedPersonal and gotIcon then
-                local key = PublicTexKey(icon) or ("tfadbtn:" .. tostring(aura))
-                if not skipKeys[key] then
-                  out[#out + 1] = icon
-                  skipKeys[key] = true
-                end
-              end
-            end
-          end
-          if AuraIsPlayerOwned(aura) ~= true then
-            local icon = aura.icon
-            local key = AuraDedupeKey(aura, icon)
-            if not key then
-              key = "tfad:" .. tostring(aura)
-            end
-            if key and not skipKeys[key] then
-              out[#out + 1] = icon
-              skipKeys[key] = true
-            end
-          end
-        end
-      end
+    local data
+    local ok = pcall(function()
+      data = C_UnitAuras.GetAuraDataByIndex(unitToken, i, "HARMFUL")
     end)
+    if not ok or not data then
+      break
+    end
+    local row = {
+      icon = data.icon,
+      spellId = data.spellId,
+      auraInstanceID = data.auraInstanceID,
+      applications = data.applications,
+      expirationTime = data.expirationTime,
+      duration = data.duration,
+      fromUnitApi = true,
+    }
+    AppendGapRow(skipKeys, out, maxN, stats, row, true)
   end
 end
 
-local function SetIconTexture(icon, t)
+CollectTargetHarmfulRows = function(maxN)
+  maxN = maxN or MaxIcons()
+  local rows = {}
+  CollectTargetHarmfulFromApi(rows, maxN, "target")
+  local container = GetTargetAuraContainer()
+  if container then
+    pcall(function()
+      local group = container.debuffAuraGroup
+      local frames = group and group.GetFramesByIndex and group:GetFramesByIndex()
+      if type(frames) == "table" then
+        for i = 1, #frames do
+          PushTfAuraFrame(frames[i], rows, maxN)
+        end
+      end
+    end)
+    pcall(function()
+      local group = container.debuffAuraGroup
+      local auras = group and group.GetAuras and group:GetAuras()
+      pcall(function()
+        if auras and type(auras.Iterate) == "function" then
+          auras:Iterate(function(_id, data)
+            if #rows >= maxN then
+              return true
+            end
+            if type(data) == "table" and AuraIconPresent(data.icon) then
+              local row = {
+                icon = data.icon,
+                spellId = data.spellId,
+                auraInstanceID = data.auraInstanceID,
+                applications = data.applications,
+                expirationTime = data.expirationTime,
+                duration = data.duration,
+                fromTargetFrame = true,
+              }
+              row._key = TfRowKey(row) or ("tfit:" .. tostring(#rows + 1))
+              rows[#rows + 1] = row
+            end
+            return false
+          end)
+        end
+      end)
+    end)
+    pcall(HarvestTfAuraPool, container.auraPools, rows, maxN)
+  end
+  for i = 1, 16 do
+    local f = _G["TargetFrameDebuff" .. i]
+    if f then
+      PushTfAuraFrame(f, rows, maxN)
+    end
+  end
+  if TargetFrame and TargetFrame.auraPools then
+    pcall(HarvestTfAuraPool, TargetFrame.auraPools, rows, maxN)
+  end
+  CollectTfActiveDebuffs(rows, maxN)
+  CollectTfAuraSlots(rows, maxN)
+  if #rows == 0 then
+    ScrapeTargetFrameBrute(rows, maxN)
+  elseif #rows < maxN then
+    ScrapeTargetFrameBrute(rows, maxN)
+  end
+  if #rows < maxN then
+    CollectTargetHarmfulFromApi(rows, maxN)
+  end
+  return DeduplicateHarmfulRows(rows, maxN)
+end
+
+AppendGapRow = function(skipKeys, out, maxN, stats, row, countForeign)
+  if #out >= maxN or type(row) ~= "table" then
+    return
+  end
+  local key = CanonicalGapKey(row)
+  if not key then
+    key = TfRowKey(row) or ("gap:" .. tostring(#out + 1))
+  end
+  if skipKeys[key] then
+    return
+  end
+  local icon = row.icon
+  if not AuraIconPresent(icon) and row.iconTex then
+    pcall(function()
+      icon = row.iconTex:GetTexture()
+    end)
+  end
+  if AuraIconPresent(icon) then
+    row.icon = icon
+    out[#out + 1] = row
+  elseif row.iconTex and TextureHasArt(row.iconTex) then
+    out[#out + 1] = { iconTex = row.iconTex, icon = icon, spellId = row.spellId, auraInstanceID = row.auraInstanceID }
+  elseif row.spellId ~= nil or row.auraInstanceID ~= nil then
+    out[#out + 1] = row
+  else
+    return
+  end
+  skipKeys[key] = true
+  if stats and countForeign then
+    stats.foreign = (stats.foreign or 0) + 1
+  end
+end
+
+--- TF mirror minus plate skipKeys — party DoTs (Retinue CollectFromTargetFrame parity).
+CollectTargetFrameMissing = function(skipKeys, out, maxN, stats)
+  local rows = CollectTargetHarmfulRows(maxN)
+  for i = 1, #rows do
+    if #out >= maxN then
+      return
+    end
+    AppendGapRow(skipKeys, out, maxN, stats, rows[i], true)
+  end
+end
+
+CollectAuraSlotsGaps = function(unitToken, skipKeys, out, maxN, stats)
+  if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraSlots then
+    return
+  end
+  local pack = { pcall(C_UnitAuras.GetAuraSlots, unitToken, "HARMFUL") }
+  if not pack[1] then
+    return
+  end
+  for i = 3, #pack do
+    if #out >= maxN then
+      break
+    end
+    local slot = pack[i]
+    local data
+    if C_UnitAuras.GetAuraDataBySlot then
+      local ok, d = pcall(C_UnitAuras.GetAuraDataBySlot, unitToken, slot)
+      if ok then
+        data = d
+      end
+    end
+    if type(data) == "table" and AuraCountsAsForeignGaps(data) then
+      local row = {
+        icon = data.icon,
+        spellId = data.spellId,
+        auraInstanceID = data.auraInstanceID,
+        applications = data.applications,
+        expirationTime = data.expirationTime,
+        duration = data.duration,
+      }
+      AppendGapRow(skipKeys, out, maxN, stats, row, true)
+    end
+  end
+end
+
+SetIconTexture = function(icon, t)
   local okSet = false
   pcall(function()
+    if type(t) == "table" and t.iconTex and t.iconTex.GetTexture then
+      icon:SetTexture(t.iconTex:GetTexture())
+      okSet = true
+      return
+    end
+    if type(t) == "table" and t.icon ~= nil then
+      t = t.icon
+    end
     if type(t) == "table" or type(t) == "userdata" then
       if t.GetTexture then
         icon:SetTexture(t:GetTexture())
         okSet = true
       end
-    else
+    elseif t ~= nil then
       icon:SetTexture(t)
       okSet = true
     end
@@ -1512,98 +3600,552 @@ local function SetIconTexture(icon, t)
   return okSet
 end
 
---- Paint only missing (others') icons beside native DebuffList — never replace native.
-local function PaintMergeMissing(unit, plate)
-  local uf = plate and plate.UnitFrame
-  local parent = uf or plate
-  if not parent then
+ApplyGapAuraVisual = function(button, entry, unitToken)
+  if not button then
+    return false, false
+  end
+  local tex = button.icon or button.Icon
+  if not tex then
+    pcall(function()
+      local psz = IconSize()
+      if button._pbPlate then
+        psz = select(1, MergeRowIconSize(button._pbPlate, nil)) or psz
+      end
+      InitAuraButton(button, button:GetWidth() or psz or IconSize())
+    end)
+    tex = button.icon or button.Icon
+  end
+  local auraInstanceOk = false
+  if type(entry) == "table" then
+    EnrichGapAuraEntry(entry, unitToken)
+    if type(entry) == "table" and entry._tfFrame and button.SetAuraInstance then
+    pcall(function()
+      local tfBtn = entry._tfFrame
+      if tfBtn and tfBtn.GetAuraInstance then
+        local _, data = tfBtn:GetAuraInstance()
+        if type(data) == "table" and data.auraInstanceID ~= nil then
+          entry.auraInstanceID = data.auraInstanceID
+          entry.spellId = data.spellId or entry.spellId
+          entry.icon = data.icon or entry.icon
+          entry.expirationTime = data.expirationTime or entry.expirationTime
+          entry.duration = data.duration or entry.duration
+        end
+      end
+    end)
+  end
+  pcall(function()
+      if button.SetAuraInstance and entry.auraInstanceID ~= nil then
+        if button.SetUnit and unitToken then
+          button:SetUnit(unitToken)
+        end
+        button:SetAuraInstance(entry.auraInstanceID)
+        auraInstanceOk = true
+      elseif button.SetAuraInstance and entry.spellId ~= nil and unitToken and C_UnitAuras and C_UnitAuras.GetAuraDataBySpellID then
+        local okD, data = pcall(C_UnitAuras.GetAuraDataBySpellID, unitToken, entry.spellId)
+        if okD and type(data) == "table" and data.auraInstanceID ~= nil then
+          if button.SetUnit then
+            button:SetUnit(unitToken)
+          end
+          button:SetAuraInstance(data.auraInstanceID)
+          entry.auraInstanceID = data.auraInstanceID
+          auraInstanceOk = true
+        end
+      end
+    end)
+  end
+  local ok = false
+  if tex then
+    ok = SetIconTexture(tex, entry)
+  end
+  if type(entry) == "table" then
+    local exp = entry.expirationTime
+    local dur = entry.duration
+    local apps = entry.applications or entry.stacks
+    local cdSet = false
+    pcall(function()
+      local cd = button.cooldown
+      if cd and type(exp) == "number" and type(dur) == "number" and dur > 0 and not IsSecret(exp) and not IsSecret(dur) then
+        local start = exp - dur
+        if start and start >= 0 then
+          cd:SetCooldown(start, dur)
+          cd:Show()
+          cdSet = true
+        end
+      end
+    end)
+    entry._pbCd = cdSet
+    local showCount = ok or auraInstanceOk
+    pcall(function()
+      if button.count then
+        if showCount and apps ~= nil and not IsSecret(apps) and type(apps) == "number" and apps > 1 then
+          button.count:SetText(tostring(apps))
+          button.count:Show()
+        else
+          button.count:SetText("")
+          button.count:Hide()
+        end
+      end
+    end)
+  end
+  local cdSet = type(entry) == "table" and entry._pbCd == true
+  local visible = ok or auraInstanceOk
+  if not visible and type(entry) == "table" and entry.iconTex and TextureHasArt(entry.iconTex) then
+    visible = true
+  end
+  return visible, cdSet
+end
+
+TfSupplementSkipKeys = function(paintKeys, missing)
+  local skip = CopyKeySet(paintKeys)
+  if type(missing) == "table" then
+    for i = 1, #missing do
+      local k = CanonicalGapKey(missing[i]) or TfRowKey(missing[i])
+      if k then
+        skip[k] = true
+      end
+    end
+  end
+  return skip
+end
+
+SilentTraceEnabled = function()
+  local p = Profile()
+  return p.silentTrace ~= false and p.paintTraceOn ~= false
+end
+
+BuildPaintTraceLine = function(why, unit, plate)
+  if not SilentTraceEnabled() then
+    return nil
+  end
+  unit = OverlayUnitKey(unit, plate) or tostring(unit or "?")
+  local p = Profile()
+  local nativeN = plate and CountPlateHarmfulShown(plate) or 0
+  local nativeList = plate and NativeDebuffList(plate)
+  local nativeKids = nativeList and RawChildCount(nativeList) or 0
+  local poolKids = 0
+  if plate then
+    local buttons = {}
+    CollectPlateDebuffButtons(plate, buttons, MaxIcons())
+    poolKids = #buttons
+  end
+  local tf = 0
+  if HasTarget() then
+    tf = CountTargetHarmfulExpected("target")
+  end
+  local fb = 0
+  if unit and fallbacks[unit] then
+    fb = tonumber(fallbacks[unit]._painted) or 0
+  end
+  local lpd = lastPaintDebug or {}
+  local tgtSrc = ShouldUseTargetAuraSource(unit, plate) and 1 or 0
+  local parentKind = lpd.parent or (nativeN > 0 and "nativeRow" or "healthBar")
+  local nativeVis = nativeList and (SafeShown(nativeList) and 1 or 0) or 0
+  local bar = plate and HealthBar(plate)
+  local barVis = bar and (SafeShown(bar) and 1 or 0) or 0
+  return string.format(
+    "PAINT ver=%s why=%s unit=%s tgt=%s merge=%s native=%s pool=%s kids=%s tf=%s harv=%s miss=%s painted=%s fb=%s pers=%s for=%s tgtSrc=%s parent=%s natVis=%s barVis=%s active=%s safe=%s acFail=%s gapSz=%s lockSz=%s cdN=%s tfRows=%s cov=%s friend=%s tfBtn=%s party=%s",
+    tostring(ns.Config.VERSION),
+    tostring(why or "?"),
+    tostring(unit),
+    HasTarget() and "1" or "0",
+    p.mergeMissing == true and "1" or "0",
+    tostring(nativeN),
+    tostring(poolKids),
+    tostring(nativeKids),
+    tostring(tf),
+    tostring(lpd.harv or "?"),
+    tostring(lpd.miss or "?"),
+    tostring(lpd.painted or fb),
+    tostring(fb),
+    tostring(lpd.personal or (fallbacks[unit] and fallbacks[unit]._gapPersonal) or "?"),
+    tostring(lpd.foreign or (fallbacks[unit] and fallbacks[unit]._gapForeign) or "?"),
+    tostring(tgtSrc),
+    tostring(parentKind),
+    tostring(nativeVis),
+    tostring(barVis),
+    ModuleActive() and "1" or "0",
+    p.safeMode and "1" or "0",
+    acCreateFailed and "1" or "0",
+    tostring(lpd.gapSz or "?"),
+    tostring(lpd.lockSz or "?"),
+    tostring(lpd.cdN or "?"),
+    tostring(lpd.tfRows or "?"),
+    tostring((lpd.nativeN or nativeN) + (tonumber(lpd.painted) or tonumber(fb) or 0)),
+    tostring(lpd.friendPlate or "?"),
+    tostring(lpd.tfBtn or "?"),
+    tostring(lpd.partyTok or "?")
+  )
+end
+
+SilentTracePaint = function(why, unit, plate)
+  if not SilentTraceEnabled() then
+    return
+  end
+  local line = BuildPaintTraceLine(why, unit, plate)
+  if line and ns.SessionLog and ns.SessionLog.RecordPaint then
+    pcall(ns.SessionLog.RecordPaint, line)
+  end
+end
+
+SilentTraceSweep = function(why)
+  if not SilentTraceEnabled() then
+    return
+  end
+  local now = GetTime and GetTime() or 0
+  if (now - lastSilentSweepAt) < SILENT_SWEEP_SEC then
+    return
+  end
+  lastSilentSweepAt = now
+  local list = EnumerateLivePlates()
+  local swept = {}
+  if HasTarget() then
+    local tp = PlateFor("target")
+    local tu = NameplateUnitFor("target") or (tp and UnitTokenFromPlate(tp))
+    tu = OverlayUnitKey(tu, tp)
+    if tp then
+      SilentTracePaint(why or "sweep_tgt", tu, tp)
+      swept[tu or tostring(tp)] = true
+    end
+  end
+  for i = 1, #list do
+    if i > 8 then
+      break
+    end
+    local entry = list[i]
+    local u = OverlayUnitKey(entry.unit, entry.plate)
+    if u and not swept[u] and entry.plate then
+      SilentTracePaint((why or "sweep") .. "_np", u, entry.plate)
+      swept[u] = true
+    end
+  end
+end
+
+--- Paint personal + foreign gaps beside native — 0.1.15 sources + 0.2 layout (§5 P0/P1).
+PaintMergeMissing = function(unit, plate)
+  if not plate then
+    ClearFallback(unit)
     return 0
   end
+  local parent = FallbackParent(plate)
+  if not parent then
+    ClearFallback(unit)
+    return 0
+  end
+  local nativeList = NativeDebuffAnchorList(plate) or parent
 
   EnsureNativeVisible(plate)
   RestoreNameShift(unit, plate)
 
-  -- Friend/party plates: never merge.
-  if IsPlayerOrFriendPlate(unit, plate) then
+  local friendPlate = IsPlayerOrFriendPlate(unit, plate)
+  local partyAuraTok = ResolvePartyTokenForPlate(plate)
+  if partyAuraTok then
+    friendPlate = true
+  end
+  if friendPlate and not MergeFriendPlatesEnabled() then
     ClearFallback(unit)
     return 0
   end
 
-  -- skipKeys = native DebuffList + known player-owned (never re-paint personal).
-  local skipKeys = NativeKeySet(plate)
+  lastPaintDebug.harv = 0
+  lastPaintDebug.tgtSrc = 0
+  lastPaintDebug.miss = 0
+  lastPaintDebug.painted = 0
+  lastPaintDebug.personal = 0
+  lastPaintDebug.foreign = 0
+  lastPaintDebug.cdN = 0
+  lastPaintDebug.tfRows = 0
+  lastPaintDebug.gapSz = nil
+  lastPaintDebug.lockSz = nil
+
+  local paintKeys = NativeShownKeySet(plate)
   local maxN = MaxIcons()
   local missing = {}
+  local stats = { personal = 0, foreign = 0 }
   local isTarget = IsTargetPlate(unit, plate)
+  local useTargetSrc = ShouldUseTargetAuraSource(unit, plate)
 
-  -- Target plate: merge TF + unit auras Blizzard omitted from DebuffList.
-  if isTarget then
-    CollectPlayerOwnedKeys("target", skipKeys)
-    if type(unit) == "string" and unit ~= "target" then
-      CollectPlayerOwnedKeys(unit, skipKeys)
+  if HasTarget() and not useTargetSrc and not friendPlate and type(unit) == "string" and unit:match("^nameplate") and not isTarget then
+    ClearFallback(unit)
+    return 0
+  end
+  local nativeN = CountPlateHarmfulShown(plate)
+  local allowSecret = useTargetSrc or nativeN == 0
+
+  local queueSkip = CopyKeySet(paintKeys)
+
+  if useTargetSrc then
+    CollectUnitHarmfulMirror("target", queueSkip, missing, maxN, stats)
+    pcall(ReconcileTargetFrameUiButtons, plate, missing, queueSkip, maxN, stats)
+  elseif friendPlate and type(unit) == "string" then
+    local auraTok = partyAuraTok or unit
+    CollectUnitHarmfulMirror(auraTok, queueSkip, missing, maxN, stats)
+    CollectForeignAuraGaps(auraTok, queueSkip, missing, maxN, true, stats)
+    CollectAuraSlotsGaps(auraTok, queueSkip, missing, maxN, stats)
+    EnsureUnitHarmfulParity(auraTok, plate, missing, queueSkip, maxN, stats)
+  end
+
+  -- TF-first: mirror harmful row when target plate (party DoTs + personal when native=0).
+  local harvN = 0
+  if useTargetSrc then
+    local harv = {}
+    pcall(function()
+      harv = CollectTargetHarmfulRows(maxN) or {}
+    end)
+    harvN = #harv
+    lastPaintDebug.harv = harvN
+    lastPaintDebug.tgtSrc = 1
+    for i = 1, #harv do
+      AppendGapRow(queueSkip, missing, maxN, stats, harv[i], false)
     end
-    CollectUnitAuraMissing("target", skipKeys, missing, maxN, true)
-    if type(unit) == "string" and unit ~= "target" then
-      CollectUnitAuraMissing(unit, skipKeys, missing, maxN, true)
-    end
-    CollectTargetFrameMissing(skipKeys, missing, maxN)
   else
-    CollectPlayerOwnedKeys(unit, skipKeys)
-    CollectUnitAuraMissing(unit, skipKeys, missing, maxN, true)
+    lastPaintDebug.tgtSrc = 0
+    lastPaintDebug.harv = 0
+  end
+
+  if useTargetSrc then
+    CollectPersonalAuraGaps("target", queueSkip, missing, maxN, stats)
+    if type(unit) == "string" and unit ~= "target" then
+      CollectPersonalAuraGaps(unit, queueSkip, missing, maxN, stats)
+    end
+    CollectTargetFramePersonalGaps(queueSkip, missing, maxN, stats)
+
+    local foreignSkip = CopyKeySet(queueSkip)
+    CollectForeignAuraGaps("target", foreignSkip, missing, maxN, allowSecret, stats)
+    CollectAuraSlotsGaps("target", foreignSkip, missing, maxN, stats)
+    if type(unit) == "string" and unit ~= "target" then
+      CollectForeignAuraGaps(unit, foreignSkip, missing, maxN, allowSecret, stats)
+    end
+    -- TF supplement: queueSkip + CanonicalGapKey dedupe; catches party harm TF/API missed in harv.
+    CollectTargetFrameMissing(queueSkip, missing, maxN, stats)
+    CollectUnitHarmfulMirror("target", queueSkip, missing, maxN, stats)
+    if type(unit) == "string" and unit ~= "target" then
+      CollectUnitHarmfulMirror(unit, queueSkip, missing, maxN, stats)
+    end
+    EnsureTargetHarmfulParity(plate, missing, queueSkip, maxN, stats)
+    DedupeGapIcons(missing, maxN)
+    ReconcileTfHarmfulCoverage(plate, missing, queueSkip, maxN, stats, "target")
+    DedupeGapIcons(missing, maxN)
+    local auraTok = "target"
+    local tfUiN = CountTargetFrameAuras()
+    if not (tfUiN > 0 and #missing > 0) then
+      PruneInactiveGapRows(missing, auraTok, maxN)
+    end
+    ReconcileTfHarmfulCoverage(plate, missing, queueSkip, maxN, stats, "target")
+    DedupeGapIcons(missing, maxN)
+    ReconcileTargetFrameUiButtons(plate, missing, queueSkip, maxN, stats)
+    DedupeGapIcons(missing, maxN)
+    if #missing == 0 then
+      pcall(ForceFillTargetFrameGaps, missing, queueSkip, maxN, stats)
+      DedupeGapIcons(missing, maxN)
+    end
+  elseif friendPlate and type(unit) == "string" then
+    local auraTok = partyAuraTok or unit
+    local foreignSkip = CopyKeySet(paintKeys)
+    CollectPersonalAuraGaps(auraTok, foreignSkip, missing, maxN, stats)
+    CollectPlayerOwnedKeys(auraTok, foreignSkip)
+    CollectForeignAuraGaps(auraTok, foreignSkip, missing, maxN, true, stats)
+    CollectAuraSlotsGaps(auraTok, foreignSkip, missing, maxN, stats)
+    CollectUnitHarmfulMirror(auraTok, foreignSkip, missing, maxN, stats)
+    EnsureUnitHarmfulParity(auraTok, plate, missing, foreignSkip, maxN, stats)
+    ReconcileTfHarmfulCoverage(plate, missing, foreignSkip, maxN, stats, auraTok)
+    DedupeGapIcons(missing, maxN)
+    local harmN = CountTargetHarmfulApi(auraTok)
+    if not (harmN > 0 and #missing > 0) then
+      PruneInactiveGapRows(missing, auraTok, maxN)
+    end
+    if #missing == 0 and harmN > 0 then
+      EnsureUnitHarmfulParity(auraTok, plate, missing, foreignSkip, maxN, stats)
+      DedupeGapIcons(missing, maxN)
+    end
+  elseif type(unit) == "string" then
+    CollectPersonalAuraGaps(unit, paintKeys, missing, maxN, stats)
+    local foreignSkip = CopyKeySet(paintKeys)
+    CollectPlayerOwnedKeys(unit, foreignSkip)
+    CollectForeignAuraGaps(unit, foreignSkip, missing, maxN, allowSecret, stats)
+    CollectUnitHarmfulMirror(unit, foreignSkip, missing, maxN, stats)
+    EnsureUnitHarmfulParity(unit, plate, missing, foreignSkip, maxN, stats)
+    DedupeGapIcons(missing, maxN)
+    PruneInactiveGapRows(missing, unit, maxN)
+  end
+
+  ApplyGapSticky(unit, missing, useTargetSrc, useTargetSrc and "target" or unit)
+  if useTargetSrc then
+    local tfUiLate = CountTargetFrameAuras()
+    if not (tfUiLate > 0 and #missing > 0) then
+      PruneInactiveGapRows(missing, "target", maxN)
+    end
+    if #missing == 0 and tfUiLate > 0 then
+      pcall(ForceFillTargetFrameGaps, missing, queueSkip, maxN, stats)
+      DedupeGapIcons(missing, maxN)
+    end
+  elseif type(unit) == "string" then
+    PruneInactiveGapRows(missing, unit, maxN)
+  end
+
+  lastPaintDebug.miss = #missing
+  lastPaintDebug.tfBtn = CountTargetFrameAuras()
+  lastPaintDebug.unit = tostring(unit)
+  lastPaintDebug.nativeN = nativeN
+  lastPaintDebug.friendPlate = friendPlate and 1 or 0
+  lastPaintDebug.partyTok = partyAuraTok or "-"
+  if useTargetSrc and HasTarget() then
+    lastPaintDebug.tfRows = CountTargetHarmfulExpected("target", lastPaintDebug.harv)
+  elseif friendPlate and type(unit) == "string" then
+    lastPaintDebug.tfRows = CountTargetHarmfulExpected(unit, #missing)
+  else
+    lastPaintDebug.tfRows = 0
   end
 
   if #missing == 0 then
-    ClearFallback(unit)
+    local held = fallbacks[unit]
+    local sticky = gapSticky[unit]
+    local now = GetTime and GetTime() or 0
+    local heldN = held and tonumber(held._painted) or 0
+    if heldN > 0 and sticky and type(sticky.icons) == "table" and #sticky.icons > 0 then
+      if type(sticky.at) == "number" and (now - sticky.at) <= GAP_STICKY_SEC then
+        local auraUnit = useTargetSrc and "target" or (partyAuraTok or unit)
+        local heldCd = 0
+        pcall(function()
+          local n, cdn = RefreshHeldGapFallback(unit, plate, held, sticky.icons, auraUnit)
+          heldN = n or 0
+          heldCd = cdn or 0
+        end)
+        if heldN <= 0 then
+          gapSticky[unit] = nil
+          lastPaintDebug.painted = 0
+          ClearFallback(unit, false)
+          SilentTracePaint("paint_hold_expired", unit, plate)
+          return 0
+        end
+        lastPaintDebug.painted = heldN
+        lastPaintDebug.miss = 0
+        lastPaintDebug.cdN = heldCd
+        SilentTracePaint("paint_hold", unit, plate)
+        return heldN
+      end
+    end
+    lastPaintDebug.painted = 0
+    ClearFallback(unit, false)
     return 0
   end
 
-  local fb = EnsureFallback(unit, parent)
-  local sz = IconSize()
+  local fb = EnsureFallback(unit, plate)
+  if not fb then
+    lastPaintDebug.painted = 0
+    lastPaintDebug.parent = "nil"
+    return 0
+  end
+  lastPaintDebug.parent = nativeN > 0 and "nativeRow" or "healthBar"
+  local sz, pad = MergeRowIconSize(plate, fb)
+  fb._pbPlate = plate
+  local auraUnit = useTargetSrc and "target" or (partyAuraTok or unit)
   local painted = 0
+  local cdN = 0
   for i = 1, #missing do
     if painted >= maxN then
       break
     end
     painted = painted + 1
-    local icon = fb.icons[painted]
-    icon:ClearAllPoints()
-    icon:SetSize(sz, sz)
-    icon:SetPoint("LEFT", fb, "LEFT", (painted - 1) * (sz + OVERLAY_PAD), 0)
-    if SetIconTexture(icon, missing[i]) then
-      icon:Show()
-    else
-      icon:Hide()
+    local slot = fb.icons[painted]
+    if not slot or not slot.SetSize then
+      slot = CreateGapAuraButton(fb, sz)
+      slot._pbPlate = plate
+      fb.icons[painted] = slot
+    end
+    local okLay = pcall(function()
+      if slot._pbSz ~= sz then
+        pcall(InitAuraButton, slot, sz)
+        slot._pbSz = sz
+      end
+      slot:ClearAllPoints()
+      slot:SetSize(sz, sz)
+      slot:SetPoint("LEFT", fb, "LEFT", (painted - 1) * (sz + pad), 0)
+    end)
+    if not okLay then
       painted = painted - 1
+    else
+      EnrichGapAuraEntry(missing[i], auraUnit)
+      local okVis, cdSet = ApplyGapAuraVisual(slot, missing[i], auraUnit)
+      if cdSet then
+        cdN = cdN + 1
+      end
+      if okVis then
+        pcall(slot.Show, slot)
+      else
+        pcall(slot.Hide, slot)
+        painted = painted - 1
+      end
     end
   end
   for i = painted + 1, #fb.icons do
-    fb.icons[i]:Hide()
+    local slot = fb.icons[i]
+    if slot then
+      pcall(slot.Hide, slot)
+    end
   end
 
   if painted == 0 then
-    fb:Hide()
+    pcall(fb.Hide, fb)
     fb._painted = 0
     return 0
   end
 
-  fb:SetSize(math.max(1, painted * (sz + OVERLAY_PAD)), sz)
-  fb:SetFrameStrata("MEDIUM")
-  local lvl = 50
   pcall(function()
-    lvl = (parent:GetFrameLevel() or 1) + 15
+    fb:SetSize(math.max(1, painted * (sz + pad)), sz)
+    local strata = "MEDIUM"
+    pcall(function()
+      if nativeList.GetFrameStrata then
+        strata = nativeList:GetFrameStrata() or strata
+      end
+    end)
+    fb:SetFrameStrata(strata)
+    local lvl = 50
+    pcall(function()
+      if nativeList.GetFrameLevel then
+        lvl = (nativeList:GetFrameLevel() or 1) + 3
+      elseif parent then
+        lvl = (parent:GetFrameLevel() or 1) + 15
+      end
+    end)
+    fb:SetFrameLevel(lvl)
+    pcall(function()
+      if fb.SetClipsChildren then
+        fb:SetClipsChildren(false)
+      end
+    end)
+    fb:Show()
   end)
-  fb:SetFrameLevel(lvl)
-  fb:Show()
   fb._painted = painted
+  fb._gapPersonal = stats.personal or 0
+  fb._gapForeign = stats.foreign or 0
 
-  LayoutMergeBesideNative(unit, plate, fb, painted)
+  pcall(LayoutMergeBesideNative, unit, plate, fb, painted)
+  if painted > 0 then
+    local kept = {}
+    for i = 1, painted do
+      kept[i] = missing[i]
+    end
+    RememberGapSticky(unit, kept, auraUnit)
+  end
+  lastPaintDebug.painted = painted
+  lastPaintDebug.personal = stats.personal
+  lastPaintDebug.foreign = stats.foreign
+  lastPaintDebug.gapSz = sz
+  lastPaintDebug.lockSz = fb._pbLockedSz
+  lastPaintDebug.cdN = cdN
+  SilentTracePaint("paint", unit, plate)
   return painted
 end
 
-local function UpdateOverlay(unit, plate)
+UpdateOverlay = function(unit, plate)
+  plate = plate or (unit and PlateFor(unit))
+  unit = OverlayUnitKey(unit, plate)
   if not ModuleActive() or not unit then
     return
   end
-  plate = plate or PlateFor(unit)
+  if not plate and type(unit) == "string" and unit:match("^nameplate%d+") then
+    plate = PlateFor(unit)
+  end
   if not plate or IsForbiddenPlate(plate) then
     ClearOverlay(unit)
     return
@@ -1621,21 +4163,26 @@ local function UpdateOverlay(unit, plate)
   end
 
   local p = Profile()
-  -- mergeMissing=false (/pb merge off) → native DebuffList only, no chrome.
-  ClearFallback(unit)
   RestoreNameShift(unit, plate)
   if p.mergeMissing ~= true then
+    ClearFallback(unit)
     return
   end
 
-  PaintMergeMissing(unit, plate)
+  local okPaint, errPaint = pcall(PaintMergeMissing, unit, plate)
+  if not okPaint then
+    ClearFallback(unit, false)
+    if ns.RecordError then
+      ns.RecordError("paint", errPaint)
+    end
+  end
 end
 
 -- Forward decl for auto-diag after RefreshAll
 local SnapshotDiagnose
 local MaybeAutoDiagnose
 
-local function RefreshAll()
+RefreshAll = function()
   local live = {}
   local list = EnumerateLivePlates()
   for i = 1, #list do
@@ -1651,12 +4198,18 @@ local function RefreshAll()
       end
     end
   end
-  -- Always try target plate explicitly (secret UnitIsUnit fallbacks).
+  -- Always try target plate explicitly (secret UnitIsUnit / missing nameplate token).
   if ModuleActive() and HasTarget() then
-    local tu = NameplateUnitFor("target")
-    if tu then
+    local tp = PlateFor("target")
+  local tu = NameplateUnitFor("target") or (tp and UnitTokenFromPlate(tp))
+    tu = OverlayUnitKey(tu, tp)
+    if tu and tp then
       live[tu] = true
-      UpdateOverlay(tu, PlateFor(tu) or PlateFor("target"))
+      UpdateOverlay(tu, tp)
+    elseif tp then
+      local pk = OverlayUnitKey(nil, tp)
+      live[pk] = true
+      UpdateOverlay(pk, tp)
     end
   end
   for unit in pairs(overlays) do
@@ -1671,9 +4224,12 @@ local function RefreshAll()
       fallbacks[unit] = nil
     end
   end
+  if type(SilentTraceSweep) == "function" then
+    pcall(SilentTraceSweep, "refresh")
+  end
 end
 
-local function EnsureTicker()
+EnsureTicker = function()
   if ticker or not C_Timer or not C_Timer.NewTicker then
     return
   end
@@ -1685,7 +4241,7 @@ local function EnsureTicker()
   end)
 end
 
-local function StopTicker()
+StopTicker = function()
   if ticker then
     pcall(function()
       ticker:Cancel()
@@ -1694,7 +4250,7 @@ local function StopTicker()
   end
 end
 
-local function WatchInterval()
+WatchInterval = function()
   local n = tonumber(Profile().watchInterval) or WATCH_DEFAULT_SEC
   if n < 1 then
     n = 1
@@ -1704,7 +4260,7 @@ local function WatchInterval()
   return n
 end
 
-local function StopWatchTicker()
+StopWatchTicker = function()
   if watchTicker then
     pcall(function()
       watchTicker:Cancel()
@@ -1713,7 +4269,7 @@ local function StopWatchTicker()
   end
 end
 
-local function EnsureWatchTicker()
+EnsureWatchTicker = function()
   StopWatchTicker()
   if not Profile().watchOn then
     return
@@ -1734,7 +4290,7 @@ local function EnsureWatchTicker()
   end)
 end
 
-local function Defer(fn)
+Defer = function(fn)
   if C_Timer and C_Timer.After then
     C_Timer.After(0, function()
       pcall(fn)
@@ -1780,10 +4336,10 @@ SnapshotDiagnose = function(reason, opts)
     end
   end
   if plate then
-    native = CountShownAuraKids(NativeDebuffList(plate))
+    native = CountPlateHarmfulShown(plate)
   elseif plateCount > 0 then
     for i = 1, #live do
-      local n = CountShownAuraKids(NativeDebuffList(live[i].plate))
+      local n = CountPlateHarmfulShown(live[i].plate)
       if n > native then
         native = n
       end
@@ -1792,7 +4348,10 @@ SnapshotDiagnose = function(reason, opts)
 
   local tf = 0
   if targetYes then
-    tf = CountTargetFrameAuras()
+    tf = #CollectTargetHarmfulRows(MaxIcons())
+    if tf == 0 then
+      tf = CountTargetFrameAuras()
+    end
   end
 
   local overlayN = 0
@@ -1818,8 +4377,9 @@ SnapshotDiagnose = function(reason, opts)
   end
 
   local mergeOn = Profile().mergeMissing == true and "1" or "0"
+  local lpd = lastPaintDebug or {}
   local card = string.format(
-    "PLATEBAND_CARD ver=%s reason=%s target=%s plate=%s plates=%s overlays=%s ac=%s fb=%s kids=%s tf=%s native=%s merge=%s acFail=%s enabled=%s safe=%s watch=%s seen=%s upd=%s blocked=%s",
+    "PLATEBAND_CARD ver=%s reason=%s target=%s plate=%s plates=%s overlays=%s ac=%s fb=%s kids=%s tf=%s native=%s merge=%s harv=%s miss=%s painted=%s tgtSrc=%s punit=%s acFail=%s enabled=%s safe=%s watch=%s seen=%s upd=%s blocked=%s",
     tostring(ns.Config.VERSION),
     tostring(reason or "manual"),
     targetYes and "yes" or "no",
@@ -1832,6 +4392,11 @@ SnapshotDiagnose = function(reason, opts)
     tostring(tf),
     tostring(native),
     mergeOn,
+    tostring(lpd.harv or "?"),
+    tostring(lpd.miss or "?"),
+    tostring(lpd.painted or "?"),
+    tostring(lpd.tgtSrc or "?"),
+    tostring(lpd.unit or plateUnit or "?"),
     acCreateFailed and "1" or "0",
     tostring(Profile().enabled),
     tostring(Profile().safeMode),
@@ -1866,7 +4431,9 @@ SnapshotDiagnose = function(reason, opts)
   db.lastDiag = snap -- alias for older readers
 
   if ns.SessionLog and ns.SessionLog.Append then
-    pcall(ns.SessionLog.Append, card)
+    if opts.forceChat or not SilentTraceEnabled() or reason == "manual" or reason == "watch" then
+      pcall(ns.SessionLog.Append, card)
+    end
   end
 
   local sig = string.format("%s|%s|%s|%s|%s|%s",
@@ -1875,6 +4442,8 @@ SnapshotDiagnose = function(reason, opts)
   local chatOnChange = Profile().chatOnChange
   if opts.forceChat then
     -- watch ticker always prints via caller
+  elseif opts.silent or (SilentTraceEnabled() and reason ~= "manual" and reason ~= "watch") then
+    -- session paint trace only — no chat
   elseif chatOnChange and sig ~= lastChatSig then
     lastChatSig = sig
     -- Only announce meaningful transitions (have plates or target), skip idle spam.
@@ -1894,10 +4463,16 @@ end
 
 MaybeAutoDiagnose = function(reason, force)
   local p = Profile()
-  if p.autoDiag == false then
+  if p.autoDiag == false and p.paintTraceOn == false and p.silentTrace == false then
     return
   end
   local now = GetTime and GetTime() or 0
+  if SilentTraceEnabled() then
+    if force or reason == "target" or reason == "manual" then
+      pcall(SnapshotDiagnose, reason or "auto", { silent = true })
+    end
+    return
+  end
   if not force and (now - lastDiagAt) < AUTO_DIAG_MIN then
     return
   end
@@ -1905,7 +4480,7 @@ MaybeAutoDiagnose = function(reason, force)
   pcall(SnapshotDiagnose, reason or "auto", {})
 end
 
-local function OnEvent(_, event, arg1)
+OnEvent = function(_, event, arg1)
   if event == "NAME_PLATE_UNIT_ADDED" then
     local unit = arg1
     platesSeen = platesSeen + 1
@@ -1966,6 +4541,11 @@ local function OnEvent(_, event, arg1)
       return
     end
     if unit == "target" or unit == "focus" then
+      local now = GetTime and GetTime() or 0
+      if (now - lastAuraRefreshAt) < AURA_DEBOUNCE_SEC then
+        return
+      end
+      lastAuraRefreshAt = now
       Defer(function()
         RefreshAll()
         MaybeAutoDiagnose("aura_target", false)

@@ -1,5 +1,43 @@
 # BetterBackpack changelog
 
+## Release 1.2.10 — silent action trace
+
+Bag-key and layout diagnostics write to SavedVariables only; chat stays quiet unless you use `forceChat`. Pair with Forever silent trace for agent playtests.
+
+## 1.2.10 — TraceAction never chats
+
+- **`TraceAction`:** always SessionLog only; chat **only** with `opts.forceChat` (not `/bb debug`, not `silentTrace off`).
+- Fixes B-key spam when `silentTrace`/`actionTraceOn` off or legacy profile flags.
+
+### Playtest (1.2.10)
+
+1. `/reload` → `loaded v1.2.10`; `/bb debug on` + **B** — no `BAGKEY` / `onBagKey` in chat.
+2. FElog/chat: errors only; `actionTrace` in SV after `/reload`.
+
+## 1.2.8 — bag-key / combat / esc trace → SV only
+
+- **No chat** for `onBagKey`, `combat-diag`, `combat B ·`, or `esc ·` (even with `/bb debug on`).
+- **`BAGKEY`** lines in `actionTrace` / `sessionLog` (default silent trace on).
+- **`/bb bagkey`** still prints diagnose to chat on demand.
+
+### Playtest (1.2.8)
+
+1. `/reload` → `v1.2.8`; press **B** — no `onBagKey` in chat.
+2. `/bb debug on` + **B** — still no chat; `/bb dump` or SV shows `BAGKEY` tail.
+
+## 1.2.7 — silent ACTION trace (agent-readable)
+
+- **Silent by default:** `silentTrace` + `actionTraceOn` (schema **10**) — bulk/vendor diagnostics → SV, not chat.
+- **ACTION lines:** lane bulk sell (`queued`/`sold`/`MISMATCH=1`), vendor auto-sell, esc debug when `profile.debug`.
+- **Stores:** `sessionLog.export`, `actionTrace.export`, `lastActionTrace`; wiped each login.
+- **Agent:** `./scripts/watch-forever-traces.sh` (shared with Plateband / FElog).
+
+### Playtest (1.2.7)
+
+1. `/reload` → `loaded v1.2.7` (no BulkTransfer spam).
+2. Vendor → Ctrl+Shift+RMB lane or auto-sell → `/bb dump` shows `lastAction`.
+3. Mac agent: `watch-forever-traces.sh watch 8` after one `/reload`.
+
 ## GitHub release 1.2.6 (PR merge `cursor/bb-shift-stack-recipe-9374`)
 
 Tag `betterbackpack-v1.2.6` · includes **1.2.2–1.2.6**:

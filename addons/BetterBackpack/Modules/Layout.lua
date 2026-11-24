@@ -754,13 +754,13 @@ local function LogPlayerSlotsOnce(used, total, parts)
   end
   freeSpaceLogged = true
   local msg = string.format(
-    "|cff88ff88BetterBackpack|r slots %s → used/total=%d/%d (player+reagent, no keyring/bank)",
+    "slots %s used/total=%d/%d",
     tostring(parts or "?"),
     used or 0,
     total or 0
   )
-  if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
-    pcall(DEFAULT_CHAT_FRAME.AddMessage, DEFAULT_CHAT_FRAME, msg)
+  if BetterBackpack.TraceAction then
+    BetterBackpack.TraceAction("BAGKEY " .. msg)
   end
 end
 
@@ -1119,15 +1119,23 @@ end
 local function HeaderInvokeBulkTransfer(header, laneKey)
   header._bbShiftDown = nil
   header._bbCtrlDown = nil
-  if BetterBackpack.Print then
+  if BetterBackpack.TraceAction then
+    BetterBackpack.TraceAction("BULK header lane=" .. tostring(laneKey), "|cff88ccffBulk|r")
+  elseif BetterBackpack.Print then
     BetterBackpack.Print("|cff88ccffBulk|r header Ctrl+Shift+RMB · lane=" .. tostring(laneKey))
   end
   local BT = BetterBackpack.Modules.BulkTransfer or Feat("BulkTransfer")
   if BT and BT.TransferLane then
     local ok, err = pcall(BT.TransferLane, laneKey)
-    if not ok and BetterBackpack.Print then
-      BetterBackpack.Print("|cff88ccffBulk|r TransferLane error · " .. tostring(err))
+    if not ok then
+      if BetterBackpack.RecordError then
+        BetterBackpack.RecordError("TransferLane", err)
+      elseif BetterBackpack.Print then
+        BetterBackpack.Print("|cff88ccffBulk|r TransferLane error · " .. tostring(err))
+      end
     end
+  elseif BetterBackpack.RecordError then
+    BetterBackpack.RecordError("BulkTransfer", "module not loaded")
   elseif BetterBackpack.Print then
     BetterBackpack.Print("|cff88ccffBulk|r ERROR — BulkTransfer module not loaded (TOC/Core)")
   end
@@ -1172,9 +1180,9 @@ local function WireSectionHeader(key, header)
     if button == "RightButton" then
       local bulk = HeaderLaneBulkDown(self)
       if bulk and not CursorHoldingItem() then
-        if BetterBackpack.Print then
-          BetterBackpack.Print(string.format(
-            "|cff88ccffBulk|r header MouseUp · lane=%s ctrl+shift=%s",
+        if BetterBackpack.TraceAction then
+          BetterBackpack.TraceAction(string.format(
+            "BULK header MouseUp lane=%s ctrl+shift=%s",
             tostring(key),
             tostring(bulk)
           ))
@@ -2039,14 +2047,14 @@ local function LogChromeOnce(tidy, gear, close)
     return string.format("%s %.0fx%.0f", tostring(name), w or 0, h or 0)
   end
   local msg = string.format(
-    "|cff88ff88BetterBackpack|r chrome tidy=%s gear=%s close=%s ver=%d",
+    "chrome tidy=%s gear=%s close=%s ver=%d",
     wh(tidy),
     wh(gear),
     wh(close),
     CHROME_VER
   )
-  if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
-    pcall(DEFAULT_CHAT_FRAME.AddMessage, DEFAULT_CHAT_FRAME, msg)
+  if BetterBackpack.TraceAction then
+    BetterBackpack.TraceAction("BAGKEY " .. msg)
   end
 end
 
@@ -2923,7 +2931,8 @@ end
 
 function Layout.EscDebugTrace(phase, detail)
   local p = Profile()
-  if not (p and p.debug) then
+  local silent = BetterBackpack.SilentTraceEnabled and BetterBackpack.SilentTraceEnabled()
+  if not silent and not (p and p.debug) then
     return
   end
   local f = main or _G.BetterBackpackFrame
@@ -2938,10 +2947,10 @@ function Layout.EscDebugTrace(phase, detail)
     tostring(BetterBackpack._bbKeepShown),
     detail and tostring(detail) or ""
   )
-  if BetterBackpack.Print then
-    BetterBackpack.Print(line)
-  elseif DEFAULT_CHAT_FRAME then
-    DEFAULT_CHAT_FRAME:AddMessage("|cffc9a227BetterBackpack|r " .. line)
+  if BetterBackpack.TraceAction then
+    BetterBackpack.TraceAction("BAGKEY ESC " .. line, nil)
+  elseif BetterBackpack.Modules and BetterBackpack.Modules.SessionLog and BetterBackpack.Modules.SessionLog.RecordAction then
+    pcall(BetterBackpack.Modules.SessionLog.RecordAction, "BAGKEY ESC " .. line)
   end
   local db = Config and Config.EnsureDB and Config.EnsureDB()
   if db then

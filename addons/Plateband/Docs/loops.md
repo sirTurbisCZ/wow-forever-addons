@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.1.15**
+Version: **0.2.29** (party plate token bind, friend merge paint)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 
@@ -13,8 +13,8 @@ flowchart TD
   upd --> clear[ClearFallback only]
   upd --> mergeFlag{mergeMissing?}
   mergeFlag -->|false /pb merge off| stop[Stop — Blizzard name+DebuffList untouched]
-  mergeFlag -->|true opt-in| paint[PaintMergeMissing]
-  paint --> layout[LayoutMergeBesideNative on Plateband frame only]
+  mergeFlag -->|true opt-in| paint[PaintMergeMissing foreign+TF]
+  paint --> layout[LayoutMergeBesideNative + MergeRowIconSize TF lock]
 ```
 
 ## Hard rules (three-addon refactor)

@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 1.2.6 — custom lanes per character.
+## Notes: 1.2.10 — TraceAction never chats; B/debug → SV only.
 ## Author: tuma
-## Version: 1.2.6
+## Version: 1.2.10
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled
@@ -10,6 +10,7 @@
 
 Locale/enUS.lua
 Config.lua
+Modules/SessionLog.lua
 Modules/Slots.lua
 Modules/Context.lua
 Modules/VendorJunk.lua

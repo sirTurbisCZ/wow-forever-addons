@@ -6,14 +6,14 @@ Plateband.L = Plateband.L or {}
 local L = Plateband.L
 
 L.PREFIX = "|cff7ec8e3[Plateband]|r"
-L.LOADED = "loaded v%s · merge on by default · /pb merge off for native-only · /pb help"
+L.LOADED = "loaded v%s · merge on · silent paint trace on → Plateband.lua · /pb help"
 L.UNKNOWN_CMD = "unknown command — /pb help"
 L.HELP_LINES = {
   "/pb help — this help",
   "/pb on|off — enable/disable the above-plate aura band",
-  "/pb diagnose — compact status card (also auto-saved)",
-  "/pb dump — status + recent errors + last diagnose",
-  "/pb watch on|off — print one-line card every ~2s while on",
+  "/pb diagnose — compact status card (chat); SV always logs silently",
+  "/pb dump — status + errors + paintTrace tail (no /reload spam needed)",
+  "/pb watch on|off — chat card every ~2s (off by default; silent trace on)",
   "/pb safe — disable band and clear overlays",
   "/pb reset — restore defaults",
   "/pb size <n> — icon size hint (12–32)",

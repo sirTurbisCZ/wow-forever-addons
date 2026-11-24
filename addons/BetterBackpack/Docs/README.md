@@ -6,7 +6,15 @@ Category-lane bags for **World of Warcraft Forever** (Interface 16001) with comb
 
 1. Copy or symlink this folder to `Interface/AddOns/BetterBackpack/`.
 2. Enable on the character select screen.
-3. `/reload` — expect `loaded v1.2.6` (or current `Config.VERSION`). **B** opens BetterBackpack (replaces `ToggleAllBags` / `OpenAllBags` when enabled). Bag-bar single bags stay native `ToggleBag`.
+3. `/reload` — expect `loaded v1.2.8` (or current `Config.VERSION`). **B** opens BetterBackpack (replaces `ToggleAllBags` / `OpenAllBags` when enabled). Bag-bar single bags stay native `ToggleBag`.
+
+## Silent trace (1.2.7+)
+
+Bulk/vendor diagnostics go to **SavedVariables** (`ACTION` lines), not chat. Wiped each login. Send after repro:
+
+`World of Warcraft/_forever_/WTF/Account/<Account>/SavedVariables/BetterBackpack.lua`
+
+Mac dev: `./scripts/watch-forever-traces.sh` from `git/wow.addons`.
 
 Categories start expanded; click a lane header to collapse. Window size is based on the full bag with every lane expanded (search/filter/collapse do not shrink it).
 
