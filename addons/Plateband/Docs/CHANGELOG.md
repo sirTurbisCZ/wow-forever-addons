@@ -1,5 +1,16 @@
 # Plateband changelog
 
+## 0.2.18 — gap cooldown swipe + stable TF size
+
+- **`ApplyGapAuraVisual`:** aura rows carry `expirationTime`/`duration` (API + TF harvest); `Cooldown:SetCooldown` each paint tick; optional `SetUnit` + `SetAuraInstance`.
+- **`MergeRowIconSize`:** Target Frame harmful debuff width is canonical when target exists; **`fb._pbLockedSz`** never grows when own DoT lands on native row.
+- **`AuraChromeWidth`:** prefer icon child width when frame chrome is oversized; TF sample uses **minimum** visible debuff width; plate metrics cap **32px**.
+
+### Playtest (0.2.18)
+
+1. `/reload` → `ver=0.2.18`; party DoTs on target plate — **same size** as TF/native personal; **live cooldown swipe** on each icon.
+2. Apply own DoT — gap row icons **do not jump** larger.
+
 ## 0.2.17 — native gap aura chrome (merge row)
 
 - **Gap row uses Blizzard debuff button templates** (`DebuffButtonTemplate`, …) via `CreateGapAuraButton` + `InitAuraButton` — border, cooldown swipe, stack font like personal DebuffList.

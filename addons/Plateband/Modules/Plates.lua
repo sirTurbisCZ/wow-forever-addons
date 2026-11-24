@@ -1492,16 +1492,30 @@ local function AuraChromeWidth(frame)
   if w < 12 or w > 48 then
     return nil
   end
+  -- Plate/container chrome can report wider than the icon; prefer art child.
+  if w > 28 then
+    local art = frame.icon or frame.Icon
+    if art then
+      local iw
+      pcall(function()
+        iw = art:GetWidth()
+      end)
+      if type(iw) == "number" and not IsSecret(iw) and iw >= 12 and iw <= 32 then
+        return iw
+      end
+    end
+  end
   return w
 end
 
 SampleTfDebuffIconSize = function()
+  local best
   for i = 1, 16 do
     local f = _G["TargetFrameDebuff" .. i]
     if f and SafeShown(f) then
       local w = AuraChromeWidth(f)
-      if w then
-        return w
+      if w and (not best or w < best) then
+        best = w
       end
     end
   end
@@ -1514,13 +1528,13 @@ SampleTfDebuffIconSize = function()
     if type(frames) == "table" then
       for j = 1, #frames do
         local w = AuraChromeWidth(frames[j])
-        if w then
-          return w
+        if w and (not best or w < best) then
+          best = w
         end
       end
     end
   end
-  return nil
+  return best
 end
 
 --- Match native debuff chrome — reject oversized chrome (stack parent, not aura kid).
@@ -1532,15 +1546,18 @@ NativeAuraMetrics = function(plate)
   CollectPlateDebuffButtons(plate, buttons, MaxIcons())
   for i = 1, #buttons do
     local w = AuraChromeWidth(buttons[i])
-    if w then
+    if w and w <= 36 then
       widths[#widths + 1] = w
     end
   end
   if #widths > 0 then
     table.sort(widths)
     sz = widths[1]
-    if widths[#widths] - widths[1] <= 4 then
-      sz = widths[1]
+    if widths[#widths] - widths[1] > 4 then
+      local mid = widths[math.ceil(#widths / 2)]
+      if mid and mid >= 12 and mid <= 32 then
+        sz = mid
+      end
     end
   else
     local tf = SampleTfDebuffIconSize()
@@ -1562,14 +1579,39 @@ NativeAuraMetrics = function(plate)
   end
   if sz < 12 then
     sz = 12
-  elseif sz > 40 then
-    sz = 40
+  elseif sz > 32 then
+    sz = 32
   end
   return sz, pad
 end
 
-MergeRowIconSize = function(plate)
-  return NativeAuraMetrics(plate)
+--- TF debuff row is the canonical personal chrome size; lock per fallback so own DoT landing never jumps.
+MergeRowIconSize = function(plate, fb)
+  local pad = OVERLAY_PAD
+  local sz
+  local tf = SampleTfDebuffIconSize()
+  if tf and HasTarget() then
+    sz = tf
+  else
+    sz = select(1, NativeAuraMetrics(plate))
+  end
+  if fb then
+    if type(fb._pbLockedSz) == "number" then
+      if sz > fb._pbLockedSz then
+        sz = fb._pbLockedSz
+      else
+        fb._pbLockedSz = sz
+      end
+    else
+      fb._pbLockedSz = sz
+    end
+  end
+  if sz < 12 then
+    sz = 12
+  elseif sz > 32 then
+    sz = 32
+  end
+  return sz, pad
 end
 
 PickRightmostAuraFrame = function(frames)
@@ -1837,6 +1879,8 @@ CollectForeignAuraGaps = function(unitToken, skipKeys, out, maxN, allowSecretUnk
           spellId = data.spellId,
           auraInstanceID = data.auraInstanceID,
           applications = data.applications,
+          expirationTime = data.expirationTime,
+          duration = data.duration,
         }
         skipKeys[key] = true
         if ck then
@@ -1883,6 +1927,8 @@ CollectPersonalAuraGaps = function(unitToken, paintKeys, out, maxN, stats)
           spellId = data.spellId,
           auraInstanceID = data.auraInstanceID,
           applications = data.applications,
+          expirationTime = data.expirationTime,
+          duration = data.duration,
         }
         paintKeys[key] = true
         if ck then
@@ -2274,6 +2320,9 @@ PushTfAuraFrame = function(frame, rows, maxN)
   pcall(function()
     local icon, sid, aid
     local tex = frame.Icon or frame.icon
+    local expTime
+    local dur
+    local apps
     pcall(function()
       if frame.GetAuraInstance then
         local _, data = frame:GetAuraInstance()
@@ -2281,6 +2330,9 @@ PushTfAuraFrame = function(frame, rows, maxN)
           icon = data.icon
           sid = data.spellId
           aid = data.auraInstanceID
+          expTime = data.expirationTime
+          dur = data.duration
+          apps = data.applications
         end
       end
     end)
@@ -2313,6 +2365,9 @@ PushTfAuraFrame = function(frame, rows, maxN)
       iconTex = tex,
       spellId = sid,
       auraInstanceID = aid,
+      applications = apps,
+      expirationTime = expTime,
+      duration = dur,
       _key = key,
       fromTargetFrame = true,
     }
@@ -2495,6 +2550,9 @@ CollectUnitHarmfulMirror = function(unitToken, skipKeys, out, maxN, stats)
       icon = data.icon,
       spellId = data.spellId,
       auraInstanceID = data.auraInstanceID,
+      applications = data.applications,
+      expirationTime = data.expirationTime,
+      duration = data.duration,
       fromUnitApi = true,
     }
     AppendGapRow(skipKeys, out, maxN, stats, row, true)
@@ -2528,6 +2586,9 @@ CollectTargetHarmfulRows = function(maxN)
               icon = data.icon,
               spellId = data.spellId,
               auraInstanceID = data.auraInstanceID,
+              applications = data.applications,
+              expirationTime = data.expirationTime,
+              duration = data.duration,
               fromTargetFrame = true,
             }
             row._key = TfRowKey(row) or ("tfit:" .. tostring(#rows + 1))
@@ -2625,6 +2686,9 @@ CollectAuraSlotsGaps = function(unitToken, skipKeys, out, maxN, stats)
         icon = data.icon,
         spellId = data.spellId,
         auraInstanceID = data.auraInstanceID,
+        applications = data.applications,
+        expirationTime = data.expirationTime,
+        duration = data.duration,
       }
       AppendGapRow(skipKeys, out, maxN, stats, row, true)
     end
@@ -2655,14 +2719,14 @@ SetIconTexture = function(icon, t)
   return okSet
 end
 
-ApplyGapAuraVisual = function(button, entry)
+ApplyGapAuraVisual = function(button, entry, unitToken)
   if not button then
     return false
   end
   local tex = button.icon or button.Icon
   if not tex then
     pcall(function()
-      local psz = MergeRowIconSize(button._pbPlate)
+      local psz = select(1, MergeRowIconSize(button._pbPlate))
       InitAuraButton(button, button:GetWidth() or psz or IconSize())
     end)
     tex = button.icon or button.Icon
@@ -2672,6 +2736,24 @@ ApplyGapAuraVisual = function(button, entry)
   end
   local ok = SetIconTexture(tex, entry)
   if type(entry) == "table" then
+    local exp = entry.expirationTime
+    local dur = entry.duration
+    if unitToken and entry.auraInstanceID and C_UnitAuras and C_UnitAuras.GetAuraDataByAuraInstanceID then
+      pcall(function()
+        local data = C_UnitAuras.GetAuraDataByAuraInstanceID(unitToken, entry.auraInstanceID)
+        if type(data) == "table" then
+          if data.expirationTime ~= nil then
+            exp = data.expirationTime
+          end
+          if data.duration ~= nil then
+            dur = data.duration
+          end
+          if entry.applications == nil and data.applications ~= nil then
+            entry.applications = data.applications
+          end
+        end
+      end)
+    end
     local apps = entry.applications or entry.stacks
     pcall(function()
       if button.count and apps ~= nil and not IsSecret(apps) and type(apps) == "number" then
@@ -2684,7 +2766,22 @@ ApplyGapAuraVisual = function(button, entry)
       end
     end)
     pcall(function()
+      local cd = button.cooldown
+      if cd and type(exp) == "number" and type(dur) == "number" and dur > 0 and not IsSecret(exp) and not IsSecret(dur) then
+        local start = exp - dur
+        if start and start >= 0 then
+          cd:SetCooldown(start, dur)
+          cd:Show()
+        end
+      elseif cd and cd.Clear then
+        cd:Clear()
+      end
+    end)
+    pcall(function()
       if button.SetAuraInstance and entry.auraInstanceID then
+        if button.SetUnit and unitToken then
+          button:SetUnit(unitToken)
+        end
         button:SetAuraInstance(entry.auraInstanceID)
       end
     end)
@@ -2921,8 +3018,9 @@ PaintMergeMissing = function(unit, plate)
     return 0
   end
   lastPaintDebug.parent = nativeN > 0 and "nativeRow" or "healthBar"
-  local sz, pad = MergeRowIconSize(plate)
+  local sz, pad = MergeRowIconSize(plate, fb)
   fb._pbPlate = plate
+  local auraUnit = useTargetSrc and "target" or unit
   local painted = 0
   for i = 1, #missing do
     if painted >= maxN then
@@ -2936,14 +3034,17 @@ PaintMergeMissing = function(unit, plate)
       fb.icons[painted] = slot
     end
     local okLay = pcall(function()
-      pcall(InitAuraButton, slot, sz)
+      if slot._pbSz ~= sz then
+        pcall(InitAuraButton, slot, sz)
+        slot._pbSz = sz
+      end
       slot:ClearAllPoints()
       slot:SetSize(sz, sz)
       slot:SetPoint("LEFT", fb, "LEFT", (painted - 1) * (sz + pad), 0)
     end)
     if not okLay then
       painted = painted - 1
-    elseif ApplyGapAuraVisual(slot, missing[i]) then
+    elseif ApplyGapAuraVisual(slot, missing[i], auraUnit) then
       pcall(slot.Show, slot)
     else
       pcall(slot.Hide, slot)
