@@ -41,16 +41,112 @@ local SILENT_SWEEP_SEC = 0.5
 local gapSticky = {} -- [unit] = { icons = {}, at = number }
 local lastPaintDebug = {} -- diagnose: last PaintMergeMissing / Refresh snapshot
 local lastSilentSweepAt = 0
--- Forward decl — Lua locals are not visible above their `local function` line in this chunk.
-local CollectPlateDebuffButtons
+-- Forward decl — module fns use assignment form (Lua 5.1: locals invisible above `local function`).
+local AnchorBand
+local AppendGapRow
+local ApplyGapSticky
+local AuraCountsAsForeignGaps
+local AuraDedupeKey
+local AuraIconPresent
+local AuraIsPlayerOwned
+local AuraLooksForeign
+local BindUnit
 local BuildPaintTraceLine
+local ButtonAuraIcon
+local ButtonAuraIconAny
+local ClearFallback
+local ClearOverlay
+local CollectAuraSlotsGaps
+local CollectAuraTextures
+local CollectForeignAuraGaps
+local CollectPersonalAuraGaps
+local CollectPlateDebuffButtons
+local CollectPlayerOwnedKeys
+local CollectTargetFrameButtons
+local CollectTargetFrameMissing
+local CollectTargetFramePersonalGaps
+local CollectTargetHarmfulRows
+local CollectTfActiveDebuffs
+local CollectTfAuraSlots
+local CopyKeySet
+local CountNativeAuraRow
+local CountPlateHarmfulShown
+local CountShownAuraKids
+local CountTargetFrameAuras
+local CreateBandContainer
+local Defer
+local EnsureFallback
+local EnsureNativeVisible
+local EnsureOverlay
+local EnsureTicker
+local EnsureWatchTicker
+local EnumerateLivePlates
+local FallbackPaintParent
+local FallbackParent
+local FrameIsGlobalChrome
+local FrameIsShownSafe
+local GetTargetAuraContainer
+local HarvestAuraPoolButtons
+local HarvestTfAuraPool
+local HasTarget
+local HealthBar
+local IconSize
+local InitAuraButton
+local IsCastOrSpellBarFrame
+local IsForbiddenPlate
+local IsLikelyBuffFrame
+local IsPlayerOrFriendPlate
+local IsSecret
+local IsTargetPlate
+local IsUsableSpellIcon
+local LayoutMergeBesideNative
+local MaxIcons
+local MaybeAutoDiagnose
+local ModuleActive
+local NameplateUnitFor
+local NativeAuraMetrics
+local NativeBandRightAnchor
+local NativeBuffList
+local NativeDebuffAnchorList
+local NativeDebuffList
+local NativeKeySet
+local OnEvent
+local OverlayUnitKey
+local PaintMergeMissing
+local PickRightmostAuraFrame
+local PlateAuraPools
+local PlateFor
+local PlateNameFS
+local Profile
+local PublicString
+local PublicTexKey
+local PushTfAuraFrame
+local RawChildCount
+local RefreshAll
+local RememberGapSticky
+local RestoreNameShift
+local SafeFallbackParent
+local SafeShown
+local SafeUnitExists
+local SameUnit
+local SaveNamePoints
+local ScrapeTargetFrameBrute
+local SetIconTexture
+local ShouldUseTargetAuraSource
+local SilentTraceEnabled
 local SilentTracePaint
 local SilentTraceSweep
-local ButtonAuraIcon
-local AuraDedupeKey
-local NativeAuraMetrics
+local SnapshotDiagnose
+local StopTicker
+local StopWatchTicker
+local TextureHasArt
+local TfRowKey
+local TfSupplementSkipKeys
+local UnitTokenFromPlate
+local UpdateOverlay
+local WatchInterval
 
-local function OverlayUnitKey(unit, plate)
+OverlayUnitKey = function(unit, plate)
   if type(unit) == "string" and unit ~= "" and not unit:match("^pb:") then
     return unit
   end
@@ -74,11 +170,11 @@ local GLOBAL_UI = {
   ChatFrame1 = true,
 }
 
-local function Profile()
+Profile = function()
   return ns.Config.GetProfile()
 end
 
-local function IsSecret(v)
+IsSecret = function(v)
   if type(issecretvalue) == "function" then
     local ok, secret = pcall(issecretvalue, v)
     return ok and secret and true or false
@@ -87,7 +183,7 @@ local function IsSecret(v)
 end
 
 --- Forever: UnitExists / UnitIsUnit results may be secret — never raw truthy-test secrets.
-local function SafeUnitExists(unit)
+SafeUnitExists = function(unit)
   if type(unit) ~= "string" or unit == "" then
     return false
   end
@@ -127,7 +223,7 @@ local function SafeUnitExists(unit)
   return exists and true or false
 end
 
-local function SafeShown(frame)
+SafeShown = function(frame)
   if not frame then
     return false
   end
@@ -138,7 +234,7 @@ local function SafeShown(frame)
   return shown and true or false
 end
 
-local function PlateFor(unit)
+PlateFor = function(unit)
   if not unit or not C_NamePlate or not C_NamePlate.GetNamePlateForUnit then
     return nil
   end
@@ -149,7 +245,7 @@ local function PlateFor(unit)
   return nil
 end
 
-local function IsForbiddenPlate(plate)
+IsForbiddenPlate = function(plate)
   if not plate then
     return true
   end
@@ -162,7 +258,7 @@ local function IsForbiddenPlate(plate)
   return forbidden
 end
 
-local function FrameIsGlobalChrome(frame)
+FrameIsGlobalChrome = function(frame)
   if not frame or frame == UIParent then
     return true
   end
@@ -176,7 +272,7 @@ local function FrameIsGlobalChrome(frame)
   return chrome
 end
 
-local function SafeFallbackParent(plate)
+SafeFallbackParent = function(plate)
   if not plate or IsForbiddenPlate(plate) then
     return nil
   end
@@ -187,7 +283,7 @@ local function SafeFallbackParent(plate)
   return uf
 end
 
-local function SameUnit(a, b)
+SameUnit = function(a, b)
   if not a or not b then
     return false
   end
@@ -198,7 +294,7 @@ local function SameUnit(a, b)
   return same and true or false
 end
 
-local function PublicString(v)
+PublicString = function(v)
   if type(v) ~= "string" then
     return nil
   end
@@ -211,7 +307,7 @@ local function PublicString(v)
   return v
 end
 
-local function UnitTokenFromPlate(plate)
+UnitTokenFromPlate = function(plate)
   if not plate then
     return nil
   end
@@ -244,7 +340,7 @@ local function UnitTokenFromPlate(plate)
 end
 
 --- Prefer C_NamePlate.GetNamePlates(); fall back to nameplate1..40.
-local function EnumerateLivePlates()
+EnumerateLivePlates = function()
   local out = {}
   local seen = {}
   if C_NamePlate and C_NamePlate.GetNamePlates then
@@ -285,7 +381,7 @@ local function EnumerateLivePlates()
 end
 
 --- Forever: GetNamePlateForUnit("target") / UnitIsUnit often secret after DoT.
-local function NameplateUnitFor(token)
+NameplateUnitFor = function(token)
   if not token then
     return nil
   end
@@ -411,7 +507,7 @@ local function NameplateUnitFor(token)
   return nil
 end
 
-local function HasTarget()
+HasTarget = function()
   if PlateFor("target") then
     return true
   end
@@ -424,7 +520,7 @@ local function HasTarget()
   return false
 end
 
-local function HealthBar(plate)
+HealthBar = function(plate)
   local uf = plate and plate.UnitFrame
   if not uf then
     return nil
@@ -440,7 +536,7 @@ local function HealthBar(plate)
   return bar
 end
 
-local function NativeDebuffList(plate)
+NativeDebuffList = function(plate)
   local list
   pcall(function()
     local uf = plate and plate.UnitFrame
@@ -456,7 +552,7 @@ local function NativeDebuffList(plate)
 end
 
 --- Layout anchor when DebuffListFrame missing but AurasFrame exists (Forever variants).
-local function NativeDebuffAnchorList(plate)
+NativeDebuffAnchorList = function(plate)
   local list = NativeDebuffList(plate)
   if list then
     return list
@@ -470,7 +566,7 @@ local function NativeDebuffAnchorList(plate)
   return list
 end
 
-local function NativeBuffList(plate)
+NativeBuffList = function(plate)
   local list
   pcall(function()
     local uf = plate and plate.UnitFrame
@@ -485,7 +581,7 @@ local function NativeBuffList(plate)
   return list
 end
 
-local function CountShownAuraKids(frame)
+CountShownAuraKids = function(frame)
   if not frame then
     return 0
   end
@@ -508,7 +604,7 @@ local function CountShownAuraKids(frame)
   return n
 end
 
-local function RawChildCount(frame)
+RawChildCount = function(frame)
   if not frame then
     return 0
   end
@@ -521,20 +617,18 @@ local function RawChildCount(frame)
   return #kids
 end
 
-local function CountNativeAuraRow(plate)
+CountNativeAuraRow = function(plate)
   return CountShownAuraKids(NativeDebuffList(plate))
     + CountShownAuraKids(NativeBuffList(plate))
 end
 
 --- Shown harmful on plate — pools enumerate what GetChildren misses on Forever.
-local function CountPlateHarmfulShown(plate)
+CountPlateHarmfulShown = function(plate)
   if not plate then
     return 0
   end
   local buttons = {}
-  if type(CollectPlateDebuffButtons) == "function" then
-    CollectPlateDebuffButtons(plate, buttons, MaxIcons())
-  end
+  CollectPlateDebuffButtons(plate, buttons, MaxIcons())
   local n = 0
   for i = 1, #buttons do
     if SafeShown(buttons[i]) then
@@ -547,7 +641,7 @@ local function CountPlateHarmfulShown(plate)
   return CountShownAuraKids(NativeDebuffList(plate))
 end
 
-local function CopyKeySet(src)
+CopyKeySet = function(src)
   local t = {}
   if type(src) == "table" then
     for k, v in pairs(src) do
@@ -558,7 +652,7 @@ local function CopyKeySet(src)
 end
 
 --- Friend / player plates: name must sit above auras (preference).
-local function IsPlayerOrFriendPlate(unit, plate)
+IsPlayerOrFriendPlate = function(unit, plate)
   if not unit then
     return false
   end
@@ -593,7 +687,7 @@ local function IsPlayerOrFriendPlate(unit, plate)
   return false
 end
 
-local function GetTargetAuraContainer()
+GetTargetAuraContainer = function()
   local c
   pcall(function()
     if TargetFrame and TargetFrame.GetAuraContainer then
@@ -611,12 +705,9 @@ local function GetTargetAuraContainer()
   return c
 end
 
--- Forward decls: TF harvest must see these locals (Lua scope — nil global = dead merge).
-local IconSize
-local MaxIcons
 
 --- Forever TF auras live in auraPools — GetChildren() alone often yields tf=0.
-local function HarvestAuraPoolButtons(pools, out, maxN)
+HarvestAuraPoolButtons = function(pools, out, maxN)
   if type(pools) ~= "table" or not out then
     return
   end
@@ -673,7 +764,7 @@ local function HarvestAuraPoolButtons(pools, out, maxN)
 end
 
 --- Nameplate harmful pools (Forever — DebuffList GetChildren often empty while pools paint).
-local function PlateAuraPools(plate)
+PlateAuraPools = function(plate)
   local pools
   pcall(function()
     local uf = plate and plate.UnitFrame
@@ -722,12 +813,12 @@ CollectPlateDebuffButtons = function(plate, out, maxN)
   end
 end
 
-local function FallbackParent(plate)
+FallbackParent = function(plate)
   return NativeDebuffList(plate) or NativeDebuffAnchorList(plate) or SafeFallbackParent(plate)
 end
 
 --- When native harmful row is empty, parent on health bar (hidden DebuffList parents clip icons).
-local function FallbackPaintParent(plate)
+FallbackPaintParent = function(plate)
   local nativeN = CountPlateHarmfulShown(plate)
   if nativeN > 0 then
     return FallbackParent(plate)
@@ -743,7 +834,7 @@ local function FallbackPaintParent(plate)
   return FallbackParent(plate)
 end
 
-local function CollectTargetFrameButtons(out, maxN)
+CollectTargetFrameButtons = function(out, maxN)
   maxN = maxN or MaxIcons()
   local container = GetTargetAuraContainer()
   if container then
@@ -796,7 +887,7 @@ local function CollectTargetFrameButtons(out, maxN)
   end
 end
 
-local function CountTargetFrameAuras()
+CountTargetFrameAuras = function()
   local buttons = {}
   CollectTargetFrameButtons(buttons, MaxIcons())
   local n = 0
@@ -858,7 +949,7 @@ MaxIcons = function()
   return n
 end
 
-local function InitAuraButton(button, size)
+InitAuraButton = function(button, size)
   -- Forever aura icons are often masked: SetTexCoord → FE flood
   -- "Texture:SetTextCoord(): Cannot set tex coords when texture has mask"
   -- and broken initializeFrame leaves AuraContainer empty (ac=0).
@@ -919,7 +1010,7 @@ local function InitAuraButton(button, size)
   end
 end
 
-local function CreateBandContainer(parent, size)
+CreateBandContainer = function(parent, size)
   if acCreateFailed then
     return nil
   end
@@ -1004,7 +1095,7 @@ end
 
 --- Always keep native DebuffList fully visible (solo native-first).
 --- Never ClearAllPoints on DebuffList — 0.1.8 orphaned icons when SetPoint FORBIDDEN.
-local function EnsureNativeVisible(plate)
+EnsureNativeVisible = function(plate)
   local function restore(list)
     if not list then
       return
@@ -1024,7 +1115,7 @@ local function EnsureNativeVisible(plate)
   restore(NativeBuffList(plate))
 end
 
-local function AnchorBand(container, unit, plate)
+AnchorBand = function(container, unit, plate)
   plate = plate or PlateFor(unit)
   if not plate or not container then
     return false
@@ -1074,7 +1165,7 @@ local function AnchorBand(container, unit, plate)
   return ok and true or false
 end
 
-local function BindUnit(container, unit)
+BindUnit = function(container, unit)
   if not container or not container.SetUnit then
     return
   end
@@ -1102,12 +1193,12 @@ local function BindUnit(container, unit)
   pcall(container.UpdateAllAuras, container)
 end
 
-local function ModuleActive()
+ModuleActive = function()
   local p = Profile()
   return p.enabled and not p.safeMode and p.showBand and not acCreateFailed
 end
 
-local function ClearFallback(unit)
+ClearFallback = function(unit)
   local fb = fallbacks[unit]
   if not fb then
     return
@@ -1122,7 +1213,7 @@ local function ClearFallback(unit)
   gapSticky[unit] = nil
 end
 
-local function PlateNameFS(plate)
+PlateNameFS = function(plate)
   local name
   pcall(function()
     local uf = plate and plate.UnitFrame
@@ -1133,21 +1224,19 @@ end
 
 --- Intentionally no-ops: three-addon refactor forbids any name ClearAllPoints/SetPoint.
 --- Prior versions saved/restored name anchors and broke Forever plates; /reload resets Blizzard layout.
-local function SaveNamePoints(unit, nameFS)
+SaveNamePoints = function(unit, nameFS)
   return
 end
 
-local function RestoreNameShift(unit, plate)
+RestoreNameShift = function(unit, plate)
   if unit then
     nameShifts[unit] = nil
   end
 end
 
--- Forward decl: Layout anchors merge beside native (defined below).
-local NativeBandRightAnchor
 
 --- Opt-in merge layout: only move Plateband fallback frame — never name / DebuffList.
-local function LayoutMergeBesideNative(unit, plate, mergeFb, painted)
+LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
   painted = tonumber(painted) or 0
   if IsPlayerOrFriendPlate(unit, plate) then
     return
@@ -1177,7 +1266,7 @@ local function LayoutMergeBesideNative(unit, plate, mergeFb, painted)
   end
 end
 
-local function ClearOverlay(unit)
+ClearOverlay = function(unit)
   local plate = unit and PlateFor(unit)
   if plate then
     EnsureNativeVisible(plate)
@@ -1192,7 +1281,7 @@ local function ClearOverlay(unit)
   ClearFallback(unit)
 end
 
-local function EnsureOverlay(unit)
+EnsureOverlay = function(unit)
   if not unit then
     return nil
   end
@@ -1215,7 +1304,7 @@ local function EnsureOverlay(unit)
   return holder
 end
 
-local function EnsureFallback(unit, plate)
+EnsureFallback = function(unit, plate)
   local parent = FallbackPaintParent(plate)
   if not parent then
     return nil
@@ -1250,7 +1339,7 @@ end
 --- Collect aura icon textures from a frame tree (native DebuffList / TF).
 --- Pass textures straight into SetTexture — never compare secret FileIDs.
 --- Direct aura buttons only — no deep recurse (nested Icon frames caused dup stacks).
-local function CollectAuraTextures(root, out, maxN)
+CollectAuraTextures = function(root, out, maxN)
   if not root or #out >= maxN then
     return
   end
@@ -1286,7 +1375,7 @@ local function CollectAuraTextures(root, out, maxN)
 end
 
 --- Public texture key for dedupe — nil when secret / unkeyable (skip paint to avoid dups).
-local function PublicTexKey(t)
+PublicTexKey = function(t)
   local key
   pcall(function()
     if type(t) == "number" or type(t) == "string" then
@@ -1305,7 +1394,7 @@ local function PublicTexKey(t)
   return key
 end
 
-local function NativeKeySet(plate)
+NativeKeySet = function(plate)
   local keys = {}
   local texes = {}
   CollectAuraTextures(NativeDebuffList(plate), texes, MaxIcons())
@@ -1397,7 +1486,7 @@ NativeAuraMetrics = function(plate)
   return sz, pad
 end
 
-local function PickRightmostAuraFrame(frames)
+PickRightmostAuraFrame = function(frames)
   local rightmost, bestRight
   for i = 1, #frames do
     local child = frames[i]
@@ -1446,7 +1535,7 @@ NativeBandRightAnchor = function(plate)
   return list
 end
 
-local function IsTargetPlate(unit, plate)
+IsTargetPlate = function(unit, plate)
   if not HasTarget() then
     return false
   end
@@ -1488,7 +1577,7 @@ local function IsTargetPlate(unit, plate)
   return false
 end
 
-local function ShouldUseTargetAuraSource(unit, plate)
+ShouldUseTargetAuraSource = function(unit, plate)
   if not HasTarget() then
     return false
   end
@@ -1506,7 +1595,7 @@ local function ShouldUseTargetAuraSource(unit, plate)
 end
 
 --- True when aura data is publicly player/pet-owned (nil = unknown/secret).
-local function AuraIsPlayerOwned(data)
+AuraIsPlayerOwned = function(data)
   if not data then
     return nil
   end
@@ -1533,7 +1622,7 @@ local function AuraIsPlayerOwned(data)
 end
 
 --- Public texture keys known to be player-owned (skip even if native keys are secret).
-local function CollectPlayerOwnedKeys(unitToken, into)
+CollectPlayerOwnedKeys = function(unitToken, into)
   if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
     return
   end
@@ -1576,7 +1665,7 @@ AuraDedupeKey = function(data, icon)
 end
 
 --- Source looks like another unit (not local player/pet) — include foreign like "Ours".
-local function AuraLooksForeign(data)
+AuraLooksForeign = function(data)
   if not data then
     return false
   end
@@ -1595,7 +1684,7 @@ local function AuraLooksForeign(data)
 end
 
 --- Foreign gap when not clearly personal-only (party DoTs may mis-flag owned on Forever).
-local function AuraCountsAsForeignGaps(data)
+AuraCountsAsForeignGaps = function(data)
   if not data then
     return true
   end
@@ -1610,7 +1699,7 @@ local function AuraCountsAsForeignGaps(data)
 end
 
 --- v0.2.4 P0 — 0.1.15 foreign API pass: skip owned==true (personal stays native-only).
-local function CollectForeignAuraGaps(unitToken, skipKeys, out, maxN, allowSecretUnknown, stats)
+CollectForeignAuraGaps = function(unitToken, skipKeys, out, maxN, allowSecretUnknown, stats)
   if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
     return
   end
@@ -1655,7 +1744,7 @@ local function CollectForeignAuraGaps(unitToken, skipKeys, out, maxN, allowSecre
 end
 
 --- Phase B — personal gaps when native DebuffList omits player DoTs (§5.2).
-local function CollectPersonalAuraGaps(unitToken, paintKeys, out, maxN, stats)
+CollectPersonalAuraGaps = function(unitToken, paintKeys, out, maxN, stats)
   if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
     return
   end
@@ -1689,7 +1778,7 @@ local function CollectPersonalAuraGaps(unitToken, paintKeys, out, maxN, stats)
   end
 end
 
-local function CollectTargetFramePersonalGaps(paintKeys, out, maxN, stats)
+CollectTargetFramePersonalGaps = function(paintKeys, out, maxN, stats)
   local buttons = {}
   CollectTargetFrameButtons(buttons, maxN)
   local seenBtn = {}
@@ -1719,7 +1808,7 @@ local function CollectTargetFramePersonalGaps(paintKeys, out, maxN, stats)
   end
 end
 
-local function ApplyGapSticky(unit, missing, isTarget)
+ApplyGapSticky = function(unit, missing, isTarget)
   if not isTarget or not unit or #missing > 0 then
     return
   end
@@ -1735,7 +1824,7 @@ local function ApplyGapSticky(unit, missing, isTarget)
   end
 end
 
-local function RememberGapSticky(unit, icons)
+RememberGapSticky = function(unit, icons)
   if not unit or type(icons) ~= "table" or #icons == 0 then
     return
   end
@@ -1800,7 +1889,7 @@ ButtonAuraIcon = function(btn, mode)
 end
 
 --- TF supplement: ownership-agnostic icon read; skipKeys dedupes personal already painted.
-local function ButtonAuraIconAny(btn)
+ButtonAuraIconAny = function(btn)
   if not btn then
     return nil, false
   end
@@ -1837,7 +1926,7 @@ local function ButtonAuraIconAny(btn)
 end
 
 --- Retinue-style TF harvest (read-only). Forever 16001 paths 0.2.6 missed.
-local function AuraIconPresent(icon)
+AuraIconPresent = function(icon)
   local present = false
   pcall(function()
     if IsSecret(icon) then
@@ -1851,7 +1940,7 @@ local function AuraIconPresent(icon)
   return present
 end
 
-local function FrameIsShownSafe(frame)
+FrameIsShownSafe = function(frame)
   if not frame or not frame.IsShown then
     return true
   end
@@ -1862,7 +1951,7 @@ local function FrameIsShownSafe(frame)
   return shown and true or false
 end
 
-local function IsCastOrSpellBarFrame(frame)
+IsCastOrSpellBarFrame = function(frame)
   if not frame then
     return false
   end
@@ -1894,7 +1983,7 @@ local function IsCastOrSpellBarFrame(frame)
   return false
 end
 
-local function IsLikelyBuffFrame(frame)
+IsLikelyBuffFrame = function(frame)
   if not frame or IsCastOrSpellBarFrame(frame) then
     return true
   end
@@ -1917,7 +2006,7 @@ local function IsLikelyBuffFrame(frame)
   return buffish
 end
 
-local function TextureHasArt(iconTex)
+TextureHasArt = function(iconTex)
   if not iconTex then
     return false
   end
@@ -1933,7 +2022,7 @@ local function TextureHasArt(iconTex)
   return ok
 end
 
-local function IsUsableSpellIcon(path, allowSecret)
+IsUsableSpellIcon = function(path, allowSecret)
   local ok = false
   pcall(function()
     if IsSecret(path) then
@@ -1949,7 +2038,7 @@ local function IsUsableSpellIcon(path, allowSecret)
   return ok
 end
 
-local function TfRowKey(row)
+TfRowKey = function(row)
   if type(row) ~= "table" then
     return nil
   end
@@ -1971,7 +2060,7 @@ local function TfRowKey(row)
   return nil
 end
 
-local function PushTfAuraFrame(frame, rows, maxN)
+PushTfAuraFrame = function(frame, rows, maxN)
   if not frame or #rows >= maxN or IsLikelyBuffFrame(frame) then
     return
   end
@@ -2022,7 +2111,7 @@ local function PushTfAuraFrame(frame, rows, maxN)
   end)
 end
 
-local function HarvestTfAuraPool(pools, rows, maxN)
+HarvestTfAuraPool = function(pools, rows, maxN)
   if type(pools) ~= "table" then
     return
   end
@@ -2062,7 +2151,7 @@ local function HarvestTfAuraPool(pools, rows, maxN)
   end
 end
 
-local function CollectTfActiveDebuffs(rows, maxN)
+CollectTfActiveDebuffs = function(rows, maxN)
   if not TargetFrame or type(TargetFrame.activeDebuffs) ~= "table" then
     return
   end
@@ -2090,7 +2179,7 @@ local function CollectTfActiveDebuffs(rows, maxN)
   end)
 end
 
-local function CollectTfAuraSlots(rows, maxN)
+CollectTfAuraSlots = function(rows, maxN)
   if not C_UnitAuras or not C_UnitAuras.GetAuraSlots then
     return
   end
@@ -2132,7 +2221,7 @@ local function CollectTfAuraSlots(rows, maxN)
   end
 end
 
-local function ScrapeTargetFrameBrute(rows, maxN)
+ScrapeTargetFrameBrute = function(rows, maxN)
   if not TargetFrame then
     return
   end
@@ -2171,7 +2260,7 @@ local function ScrapeTargetFrameBrute(rows, maxN)
   end
 end
 
-local function CollectTargetHarmfulRows(maxN)
+CollectTargetHarmfulRows = function(maxN)
   maxN = maxN or MaxIcons()
   local rows = {}
   local container = GetTargetAuraContainer()
@@ -2228,7 +2317,7 @@ local function CollectTargetHarmfulRows(maxN)
   return rows
 end
 
-local function AppendGapRow(skipKeys, out, maxN, stats, row, countForeign)
+AppendGapRow = function(skipKeys, out, maxN, stats, row, countForeign)
   if #out >= maxN or type(row) ~= "table" then
     return
   end
@@ -2259,7 +2348,7 @@ local function AppendGapRow(skipKeys, out, maxN, stats, row, countForeign)
 end
 
 --- TF mirror minus plate skipKeys — party DoTs (Retinue CollectFromTargetFrame parity).
-local function CollectTargetFrameMissing(skipKeys, out, maxN, stats)
+CollectTargetFrameMissing = function(skipKeys, out, maxN, stats)
   local rows = CollectTargetHarmfulRows(maxN)
   for i = 1, #rows do
     if #out >= maxN then
@@ -2269,7 +2358,7 @@ local function CollectTargetFrameMissing(skipKeys, out, maxN, stats)
   end
 end
 
-local function CollectAuraSlotsGaps(unitToken, skipKeys, out, maxN, stats)
+CollectAuraSlotsGaps = function(unitToken, skipKeys, out, maxN, stats)
   if unitToken ~= "target" or not C_UnitAuras or not C_UnitAuras.GetAuraSlots then
     return
   end
@@ -2300,7 +2389,7 @@ local function CollectAuraSlotsGaps(unitToken, skipKeys, out, maxN, stats)
   end
 end
 
-local function SetIconTexture(icon, t)
+SetIconTexture = function(icon, t)
   local okSet = false
   pcall(function()
     if type(t) == "table" and t.iconTex and t.iconTex.GetTexture then
@@ -2324,7 +2413,7 @@ local function SetIconTexture(icon, t)
   return okSet
 end
 
-local function TfSupplementSkipKeys(paintKeys, missing)
+TfSupplementSkipKeys = function(paintKeys, missing)
   local skip = CopyKeySet(paintKeys)
   if type(missing) == "table" then
     for i = 1, #missing do
@@ -2340,7 +2429,7 @@ local function TfSupplementSkipKeys(paintKeys, missing)
   return skip
 end
 
-local function SilentTraceEnabled()
+SilentTraceEnabled = function()
   local p = Profile()
   return p.silentTrace ~= false and p.paintTraceOn ~= false
 end
@@ -2355,7 +2444,7 @@ BuildPaintTraceLine = function(why, unit, plate)
   local nativeList = plate and NativeDebuffList(plate)
   local nativeKids = nativeList and RawChildCount(nativeList) or 0
   local poolKids = 0
-  if plate and type(CollectPlateDebuffButtons) == "function" then
+  if plate then
     local buttons = {}
     CollectPlateDebuffButtons(plate, buttons, MaxIcons())
     poolKids = #buttons
@@ -2445,7 +2534,7 @@ SilentTraceSweep = function(why)
 end
 
 --- Paint personal + foreign gaps beside native — 0.1.15 sources + 0.2 layout (§5 P0/P1).
-local function PaintMergeMissing(unit, plate)
+PaintMergeMissing = function(unit, plate)
   if not plate then
     ClearFallback(unit)
     return 0
@@ -2615,7 +2704,7 @@ local function PaintMergeMissing(unit, plate)
   return painted
 end
 
-local function UpdateOverlay(unit, plate)
+UpdateOverlay = function(unit, plate)
   plate = plate or (unit and PlateFor(unit))
   unit = OverlayUnitKey(unit, plate)
   if not ModuleActive() or not unit then
@@ -2661,7 +2750,7 @@ end
 local SnapshotDiagnose
 local MaybeAutoDiagnose
 
-local function RefreshAll()
+RefreshAll = function()
   local live = {}
   local list = EnumerateLivePlates()
   for i = 1, #list do
@@ -2708,7 +2797,7 @@ local function RefreshAll()
   end
 end
 
-local function EnsureTicker()
+EnsureTicker = function()
   if ticker or not C_Timer or not C_Timer.NewTicker then
     return
   end
@@ -2720,7 +2809,7 @@ local function EnsureTicker()
   end)
 end
 
-local function StopTicker()
+StopTicker = function()
   if ticker then
     pcall(function()
       ticker:Cancel()
@@ -2729,7 +2818,7 @@ local function StopTicker()
   end
 end
 
-local function WatchInterval()
+WatchInterval = function()
   local n = tonumber(Profile().watchInterval) or WATCH_DEFAULT_SEC
   if n < 1 then
     n = 1
@@ -2739,7 +2828,7 @@ local function WatchInterval()
   return n
 end
 
-local function StopWatchTicker()
+StopWatchTicker = function()
   if watchTicker then
     pcall(function()
       watchTicker:Cancel()
@@ -2748,7 +2837,7 @@ local function StopWatchTicker()
   end
 end
 
-local function EnsureWatchTicker()
+EnsureWatchTicker = function()
   StopWatchTicker()
   if not Profile().watchOn then
     return
@@ -2769,7 +2858,7 @@ local function EnsureWatchTicker()
   end)
 end
 
-local function Defer(fn)
+Defer = function(fn)
   if C_Timer and C_Timer.After then
     C_Timer.After(0, function()
       pcall(fn)
@@ -2959,7 +3048,7 @@ MaybeAutoDiagnose = function(reason, force)
   pcall(SnapshotDiagnose, reason or "auto", {})
 end
 
-local function OnEvent(_, event, arg1)
+OnEvent = function(_, event, arg1)
   if event == "NAME_PLATE_UNIT_ADDED" then
     local unit = arg1
     platesSeen = platesSeen + 1

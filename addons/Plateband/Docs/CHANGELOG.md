@@ -1,5 +1,21 @@
 # Plateband changelog
 
+## 0.2.13 — systematic Lua forward decl (103 module fns)
+
+- **Root cause:** `local function` below caller compiles to **global** nil in Lua 5.1 (e.g. `CountPlateHarmfulShown` → `MaxIcons()` L536).
+- **Fix:** single forward-decl block + **`Name = function`** for all 103 chunk-level helpers in `Plates.lua` (not one-off patches).
+- Removed `CollectPlateDebuffButtons` type guards (always bound after load).
+
+### Watch
+
+- `watch-forever-traces.sh` default poll **3s**; tails **FElog `session.log`** (live with chat; SV lags until `/reload`).
+- Coordinator inbox: `/tmp/forever-trace-coordinator-inbox.txt` on each ALERT.
+
+### Playtest (0.2.13)
+
+1. `/reload` → `SESSION_START ver=0.2.13`; `/felog clear` optional.
+2. Target + DoTs → no `paint` nil in chat/FElog; PAINT in SV after `/reload`.
+
 ## 0.2.12 — paint path forward decls (ButtonAuraIcon / metrics)
 
 - **`NativeKeySet` L1318:** `ButtonAuraIcon`, `AuraDedupeKey` — forward decl + assignment fns (same class as 0.2.11).

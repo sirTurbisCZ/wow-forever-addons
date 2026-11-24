@@ -37,7 +37,7 @@ Aliases: `/ferrors`, `/forevererrors`.
 `World of Warcraft/_forever_/WTF/Account/<Account>/SavedVariables/ForeverErrorLog.lua`
 
 Inside: `errors` (ring across sessions) and `sessionLog` (wiped each login, append-only during play).  
-Optional rare path if addon file IO works: `Interface/AddOns/ForeverErrorLog/Logs/session.log`.
+`Interface/AddOns/ForeverErrorLog/Logs/session.log` — appended on each error **during play** (same time as chat). Agent watch: `scripts/watch-forever-traces.sh watch 3` tails this file; SV still needs `/reload` to flush.
 
 You can still `/felog list` / `/felog dump` for a quick chat view.
 
