@@ -854,25 +854,35 @@ local function UpdateFreeSpace()
   end)
 end
 
+local function CharacterBagsPanelOpen()
+  local cf = _G.CharacterFrame
+  return cf and cf.IsShown and cf:IsShown()
+end
+
 local function EnsureBagIndicator(btn)
   if not btn then
     return nil
   end
   local ind = btn.BagIndicator
   if not ind then
-    ind = btn:CreateTexture(nil, "OVERLAY", nil, 7)
+    ind = btn:CreateTexture(nil, "ARTWORK", nil, -1)
     btn.BagIndicator = ind
   end
   pcall(function()
     local ok = pcall(ind.SetAtlas, ind, "bags-glow-white", true)
     if not ok then
-      ind:SetColorTexture(0.35, 0.75, 1, 0.45)
+      ind:SetColorTexture(0.2, 0.55, 0.85, 0.35)
     end
     if ind.SetBlendMode then
-      ind:SetBlendMode("ADD")
+      ind:SetBlendMode("BLEND")
+    end
+    ind:SetAlpha(0.4)
+    if ind.SetDrawLayer then
+      ind:SetDrawLayer("ARTWORK", -2)
     end
     ind:ClearAllPoints()
-    ind:SetAllPoints(btn)
+    ind:SetPoint("TOPLEFT", btn, "TOPLEFT", 2, -2)
+    ind:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -2, 2)
   end)
   return ind
 end
@@ -894,6 +904,10 @@ end
 
 SetBagMatchHighlight = function(bagID, highlight)
   pcall(function()
+    if not Layout.IsShown() or CharacterBagsPanelOpen() then
+      ClearBagMatchGlows()
+      return
+    end
     Slots.ForEach(function(btn)
       if not btn or (btn:GetAlpha() or 0) < 0.5 then
         ShowBagIndicator(btn and btn.BagIndicator, false)
@@ -983,7 +997,7 @@ local function HookOneBagBarButton(btn, forcedBag)
   bagBarHoverHooked[btn] = true
   pcall(function()
     btn:HookScript("OnEnter", function(self)
-      if not Layout.IsShown() then
+      if not Layout.IsShown() or CharacterBagsPanelOpen() then
         return
       end
       local bagID = ResolveBagBarBagID(self, forcedBag)
@@ -1075,7 +1089,7 @@ local function InstallBagHoverHighlight()
         end
       end
       EventRegistry:RegisterCallback("BagSlot.OnEnter", function(a, b)
-        if not Layout.IsShown() then
+        if not Layout.IsShown() or CharacterBagsPanelOpen() then
           return
         end
         local slot = slotOf(a, b)
@@ -1098,6 +1112,15 @@ local function InstallBagHoverHighlight()
       end)
     end)
   end
+  pcall(function()
+    local cf = _G.CharacterFrame
+    if cf and not cf._bbGlowSuppress and cf.HookScript then
+      cf._bbGlowSuppress = true
+      cf:HookScript("OnShow", function()
+        ClearBagMatchGlows()
+      end)
+    end
+  end)
 end
 
 local function HeaderShiftDown(header)
@@ -1281,7 +1304,9 @@ local function EnsureSection(key)
     local bulkLine = BT and BT.HeaderTooltipLine and BT.HeaderTooltipLine()
     if bulkLine and GameTooltip then
       GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-      GameTooltip:SetText(Layout.GetCategoryLabel(key))
+      GameTooltip:ClearLines()
+      GameTooltip:SetText(Layout.GetCategoryLabel(key), 1, 1, 1)
+      GameTooltip:AddLine(" ", 1, 1, 1, 0)
       GameTooltip:AddLine(bulkLine, 0.2, 1, 0.4, true)
       GameTooltip:Show()
     elseif key == TRASH and GameTooltip then

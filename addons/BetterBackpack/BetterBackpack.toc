@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 1.2.15 — merge sell hint fix; /bb selftest regression.
+## Notes: 1.2.16 — char bag tooltip bleed + spacing.
 ## Author: tuma
-## Version: 1.2.15
+## Version: 1.2.16
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled

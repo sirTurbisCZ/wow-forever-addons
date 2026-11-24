@@ -1,5 +1,21 @@
 # BetterBackpack changelog
 
+## Release 1.2.16 — character “Brašny” tooltip bleed
+
+Bag-match glow no longer bleeds through character sheet bag tooltips; slot hints spaced below item lines.
+
+## 1.2.16 — tooltip / z-order
+
+- **CharacterFrame open:** skip bag-match glow (character `Brašny` tooltip clean).
+- **BagIndicator:** inset, `BLEND` / lower `ARTWORK` — no ADD full-bleed over tooltips.
+- **Slot tooltip:** blank spacer before RMB hints; hide glow while tooltip shown.
+- **Lane header tooltip:** spacer between title and bulk hint.
+
+### Playtest (1.2.16)
+
+1. `/reload` → `v1.2.16`; open bags + **C** character → hover brašny slot — no green bleed; tooltip lines spaced.
+2. Hover inventory slot — hints below item text, glow off while tip up.
+
 ## Release 1.2.15 — merge sell + selftest regression
 
 Vendor/mail **Shift+RMB** (or merged-stack RMB) still sells **all** physical stacks after grid-anchor fixes — `CollectMergeGroup` uses `btn._bbMergedFrom` when representative `bag:slot` is empty.
