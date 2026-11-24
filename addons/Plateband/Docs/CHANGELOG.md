@@ -1,5 +1,9 @@
 # Plateband changelog
 
+## Release 0.2.34 — per-plate UNIT_AURA watch
+
+- Register `UNIT_AURA` on each `nameplateN` at add / unregister at remove — off-target visible enemies refresh gaps when debuffs change (still event-driven, no scan).
+
 ## Release 0.2.33 — event-driven paint (CPU)
 
 - **No periodic `RefreshAll` / nameplate scan** — paint on `NAME_PLATE_*`, `PLAYER_TARGET_CHANGED`, `UNIT_AURA` (target), plus **one** full refresh on zone/roster/`/pb refresh`.

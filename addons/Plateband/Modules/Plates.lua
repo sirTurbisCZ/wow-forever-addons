@@ -53,9 +53,36 @@ local partyTokenCache = {} -- [plate] = party token | false (cached miss)
 local lastPaintTraceAt = {} -- [unit] = GetTime()
 local lastPaintTraceSig = {} -- [unit] = sig
 local refreshPass = 0
+local auraWatchUnits = {} -- nameplateN tokens with per-unit UNIT_AURA
 
 local function PlayerInCombat()
   return InCombatLockdown and InCombatLockdown()
+end
+
+local function RegisterNpAuraWatch(unit)
+  if not unit or not eventFrame or not eventFrame.RegisterUnitEvent then
+    return
+  end
+  if type(unit) ~= "string" or not unit:match("^nameplate%d+") then
+    return
+  end
+  if auraWatchUnits[unit] then
+    return
+  end
+  local ok = pcall(eventFrame.RegisterUnitEvent, eventFrame, "UNIT_AURA", unit)
+  if ok then
+    auraWatchUnits[unit] = true
+  end
+end
+
+local function UnregisterNpAuraWatch(unit)
+  if not unit or not auraWatchUnits[unit] then
+    return
+  end
+  if eventFrame and eventFrame.UnregisterUnitEvent then
+    pcall(eventFrame.UnregisterUnitEvent, eventFrame, "UNIT_AURA", unit)
+  end
+  auraWatchUnits[unit] = nil
 end
 -- Forward decl — module fns use assignment form (Lua 5.1: locals invisible above `local function`).
 local AnchorBand
@@ -4680,6 +4707,7 @@ OnEvent = function(_, event, arg1)
     if type(unit) == "string" and unit:match("^nameplate%d+") then
       lastTargetPlateUnit = lastTargetPlateUnit -- keep
     end
+    RegisterNpAuraWatch(unit)
     Defer(function()
       UpdateOverlay(unit, PlateFor(unit))
       -- Also refresh target binding — added plate may be the target.
@@ -4697,6 +4725,7 @@ OnEvent = function(_, event, arg1)
       end)
     end
   elseif event == "NAME_PLATE_UNIT_REMOVED" then
+    UnregisterNpAuraWatch(arg1)
     ClearOverlay(arg1)
     overlays[arg1] = nil
     nameShifts[arg1] = nil
