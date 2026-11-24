@@ -1,5 +1,16 @@
 # BetterBackpack changelog
 
+## 1.2.8 — bag-key / combat / esc trace → SV only
+
+- **No chat** for `onBagKey`, `combat-diag`, `combat B ·`, or `esc ·` (even with `/bb debug on`).
+- **`BAGKEY`** lines in `actionTrace` / `sessionLog` (default silent trace on).
+- **`/bb bagkey`** still prints diagnose to chat on demand.
+
+### Playtest (1.2.8)
+
+1. `/reload` → `v1.2.8`; press **B** — no `onBagKey` in chat.
+2. `/bb debug on` + **B** — still no chat; `/bb dump` or SV shows `BAGKEY` tail.
+
 ## 1.2.7 — silent ACTION trace (agent-readable)
 
 - **Silent by default:** `silentTrace` + `actionTraceOn` (schema **10**) — bulk/vendor diagnostics → SV, not chat.

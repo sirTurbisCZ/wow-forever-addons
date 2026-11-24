@@ -2947,11 +2947,9 @@ function Layout.EscDebugTrace(phase, detail)
     detail and tostring(detail) or ""
   )
   if BetterBackpack.TraceAction then
-    BetterBackpack.TraceAction("ESC " .. line, nil)
-  elseif BetterBackpack.Print then
-    BetterBackpack.Print(line)
-  elseif DEFAULT_CHAT_FRAME then
-    DEFAULT_CHAT_FRAME:AddMessage("|cffc9a227BetterBackpack|r " .. line)
+    BetterBackpack.TraceAction("BAGKEY ESC " .. line, nil)
+  elseif BetterBackpack.Modules and BetterBackpack.Modules.SessionLog and BetterBackpack.Modules.SessionLog.RecordAction then
+    pcall(BetterBackpack.Modules.SessionLog.RecordAction, "BAGKEY ESC " .. line)
   end
   local db = Config and Config.EnsureDB and Config.EnsureDB()
   if db then

@@ -95,7 +95,7 @@ run_scan() {
   dump_section "Plateband" "${WOW_ROOT}/WTF/Account/*/SavedVariables/Plateband.lua" \
     'PAINT |PLATE |SESSION_START|PLATEBAND_CARD'
   dump_section "BetterBackpack" "${WOW_ROOT}/WTF/Account/*/SavedVariables/BetterBackpack.lua" \
-    'ACTION |SESSION_START|ERROR '
+    'ACTION |BAGKEY |SESSION_START|ERROR '
   dump_section "ForeverErrorLog" "${WOW_ROOT}/WTF/Account/*/SavedVariables/ForeverErrorLog.lua" \
     'SESSION_START|ERROR |INFO '
   echo "--- alerts ---"

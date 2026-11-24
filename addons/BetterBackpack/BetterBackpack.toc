@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 1.2.7 — silent ACTION trace to SavedVariables.
+## Notes: 1.2.8 — bag-key trace silent (no chat spam).
 ## Author: tuma
-## Version: 1.2.7
+## Version: 1.2.8
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled
