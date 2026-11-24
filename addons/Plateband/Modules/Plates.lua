@@ -1160,29 +1160,6 @@ IconSize = function()
   elseif sz > 32 then
     sz = 32
   end
-  local live = EnumerateLivePlates()
-  for i = 1, #live do
-    local list = NativeDebuffList(live[i].plate)
-    if list then
-      local ok, kids = pcall(function()
-        return { list:GetChildren() }
-      end)
-      if ok and type(kids) == "table" then
-        for j = 1, #kids do
-          local child = kids[j]
-          if child and (child.icon or child.Icon) and SafeShown(child) then
-            local w
-            pcall(function()
-              w = child:GetWidth()
-            end)
-            if type(w) == "number" and not IsSecret(w) and w >= 12 and w <= 48 then
-              return w
-            end
-          end
-        end
-      end
-    end
-  end
   return sz
 end
 
@@ -1881,46 +1858,26 @@ NativeAuraMetrics = function(plate)
   return sz, pad
 end
 
---- Gap icons match native plate personal kids when native row visible; else TF personal chrome.
+--- Merge row uses one fixed size (profile iconSize) — never native/TF chrome sampling.
 MergeRowIconSize = function(plate, fb)
   local pad = OVERLAY_PAD
-  local nativeN = plate and CountPlateHarmfulShown(plate) or 0
-  local sz
-  if nativeN > 0 then
-    sz = SamplePlateNativeDebuffSize(plate) or select(1, NativeAuraMetrics(plate))
-  elseif HasTarget() then
-    sz = SampleTfDebuffIconSize() or select(1, NativeAuraMetrics(plate))
-  else
-    sz = select(1, NativeAuraMetrics(plate))
+  local sz = IconSize()
+  if plate then
+    local bar = HealthBar(plate)
+    if bar then
+      pcall(function()
+        local bh = bar:GetHeight()
+        if type(bh) == "number" and not IsSecret(bh) and bh > 0 then
+          local cap = math.floor(bh * 0.92)
+          if cap >= 12 and sz > cap then
+            sz = cap
+          end
+        end
+      end)
+    end
   end
   if fb then
-    local hint = IconSize()
-    if hint and hint >= 12 and hint <= 32 and sz > hint then
-      sz = hint
-    end
-    if nativeN > 0 then
-      -- Personal on native row: match small debuff kids; never grow gap row (stack chrome skew).
-      local prev = fb._pbLockedSz
-      if type(prev) == "number" and prev >= 12 then
-        sz = math.min(sz, prev)
-      end
-      fb._pbLockedSz = sz
-    elseif type(fb._pbLockedSz) == "number" then
-      if sz > fb._pbLockedSz then
-        sz = fb._pbLockedSz
-      else
-        fb._pbLockedSz = sz
-      end
-    else
-      fb._pbLockedSz = sz
-    end
-    sz = fb._pbLockedSz
-  end
-  local cap = nativeN > 0 and 40 or 32
-  if sz < 12 then
-    sz = 12
-  elseif sz > cap then
-    sz = cap
+    fb._pbLockedSz = sz
   end
   return sz, pad
 end

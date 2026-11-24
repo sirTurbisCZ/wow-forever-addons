@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## Release 0.2.37 — fixed merge-row icon size
+
+- **All** gap/merge icons use profile **`iconSize`** (default 18, `/pb size 12–32`) on every slot — no native/TF sampling, no grow/shrink when personal DoT or spell-damage buff appears.
+- Optional cap = health bar height × 0.92.
+
 ## Release 0.2.36 — gap icon size lock (personal DoT)
 
 - **`MergeRowIconSize`:** when native harmful row shows your DoT, gap icons **do not grow** — lock uses `min(previous, sample)`; sample = smallest native kid (12–32px), capped by `/pb size` hint.
