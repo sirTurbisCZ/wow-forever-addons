@@ -1787,17 +1787,21 @@ SamplePlateNativeDebuffSize = function(plate)
   end
   local buttons = {}
   CollectPlateDebuffButtons(plate, buttons, MaxIcons())
-  local best
+  local widths = {}
   for i = 1, #buttons do
     local btn = buttons[i]
     if btn and SafeShown(btn) then
       local w = AuraChromeWidth(btn)
-      if w and (not best or w < best) then
-        best = w
+      if w and w >= 12 and w <= 32 then
+        widths[#widths + 1] = w
       end
     end
   end
-  return best
+  if #widths == 0 then
+    return nil
+  end
+  table.sort(widths)
+  return widths[1]
 end
 
 SampleTfDebuffIconSize = function()
@@ -1890,8 +1894,16 @@ MergeRowIconSize = function(plate, fb)
     sz = select(1, NativeAuraMetrics(plate))
   end
   if fb then
+    local hint = IconSize()
+    if hint and hint >= 12 and hint <= 32 and sz > hint then
+      sz = hint
+    end
     if nativeN > 0 then
-      -- Own DoT on native row sets band size — gap foreign must match (grow lock).
+      -- Personal on native row: match small debuff kids; never grow gap row (stack chrome skew).
+      local prev = fb._pbLockedSz
+      if type(prev) == "number" and prev >= 12 then
+        sz = math.min(sz, prev)
+      end
       fb._pbLockedSz = sz
     elseif type(fb._pbLockedSz) == "number" then
       if sz > fb._pbLockedSz then
