@@ -16,9 +16,10 @@ ns.Modules.Plates = Mod
 local AC_GROUP = "platebandHarmful"
 local OVERLAY_PAD = 2
 local OVERLAY_GAP_ABOVE = 2
-local TICKER_BASE_SEC = 0.25
-local TICKER_COMBAT_SEC = 0.6
-local lastTickerAt = 0
+local GAP_CD_TICK_SEC = 3.5
+local lastGapCdTickAt = 0
+local lastFullRefreshAt = 0
+local FULL_REFRESH_DEBOUNCE = 0.75
 local PAINT_TARGET_SEC = 0.2
 local PAINT_PARTY_SEC = 0.5
 local PAINT_ENEMY_SEC = 0.55
@@ -41,7 +42,7 @@ local lastChatSig = nil
 local platesSeen = 0
 local overlayUpdates = 0
 local lastAuraRefreshAt = 0
-local AURA_DEBOUNCE_SEC = 0.12
+local AURA_DEBOUNCE_SEC = 0.35
 local GAP_STICKY_SEC = 3.0 -- hold when UNIT_AURA/API flickers empty on target paint (melee refresh)
 local SILENT_SWEEP_SEC = 2.0
 local gapSticky = {} -- [unit] = { icons = {}, at = number }
@@ -167,6 +168,7 @@ local PublicTexKey
 local PushTfAuraFrame
 local RawChildCount
 local RefreshAll
+local RefreshActiveGapsOnly
 local SamplePlateNativeDebuffSize
 local SampleTfDebuffIconSize
 local RememberGapSticky
@@ -4314,8 +4316,37 @@ local function WantsTickPaint(entry, index, mode)
   return (refreshPass % 3) == (index % 3)
 end
 
+RefreshActiveGapsOnly = function()
+  if not ModuleActive() then
+    return
+  end
+  if HasTarget() then
+    local tp = PlateFor("target")
+    local tu = NameplateUnitFor("target") or (tp and UnitTokenFromPlate(tp))
+    tu = OverlayUnitKey(tu, tp)
+    if tu and tp then
+      UpdateOverlay(tu, tp)
+    elseif tp then
+      UpdateOverlay(OverlayUnitKey(nil, tp), tp)
+    end
+  end
+  for unit, fb in pairs(fallbacks) do
+    if (tonumber(fb._painted) or 0) > 0 then
+      local plate = PlateFor(unit)
+      if plate then
+        UpdateOverlay(unit, plate)
+      end
+    end
+  end
+end
+
 RefreshAll = function(mode)
   mode = mode or "full"
+  local now = GetTime and GetTime() or 0
+  if mode == "full" and (now - lastFullRefreshAt) < FULL_REFRESH_DEBOUNCE then
+    return
+  end
+  lastFullRefreshAt = now
   refreshPass = refreshPass + 1
   local live = {}
   local list = EnumerateLivePlates()
@@ -4381,17 +4412,19 @@ EnsureTicker = function()
   if ticker or not C_Timer or not C_Timer.NewTicker then
     return
   end
-  ticker = C_Timer.NewTicker(TICKER_BASE_SEC, function()
+  -- Event-driven paint; slow tick only refreshes gap cooldowns (no EnumerateLivePlates scan).
+  ticker = C_Timer.NewTicker(GAP_CD_TICK_SEC, function()
     if not ModuleActive() then
       return
     end
     local now = GetTime and GetTime() or 0
-    local iv = PlayerInCombat() and TICKER_COMBAT_SEC or TICKER_BASE_SEC
-    if (now - lastTickerAt) < iv then
+    if (now - lastGapCdTickAt) < GAP_CD_TICK_SEC then
       return
     end
-    lastTickerAt = now
-    RefreshAll(PlayerInCombat() and "combat" or "tick")
+    lastGapCdTickAt = now
+    if next(fallbacks) ~= nil or next(gapSticky) ~= nil then
+      RefreshActiveGapsOnly()
+    end
   end)
 end
 
@@ -4617,7 +4650,10 @@ end
 
 MaybeAutoDiagnose = function(reason, force)
   local p = Profile()
-  if p.autoDiag == false and p.paintTraceOn == false and p.silentTrace == false then
+  if p.autoDiag == false and reason ~= "manual" and reason ~= "watch" then
+    return
+  end
+  if p.paintTraceOn == false and p.silentTrace == false and reason ~= "manual" and reason ~= "watch" then
     return
   end
   if PlayerInCombat() and reason ~= "manual" and reason ~= "watch" then
@@ -4656,17 +4692,8 @@ OnEvent = function(_, event, arg1)
       MaybeAutoDiagnose("plate_added", true)
     end)
     if C_Timer and C_Timer.After then
-      C_Timer.After(0.05, function()
+      C_Timer.After(0.08, function()
         pcall(UpdateOverlay, unit, PlateFor(unit))
-      end)
-      C_Timer.After(0.25, function()
-        pcall(function()
-          if PlayerInCombat() then
-            UpdateOverlay(unit, PlateFor(unit))
-          else
-            RefreshAll("tick")
-          end
-        end)
       end)
     end
   elseif event == "NAME_PLATE_UNIT_REMOVED" then
@@ -4681,7 +4708,7 @@ OnEvent = function(_, event, arg1)
   elseif event == "PLAYER_TARGET_CHANGED" then
     lastTargetPlateUnit = nil
     Defer(function()
-      RefreshAll()
+      RefreshActiveGapsOnly()
       MaybeAutoDiagnose("target", true)
     end)
   elseif event == "PLAYER_ENTERING_WORLD" or event == "GROUP_ROSTER_UPDATE" then
@@ -4719,9 +4746,6 @@ OnEvent = function(_, event, arg1)
           UpdateOverlay(tu, tp)
         elseif tp then
           UpdateOverlay(OverlayUnitKey(nil, tp), tp)
-        end
-        if not PlayerInCombat() then
-          RefreshAll(PlayerInCombat() and "combat" or "tick")
         end
       end)
     end

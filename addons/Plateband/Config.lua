@@ -2,7 +2,7 @@
 
 Plateband = Plateband or {}
 
-local CURRENT_SCHEMA = 10
+local CURRENT_SCHEMA = 11
 local MAX_ERRORS = 40
 local MAX_MSG = 2000
 
@@ -12,7 +12,7 @@ local Config = Plateband.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.2.32"
+Config.VERSION = "0.2.33"
 
 local function ProfileDefaults()
   return {
@@ -31,10 +31,11 @@ local function ProfileDefaults()
     watchInterval = 2,
     autoDiag = true,
     chatOnChange = false,
-    -- Silent always-on paint trace → PlatebandDB.sessionLog / paintTrace (no chat).
-  silentTrace = true,
-  paintTraceOn = true,
-  paintTraceInCombat = false,
+    silentTrace = true,
+    -- 0.2.33: paint trace off by default (SV concat was costing CPU); `/pb trace on` for agents.
+    paintTraceOn = false,
+    paintTraceInCombat = false,
+    autoDiag = false,
   }
 end
 
@@ -193,6 +194,16 @@ function Config.EnsureDB()
     end
     db.schemaVersion = 10
     from = 10
+  end
+
+  if from < 11 then
+    EnsureProfile(db)
+    db.profile.paintTraceOn = false
+    if db.profile.autoDiag == nil then
+      db.profile.autoDiag = false
+    end
+    db.schemaVersion = 11
+    from = 11
   end
 
   EnsureProfile(db)

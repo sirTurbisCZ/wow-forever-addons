@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.32** (combat tick 0.6s; trace off in combat; lazy paintTrace export)
+Version: **0.2.33** (event-driven; gap CD tick 3.5s only; no periodic plate scan)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 
@@ -8,7 +8,8 @@ See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name 
 
 ```mermaid
 flowchart TD
-  ev[NAME_PLATE / TARGET / UNIT_AURA / ticker] --> upd[UpdateOverlay]
+  ev[NAME_PLATE / TARGET / UNIT_AURA] --> upd[UpdateOverlay]
+  tick[3.5s gap CD tick] --> upd
   upd --> native[EnsureNativeVisible DebuffList alpha=1]
   upd --> clear[ClearFallback only]
   upd --> mergeFlag{mergeMissing?}

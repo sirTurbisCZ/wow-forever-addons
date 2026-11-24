@@ -1,5 +1,17 @@
 # Plateband changelog
 
+## Release 0.2.33 — event-driven paint (CPU)
+
+- **No periodic `RefreshAll` / nameplate scan** — paint on `NAME_PLATE_*`, `PLAYER_TARGET_CHANGED`, `UNIT_AURA` (target), plus **one** full refresh on zone/roster/`/pb refresh`.
+- Slow **3.5s** tick only when gap frames exist (cooldown refresh); skips `EnumerateLivePlates`.
+- **`paintTraceOn` default off** + schema 11 migration; **`autoDiag` default off**.
+- **Live note:** last SV seen `ver=0.2.31` — **`/reload`** for `SESSION_START ver=0.2.33`.
+
+### Playtest (0.2.33)
+
+1. Activity Monitor: Plateband idle/combat **few %** CPU.
+2. `/reload` → `SESSION_START ver=0.2.33`; merge dots still on plate add / target.
+
 ## Release 0.2.32 — combat throttle + deferred SV trace
 
 - **Your SV still showed `SESSION_START ver=0.2.30`** — symlink updates do not hot-reload; **`/reload` required** for 0.31+ fixes.
