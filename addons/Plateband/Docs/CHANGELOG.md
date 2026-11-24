@@ -1,5 +1,18 @@
 # Plateband changelog
 
+## 0.2.10 — silent paint trace (agent-readable)
+
+- **Silent by default:** `silentTrace` + `paintTraceOn` (schema **8**) — no chat spam; `/pb diagnose` optional.
+- **PAINT lines** every ~0.5s sweep + each paint: unit, merge, native/pool/kids, tf/harv/miss/painted/fb, pers/for, tgtSrc, parent, bar/nat visibility, ver.
+- **Stores:** `PlatebandDB.sessionLog.export` + `paintTrace.export` + `lastPaintTrace`; wiped each login (`SESSION_START`).
+- **Agent:** `scripts/watch-plateband-sv.sh` reads `WTF/.../SavedVariables/Plateband.lua`.
+
+### Playtest (0.2.10)
+
+1. `/reload` → `loaded v0.2.10` (no PAINT spam in chat).
+2. Fight with DoTs → `/pb dump` shows `paintTrace` tail, or send `Plateband.lua` after one `/reload`.
+3. On Mac: `./scripts/watch-plateband-sv.sh` while in game (after `/reload` flush).
+
 ## 0.2.9 (HUD gate — target plate paint path)
 
 - **Unit key:** plates without a public `nameplateN` token use stable `pb:<plate>` keys — `UpdateOverlay` no longer no-ops on `unit=nil`.

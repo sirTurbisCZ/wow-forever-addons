@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.9** (target plate TF-first + health-bar parent when native=0; see merge-design)
+Version: **0.2.10** (silent PAINT trace → PlatebandDB; see README agent watch script)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 

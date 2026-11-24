@@ -38,16 +38,31 @@ Developers (monorepo): `./scripts/link-addon.sh Plateband` then `/reload`.
 
 Alias: `/plateband`.
 
-## Sending a bug report
+## Silent trace (default on since 0.2.10)
 
-Plateband keeps a **session log** automatically (no slash required). After a pull:
+No chat spam while playing. Plateband appends **PAINT** lines to SavedVariables continuously (target + visible nameplates, ~0.5s sweep + each paint). Wiped each game session at login.
 
-1. `/reload` once (or log out) so SavedVariables flush to disk.
-2. Send this file:
+**Friend / agent path** (one `/reload` after repro, or send file occasionally):
 
 `World of Warcraft/_forever_/WTF/Account/<YourAccount>/SavedVariables/Plateband.lua`
 
-Look inside for `sessionLog`, `lastDiagnose`, and `export`.
+Grep `PAINT`, `paintTrace`, `lastPaintTrace`, or `sessionLog.export`.
+
+**Developer on Mac** (while Ondřej tests — no screenshots needed):
+
+```bash
+./scripts/watch-plateband-sv.sh   # tail PAINT lines from newest Account SV
+```
+
+Optional: `WOW_FOREVER_ROOT=/path/to/_forever_ ./scripts/watch-plateband-sv.sh 80`
+
+## Sending a bug report
+
+1. Reproduce with DoTs on a nameplate (or leave combat).
+2. `/reload` once (or log out) so SavedVariables flush to disk.
+3. Send **Plateband.lua** (see path above). Include `paintTrace` / `lastDiagnose`.
+
+Look inside for `sessionLog`, `paintTrace.export`, `lastDiagnose`, and `lastPaintTrace`.
 
 If Forever Error Log is installed, also send:
 
