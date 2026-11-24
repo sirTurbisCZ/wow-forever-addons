@@ -2362,7 +2362,7 @@ CountTargetHarmfulApi = function(unitToken)
   return n
 end
 
-CountTargetHarmfulExpected = function(unitToken)
+CountTargetHarmfulExpected = function(unitToken, harvestN)
   unitToken = unitToken or "target"
   if unitToken == "target" and not HasTarget() then
     return 0
@@ -2371,10 +2371,9 @@ CountTargetHarmfulExpected = function(unitToken)
     return 0
   end
   local api = CountTargetHarmfulApi(unitToken)
-  local harvest = 0
+  local harvest = tonumber(harvestN) or 0
   local tfUi = 0
   if unitToken == "target" then
-    harvest = #CollectTargetHarmfulRows(MaxIcons())
     tfUi = CountTargetFrameAuras()
   end
   return math.max(api, harvest, tfUi)
@@ -3292,27 +3291,29 @@ CollectTargetHarmfulRows = function(maxN)
     pcall(function()
       local group = container.debuffAuraGroup
       local auras = group and group.GetAuras and group:GetAuras()
-      if auras and auras.Iterate then
-        auras:Iterate(function(_id, data)
-          if #rows >= maxN then
-            return true
-          end
-          if type(data) == "table" and AuraIconPresent(data.icon) then
-            local row = {
-              icon = data.icon,
-              spellId = data.spellId,
-              auraInstanceID = data.auraInstanceID,
-              applications = data.applications,
-              expirationTime = data.expirationTime,
-              duration = data.duration,
-              fromTargetFrame = true,
-            }
-            row._key = TfRowKey(row) or ("tfit:" .. tostring(#rows + 1))
-            rows[#rows + 1] = row
-          end
-          return false
-        end)
-      end
+      pcall(function()
+        if auras and type(auras.Iterate) == "function" then
+          auras:Iterate(function(_id, data)
+            if #rows >= maxN then
+              return true
+            end
+            if type(data) == "table" and AuraIconPresent(data.icon) then
+              local row = {
+                icon = data.icon,
+                spellId = data.spellId,
+                auraInstanceID = data.auraInstanceID,
+                applications = data.applications,
+                expirationTime = data.expirationTime,
+                duration = data.duration,
+                fromTargetFrame = true,
+              }
+              row._key = TfRowKey(row) or ("tfit:" .. tostring(#rows + 1))
+              rows[#rows + 1] = row
+            end
+            return false
+          end)
+        end
+      end)
     end)
     pcall(HarvestTfAuraPool, container.auraPools, rows, maxN)
   end
@@ -3447,38 +3448,45 @@ ApplyGapAuraVisual = function(button, entry, unitToken)
   local tex = button.icon or button.Icon
   if not tex then
     pcall(function()
-      local psz = select(1, MergeRowIconSize(button._pbPlate))
+      local psz = IconSize()
+      if button._pbPlate then
+        psz = select(1, MergeRowIconSize(button._pbPlate, nil)) or psz
+      end
       InitAuraButton(button, button:GetWidth() or psz or IconSize())
     end)
     tex = button.icon or button.Icon
   end
-  if not tex then
-    return false, false
-  end
-  local ok = SetIconTexture(tex, entry)
+  local auraInstanceOk = false
   if type(entry) == "table" then
     EnrichGapAuraEntry(entry, unitToken)
-    local exp = entry.expirationTime
-    local dur = entry.duration
-    local apps = entry.applications or entry.stacks
     pcall(function()
-      if button.count and apps ~= nil and not IsSecret(apps) and type(apps) == "number" then
-        if apps > 1 then
-          button.count:SetText(tostring(apps))
-          button.count:Show()
-        else
-          button.count:SetText("")
-        end
-      end
-    end)
-    pcall(function()
-      if button.SetAuraInstance and entry.auraInstanceID then
+      if button.SetAuraInstance and entry.auraInstanceID ~= nil then
         if button.SetUnit and unitToken then
           button:SetUnit(unitToken)
         end
         button:SetAuraInstance(entry.auraInstanceID)
+        auraInstanceOk = true
+      elseif button.SetAuraInstance and entry.spellId ~= nil and unitToken and C_UnitAuras and C_UnitAuras.GetAuraDataBySpellID then
+        local okD, data = pcall(C_UnitAuras.GetAuraDataBySpellID, unitToken, entry.spellId)
+        if okD and type(data) == "table" and data.auraInstanceID ~= nil then
+          if button.SetUnit then
+            button:SetUnit(unitToken)
+          end
+          button:SetAuraInstance(data.auraInstanceID)
+          entry.auraInstanceID = data.auraInstanceID
+          auraInstanceOk = true
+        end
       end
     end)
+  end
+  local ok = false
+  if tex then
+    ok = SetIconTexture(tex, entry)
+  end
+  if type(entry) == "table" then
+    local exp = entry.expirationTime
+    local dur = entry.duration
+    local apps = entry.applications or entry.stacks
     local cdSet = false
     pcall(function()
       local cd = button.cooldown
@@ -3492,9 +3500,22 @@ ApplyGapAuraVisual = function(button, entry, unitToken)
       end
     end)
     entry._pbCd = cdSet
+    local showCount = ok or auraInstanceOk
+    pcall(function()
+      if button.count then
+        if showCount and apps ~= nil and not IsSecret(apps) and type(apps) == "number" and apps > 1 then
+          button.count:SetText(tostring(apps))
+          button.count:Show()
+        else
+          button.count:SetText("")
+          button.count:Hide()
+        end
+      end
+    end)
   end
   local cdSet = type(entry) == "table" and entry._pbCd == true
-  return ok, cdSet
+  local visible = ok or auraInstanceOk or (type(entry) == "table" and (entry.fromTargetFrame or entry.fromUnitApi))
+  return visible, cdSet
 end
 
 TfSupplementSkipKeys = function(paintKeys, missing)
@@ -3666,6 +3687,7 @@ PaintMergeMissing = function(unit, plate)
 
   if useTargetSrc then
     CollectUnitHarmfulMirror("target", queueSkip, missing, maxN, stats)
+    pcall(ReconcileTargetFrameUiButtons, plate, missing, queueSkip, maxN, stats)
   elseif friendPlate and type(unit) == "string" then
     CollectUnitHarmfulMirror(unit, queueSkip, missing, maxN, stats)
   end
@@ -3673,7 +3695,10 @@ PaintMergeMissing = function(unit, plate)
   -- TF-first: mirror harmful row when target plate (party DoTs + personal when native=0).
   local harvN = 0
   if useTargetSrc then
-    local harv = CollectTargetHarmfulRows(maxN)
+    local harv = {}
+    pcall(function()
+      harv = CollectTargetHarmfulRows(maxN) or {}
+    end)
     harvN = #harv
     lastPaintDebug.harv = harvN
     lastPaintDebug.tgtSrc = 1
@@ -3709,7 +3734,10 @@ PaintMergeMissing = function(unit, plate)
     ReconcileTfHarmfulCoverage(plate, missing, queueSkip, maxN, stats, "target")
     DedupeGapIcons(missing, maxN)
     local auraTok = "target"
-    PruneInactiveGapRows(missing, auraTok, maxN)
+    local tfUiN = CountTargetFrameAuras()
+    if not (tfUiN > 0 and #missing > 0) then
+      PruneInactiveGapRows(missing, auraTok, maxN)
+    end
     ReconcileTfHarmfulCoverage(plate, missing, queueSkip, maxN, stats, "target")
     DedupeGapIcons(missing, maxN)
     ReconcileTargetFrameUiButtons(plate, missing, queueSkip, maxN, stats)
@@ -3748,9 +3776,9 @@ PaintMergeMissing = function(unit, plate)
   lastPaintDebug.nativeN = nativeN
   lastPaintDebug.friendPlate = friendPlate and 1 or 0
   if useTargetSrc and HasTarget() then
-    lastPaintDebug.tfRows = CountTargetHarmfulExpected("target")
+    lastPaintDebug.tfRows = CountTargetHarmfulExpected("target", lastPaintDebug.harv)
   elseif friendPlate and type(unit) == "string" then
-    lastPaintDebug.tfRows = CountTargetHarmfulExpected(unit)
+    lastPaintDebug.tfRows = CountTargetHarmfulExpected(unit, #missing)
   else
     lastPaintDebug.tfRows = 0
   end

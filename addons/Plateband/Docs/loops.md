@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.26** (TF UI tfbtn reconcile, CountTargetHarmfulExpected)
+Version: **0.2.27** (SetAuraInstance visible, TF UI seed, prune guard)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 

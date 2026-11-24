@@ -1,5 +1,15 @@
 # Plateband changelog
 
+## 0.2.27 — secret aura paint + TF seed (Stockade Captive)
+
+- **`ApplyGapAuraVisual`:** `SetAuraInstance` counts as visible; stack text only when icon/instance paints (fixes naked yellow stack on bar).
+- **Target paint:** seed **`ReconcileTargetFrameUiButtons`** before harvest; **`pcall`** on `CollectTargetHarmfulRows`; skip prune when TF UI still has debuffs.
+- **`CountTargetHarmfulExpected`:** light telemetry (no full re-harvest during paint).
+
+### Playtest (0.2.27)
+
+1. `/reload` → `loaded v0.2.27`; target Defias with TF Rend → plate icon + swipe, PAINT `miss≥1 painted≥1 tfRows≥1 cov≥tfRows`.
+
 ## 0.2.26 — TF UI cov parity (Defias 1-of-2)
 
 - **`CountTargetHarmfulExpected`:** `tfRows` / PAINT `tf=` = max(API, slots, harvest, TF button count).
