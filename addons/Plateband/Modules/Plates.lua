@@ -67,6 +67,7 @@ local CollectTargetFrameMissing
 local CollectTargetFramePersonalGaps
 local CollectTargetHarmfulRows
 local CollectUnitHarmfulMirror
+local DeduplicateHarmfulRows
 local CollectTfActiveDebuffs
 local CollectTfAuraSlots
 local CopyKeySet
@@ -75,6 +76,8 @@ local CountPlateHarmfulShown
 local CountShownAuraKids
 local CountTargetFrameAuras
 local CreateBandContainer
+local CanonicalGapKey
+local DedupeGapIcons
 local Defer
 local EnsureFallback
 local EnsureNativeVisible
@@ -1736,9 +1739,15 @@ CollectForeignAuraGaps = function(unitToken, skipKeys, out, maxN, allowSecretUnk
           end
         end
       end
-      if take and key and not skipKeys[key] then
+      local ck = CanonicalGapKey({ icon = icon, spellId = data.spellId, auraInstanceID = data.auraInstanceID })
+      if ck and skipKeys[ck] then
+        -- dup
+      elseif take and key and not skipKeys[key] then
         out[#out + 1] = icon
         skipKeys[key] = true
+        if ck then
+          skipKeys[ck] = true
+        end
         if stats then
           stats.foreign = (stats.foreign or 0) + 1
         end
@@ -1771,9 +1780,15 @@ CollectPersonalAuraGaps = function(unitToken, paintKeys, out, maxN, stats)
       if not key then
         key = "per:" .. tostring(i) .. ":" .. tostring(unitToken)
       end
-      if key and not paintKeys[key] then
+      local ck = CanonicalGapKey({ icon = icon, spellId = data.spellId, auraInstanceID = data.auraInstanceID })
+      if ck and paintKeys[ck] then
+        -- already queued (TF harvest / texture dedupe)
+      elseif key and not paintKeys[key] then
         out[#out + 1] = icon
         paintKeys[key] = true
+        if ck then
+          paintKeys[ck] = true
+        end
         if stats then
           stats.personal = (stats.personal or 0) + 1
         end
@@ -1800,9 +1815,15 @@ CollectTargetFramePersonalGaps = function(paintKeys, out, maxN, stats)
         if not key then
           key = "tfper:" .. bid
         end
-        if key and not paintKeys[key] then
+        local ck = CanonicalGapKey({ icon = icon })
+        if ck and paintKeys[ck] then
+          -- dup
+        elseif key and not paintKeys[key] then
           out[#out + 1] = icon
           paintKeys[key] = true
+          if ck then
+            paintKeys[ck] = true
+          end
           if stats then
             stats.personal = (stats.personal or 0) + 1
           end
@@ -1825,6 +1846,7 @@ ApplyGapSticky = function(unit, missing, isTarget)
     for i = 1, #c.icons do
       missing[#missing + 1] = c.icons[i]
     end
+    DedupeGapIcons(missing, MaxIcons())
   end
 end
 
@@ -1836,6 +1858,7 @@ RememberGapSticky = function(unit, icons)
   for i = 1, #icons do
     copy[i] = icons[i]
   end
+  DedupeGapIcons(copy, MaxIcons())
   gapSticky[unit] = { icons = copy, at = GetTime and GetTime() or 0 }
 end
 
@@ -2064,6 +2087,87 @@ TfRowKey = function(row)
   return nil
 end
 
+--- One harmful aura = one plate icon — texture beats per-frame tf: keys.
+CanonicalGapKey = function(row)
+  if type(row) == "table" then
+    local tk = PublicTexKey(row.icon)
+    if not tk and row.iconTex then
+      tk = PublicTexKey(row.iconTex)
+    end
+    if tk then
+      return "tex:" .. tk
+    end
+    local k = TfRowKey(row)
+    if k and not k:match("^tf:") then
+      return k
+    end
+    if k then
+      return k
+    end
+    return nil
+  end
+  local tk = PublicTexKey(row)
+  if tk then
+    return "tex:" .. tk
+  end
+  return nil
+end
+
+DedupeGapIcons = function(missing, maxN)
+  if type(missing) ~= "table" then
+    return missing
+  end
+  maxN = maxN or MaxIcons()
+  local seen = {}
+  local out = {}
+  for i = 1, #missing do
+    if #out >= maxN then
+      break
+    end
+    local entry = missing[i]
+    local key = CanonicalGapKey(entry)
+    if not key then
+      key = "tex:" .. tostring(i)
+    end
+    if not seen[key] then
+      seen[key] = true
+      out[#out + 1] = entry
+    end
+  end
+  for i = #out + 1, #missing do
+    missing[i] = nil
+  end
+  for i = 1, #out do
+    missing[i] = out[i]
+  end
+  return missing
+end
+
+DeduplicateHarmfulRows = function(rows, maxN)
+  if type(rows) ~= "table" then
+    return rows
+  end
+  maxN = maxN or MaxIcons()
+  local seen = {}
+  local out = {}
+  for i = 1, #rows do
+    if #out >= maxN then
+      break
+    end
+    local row = rows[i]
+    local key = CanonicalGapKey(row)
+    if not key then
+      key = "row:" .. tostring(i)
+    end
+    if not seen[key] then
+      seen[key] = true
+      row._key = key
+      out[#out + 1] = row
+    end
+  end
+  return out
+end
+
 PushTfAuraFrame = function(frame, rows, maxN)
   if not frame or #rows >= maxN or IsLikelyBuffFrame(frame) then
     return
@@ -2095,12 +2199,13 @@ PushTfAuraFrame = function(frame, rows, maxN)
     if not IsUsableSpellIcon(icon, true) and not liveBtn and not TextureHasArt(tex) then
       return
     end
-    local key = TfRowKey({ spellId = sid, auraInstanceID = aid, icon = icon })
+    local rowTmp = { spellId = sid, auraInstanceID = aid, icon = icon, iconTex = tex }
+    local key = CanonicalGapKey(rowTmp)
     if not key then
       key = "tf:" .. tostring(frame)
     end
     for i = 1, #rows do
-      if rows[i]._key == key then
+      if rows[i]._key == key or CanonicalGapKey(rows[i]) == key then
         return
       end
     end
@@ -2351,16 +2456,16 @@ CollectTargetHarmfulRows = function(maxN)
   elseif #rows < maxN then
     ScrapeTargetFrameBrute(rows, maxN)
   end
-  return rows
+  return DeduplicateHarmfulRows(rows, maxN)
 end
 
 AppendGapRow = function(skipKeys, out, maxN, stats, row, countForeign)
   if #out >= maxN or type(row) ~= "table" then
     return
   end
-  local key = TfRowKey(row)
+  local key = CanonicalGapKey(row)
   if not key then
-    key = "gap:" .. tostring(#out + 1)
+    key = TfRowKey(row) or ("gap:" .. tostring(#out + 1))
   end
   if skipKeys[key] then
     return
@@ -2600,14 +2705,17 @@ PaintMergeMissing = function(unit, plate)
   local nativeN = CountPlateHarmfulShown(plate)
   local allowSecret = useTargetSrc or nativeN == 0
 
+  local queueSkip = CopyKeySet(paintKeys)
+
   -- TF-first: mirror harmful row when target plate (party DoTs + personal when native=0).
+  local harvN = 0
   if useTargetSrc then
     local harv = CollectTargetHarmfulRows(maxN)
-    lastPaintDebug.harv = #harv
+    harvN = #harv
+    lastPaintDebug.harv = harvN
     lastPaintDebug.tgtSrc = 1
-    local skip = CopyKeySet(paintKeys)
     for i = 1, #harv do
-      AppendGapRow(skip, missing, maxN, stats, harv[i], false)
+      AppendGapRow(queueSkip, missing, maxN, stats, harv[i], false)
     end
   else
     lastPaintDebug.tgtSrc = 0
@@ -2615,13 +2723,13 @@ PaintMergeMissing = function(unit, plate)
   end
 
   if useTargetSrc then
-    CollectPersonalAuraGaps("target", paintKeys, missing, maxN, stats)
+    CollectPersonalAuraGaps("target", queueSkip, missing, maxN, stats)
     if type(unit) == "string" and unit ~= "target" then
-      CollectPersonalAuraGaps(unit, paintKeys, missing, maxN, stats)
+      CollectPersonalAuraGaps(unit, queueSkip, missing, maxN, stats)
     end
-    CollectTargetFramePersonalGaps(paintKeys, missing, maxN, stats)
+    CollectTargetFramePersonalGaps(queueSkip, missing, maxN, stats)
 
-    local foreignSkip = CopyKeySet(paintKeys)
+    local foreignSkip = CopyKeySet(queueSkip)
     CollectPlayerOwnedKeys("target", foreignSkip)
     if type(unit) == "string" and unit ~= "target" then
       CollectPlayerOwnedKeys(unit, foreignSkip)
@@ -2631,19 +2739,17 @@ PaintMergeMissing = function(unit, plate)
     if type(unit) == "string" and unit ~= "target" then
       CollectForeignAuraGaps(unit, foreignSkip, missing, maxN, allowSecret, stats)
     end
-    -- TF mirror: dedupe native + already queued only — not CollectPlayerOwnedKeys
-    -- (0.2.7 skipped every TF row when native empty because spell keys were pre-blocked).
-    CollectTargetFrameMissing(TfSupplementSkipKeys(paintKeys, missing), missing, maxN, stats)
-    if nativeN == 0 and #missing == 0 and HasTarget() then
-      CollectTargetFrameMissing(CopyKeySet(paintKeys), missing, maxN, stats)
+    -- TF rows already harvested above — skip second full TF pass (was duplicating icons).
+    if harvN == 0 then
+      CollectTargetFrameMissing(queueSkip, missing, maxN, stats)
     end
     if #missing == 0 then
-      local apiSkip = TfSupplementSkipKeys(paintKeys, missing)
-      CollectUnitHarmfulMirror("target", apiSkip, missing, maxN, stats)
+      CollectUnitHarmfulMirror("target", queueSkip, missing, maxN, stats)
       if type(unit) == "string" and unit ~= "target" then
-        CollectUnitHarmfulMirror(unit, apiSkip, missing, maxN, stats)
+        CollectUnitHarmfulMirror(unit, queueSkip, missing, maxN, stats)
       end
     end
+    DedupeGapIcons(missing, maxN)
   else
     if type(unit) == "string" then
       CollectPersonalAuraGaps(unit, paintKeys, missing, maxN, stats)
@@ -2663,7 +2769,7 @@ PaintMergeMissing = function(unit, plate)
     local held = fallbacks[unit]
     local sticky = gapSticky[unit]
     local now = GetTime and GetTime() or 0
-  local heldN = held and tonumber(held._painted) or 0
+    local heldN = held and tonumber(held._painted) or 0
     if heldN > 0 and sticky and type(sticky.icons) == "table" and #sticky.icons > 0 then
       if type(sticky.at) == "number" and (now - sticky.at) <= GAP_STICKY_SEC then
         lastPaintDebug.painted = heldN

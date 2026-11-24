@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.14** (silent PAINT trace → PlatebandDB; see README agent watch script)
+Version: **0.2.15** (silent PAINT trace → PlatebandDB; see README agent watch script)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 

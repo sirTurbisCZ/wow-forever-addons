@@ -1,5 +1,15 @@
 # Plateband changelog
 
+## 0.2.15 — TF/plate harmful dedupe
+
+- **`CanonicalGapKey` / `tex:`** — one icon per public texture; TF harvest dedupes before paint.
+- **Single `queueSkip`** across TF + API passes; skip redundant second `CollectTargetFrameMissing` when `harv>0`.
+- **`DedupeGapIcons`** on queue + sticky hold.
+
+### Playtest (0.2.15)
+
+1. `/reload` → `ver=0.2.15`; Dragonmaw + ~2 TF harmful → **same count** above plate (no 4× same fire).
+
 ## 0.2.14 — paint hold + TF/API mirror (Dragonmaw)
 
 - **Wipe on hit:** `UpdateOverlay` no longer `ClearFallback` before paint; sticky not cleared in routine hide; **3s gap hold** when API flickers empty after melee/`UNIT_AURA`.
