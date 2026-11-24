@@ -1,5 +1,20 @@
 # BetterBackpack changelog
 
+## Release 1.2.12 — pack merged grid (no holes)
+
+Materials / Reagent lanes no longer show wide gaps or icons floating off-grid when stack merge collapses slots — grid repacks left like native.
+
+## 1.2.12 — merge lane packing
+
+- **`PickStableAnchor`:** never leave an **empty** representative slot in the grid; during cursor pickup paint from another occupied stack in the group; drop stale anchors when that bag:slot leaves the merge group.
+- **`Layout.VisibleGridSignature`:** full `DoLayout` when collapsed **per-lane cell counts** change, not only total occupied slots (fixes 1.2.11 light-refresh leaving stale absolute positions).
+
+### Playtest (1.2.12)
+
+1. `/reload` → `v1.2.12`; stack merge on; several partial stacks (mussels) in Materials.
+2. Lane rows pack left — no horizontal holes; icons stay inside bag frame (not over quest tracker).
+3. Pick up / split merged stack — cell stable, no jump (1.2.11 behavior kept).
+
 ## Release 1.2.11 — stable merged-stack grid
 
 Clicking or picking up a **merged** stack (e.g. mussels) no longer re-anchors the icon to another bag slot or runs a full layout on every `BAG_UPDATE` tick — no inventory jump, no ItemButton press “expand” animation.

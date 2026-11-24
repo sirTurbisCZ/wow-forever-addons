@@ -1620,6 +1620,7 @@ local function DoLayout()
       SetBagMatchHighlight(focusBagID, true)
     end
     BetterBackpack._bbLastOccupiedCount = InventoryOccupiedCount()
+    BetterBackpack._bbGridSig = VisibleGridSignature()
   end)
   layoutBusy = false
   if not ok and BetterBackpack.RecordError then
@@ -3484,6 +3485,24 @@ local function InventoryOccupiedCount()
   return n
 end
 
+local function VisibleGridSignature()
+  local order = Layout.GetCategoryOrder()
+  local SM = Feat("StackMerge")
+  local buckets = CollectBuckets(false)
+  local parts = {}
+  for i = 1, #order do
+    local key = order[i]
+    if CategoryEnabled(key) then
+      local list = buckets[key] or {}
+      if SM and SM.Collapse then
+        list = SM.Collapse(list)
+      end
+      parts[#parts + 1] = string.format("%s:%d", key, #list)
+    end
+  end
+  return table.concat(parts, "|") .. "|occ:" .. tostring(InventoryOccupiedCount())
+end
+
 --- Bag events: sync icons/counts only — no full grid reflow (merged stacks stay put).
 function Layout.RefreshLight()
   if not Layout.IsShown() then
@@ -3516,9 +3535,12 @@ function Layout.Refresh()
     return
   end
   local occ = InventoryOccupiedCount()
-  local prev = BetterBackpack._bbLastOccupiedCount
+  local prevOcc = BetterBackpack._bbLastOccupiedCount
+  local sig = VisibleGridSignature()
+  local prevSig = BetterBackpack._bbGridSig
   BetterBackpack._bbLastOccupiedCount = occ
-  if prev == nil or prev ~= occ then
+  BetterBackpack._bbGridSig = sig
+  if prevOcc == nil or prevOcc ~= occ or prevSig == nil or prevSig ~= sig then
     DoLayout()
     return
   end

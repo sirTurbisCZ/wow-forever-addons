@@ -140,17 +140,36 @@ local function PickStableAnchor(mergeKey, mergedFrom)
   end
   local anchor = mergeAnchors[mergeKey]
   if anchor then
-    -- Keep grid cell while anchor is briefly empty (stack on cursor); only move when group loses that slot permanently.
+    local inGroup = false
     for i = 1, #mergedFrom do
       if mergedFrom[i].bag == anchor.bag and mergedFrom[i].slot == anchor.slot then
-        return anchor
+        inGroup = true
+        break
       end
     end
-    if #mergedFrom > 0 then
+    if inGroup then
+      if SlotStillOccupied(anchor.bag, anchor.slot) then
+        return anchor
+      end
+      -- Cursor pickup: paint from another stack in the group (no empty grid hole).
+      for i = 1, #mergedFrom do
+        local b, s = mergedFrom[i].bag, mergedFrom[i].slot
+        if SlotStillOccupied(b, s) then
+          return { bag = b, slot = s }
+        end
+      end
       return anchor
     end
+    mergeAnchors[mergeKey] = nil
   end
   local pick = mergedFrom[1]
+  for i = 1, #mergedFrom do
+    local b, s = mergedFrom[i].bag, mergedFrom[i].slot
+    if SlotStillOccupied(b, s) then
+      pick = mergedFrom[i]
+      break
+    end
+  end
   mergeAnchors[mergeKey] = { bag = pick.bag, slot = pick.slot }
   return pick
 end
