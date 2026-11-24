@@ -1,5 +1,17 @@
 # Plateband changelog
 
+## 0.2.28 — prune wipe fix + TF force fill (Insurgent)
+
+- **Duplicate `PruneInactiveGapRows` after target harvest** was clearing the queue (`miss=0` with TF full).
+- **`ForceFillTargetFrameGaps`:** brute TF + legacy `TargetFrameDebuff1–40` when queue still empty.
+- **TF collect:** no `SafeShown` gate on legacy debuff slots; debuff chrome bypasses `IsLikelyBuffFrame`.
+- **Paint routing:** skip non-target enemy nameplates while you have a target (no stray `nameplate4` paint).
+- **PAINT:** `tfBtn=` = TF button harvest count.
+
+### Playtest (0.2.28)
+
+1. `/reload` → `SESSION_START ver=0.2.28`; insurgent TF 3–4 → `tfBtn≥3`, `tgtSrc=1`, `miss≥1`, `painted≥1`, `cov≥tfRows`.
+
 ## 0.2.27 — secret aura paint + TF seed (Stockade Captive)
 
 - **`ApplyGapAuraVisual`:** `SetAuraInstance` counts as visible; stack text only when icon/instance paints (fixes naked yellow stack on bar).

@@ -132,6 +132,8 @@ local NativeKeySet
 local NativeShownKeySet
 local ReconcileTfHarmfulCoverage
 local ReconcileTargetFrameUiButtons
+local IsTargetDebuffAuraFrame
+local ForceFillTargetFrameGaps
 local OnEvent
 local OverlayUnitKey
 local PaintMergeMissing
@@ -920,15 +922,32 @@ CollectTargetFrameButtons = function(out, maxN)
   if TargetFrame then
     pcall(HarvestAuraPoolButtons, TargetFrame.auraPools, out, maxN)
   end
-  for i = 1, 16 do
+  for i = 1, 40 do
     if #out >= maxN then
       break
     end
     local frame = _G["TargetFrameDebuff" .. i]
-    if frame and SafeShown(frame) then
+    if frame and (frame.Icon or frame.icon or frame.GetAuraInstance) then
       out[#out + 1] = frame
     end
   end
+end
+
+IsTargetDebuffAuraFrame = function(frame)
+  if not frame then
+    return false
+  end
+  local n
+  pcall(function()
+    n = frame.GetName and frame:GetName()
+  end)
+  if type(n) == "string" then
+    local l = n:lower()
+    if l:find("debuff", 1, true) or l:find("aurabutton", 1, true) or l:find("targetaura", 1, true) then
+      return true
+    end
+  end
+  return frame.Icon ~= nil or frame.icon ~= nil or frame.GetAuraInstance ~= nil
 end
 
 CountTargetFrameAuras = function()
@@ -2763,7 +2782,7 @@ ReconcileTargetFrameUiButtons = function(plate, missing, skipKeys, maxN, stats)
       break
     end
     local btn = buttons[i]
-    if not btn or IsLikelyBuffFrame(btn) or IsCastOrSpellBarFrame(btn) then
+    if not btn or IsCastOrSpellBarFrame(btn) or (IsLikelyBuffFrame(btn) and not IsTargetDebuffAuraFrame(btn)) then
       -- skip
     else
       local icon, sid, aid, tex, expTime, dur, apps
@@ -2823,6 +2842,69 @@ ReconcileTargetFrameUiButtons = function(plate, missing, skipKeys, maxN, stats)
             end
           end
         end
+      end
+    end
+  end
+  return added
+end
+
+--- Last resort when API harvest empty but TF still shows harmful chrome.
+ForceFillTargetFrameGaps = function(missing, skipKeys, maxN, stats)
+  if type(missing) ~= "table" or not skipKeys or not HasTarget() then
+    return 0
+  end
+  local added = 0
+  local scrape = {}
+  pcall(ScrapeTargetFrameBrute, scrape, maxN)
+  for i = 1, #scrape do
+    if #missing >= maxN then
+      break
+    end
+    local row = scrape[i]
+  row._key = row._key or ("tffill:" .. tostring(i))
+    local before = #missing
+    AppendGapRow(skipKeys, missing, maxN, stats, row, true)
+    if #missing <= before then
+      skipKeys[row._key] = true
+      missing[#missing + 1] = row
+      added = added + 1
+      if stats then
+        stats.foreign = (stats.foreign or 0) + 1
+      end
+    else
+      added = added + (#missing - before)
+    end
+  end
+  local buttons = {}
+  CollectTargetFrameButtons(buttons, maxN)
+  for i = 1, #buttons do
+    if #missing >= maxN then
+      break
+    end
+    local btn = buttons[i]
+    if btn and IsTargetDebuffAuraFrame(btn) and not IsCastOrSpellBarFrame(btn) then
+      local row = { iconTex = btn.Icon or btn.icon, fromTargetFrame = true, _tfFrame = btn, _key = "tfforce:" .. tostring(i) }
+      pcall(function()
+        if btn.GetAuraInstance then
+          local _, data = btn:GetAuraInstance()
+          if type(data) == "table" then
+            row.icon = data.icon
+            row.spellId = data.spellId
+            row.auraInstanceID = data.auraInstanceID
+            row.applications = data.applications
+            row.expirationTime = data.expirationTime
+            row.duration = data.duration
+          end
+        end
+      end)
+      local before = #missing
+      AppendGapRow(skipKeys, missing, maxN, stats, row, true)
+      if #missing <= before then
+        skipKeys[row._key] = true
+        missing[#missing + 1] = row
+        added = added + 1
+      else
+        added = added + (#missing - before)
       end
     end
   end
@@ -3025,7 +3107,10 @@ DeduplicateHarmfulRows = function(rows, maxN)
 end
 
 PushTfAuraFrame = function(frame, rows, maxN)
-  if not frame or #rows >= maxN or IsLikelyBuffFrame(frame) then
+  if not frame or #rows >= maxN or IsCastOrSpellBarFrame(frame) then
+    return
+  end
+  if IsLikelyBuffFrame(frame) and not IsTargetDebuffAuraFrame(frame) then
     return
   end
   pcall(function()
@@ -3459,7 +3544,22 @@ ApplyGapAuraVisual = function(button, entry, unitToken)
   local auraInstanceOk = false
   if type(entry) == "table" then
     EnrichGapAuraEntry(entry, unitToken)
+    if type(entry) == "table" and entry._tfFrame and button.SetAuraInstance then
     pcall(function()
+      local tfBtn = entry._tfFrame
+      if tfBtn and tfBtn.GetAuraInstance then
+        local _, data = tfBtn:GetAuraInstance()
+        if type(data) == "table" and data.auraInstanceID ~= nil then
+          entry.auraInstanceID = data.auraInstanceID
+          entry.spellId = data.spellId or entry.spellId
+          entry.icon = data.icon or entry.icon
+          entry.expirationTime = data.expirationTime or entry.expirationTime
+          entry.duration = data.duration or entry.duration
+        end
+      end
+    end)
+  end
+  pcall(function()
       if button.SetAuraInstance and entry.auraInstanceID ~= nil then
         if button.SetUnit and unitToken then
           button:SetUnit(unitToken)
@@ -3514,7 +3614,10 @@ ApplyGapAuraVisual = function(button, entry, unitToken)
     end)
   end
   local cdSet = type(entry) == "table" and entry._pbCd == true
-  local visible = ok or auraInstanceOk or (type(entry) == "table" and (entry.fromTargetFrame or entry.fromUnitApi))
+  local visible = ok or auraInstanceOk
+  if not visible and type(entry) == "table" and entry.iconTex and TextureHasArt(entry.iconTex) then
+    visible = true
+  end
   return visible, cdSet
 end
 
@@ -3566,7 +3669,7 @@ BuildPaintTraceLine = function(why, unit, plate)
   local bar = plate and HealthBar(plate)
   local barVis = bar and (SafeShown(bar) and 1 or 0) or 0
   return string.format(
-    "PAINT ver=%s why=%s unit=%s tgt=%s merge=%s native=%s pool=%s kids=%s tf=%s harv=%s miss=%s painted=%s fb=%s pers=%s for=%s tgtSrc=%s parent=%s natVis=%s barVis=%s active=%s safe=%s acFail=%s gapSz=%s lockSz=%s cdN=%s tfRows=%s cov=%s friend=%s",
+    "PAINT ver=%s why=%s unit=%s tgt=%s merge=%s native=%s pool=%s kids=%s tf=%s harv=%s miss=%s painted=%s fb=%s pers=%s for=%s tgtSrc=%s parent=%s natVis=%s barVis=%s active=%s safe=%s acFail=%s gapSz=%s lockSz=%s cdN=%s tfRows=%s cov=%s friend=%s tfBtn=%s",
     tostring(ns.Config.VERSION),
     tostring(why or "?"),
     tostring(unit),
@@ -3594,7 +3697,8 @@ BuildPaintTraceLine = function(why, unit, plate)
     tostring(lpd.cdN or "?"),
     tostring(lpd.tfRows or "?"),
     tostring((lpd.nativeN or nativeN) + (tonumber(lpd.painted) or tonumber(fb) or 0)),
-    tostring(lpd.friendPlate or "?")
+    tostring(lpd.friendPlate or "?"),
+    tostring(lpd.tfBtn or "?")
   )
 end
 
@@ -3680,6 +3784,11 @@ PaintMergeMissing = function(unit, plate)
   local stats = { personal = 0, foreign = 0 }
   local isTarget = IsTargetPlate(unit, plate)
   local useTargetSrc = ShouldUseTargetAuraSource(unit, plate)
+
+  if HasTarget() and not useTargetSrc and not friendPlate and type(unit) == "string" and unit:match("^nameplate") and not isTarget then
+    ClearFallback(unit)
+    return 0
+  end
   local nativeN = CountPlateHarmfulShown(plate)
   local allowSecret = useTargetSrc or nativeN == 0
 
@@ -3742,6 +3851,10 @@ PaintMergeMissing = function(unit, plate)
     DedupeGapIcons(missing, maxN)
     ReconcileTargetFrameUiButtons(plate, missing, queueSkip, maxN, stats)
     DedupeGapIcons(missing, maxN)
+    if #missing == 0 then
+      pcall(ForceFillTargetFrameGaps, missing, queueSkip, maxN, stats)
+      DedupeGapIcons(missing, maxN)
+    end
   else
     if type(unit) == "string" then
       CollectPersonalAuraGaps(unit, paintKeys, missing, maxN, stats)
@@ -3766,12 +3879,20 @@ PaintMergeMissing = function(unit, plate)
 
   ApplyGapSticky(unit, missing, useTargetSrc, useTargetSrc and "target" or unit)
   if useTargetSrc then
-    PruneInactiveGapRows(missing, "target", maxN)
+    local tfUiLate = CountTargetFrameAuras()
+    if not (tfUiLate > 0 and #missing > 0) then
+      PruneInactiveGapRows(missing, "target", maxN)
+    end
+    if #missing == 0 and tfUiLate > 0 then
+      pcall(ForceFillTargetFrameGaps, missing, queueSkip, maxN, stats)
+      DedupeGapIcons(missing, maxN)
+    end
   elseif type(unit) == "string" then
     PruneInactiveGapRows(missing, unit, maxN)
   end
 
   lastPaintDebug.miss = #missing
+  lastPaintDebug.tfBtn = CountTargetFrameAuras()
   lastPaintDebug.unit = tostring(unit)
   lastPaintDebug.nativeN = nativeN
   lastPaintDebug.friendPlate = friendPlate and 1 or 0

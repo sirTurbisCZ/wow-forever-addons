@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.27** (SetAuraInstance visible, TF UI seed, prune guard)
+Version: **0.2.28** (no post-harvest prune wipe, ForceFillTargetFrameGaps)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 
