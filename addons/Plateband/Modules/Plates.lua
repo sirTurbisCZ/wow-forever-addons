@@ -77,6 +77,7 @@ local CountPlateHarmfulShown
 local CountShownAuraKids
 local CountTargetFrameAuras
 local ApplyGapAuraVisual
+local EnrichGapAuraEntry
 local CreateBandContainer
 local CreateGapAuraButton
 local CanonicalGapKey
@@ -131,8 +132,10 @@ local PublicTexKey
 local PushTfAuraFrame
 local RawChildCount
 local RefreshAll
+local SamplePlateNativeDebuffSize
 local SampleTfDebuffIconSize
 local RememberGapSticky
+local RefreshHeldGapFallback
 local RestoreNameShift
 local SafeFallbackParent
 local SafeShown
@@ -1508,6 +1511,25 @@ local function AuraChromeWidth(frame)
   return w
 end
 
+SamplePlateNativeDebuffSize = function(plate)
+  if not plate then
+    return nil
+  end
+  local buttons = {}
+  CollectPlateDebuffButtons(plate, buttons, MaxIcons())
+  local best
+  for i = 1, #buttons do
+    local btn = buttons[i]
+    if btn and SafeShown(btn) then
+      local w = AuraChromeWidth(btn)
+      if w and (not best or w < best) then
+        best = w
+      end
+    end
+  end
+  return best
+end
+
 SampleTfDebuffIconSize = function()
   local best
   for i = 1, 16 do
@@ -1585,18 +1607,23 @@ NativeAuraMetrics = function(plate)
   return sz, pad
 end
 
---- TF debuff row is the canonical personal chrome size; lock per fallback so own DoT landing never jumps.
+--- Gap icons match native plate personal kids when native row visible; else TF personal chrome.
 MergeRowIconSize = function(plate, fb)
   local pad = OVERLAY_PAD
+  local nativeN = plate and CountPlateHarmfulShown(plate) or 0
   local sz
-  local tf = SampleTfDebuffIconSize()
-  if tf and HasTarget() then
-    sz = tf
+  if nativeN > 0 then
+    sz = SamplePlateNativeDebuffSize(plate) or select(1, NativeAuraMetrics(plate))
+  elseif HasTarget() then
+    sz = SampleTfDebuffIconSize() or select(1, NativeAuraMetrics(plate))
   else
     sz = select(1, NativeAuraMetrics(plate))
   end
   if fb then
-    if type(fb._pbLockedSz) == "number" then
+    if nativeN > 0 then
+      -- Own DoT on native row sets band size — gap foreign must match (grow lock).
+      fb._pbLockedSz = sz
+    elseif type(fb._pbLockedSz) == "number" then
       if sz > fb._pbLockedSz then
         sz = fb._pbLockedSz
       else
@@ -1605,11 +1632,13 @@ MergeRowIconSize = function(plate, fb)
     else
       fb._pbLockedSz = sz
     end
+    sz = fb._pbLockedSz
   end
+  local cap = nativeN > 0 and 40 or 32
   if sz < 12 then
     sz = 12
-  elseif sz > 32 then
-    sz = 32
+  elseif sz > cap then
+    sz = cap
   end
   return sz, pad
 end
@@ -1995,16 +2024,138 @@ ApplyGapSticky = function(unit, missing, isTarget)
   end
 end
 
-RememberGapSticky = function(unit, icons)
+local function CopyGapRow(row)
+  if type(row) ~= "table" then
+    return row
+  end
+  return {
+    icon = row.icon,
+    iconTex = row.iconTex,
+    spellId = row.spellId,
+    auraInstanceID = row.auraInstanceID,
+    applications = row.applications,
+    expirationTime = row.expirationTime,
+    duration = row.duration,
+    _key = row._key,
+    fromTargetFrame = row.fromTargetFrame,
+    fromUnitApi = row.fromUnitApi,
+  }
+end
+
+EnrichGapAuraEntry = function(entry, unitToken)
+  if type(entry) ~= "table" or not unitToken or not C_UnitAuras then
+    return entry
+  end
+  if entry.auraInstanceID and C_UnitAuras.GetAuraDataByAuraInstanceID then
+    local ok, data = pcall(C_UnitAuras.GetAuraDataByAuraInstanceID, unitToken, entry.auraInstanceID)
+    if ok and type(data) == "table" then
+      if data.expirationTime ~= nil then
+        entry.expirationTime = data.expirationTime
+      end
+      if data.duration ~= nil then
+        entry.duration = data.duration
+      end
+      if data.applications ~= nil then
+        entry.applications = data.applications
+      end
+      if data.icon ~= nil then
+        entry.icon = data.icon
+      end
+      return entry
+    end
+  end
+  if entry.spellId and C_UnitAuras.GetAuraDataBySpellID then
+    local ok, data = pcall(C_UnitAuras.GetAuraDataBySpellID, unitToken, entry.spellId)
+    if ok and type(data) == "table" and data.expirationTime then
+      entry.expirationTime = data.expirationTime
+      entry.duration = data.duration or entry.duration
+      entry.applications = data.applications or entry.applications
+      return entry
+    end
+  end
+  if C_UnitAuras.GetAuraDataByIndex then
+    for idx = 1, 40 do
+      local ok, data = pcall(C_UnitAuras.GetAuraDataByIndex, unitToken, idx, "HARMFUL")
+      if not ok or not data then
+        break
+      end
+      local match = false
+      if entry.auraInstanceID and data.auraInstanceID == entry.auraInstanceID then
+        match = true
+      elseif entry.spellId and data.spellId == entry.spellId then
+        match = true
+      end
+      if match then
+        entry.expirationTime = data.expirationTime
+        entry.duration = data.duration
+        entry.applications = data.applications
+        entry.auraInstanceID = entry.auraInstanceID or data.auraInstanceID
+        break
+      end
+    end
+  end
+  return entry
+end
+
+RememberGapSticky = function(unit, icons, unitToken)
   if not unit or type(icons) ~= "table" or #icons == 0 then
     return
   end
   local copy = {}
   for i = 1, #icons do
-    copy[i] = icons[i]
+    copy[i] = CopyGapRow(icons[i])
+    EnrichGapAuraEntry(copy[i], unitToken or (unit == "target" and "target" or unit))
   end
   DedupeGapIcons(copy, MaxIcons())
   gapSticky[unit] = { icons = copy, at = GetTime and GetTime() or 0 }
+end
+
+RefreshHeldGapFallback = function(unit, plate, fb, icons, auraUnit)
+  if not fb or type(icons) ~= "table" or #icons == 0 then
+    return 0
+  end
+  local maxN = MaxIcons()
+  local sz, pad = MergeRowIconSize(plate, fb)
+  fb._pbPlate = plate
+  local painted = math.min(#icons, maxN, tonumber(fb._painted) or #icons)
+  local cdN = 0
+  for i = 1, painted do
+    local row = icons[i]
+    EnrichGapAuraEntry(row, auraUnit)
+    local slot = fb.icons[i]
+    if slot and slot.SetSize then
+      if slot._pbSz ~= sz then
+        pcall(InitAuraButton, slot, sz)
+        slot._pbSz = sz
+      end
+      pcall(function()
+        slot:SetSize(sz, sz)
+        slot:SetPoint("LEFT", fb, "LEFT", (i - 1) * (sz + pad), 0)
+      end)
+      local _, cdSet = ApplyGapAuraVisual(slot, row, auraUnit)
+      if cdSet then
+        cdN = cdN + 1
+      end
+      pcall(slot.Show, slot)
+    end
+  end
+  for i = painted + 1, #(fb.icons or {}) do
+    local slot = fb.icons[i]
+    if slot then
+      pcall(slot.Hide, slot)
+    end
+  end
+  pcall(function()
+    fb:SetSize(math.max(1, painted * (sz + pad)), sz)
+    fb:Show()
+  end)
+  fb._painted = painted
+  pcall(LayoutMergeBesideNative, unit, plate, fb, painted)
+  lastPaintDebug.gapSz = sz
+  lastPaintDebug.lockSz = fb._pbLockedSz
+  lastPaintDebug.cdN = cdN
+  lastPaintDebug.painted = painted
+  return painted, cdN
 end
 
 --- Pull icon texture from a TF aura button (secret FileIDs OK for SetTexture).
@@ -2736,24 +2887,9 @@ ApplyGapAuraVisual = function(button, entry, unitToken)
   end
   local ok = SetIconTexture(tex, entry)
   if type(entry) == "table" then
+    EnrichGapAuraEntry(entry, unitToken)
     local exp = entry.expirationTime
     local dur = entry.duration
-    if unitToken and entry.auraInstanceID and C_UnitAuras and C_UnitAuras.GetAuraDataByAuraInstanceID then
-      pcall(function()
-        local data = C_UnitAuras.GetAuraDataByAuraInstanceID(unitToken, entry.auraInstanceID)
-        if type(data) == "table" then
-          if data.expirationTime ~= nil then
-            exp = data.expirationTime
-          end
-          if data.duration ~= nil then
-            dur = data.duration
-          end
-          if entry.applications == nil and data.applications ~= nil then
-            entry.applications = data.applications
-          end
-        end
-      end)
-    end
     local apps = entry.applications or entry.stacks
     pcall(function()
       if button.count and apps ~= nil and not IsSecret(apps) and type(apps) == "number" then
@@ -2766,19 +2902,6 @@ ApplyGapAuraVisual = function(button, entry, unitToken)
       end
     end)
     pcall(function()
-      local cd = button.cooldown
-      if cd and type(exp) == "number" and type(dur) == "number" and dur > 0 and not IsSecret(exp) and not IsSecret(dur) then
-        local start = exp - dur
-        if start and start >= 0 then
-          cd:SetCooldown(start, dur)
-          cd:Show()
-          entry._pbCd = true
-        end
-      elseif cd and cd.Clear then
-        cd:Clear()
-      end
-    end)
-    pcall(function()
       if button.SetAuraInstance and entry.auraInstanceID then
         if button.SetUnit and unitToken then
           button:SetUnit(unitToken)
@@ -2786,6 +2909,19 @@ ApplyGapAuraVisual = function(button, entry, unitToken)
         button:SetAuraInstance(entry.auraInstanceID)
       end
     end)
+    local cdSet = false
+    pcall(function()
+      local cd = button.cooldown
+      if cd and type(exp) == "number" and type(dur) == "number" and dur > 0 and not IsSecret(exp) and not IsSecret(dur) then
+        local start = exp - dur
+        if start and start >= 0 then
+          cd:SetCooldown(start, dur)
+          cd:Show()
+          cdSet = true
+        end
+      end
+    end)
+    entry._pbCd = cdSet
   end
   local cdSet = type(entry) == "table" and entry._pbCd == true
   return ok, cdSet
@@ -3005,8 +3141,16 @@ PaintMergeMissing = function(unit, plate)
     local heldN = held and tonumber(held._painted) or 0
     if heldN > 0 and sticky and type(sticky.icons) == "table" and #sticky.icons > 0 then
       if type(sticky.at) == "number" and (now - sticky.at) <= GAP_STICKY_SEC then
+        local auraUnit = useTargetSrc and "target" or unit
+        local heldCd = 0
+        pcall(function()
+          local n, cdn = RefreshHeldGapFallback(unit, plate, held, sticky.icons, auraUnit)
+          heldN = n or heldN
+          heldCd = cdn or 0
+        end)
         lastPaintDebug.painted = heldN
         lastPaintDebug.miss = 0
+        lastPaintDebug.cdN = heldCd
         SilentTracePaint("paint_hold", unit, plate)
         return heldN
       end
@@ -3051,6 +3195,7 @@ PaintMergeMissing = function(unit, plate)
     if not okLay then
       painted = painted - 1
     else
+      EnrichGapAuraEntry(missing[i], auraUnit)
       local okVis, cdSet = ApplyGapAuraVisual(slot, missing[i], auraUnit)
       if cdSet then
         cdN = cdN + 1
@@ -3111,7 +3256,7 @@ PaintMergeMissing = function(unit, plate)
     for i = 1, painted do
       kept[i] = missing[i]
     end
-    RememberGapSticky(unit, kept)
+    RememberGapSticky(unit, kept, auraUnit)
   end
   lastPaintDebug.painted = painted
   lastPaintDebug.personal = stats.personal

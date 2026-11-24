@@ -209,6 +209,11 @@ plateband_sv_regressions() {
     emit_alert "[Plateband] painted>0 cdN=0 — dead gap timers (0.2.19+ PAINT)"
     alerts=$((alerts + 1))
   fi
+  if printf '%s\n' "$paint_tail" | rg -q 'PAINT .*native=[1-9].*painted=[1-9]' && \
+     printf '%s\n' "$paint_tail" | rg -q 'PAINT .*why=paint_hold.*cdN=0'; then
+    emit_alert "[Plateband] paint_hold with native row but cdN=0 — foreign timers stale"
+    alerts=$((alerts + 1))
+  fi
   local gap_line gap_sz
   gap_line=$(printf '%s\n' "$paint_tail" | rg 'PAINT .*gapSz=[0-9]+' | tail -1 || true)
   gap_sz=$(printf '%s' "$gap_line" | rg -o 'gapSz=[0-9]+' 2>/dev/null | tail -1 | cut -d= -f2 || true)

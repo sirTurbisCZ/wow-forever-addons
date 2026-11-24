@@ -1,5 +1,15 @@
 # Plateband changelog
 
+## 0.2.20 — foreign timers + size when own DoT on native
+
+- **`MergeRowIconSize`:** when native harmful row visible, gap size **tracks plate native kids** (lock may grow to match personal).
+- **`paint_hold`:** `RefreshHeldGapFallback` re-applies layout + `SetCooldown` each tick (no frozen foreign swipes).
+- **`EnrichGapAuraEntry`:** API/slot enrich before paint/sticky; **no `Cooldown:Clear`** on transient miss; `SetCooldown` after `SetAuraInstance`.
+
+### Playtest (0.2.20)
+
+1. `/reload` → own DoT on Defias-type target with party DoTs — **same size band**, all swipes live (PAINT `cdN≥1`, `gapSz` ≈ native).
+
 ## 0.2.19 — PAINT regression telemetry + agent watch
 
 - **PAINT line:** `gapSz`, `lockSz`, `cdN` (merge icon size, per-plate lock, cooldowns applied) for `watch-forever-traces.sh` regression alerts.
