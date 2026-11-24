@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.33** (event-driven; gap CD tick 3.5s only; no periodic plate scan)
+Version: **0.2.35** (no per-plate UNIT_AURA; combat-safe deferred paint)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 

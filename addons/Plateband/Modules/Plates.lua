@@ -53,37 +53,12 @@ local partyTokenCache = {} -- [plate] = party token | false (cached miss)
 local lastPaintTraceAt = {} -- [unit] = GetTime()
 local lastPaintTraceSig = {} -- [unit] = sig
 local refreshPass = 0
-local auraWatchUnits = {} -- nameplateN tokens with per-unit UNIT_AURA
+local overlayPending = {}
 
 local function PlayerInCombat()
   return InCombatLockdown and InCombatLockdown()
 end
 
-local function RegisterNpAuraWatch(unit)
-  if not unit or not eventFrame or not eventFrame.RegisterUnitEvent then
-    return
-  end
-  if type(unit) ~= "string" or not unit:match("^nameplate%d+") then
-    return
-  end
-  if auraWatchUnits[unit] then
-    return
-  end
-  local ok = pcall(eventFrame.RegisterUnitEvent, eventFrame, "UNIT_AURA", unit)
-  if ok then
-    auraWatchUnits[unit] = true
-  end
-end
-
-local function UnregisterNpAuraWatch(unit)
-  if not unit or not auraWatchUnits[unit] then
-    return
-  end
-  if eventFrame and eventFrame.UnregisterUnitEvent then
-    pcall(eventFrame.UnregisterUnitEvent, eventFrame, "UNIT_AURA", unit)
-  end
-  auraWatchUnits[unit] = nil
-end
 -- Forward decl — module fns use assignment form (Lua 5.1: locals invisible above `local function`).
 local AnchorBand
 local AppendGapRow
@@ -196,6 +171,7 @@ local PushTfAuraFrame
 local RawChildCount
 local RefreshAll
 local RefreshActiveGapsOnly
+local ScheduleOverlayUpdate
 local SamplePlateNativeDebuffSize
 local SampleTfDebuffIconSize
 local RememberGapSticky
@@ -4267,6 +4243,19 @@ UpdateOverlay = function(unit, plate)
     return
   end
 
+  if PlayerInCombat() and InCombatLockdown() then
+    EnsureNativeVisible(plate)
+    local fb = fallbacks[unit]
+    if fb and (tonumber(fb._painted) or 0) > 0 then
+      local sticky = gapSticky[unit]
+      if sticky and type(sticky.icons) == "table" and #sticky.icons > 0 then
+        local auraTok = unit == "target" and "target" or unit
+        pcall(RefreshHeldGapFallback, unit, plate, fb, sticky.icons, auraTok)
+      end
+    end
+    return
+  end
+
   overlayUpdates = overlayUpdates + 1
   EnsureNativeVisible(plate)
 
@@ -4298,6 +4287,32 @@ UpdateOverlay = function(unit, plate)
     if ns.RecordError then
       ns.RecordError("paint", errPaint)
     end
+  end
+end
+
+ScheduleOverlayUpdate = function(unit, plate)
+  unit = OverlayUnitKey(unit, plate)
+  if not unit or not ModuleActive() then
+    return
+  end
+  if overlayPending[unit] then
+    return
+  end
+  overlayPending[unit] = true
+  local function run()
+    overlayPending[unit] = nil
+    local pl = plate or PlateFor(unit)
+    if not pl or IsForbiddenPlate(pl) then
+      return
+    end
+    UpdateOverlay(unit, pl)
+  end
+  if C_Timer and C_Timer.After then
+    C_Timer.After(0, function()
+      pcall(run)
+    end)
+  else
+    pcall(run)
   end
 end
 
@@ -4707,25 +4722,23 @@ OnEvent = function(_, event, arg1)
     if type(unit) == "string" and unit:match("^nameplate%d+") then
       lastTargetPlateUnit = lastTargetPlateUnit -- keep
     end
-    RegisterNpAuraWatch(unit)
     Defer(function()
-      UpdateOverlay(unit, PlateFor(unit))
-      -- Also refresh target binding — added plate may be the target.
+      ScheduleOverlayUpdate(unit, PlateFor(unit))
       if HasTarget() then
         local tu = NameplateUnitFor("target")
         if tu then
-          UpdateOverlay(tu, PlateFor(tu) or PlateFor("target"))
+          ScheduleOverlayUpdate(tu, PlateFor(tu) or PlateFor("target"))
         end
       end
       MaybeAutoDiagnose("plate_added", true)
     end)
     if C_Timer and C_Timer.After then
       C_Timer.After(0.08, function()
-        pcall(UpdateOverlay, unit, PlateFor(unit))
+        pcall(ScheduleOverlayUpdate, unit, PlateFor(unit))
       end)
     end
   elseif event == "NAME_PLATE_UNIT_REMOVED" then
-    UnregisterNpAuraWatch(arg1)
+    overlayPending[arg1] = nil
     ClearOverlay(arg1)
     overlays[arg1] = nil
     nameShifts[arg1] = nil
@@ -4752,10 +4765,6 @@ OnEvent = function(_, event, arg1)
       return
     end
     if type(unit) == "string" and unit:match("^nameplate%d+") then
-      Defer(function()
-        UpdateOverlay(unit, PlateFor(unit))
-        MaybeAutoDiagnose("aura_np", false)
-      end)
       return
     end
     if unit == "target" or unit == "focus" then
@@ -4772,9 +4781,9 @@ OnEvent = function(_, event, arg1)
         local tu = NameplateUnitFor("target") or (tp and UnitTokenFromPlate(tp))
         tu = OverlayUnitKey(tu, tp)
         if tu and tp then
-          UpdateOverlay(tu, tp)
+          ScheduleOverlayUpdate(tu, tp)
         elseif tp then
-          UpdateOverlay(OverlayUnitKey(nil, tp), tp)
+          ScheduleOverlayUpdate(OverlayUnitKey(nil, tp), tp)
         end
       end)
     end
@@ -4827,6 +4836,7 @@ function Mod.Start()
     "NAME_PLATE_UNIT_REMOVED",
     "PLAYER_TARGET_CHANGED",
     "PLAYER_ENTERING_WORLD",
+    "PLAYER_REGEN_ENABLED",
     "GROUP_ROSTER_UPDATE",
     "ADDON_ACTION_BLOCKED",
     "ADDON_ACTION_FORBIDDEN",
