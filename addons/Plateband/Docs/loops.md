@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.28** (no post-harvest prune wipe, ForceFillTargetFrameGaps)
+Version: **0.2.29** (party plate token bind, friend merge paint)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 

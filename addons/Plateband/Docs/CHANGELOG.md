@@ -1,5 +1,17 @@
 # Plateband changelog
 
+## 0.2.29 — party/friend nameplate merge
+
+- **`ResolvePartyTokenForPlate`:** `PlateFor(partyN)==plate` binding (Forever `SameUnit` miss).
+- **`IsPlayerOrFriendPlate`:** GUID match, `UnitReaction≥4`, non-attackable players.
+- **Friend paint path:** full API/slots/parity on `partyN` token; prune guard; PAINT `friend=1` `party=partyN`.
+- **`CollectAuraSlotsGaps`:** any unit token (not target-only).
+- Enemy skip (0.2.28) no longer drops party plates once `friend=1`.
+
+### Playtest (0.2.29)
+
+1. Party DoT on Pichy — friendly nameplate: `friend=1`, `party=partyN`, `miss≥1`, `painted≥1`.
+
 ## 0.2.28 — prune wipe fix + TF force fill (Insurgent)
 
 - **Duplicate `PruneInactiveGapRows` after target harvest** was clearing the queue (`miss=0` with TF full).
