@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.21** (instance dedupe + EnsureTargetHarmfulParity)
+Version: **0.2.22** (GapAuraLive sticky purge + target API harvest)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 

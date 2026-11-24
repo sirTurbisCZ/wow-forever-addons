@@ -66,6 +66,7 @@ local CollectPlayerOwnedKeys
 local CollectTargetFrameButtons
 local CollectTargetFrameMissing
 local CollectTargetFramePersonalGaps
+local CollectTargetHarmfulFromApi
 local CollectTargetHarmfulRows
 local CollectUnitHarmfulMirror
 local DeduplicateHarmfulRows
@@ -78,6 +79,8 @@ local CountShownAuraKids
 local CountTargetFrameAuras
 local ApplyGapAuraVisual
 local EnrichGapAuraEntry
+local GapAuraLive
+local PruneInactiveGapRows
 local CreateBandContainer
 local CreateGapAuraButton
 local CanonicalGapKey
@@ -1751,6 +1754,9 @@ ShouldUseTargetAuraSource = function(unit, plate)
   if unit == "target" then
     return true
   end
+  if type(unit) == "string" and lastTargetPlateUnit and unit == lastTargetPlateUnit then
+    return true
+  end
   return false
 end
 
@@ -2015,7 +2021,7 @@ CollectTargetFramePersonalGaps = function(paintKeys, out, maxN, stats)
   end
 end
 
-ApplyGapSticky = function(unit, missing, isTarget)
+ApplyGapSticky = function(unit, missing, isTarget, unitToken)
   if not isTarget or not unit or #missing > 0 then
     return
   end
@@ -2025,9 +2031,19 @@ ApplyGapSticky = function(unit, missing, isTarget)
   end
   local now = GetTime and GetTime() or 0
   if type(c.at) == "number" and (now - c.at) <= GAP_STICKY_SEC then
+    unitToken = unitToken or "target"
+    local live = {}
     for i = 1, #c.icons do
-      missing[#missing + 1] = c.icons[i]
+      if GapAuraLive(c.icons[i], unitToken) then
+        live[#live + 1] = c.icons[i]
+        missing[#missing + 1] = c.icons[i]
+      end
     end
+    if #live == 0 then
+      gapSticky[unit] = nil
+      return
+    end
+    c.icons = live
     DedupeGapIcons(missing, MaxIcons())
   end
 end
@@ -2105,14 +2121,79 @@ EnrichGapAuraEntry = function(entry, unitToken)
   return entry
 end
 
+--- Drop expired or unit-absent rows (sticky must not ghost party DoTs).
+GapAuraLive = function(entry, unitToken)
+  if type(entry) ~= "table" then
+    return false
+  end
+  EnrichGapAuraEntry(entry, unitToken)
+  local now = GetTime and GetTime() or 0
+  local exp = entry.expirationTime
+  if type(exp) == "number" and not IsSecret(exp) and exp > 0 then
+    if now >= exp then
+      return false
+    end
+    return true
+  end
+  if entry.auraInstanceID and unitToken and C_UnitAuras and C_UnitAuras.GetAuraDataByAuraInstanceID then
+    local ok, data = pcall(C_UnitAuras.GetAuraDataByAuraInstanceID, unitToken, entry.auraInstanceID)
+    if ok and type(data) == "table" then
+      local e2 = data.expirationTime
+      if type(e2) == "number" and not IsSecret(e2) and e2 > 0 and now >= e2 then
+        return false
+      end
+      return true
+    end
+    return false
+  end
+  if entry.spellId and unitToken and C_UnitAuras and C_UnitAuras.GetAuraDataBySpellID then
+    local ok, data = pcall(C_UnitAuras.GetAuraDataBySpellID, unitToken, entry.spellId)
+    if ok and type(data) == "table" then
+      return true
+    end
+    return false
+  end
+  return true
+end
+
+PruneInactiveGapRows = function(rows, unitToken, maxN)
+  if type(rows) ~= "table" or not unitToken then
+    return 0
+  end
+  maxN = maxN or MaxIcons()
+  local out = {}
+  for i = 1, #rows do
+    if #out >= maxN then
+      break
+    end
+    if GapAuraLive(rows[i], unitToken) then
+      out[#out + 1] = rows[i]
+    end
+  end
+  for i = #out + 1, #rows do
+    rows[i] = nil
+  end
+  for i = 1, #out do
+    rows[i] = out[i]
+  end
+  return #out
+end
+
 RememberGapSticky = function(unit, icons, unitToken)
   if not unit or type(icons) ~= "table" or #icons == 0 then
     return
   end
+  unitToken = unitToken or (unit == "target" and "target" or unit)
   local copy = {}
   for i = 1, #icons do
-    copy[i] = CopyGapRow(icons[i])
-    EnrichGapAuraEntry(copy[i], unitToken or (unit == "target" and "target" or unit))
+    local row = CopyGapRow(icons[i])
+    if GapAuraLive(row, unitToken) then
+      copy[#copy + 1] = row
+    end
+  end
+  if #copy == 0 then
+    gapSticky[unit] = nil
+    return
   end
   DedupeGapIcons(copy, MaxIcons())
   gapSticky[unit] = { icons = copy, at = GetTime and GetTime() or 0 }
@@ -2120,15 +2201,26 @@ end
 
 RefreshHeldGapFallback = function(unit, plate, fb, icons, auraUnit)
   if not fb or type(icons) ~= "table" or #icons == 0 then
-    return 0
+    return 0, 0
   end
+  auraUnit = auraUnit or "target"
+  local live = {}
+  for i = 1, #icons do
+    if GapAuraLive(icons[i], auraUnit) then
+      live[#live + 1] = icons[i]
+    end
+  end
+  if #live == 0 then
+    return 0, 0
+  end
+  icons = live
   local maxN = MaxIcons()
   local sz, pad = MergeRowIconSize(plate, fb)
   fb._pbPlate = plate
-  local painted = math.min(#icons, maxN, tonumber(fb._painted) or #icons)
+  local painted = math.min(#live, maxN, tonumber(fb._painted) or #live)
   local cdN = 0
   for i = 1, painted do
-    local row = icons[i]
+    local row = live[i]
     EnrichGapAuraEntry(row, auraUnit)
     local slot = fb.icons[i]
     if slot and slot.SetSize then
@@ -2164,6 +2256,49 @@ RefreshHeldGapFallback = function(unit, plate, fb, icons, auraUnit)
   lastPaintDebug.cdN = cdN
   lastPaintDebug.painted = painted
   return painted, cdN
+end
+
+CollectTargetHarmfulFromApi = function(rows, maxN)
+  if type(rows) ~= "table" or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
+    return
+  end
+  maxN = maxN or MaxIcons()
+  for idx = 1, 40 do
+    if #rows >= maxN then
+      return
+    end
+    local data
+    local ok = pcall(function()
+      data = C_UnitAuras.GetAuraDataByIndex("target", idx, "HARMFUL")
+    end)
+    if not ok or not data then
+      break
+    end
+    if not AuraIconPresent(data.icon) then
+      -- still queue secret/live rows
+    end
+    local row = {
+      icon = data.icon,
+      spellId = data.spellId,
+      auraInstanceID = data.auraInstanceID,
+      applications = data.applications,
+      expirationTime = data.expirationTime,
+      duration = data.duration,
+      fromUnitApi = true,
+    }
+    row._key = CanonicalGapKey(row) or TfRowKey(row) or ("api:" .. tostring(idx))
+    local rowKey = CanonicalGapKey(row)
+    local dup = false
+    for r = 1, #rows do
+      if rowKey and CanonicalGapKey(rows[r]) == rowKey then
+        dup = true
+        break
+      end
+    end
+    if not dup then
+      rows[#rows + 1] = row
+    end
+  end
 end
 
 --- Pull icon texture from a TF aura button (secret FileIDs OK for SetTexture).
@@ -2848,6 +2983,9 @@ CollectTargetHarmfulRows = function(maxN)
   elseif #rows < maxN then
     ScrapeTargetFrameBrute(rows, maxN)
   end
+  if #rows < maxN then
+    CollectTargetHarmfulFromApi(rows, maxN)
+  end
   return DeduplicateHarmfulRows(rows, maxN)
 end
 
@@ -3190,24 +3328,30 @@ PaintMergeMissing = function(unit, plate)
     end
     -- TF supplement: queueSkip + CanonicalGapKey dedupe; catches party harm TF/API missed in harv.
     CollectTargetFrameMissing(queueSkip, missing, maxN, stats)
-    if #missing == 0 then
-      CollectUnitHarmfulMirror("target", queueSkip, missing, maxN, stats)
-      if type(unit) == "string" and unit ~= "target" then
-        CollectUnitHarmfulMirror(unit, queueSkip, missing, maxN, stats)
-      end
+    CollectUnitHarmfulMirror("target", queueSkip, missing, maxN, stats)
+    if type(unit) == "string" and unit ~= "target" then
+      CollectUnitHarmfulMirror(unit, queueSkip, missing, maxN, stats)
     end
     EnsureTargetHarmfulParity(plate, missing, queueSkip, maxN, stats)
     DedupeGapIcons(missing, maxN)
+    local auraTok = "target"
+    PruneInactiveGapRows(missing, auraTok, maxN)
   else
     if type(unit) == "string" then
       CollectPersonalAuraGaps(unit, paintKeys, missing, maxN, stats)
       local foreignSkip = CopyKeySet(paintKeys)
       CollectPlayerOwnedKeys(unit, foreignSkip)
       CollectForeignAuraGaps(unit, foreignSkip, missing, maxN, allowSecret, stats)
+      PruneInactiveGapRows(missing, unit, maxN)
     end
   end
 
-  ApplyGapSticky(unit, missing, useTargetSrc)
+  ApplyGapSticky(unit, missing, useTargetSrc, useTargetSrc and "target" or unit)
+  if useTargetSrc then
+    PruneInactiveGapRows(missing, "target", maxN)
+  elseif type(unit) == "string" then
+    PruneInactiveGapRows(missing, unit, maxN)
+  end
 
   lastPaintDebug.miss = #missing
   lastPaintDebug.unit = tostring(unit)
@@ -3224,9 +3368,16 @@ PaintMergeMissing = function(unit, plate)
         local heldCd = 0
         pcall(function()
           local n, cdn = RefreshHeldGapFallback(unit, plate, held, sticky.icons, auraUnit)
-          heldN = n or heldN
+          heldN = n or 0
           heldCd = cdn or 0
         end)
+        if heldN <= 0 then
+          gapSticky[unit] = nil
+          lastPaintDebug.painted = 0
+          ClearFallback(unit, false)
+          SilentTracePaint("paint_hold_expired", unit, plate)
+          return 0
+        end
         lastPaintDebug.painted = heldN
         lastPaintDebug.miss = 0
         lastPaintDebug.cdN = heldCd

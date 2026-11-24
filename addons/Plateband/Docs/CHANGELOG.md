@@ -1,5 +1,17 @@
 # Plateband changelog
 
+## 0.2.22 — expired sticky purge + target API harvest
+
+- **`GapAuraLive` / `PruneInactiveGapRows`:** sticky, paint_hold, and queue drop **expired** or unit-absent auras (no ghost party icons).
+- **`CollectTargetHarmfulFromApi`:** TF harvest backfill from `C_UnitAuras` on target (`tf/harv>0` when TF scrape empty).
+- **`ShouldUseTargetAuraSource`:** `lastTargetPlateUnit` match for melee/party nameplate binding.
+- Always **`CollectUnitHarmfulMirror`** on target plate path.
+
+### Playtest (0.2.22)
+
+1. `/reload` → PAINT `ver=0.2.22` / `SESSION_START ver=0.2.22` — symlink alone is not enough.
+2. Party DoT on Defias — icons on plate + timers; after expiry row clears (`paint_hold_expired` or `painted=0`).
+
 ## 0.2.21 — no dropped DoTs (instance dedupe + TF parity)
 
 - **`GapAuraKey`:** dedupe **auraInstanceID → spellId → texture** (fixes same-icon party DoTs vanishing when own DoT joins).
