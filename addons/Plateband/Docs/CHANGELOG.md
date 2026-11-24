@@ -1,5 +1,17 @@
 # Plateband changelog
 
+## Release 0.2.30 — lag fix (paint scope + throttle)
+
+- **Merge paint** runs only on **current target** (+ TF path) and **party/raid/player** nameplates — not every friendly `UnitReaction≥4` passerby plate in cities.
+- **Non-target enemy** nameplates: native DebuffList only (no gap harvest every tick).
+- **Party merge** throttled ~0.65s per plate; **target** ~0.22s; ticker **0.35s** (was 0.25s).
+- Cached `ResolvePartyTokenForPlate`; lighter silent trace sweep.
+
+### Playtest (0.2.30)
+
+1. Crowded hub: FPS stable; friendly stranger nameplates unchanged (no extra dot row).
+2. Target enemy: merge row still updates; party frames in instance still merge when `mergeFriendPlates` on.
+
 ## Release 0.2.29 — nameplate harmful merge (Forever)
 
 Enemy target debuffs beside native nameplate row (TF/API parity, `SetAuraInstance` for secret icons). Party and friend nameplates use the same merge when `mergeFriendPlates` is on (default). Includes 0.2.24–0.2.28 coverage and prune fixes from Stockade playtest.
