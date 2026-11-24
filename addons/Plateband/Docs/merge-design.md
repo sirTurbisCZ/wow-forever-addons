@@ -23,11 +23,12 @@
 flowchart TD
   tick[UpdateOverlay] --> gate{mergeMissing?}
   gate -->|false| nativeOnly[EnsureNativeVisible + clear Plateband chrome]
-  gate -->|true| friend{Friend/party plate?}
-  friend -->|yes mergeFriend| unitParity[EnsureUnitHarmfulParity + unit API]
-  friend -->|no mergeFriend| skip[ClearFallback]
-  unitParity --> paint
-  friend -->|no| row{Debuff anchor exists?}
+  gate -->|true| tgt{Target plate?}
+  tgt -->|yes| row
+  tgt -->|no| party{Party/raid/player?}
+  party -->|yes mergeFriend| unitParity[EnsureUnitHarmfulParity + unit API]
+  party -->|no| skip
+  unitParity --> row{Debuff anchor exists?}
   row -->|no| skip
   row -->|yes| native[NativeKeySet pools + children]
   native --> per[CollectPersonalAuraGaps + TF personal if not in native]
@@ -52,7 +53,7 @@ flowchart TD
 |-------|--------|
 | Target enemy | `NativeKeySet` → `C_UnitAuras` foreign (`owned~=true`, skip native keys) → **`CollectTargetFrameMissing`** → `nameplateN` token |
 | Other enemy | `C_UnitAuras` on `nameplateN` only (no TF) |
-| Friend / party / player NP | **`mergeFriendPlates`** (default on): same harmful gap merge via unit `C_UnitAuras` + `EnsureUnitHarmfulParity`; `/pb merge off` or profile off still skips |
+| Party / raid / player NP | **`mergeFriendPlates`** (default on): same harmful gap merge via unit `C_UnitAuras` + `EnsureUnitHarmfulParity` — **not** ambient friendly stranger plates (0.2.30) |
 
 `CollectPlayerOwnedKeys` → `skipKeys` (secret dedupe only; **not** personal fallback paint).
 

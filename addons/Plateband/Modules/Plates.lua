@@ -16,7 +16,9 @@ ns.Modules.Plates = Mod
 local AC_GROUP = "platebandHarmful"
 local OVERLAY_PAD = 2
 local OVERLAY_GAP_ABOVE = 2
-local TICKER_SEC = 0.25
+local TICKER_SEC = 0.35
+local PAINT_TARGET_SEC = 0.22
+local PAINT_PARTY_SEC = 0.65
 local AUTO_DIAG_MIN = 0.5
 local WATCH_DEFAULT_SEC = 2
 
@@ -37,10 +39,12 @@ local overlayUpdates = 0
 local lastAuraRefreshAt = 0
 local AURA_DEBOUNCE_SEC = 0.12
 local GAP_STICKY_SEC = 3.0 -- hold when UNIT_AURA/API flickers empty on target paint (melee refresh)
-local SILENT_SWEEP_SEC = 0.5
+local SILENT_SWEEP_SEC = 2.0
 local gapSticky = {} -- [unit] = { icons = {}, at = number }
 local lastPaintDebug = {} -- diagnose: last PaintMergeMissing / Refresh snapshot
 local lastSilentSweepAt = 0
+local lastOverlayPaintAt = {} -- [overlay unit key] = GetTime()
+local partyTokenCache = {} -- [plate] = party token | false (cached miss)
 -- Forward decl — module fns use assignment form (Lua 5.1: locals invisible above `local function`).
 local AnchorBand
 local AppendGapRow
@@ -135,6 +139,9 @@ local ReconcileTargetFrameUiButtons
 local IsTargetDebuffAuraFrame
 local ForceFillTargetFrameGaps
 local ResolvePartyTokenForPlate
+local InvalidatePartyTokenCache
+local IsPartyRaidMergePlate
+local ShouldPaintOverlayNow
 local OnEvent
 local OverlayUnitKey
 local PaintMergeMissing
@@ -687,30 +694,95 @@ MergeFriendPlatesEnabled = function()
   return p.mergeFriendPlates ~= false
 end
 
+InvalidatePartyTokenCache = function(plate)
+  if plate then
+    partyTokenCache[plate] = nil
+    return
+  end
+  partyTokenCache = {}
+end
+
 --- Map party/raid unit token ↔ visible nameplate (Forever SameUnit often fails).
 ResolvePartyTokenForPlate = function(plate)
   if not plate then
     return nil
   end
+  if partyTokenCache[plate] ~= nil then
+    local hit = partyTokenCache[plate]
+    return hit ~= false and hit or nil
+  end
+  local tok = nil
   for i = 1, 4 do
     local pt = "party" .. i
     if SafeUnitExists(pt) then
       local pl = PlateFor(pt)
       if pl and pl == plate then
-        return pt
+        tok = pt
+        break
       end
     end
   end
-  for i = 1, 40 do
-    local rt = "raid" .. i
-    if SafeUnitExists(rt) then
-      local pl = PlateFor(rt)
-      if pl and pl == plate then
-        return rt
+  if not tok then
+    for i = 1, 40 do
+      local rt = "raid" .. i
+      if SafeUnitExists(rt) then
+        local pl = PlateFor(rt)
+        if pl and pl == plate then
+          tok = rt
+          break
+        end
       end
     end
   end
-  return nil
+  partyTokenCache[plate] = tok or false
+  return tok
+end
+
+--- Party/raid/player only — not every friendly UnitReaction≥4 nameplate in the world.
+IsPartyRaidMergePlate = function(unit, plate)
+  if not MergeFriendPlatesEnabled() then
+    return false
+  end
+  if SameUnit(unit, "player") then
+    return true
+  end
+  if type(unit) == "string" then
+    if unit:match("^party%d+$") or unit:match("^raid%d+$") then
+      return true
+    end
+  end
+  if plate and ResolvePartyTokenForPlate(plate) then
+    return true
+  end
+  local inGroup = false
+  pcall(function()
+    if UnitInParty and UnitInParty(unit) then
+      inGroup = true
+    end
+    if UnitInRaid and UnitInRaid(unit) then
+      inGroup = true
+    end
+  end)
+  return inGroup
+end
+
+ShouldPaintOverlayNow = function(unit, isTarget, useTargetSrc, partyMerge)
+  if not unit then
+    return true
+  end
+  local now = GetTime and GetTime() or 0
+  local last = lastOverlayPaintAt[unit] or 0
+  local sec = PAINT_PARTY_SEC
+  if useTargetSrc or isTarget then
+    sec = PAINT_TARGET_SEC
+  elseif partyMerge then
+    sec = PAINT_PARTY_SEC
+  end
+  if now - last < sec then
+    return false
+  end
+  lastOverlayPaintAt[unit] = now
+  return true
 end
 
 --- Friend / player plates: name must sit above auras (preference).
@@ -3808,14 +3880,18 @@ SilentTraceSweep = function(why)
     end
   end
   for i = 1, #list do
-    if i > 8 then
+    if i > 3 then
       break
     end
     local entry = list[i]
     local u = OverlayUnitKey(entry.unit, entry.plate)
     if u and not swept[u] and entry.plate then
-      SilentTracePaint((why or "sweep") .. "_np", u, entry.plate)
-      swept[u] = true
+      if not IsPartyRaidMergePlate(u, entry.plate) and not IsTargetPlate(u, entry.plate) then
+        -- skip ambient friendly NPC / passerby plates in trace sweep
+      else
+        SilentTracePaint((why or "sweep") .. "_np", u, entry.plate)
+        swept[u] = true
+      end
     end
   end
 end
@@ -3838,12 +3914,9 @@ PaintMergeMissing = function(unit, plate)
 
   local friendPlate = IsPlayerOrFriendPlate(unit, plate)
   local partyAuraTok = ResolvePartyTokenForPlate(plate)
-  if partyAuraTok then
+  local partyMerge = IsPartyRaidMergePlate(unit, plate)
+  if partyMerge then
     friendPlate = true
-  end
-  if friendPlate and not MergeFriendPlatesEnabled() then
-    ClearFallback(unit)
-    return 0
   end
 
   lastPaintDebug.harv = 0
@@ -3864,9 +3937,11 @@ PaintMergeMissing = function(unit, plate)
   local isTarget = IsTargetPlate(unit, plate)
   local useTargetSrc = ShouldUseTargetAuraSource(unit, plate)
 
-  if HasTarget() and not useTargetSrc and not friendPlate and type(unit) == "string" and unit:match("^nameplate") and not isTarget then
-    ClearFallback(unit)
-    return 0
+  if not isTarget and not useTargetSrc then
+    if type(unit) == "string" and unit:match("^nameplate") and not partyMerge then
+      ClearFallback(unit)
+      return 0
+    end
   end
   local nativeN = CountPlateHarmfulShown(plate)
   local allowSecret = useTargetSrc or nativeN == 0
@@ -3876,7 +3951,7 @@ PaintMergeMissing = function(unit, plate)
   if useTargetSrc then
     CollectUnitHarmfulMirror("target", queueSkip, missing, maxN, stats)
     pcall(ReconcileTargetFrameUiButtons, plate, missing, queueSkip, maxN, stats)
-  elseif friendPlate and type(unit) == "string" then
+  elseif partyMerge and type(unit) == "string" then
     local auraTok = partyAuraTok or unit
     CollectUnitHarmfulMirror(auraTok, queueSkip, missing, maxN, stats)
     CollectForeignAuraGaps(auraTok, queueSkip, missing, maxN, true, stats)
@@ -3938,7 +4013,7 @@ PaintMergeMissing = function(unit, plate)
       pcall(ForceFillTargetFrameGaps, missing, queueSkip, maxN, stats)
       DedupeGapIcons(missing, maxN)
     end
-  elseif friendPlate and type(unit) == "string" then
+  elseif partyMerge and type(unit) == "string" then
     local auraTok = partyAuraTok or unit
     local foreignSkip = CopyKeySet(paintKeys)
     CollectPersonalAuraGaps(auraTok, foreignSkip, missing, maxN, stats)
@@ -3986,11 +4061,11 @@ PaintMergeMissing = function(unit, plate)
   lastPaintDebug.tfBtn = CountTargetFrameAuras()
   lastPaintDebug.unit = tostring(unit)
   lastPaintDebug.nativeN = nativeN
-  lastPaintDebug.friendPlate = friendPlate and 1 or 0
+  lastPaintDebug.friendPlate = partyMerge and 1 or 0
   lastPaintDebug.partyTok = partyAuraTok or "-"
   if useTargetSrc and HasTarget() then
     lastPaintDebug.tfRows = CountTargetHarmfulExpected("target", lastPaintDebug.harv)
-  elseif friendPlate and type(unit) == "string" then
+  elseif partyMerge and type(unit) == "string" then
     lastPaintDebug.tfRows = CountTargetHarmfulExpected(unit, #missing)
   else
     lastPaintDebug.tfRows = 0
@@ -4169,6 +4244,13 @@ UpdateOverlay = function(unit, plate)
     return
   end
 
+  local isTarget = IsTargetPlate(unit, plate)
+  local useTargetSrc = ShouldUseTargetAuraSource(unit, plate)
+  local partyMerge = IsPartyRaidMergePlate(unit, plate)
+  if not ShouldPaintOverlayNow(unit, isTarget, useTargetSrc, partyMerge) then
+    return
+  end
+
   local okPaint, errPaint = pcall(PaintMergeMissing, unit, plate)
   if not okPaint then
     ClearFallback(unit, false)
@@ -4222,6 +4304,11 @@ RefreshAll = function()
     if not live[unit] then
       ClearFallback(unit)
       fallbacks[unit] = nil
+    end
+  end
+  for u in pairs(lastOverlayPaintAt) do
+    if not live[u] then
+      lastOverlayPaintAt[u] = nil
     end
   end
   if type(SilentTraceSweep) == "function" then
@@ -4513,6 +4600,7 @@ OnEvent = function(_, event, arg1)
     ClearOverlay(arg1)
     overlays[arg1] = nil
     nameShifts[arg1] = nil
+    lastOverlayPaintAt[arg1] = nil
     if lastTargetPlateUnit == arg1 then
       lastTargetPlateUnit = nil
     end
@@ -4524,6 +4612,7 @@ OnEvent = function(_, event, arg1)
       MaybeAutoDiagnose("target", true)
     end)
   elseif event == "PLAYER_ENTERING_WORLD" or event == "GROUP_ROSTER_UPDATE" then
+    InvalidatePartyTokenCache()
     Defer(function()
       RefreshAll()
       MaybeAutoDiagnose(event == "PLAYER_ENTERING_WORLD" and "pew" or "roster", true)

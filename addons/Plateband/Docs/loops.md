@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.29** (party plate token bind, friend merge paint)
+Version: **0.2.30** (paint scope: target + party/raid only; per-plate throttle)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 
