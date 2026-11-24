@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.31** (lean harvest / tick stagger; heavy TF only when needed)
+Version: **0.2.32** (combat tick 0.6s; trace off in combat; lazy paintTrace export)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 

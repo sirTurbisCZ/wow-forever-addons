@@ -20,6 +20,9 @@ ns.SessionLog = Mod
 local MAX_LINES = 500
 local MAX_PAINT = 200
 local MAX_LINE = 600
+local PAINT_EXPORT_DEBOUNCE = 3.0
+local paintExportDirty = false
+local paintExportAt = 0
 local FILE_REL = "Interface/AddOns/Plateband/Logs/session.log"
 local FILE_REL_BS = [[Interface\AddOns\Plateband\Logs\session.log]]
 
@@ -126,6 +129,17 @@ local function AppendFile(line)
   return false
 end
 
+local function RebuildPaintExport(pt)
+  local out = {}
+  local start = math.max(1, #pt.entries - 79)
+  for i = start, #pt.entries do
+    out[#out + 1] = pt.entries[i]
+  end
+  pt.export = table.concat(out, "\n")
+  paintExportDirty = false
+  paintExportAt = Now()
+end
+
 local function PushPaintEntry(line)
   local db = ns.Config.EnsureDB()
   local pt = EnsurePaintTrace(db)
@@ -135,12 +149,20 @@ local function PushPaintEntry(line)
     table.remove(pt.entries, 1)
   end
   db.lastPaintTrace = line
-  local out = {}
-  local start = math.max(1, #pt.entries - 79)
-  for i = start, #pt.entries do
-    out[#out + 1] = pt.entries[i]
+  paintExportDirty = true
+  local now = Now()
+  if (now - paintExportAt) >= PAINT_EXPORT_DEBOUNCE then
+    RebuildPaintExport(pt)
   end
-  pt.export = table.concat(out, "\n")
+end
+
+function Mod.FlushPaintTrace()
+  local db = ns.Config.EnsureDB()
+  local pt = EnsurePaintTrace(db)
+  if paintExportDirty or pt.export == "" then
+    RebuildPaintExport(pt)
+  end
+  return pt.export
 end
 
 --- Cold start: wipe session log (SV + optional file). Call once per ADDON_LOADED.
@@ -202,7 +224,6 @@ function Mod.RecordPaint(line)
   if line:sub(1, 6) ~= "PAINT " and line:sub(1, 6) ~= "PLATE " then
     line = "PAINT " .. line
   end
-  -- paintTrace ring only — mirroring every PAINT into sessionLog.export was stuttering (table.concat).
   PushPaintEntry(line)
 end
 

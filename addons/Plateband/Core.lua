@@ -118,6 +118,9 @@ local function ApplyModuleState()
 end
 
 local function DumpRing()
+  if SessionLog and SessionLog.FlushPaintTrace then
+    pcall(SessionLog.FlushPaintTrace)
+  end
   local db = EnsureDB()
   local list = db.errors
   local slog = db.sessionLog or {}

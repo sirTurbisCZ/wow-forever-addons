@@ -1,5 +1,19 @@
 # Plateband changelog
 
+## Release 0.2.32 — combat throttle + deferred SV trace
+
+- **Your SV still showed `SESSION_START ver=0.2.30`** — symlink updates do not hot-reload; **`/reload` required** for 0.31+ fixes.
+- Combat: ticker **0.6s**, `RefreshAll("combat")` paints **target + active fallbacks only**; no silent `SnapshotDiagnose` on plate/target events.
+- `UNIT_AURA` on target → single `UpdateOverlay`, not full `RefreshAll`.
+- `paintTrace.export` rebuild debounced (3s); no PAINT trace in combat (`paintTraceInCombat` default **off**, schema 10).
+- **A/B:** `/pb merge off` — if stutter stops, merge harvest is the cost; if not, trace was still on old build or another addon.
+
+### Playtest (0.2.32)
+
+1. `/reload` → `SESSION_START ver=0.2.32`.
+2. Pull combat: smooth; out of combat pull enemies still get stagger tick merge.
+3. Optional: `/pb merge off` one pack, then `/pb merge on`.
+
 ## Release 0.2.31 — lean harvest (all-visible merge back, no stutter)
 
 - **Live ver confirmed:** `SESSION_START ver=0.2.30` — stutter was **not** old build; fixed in 0.2.31.

@@ -2,7 +2,7 @@
 
 Plateband = Plateband or {}
 
-local CURRENT_SCHEMA = 9
+local CURRENT_SCHEMA = 10
 local MAX_ERRORS = 40
 local MAX_MSG = 2000
 
@@ -12,7 +12,7 @@ local Config = Plateband.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.2.31"
+Config.VERSION = "0.2.32"
 
 local function ProfileDefaults()
   return {
@@ -32,8 +32,9 @@ local function ProfileDefaults()
     autoDiag = true,
     chatOnChange = false,
     -- Silent always-on paint trace → PlatebandDB.sessionLog / paintTrace (no chat).
-    silentTrace = true,
-    paintTraceOn = true,
+  silentTrace = true,
+  paintTraceOn = true,
+  paintTraceInCombat = false,
   }
 end
 
@@ -183,6 +184,15 @@ function Config.EnsureDB()
     end
     db.schemaVersion = 9
     from = 9
+  end
+
+  if from < 10 then
+    EnsureProfile(db)
+    if db.profile.paintTraceInCombat == nil then
+      db.profile.paintTraceInCombat = false
+    end
+    db.schemaVersion = 10
+    from = 10
   end
 
   EnsureProfile(db)

@@ -16,7 +16,9 @@ ns.Modules.Plates = Mod
 local AC_GROUP = "platebandHarmful"
 local OVERLAY_PAD = 2
 local OVERLAY_GAP_ABOVE = 2
-local TICKER_SEC = 0.25
+local TICKER_BASE_SEC = 0.25
+local TICKER_COMBAT_SEC = 0.6
+local lastTickerAt = 0
 local PAINT_TARGET_SEC = 0.2
 local PAINT_PARTY_SEC = 0.5
 local PAINT_ENEMY_SEC = 0.55
@@ -50,6 +52,10 @@ local partyTokenCache = {} -- [plate] = party token | false (cached miss)
 local lastPaintTraceAt = {} -- [unit] = GetTime()
 local lastPaintTraceSig = {} -- [unit] = sig
 local refreshPass = 0
+
+local function PlayerInCombat()
+  return InCombatLockdown and InCombatLockdown()
+end
 -- Forward decl — module fns use assignment form (Lua 5.1: locals invisible above `local function`).
 local AnchorBand
 local AppendGapRow
@@ -3806,7 +3812,13 @@ end
 
 SilentTraceEnabled = function()
   local p = Profile()
-  return p.silentTrace ~= false and p.paintTraceOn ~= false
+  if p.silentTrace == false or p.paintTraceOn == false then
+    return false
+  end
+  if p.paintTraceInCombat == false and PlayerInCombat() then
+    return false
+  end
+  return true
 end
 
 BuildPaintTraceLine = function(why, unit, plate)
@@ -3843,7 +3855,7 @@ SilentTracePaint = function(why, unit, plate)
   if not SilentTraceEnabled() then
     return
   end
-  if InCombatLockdown and InCombatLockdown() then
+  if PlayerInCombat() then
     return
   end
   why = tostring(why or "?")
@@ -3927,9 +3939,12 @@ PaintMergeMissing = function(unit, plate)
   EnsureNativeVisible(plate)
   RestoreNameShift(unit, plate)
 
-  local friendPlate = IsPlayerOrFriendPlate(unit, plate)
   local partyAuraTok = ResolvePartyTokenForPlate(plate)
   local partyMerge = IsPartyRaidMergePlate(unit, plate)
+  local friendPlate = partyMerge
+  if partyMerge or MergeFriendPlatesEnabled() then
+    friendPlate = IsPlayerOrFriendPlate(unit, plate) or partyMerge
+  end
   if partyMerge then
     friendPlate = true
   end
@@ -4203,7 +4218,9 @@ PaintMergeMissing = function(unit, plate)
   lastPaintDebug.gapSz = sz
   lastPaintDebug.lockSz = fb._pbLockedSz
   lastPaintDebug.cdN = cdN
-  SilentTracePaint("paint", unit, plate)
+  if painted > 0 or (lastPaintDebug.miss or 0) > 0 then
+    SilentTracePaint("paint", unit, plate)
+  end
   return painted
 end
 
@@ -4262,8 +4279,24 @@ local MaybeAutoDiagnose
 local function WantsTickPaint(entry, index, mode)
   local unit = entry.unit
   local plate = entry.plate
-  if mode == "full" or not unit or not plate then
+  if not unit or not plate then
+    return false
+  end
+  if mode == "full" then
     return true
+  end
+  if mode == "combat" then
+    if IsTargetPlate(unit, plate) or ShouldUseTargetAuraSource(unit, plate) then
+      return true
+    end
+    local fb = fallbacks[unit]
+    if fb and (tonumber(fb._painted) or 0) > 0 then
+      return true
+    end
+    if gapSticky[unit] then
+      return true
+    end
+    return false
   end
   if IsTargetPlate(unit, plate) or ShouldUseTargetAuraSource(unit, plate) then
     return true
@@ -4303,18 +4336,20 @@ RefreshAll = function(mode)
       end
     end
   end
-  -- Always try target plate explicitly (secret UnitIsUnit / missing nameplate token).
-  if ModuleActive() and HasTarget() then
+  -- Target plate bind — skip duplicate full pass in combat tick (already in list).
+  if ModuleActive() and HasTarget() and mode ~= "combat" then
     local tp = PlateFor("target")
-  local tu = NameplateUnitFor("target") or (tp and UnitTokenFromPlate(tp))
+    local tu = NameplateUnitFor("target") or (tp and UnitTokenFromPlate(tp))
     tu = OverlayUnitKey(tu, tp)
-    if tu and tp then
+    if tu and tp and not live[tu] then
       live[tu] = true
       UpdateOverlay(tu, tp)
     elseif tp then
       local pk = OverlayUnitKey(nil, tp)
-      live[pk] = true
-      UpdateOverlay(pk, tp)
+      if not live[pk] then
+        live[pk] = true
+        UpdateOverlay(pk, tp)
+      end
     end
   end
   for unit in pairs(overlays) do
@@ -4346,11 +4381,17 @@ EnsureTicker = function()
   if ticker or not C_Timer or not C_Timer.NewTicker then
     return
   end
-  ticker = C_Timer.NewTicker(TICKER_SEC, function()
+  ticker = C_Timer.NewTicker(TICKER_BASE_SEC, function()
     if not ModuleActive() then
       return
     end
-    RefreshAll("tick")
+    local now = GetTime and GetTime() or 0
+    local iv = PlayerInCombat() and TICKER_COMBAT_SEC or TICKER_BASE_SEC
+    if (now - lastTickerAt) < iv then
+      return
+    end
+    lastTickerAt = now
+    RefreshAll(PlayerInCombat() and "combat" or "tick")
   end)
 end
 
@@ -4579,9 +4620,12 @@ MaybeAutoDiagnose = function(reason, force)
   if p.autoDiag == false and p.paintTraceOn == false and p.silentTrace == false then
     return
   end
+  if PlayerInCombat() and reason ~= "manual" and reason ~= "watch" then
+    return
+  end
   local now = GetTime and GetTime() or 0
   if SilentTraceEnabled() then
-    if force or reason == "target" or reason == "manual" then
+    if reason == "manual" or reason == "watch" then
       pcall(SnapshotDiagnose, reason or "auto", { silent = true })
     end
     return
@@ -4617,8 +4661,11 @@ OnEvent = function(_, event, arg1)
       end)
       C_Timer.After(0.25, function()
         pcall(function()
-          RefreshAll()
-          MaybeAutoDiagnose("plate_added_late", false)
+          if PlayerInCombat() then
+            UpdateOverlay(unit, PlateFor(unit))
+          else
+            RefreshAll("tick")
+          end
         end)
       end)
     end
@@ -4662,8 +4709,20 @@ OnEvent = function(_, event, arg1)
       end
       lastAuraRefreshAt = now
       Defer(function()
-        RefreshAll()
-        MaybeAutoDiagnose("aura_target", false)
+        if not ModuleActive() then
+          return
+        end
+        local tp = PlateFor("target")
+        local tu = NameplateUnitFor("target") or (tp and UnitTokenFromPlate(tp))
+        tu = OverlayUnitKey(tu, tp)
+        if tu and tp then
+          UpdateOverlay(tu, tp)
+        elseif tp then
+          UpdateOverlay(OverlayUnitKey(nil, tp), tp)
+        end
+        if not PlayerInCombat() then
+          RefreshAll(PlayerInCombat() and "combat" or "tick")
+        end
       end)
     end
   elseif event == "ADDON_ACTION_BLOCKED" or event == "ADDON_ACTION_FORBIDDEN" then
