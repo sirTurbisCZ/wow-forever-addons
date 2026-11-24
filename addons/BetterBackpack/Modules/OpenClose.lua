@@ -392,17 +392,26 @@ end
 
 local BAG_KEY_TRACE_MAX = 16
 
+local function SilentTraceOn()
+  if BetterBackpack.SilentTraceEnabled then
+    return BetterBackpack.SilentTraceEnabled()
+  end
+  local p = Profile()
+  return p and p.silentTrace ~= false and p.actionTraceOn ~= false
+end
+
 local function BagKeyTrace(branch, detail)
   local p = Profile()
-  if not (p and p.debug) then
+  local traceSV = SilentTraceOn() or (p and p.debug)
+  if not traceSV then
     return
   end
   local extra = detail and (" · " .. tostring(detail)) or ""
-  local line = "|cffc9a227BetterBackpack|r onBagKey · " .. tostring(branch) .. extra
-  if BetterBackpack.Print then
-    BetterBackpack.Print(line)
-  elseif DEFAULT_CHAT_FRAME then
-    DEFAULT_CHAT_FRAME:AddMessage(line)
+  local plain = "onBagKey " .. tostring(branch) .. extra
+  if BetterBackpack.TraceAction then
+    BetterBackpack.TraceAction("BAGKEY " .. plain, nil)
+  elseif BetterBackpack.Modules and BetterBackpack.Modules.SessionLog and BetterBackpack.Modules.SessionLog.RecordAction then
+    pcall(BetterBackpack.Modules.SessionLog.RecordAction, "BAGKEY " .. plain)
   end
   local db = (Config and Config.EnsureDB and Config.EnsureDB()) or BetterBackpackDB
   if db then
@@ -420,7 +429,7 @@ end
 
 local function BagCombatDiag(phase)
   local p = Profile()
-  if not (p and p.debug) then
+  if not SilentTraceOn() and not (p and p.debug) then
     return
   end
   local f = _G.BetterBackpackFrame
@@ -527,15 +536,13 @@ local function CombatTraceOnce(tag, detail)
   if detail and detail ~= "" then
     line = line .. " — " .. tostring(detail)
   end
-  if BetterBackpack.Print then
-    BetterBackpack.Print(line)
-  elseif DEFAULT_CHAT_FRAME then
-    DEFAULT_CHAT_FRAME:AddMessage("|cffc9a227BetterBackpack|r " .. line)
-  end
   local p = Profile()
-  if p and p.debug then
+  if SilentTraceOn() or (p and p.debug) then
+    if BetterBackpack.TraceAction then
+      BetterBackpack.TraceAction("BAGKEY " .. line, nil)
+    end
     local db = (Config and Config.EnsureDB and Config.EnsureDB()) or BetterBackpackDB
-    if db then
+    if db and (p and p.debug) then
       db.combatBagTrace = db.combatBagTrace or {}
       db.combatBagTrace[#db.combatBagTrace + 1] = {
         t = Now(),
@@ -1186,13 +1193,8 @@ local function LogHooksOnce(detail)
     return
   end
   hooksLogged = true
-  if not Profile().debug then
-    return
-  end
-  if DEFAULT_CHAT_FRAME then
-    DEFAULT_CHAT_FRAME:AddMessage(
-      "|cff88ff88BetterBackpack|r hooks ok · " .. tostring(detail or "bag-bar")
-    )
+  if BetterBackpack.TraceAction then
+    BetterBackpack.TraceAction("BAGKEY hooks ok · " .. tostring(detail or "bag-bar"))
   end
 end
 
@@ -1201,13 +1203,9 @@ local function LogBagPathOnce(which, bagID)
     return
   end
   bagPathLogged = true
-  if DEFAULT_CHAT_FRAME then
-    DEFAULT_CHAT_FRAME:AddMessage(
-      string.format(
-        "|cff88ff88BetterBackpack|r bag path · %s bag=%s",
-        tostring(which or "?"),
-        tostring(bagID)
-      )
+  if BetterBackpack.TraceAction then
+    BetterBackpack.TraceAction(
+      string.format("BAGKEY bag path · %s bag=%s", tostring(which or "?"), tostring(bagID))
     )
   end
 end
@@ -2002,7 +2000,7 @@ function OpenClose.DiagnoseBagKey()
       )
     end
   else
-    lines[#lines + 1] = "bagKeyTrace empty — enable /bb debug on and press B, or no onBagKey yet"
+    lines[#lines + 1] = "bagKeyTrace empty — press B once (trace → SV), or check actionTrace BAGKEY lines"
   end
   return lines
 end

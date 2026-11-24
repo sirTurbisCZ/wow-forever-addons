@@ -6,7 +6,7 @@ BetterBackpack.L = BetterBackpack.L or {}
 local L = BetterBackpack.L
 
 L.PREFIX = "|cffc9a227[BetterBackpack]|r"
-L.LOADED = "loaded v%s · B = bags · Tidy / Settings · search · /bb help"
+L.LOADED = "loaded v%s · silent trace on → BetterBackpack.lua · /bb help"
 L.UNKNOWN_CMD = "unknown command — /bb help"
 L.HELP_LINES = {
   "/bb — toggle bags",
@@ -23,7 +23,7 @@ L.HELP_LINES = {
   "/bb trashtest [go|<itemID>] — check click destroy still works (destroys 1 grey stack)",
   "/bb layout [lanes|dense] — layout mode toggle",
   "/bb merge [on|off] — visual stack merge",
-  "/bb dump — status + recent errors",
+  "/bb dump — status + errors + actionTrace tail",
   "/bb bagkey — B-key hook + onBagKey trace (diagnose)",
   "/bb safe — safe mode (release to Blizzard)",
   "/bb reset — restore defaults",

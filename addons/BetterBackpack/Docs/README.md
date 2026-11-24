@@ -6,7 +6,15 @@ Category-lane bags for **World of Warcraft Forever** (Interface 16001) with comb
 
 1. Copy or symlink this folder to `Interface/AddOns/BetterBackpack/`.
 2. Enable on the character select screen.
-3. `/reload` — expect `loaded v1.0.0`. **B** opens BetterBackpack (replaces `ToggleAllBags` / `OpenAllBags` when enabled). Bag-bar single bags stay native `ToggleBag`.
+3. `/reload` — expect `loaded v1.2.8` (or current `Config.VERSION`). **B** opens BetterBackpack (replaces `ToggleAllBags` / `OpenAllBags` when enabled). Bag-bar single bags stay native `ToggleBag`.
+
+## Silent trace (1.2.7+)
+
+Bulk/vendor diagnostics go to **SavedVariables** (`ACTION` lines), not chat. Wiped each login. Send after repro:
+
+`World of Warcraft/_forever_/WTF/Account/<Account>/SavedVariables/BetterBackpack.lua`
+
+Mac dev: `./scripts/watch-forever-traces.sh` from `git/wow.addons`.
 
 Categories start expanded; click a lane header to collapse. Window size is based on the full bag with every lane expanded (search/filter/collapse do not shrink it).
 
@@ -16,7 +24,9 @@ Categories start expanded; click a lane header to collapse. Window size is based
 |---------|-----|
 | Combat **B** | Keep-shown frame shell; toggle visibility with alpha (no `Show()` in lockdown). |
 | Vendor bags | Merchant `OpenAllBags` opens BetterBackpack, not native CombinedBags. |
-| Lane bulk sell | **Shift+RMB** lane header at vendor — sells the lane synchronously in the click. |
+| Lane bulk sell | **Ctrl+Shift+RMB** lane header at vendor/mail/bank — whole lane. |
+| Merged stack sell | **Shift+RMB** stacked icon at vendor/mail — all physical stacks in merge group. |
+| Recipes lane | Profession recipes / patterns auto-lane; toggle in Settings → Lanes. |
 | Auto-sell grey | Settings → Features → vendor grey junk (optional Junk lane). |
 | Chrome | **Tidy** (broom) and **Settings** (gear) on the title bar — English tooltips. |
 
@@ -54,7 +64,7 @@ Also `/betterbackpack`.
 | `Modules/OpenClose.lua` | B toggle, CombinedBags park |
 | `Modules/Layout.lua` | Lanes UI |
 | `Modules/Slots.lua` | Secure item buttons |
-| `Modules/BulkTransfer.lua` | Shift+RMB lane bulk |
+| `Modules/BulkTransfer.lua` | Ctrl+Shift lane bulk · Shift merged stack |
 | `Modules/VendorJunk.lua` | Auto-sell greys |
 | `Modules/Context.lua` | Vendor/mail/bank RMB |
 | Optional `Feat()` modules | Search, Filter, Trash, Settings, … |
@@ -63,7 +73,7 @@ Also `/betterbackpack`.
 
 1. `/reload` → `loaded v1.0.0` · `BulkTransfer ok`.
 2. **B** out of combat and in combat — bag visible both times.
-3. Vendor: **Shift+RMB** Bags header → chat `sold N/M` and items sell.
+3. Vendor: **Ctrl+Shift+RMB** Bags header → lane sells; **Shift+RMB** merged ore stack → all copies sell.
 4. Vendor open with bags up — still BetterBackpack, not native CombinedBags.
 5. Grey auto-sell if enabled in Settings.
 

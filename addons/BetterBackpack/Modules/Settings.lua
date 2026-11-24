@@ -33,6 +33,7 @@ local currentSection = "lanes"
 local navBtns = {}
 local laneRows, customRows, featureRows, headers, notes = {}, {}, {}, {}, {}
 local trashChecks, trashRows = {}, {}
+local autoSellMarkedRows, autoSellPreviewRows, autoSellDropRow = {}, {}, nil
 
 local function Profile()
   return Config.GetProfile()
@@ -85,6 +86,11 @@ local function HideAll()
   hidePool(featureRows)
   hidePool(trashRows)
   hidePool(trashChecks)
+  hidePool(autoSellMarkedRows)
+  hidePool(autoSellPreviewRows)
+  if autoSellDropRow and autoSellDropRow.Hide then
+    autoSellDropRow:Hide()
+  end
   for i = 1, #headers do
     if headers[i].fs then
       headers[i].fs:Hide()
@@ -201,11 +207,11 @@ local function SmallButton(parent, text, w)
   return b
 end
 
-local function LearnedRulesLabel(n)
+local function LearnedLabel(n)
   if n == 1 then
-    return "1 rule"
+    return "1 item"
   end
-  return n .. " rules"
+  return n .. " items"
 end
 
 local function PaintLanes(y)
@@ -225,7 +231,7 @@ local function PaintLanes(y)
     row.laneKey = key
     row.label:SetText(CategoryLabel(key) .. (key == "trash" and "  |cffff5050(auto-destroy)|r" or ""))
     local learned = CC and CC.CountLaneRules and CC.CountLaneRules(key) or 0
-    row.extra:SetText(learned > 0 and LearnedRulesLabel(learned) or "")
+    row.extra:SetText(learned > 0 and LearnedLabel(learned) or "")
     if key == "other" then
       row.check:SetChecked(true)
       row.check:Disable()
@@ -447,7 +453,7 @@ local function PaintLearned(y)
   end
   fs:ClearAllPoints()
   fs:SetPoint("TOPLEFT", Content(), "TOPLEFT", 2, -y)
-  fs:SetText(n > 0 and (LearnedRulesLabel(n) .. " taught") or "Nothing taught yet")
+  fs:SetText(n > 0 and (LearnedLabel(n) .. " taught") or "Nothing taught yet")
   fs:Show()
   y = y + 24
   local forget = panel.forgetBtn
@@ -469,6 +475,186 @@ local function PaintLearned(y)
   end
   forget:Show()
   return y + 28
+end
+
+local function AutoSellMarkedRow(i)
+  local row = autoSellMarkedRows[i]
+  if row then
+    return row
+  end
+  row = CreateFrame("Frame", nil, Content())
+  row:SetSize(CONTENT_W, ROW_H)
+  row:EnableMouse(true)
+  local icon = row:CreateTexture(nil, "ARTWORK")
+  icon:SetSize(18, 18)
+  icon:SetPoint("LEFT", 3, 0)
+  row.icon = icon
+  local label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  label:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+  label:SetJustifyH("LEFT")
+  label:SetWidth(320)
+  row.label = label
+  local extra = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  extra:SetPoint("LEFT", label, "RIGHT", 4, 0)
+  row.extra = extra
+  row.forget = SmallButton(row, "Remove", 62)
+  row.forget:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+  row:SetScript("OnEnter", function(self)
+    if self.itemID and GameTooltip.SetItemByID then
+      GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+      pcall(GameTooltip.SetItemByID, GameTooltip, self.itemID)
+      GameTooltip:Show()
+    end
+  end)
+  row:SetScript("OnLeave", function()
+    GameTooltip:Hide()
+  end)
+  autoSellMarkedRows[i] = row
+  return row
+end
+
+local function AutoSellPreviewRow(i)
+  local row = autoSellPreviewRows[i]
+  if row then
+    return row
+  end
+  row = CreateFrame("Frame", nil, Content())
+  row:SetSize(CONTENT_W, ROW_H)
+  row:EnableMouse(true)
+  local icon = row:CreateTexture(nil, "ARTWORK")
+  icon:SetSize(18, 18)
+  icon:SetPoint("LEFT", 3, 0)
+  row.icon = icon
+  local label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  label:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+  label:SetJustifyH("LEFT")
+  label:SetWidth(280)
+  row.label = label
+  local extra = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  extra:SetPoint("LEFT", label, "RIGHT", 4, 0)
+  row.extra = extra
+  row:SetScript("OnEnter", function(self)
+    if self.itemID and GameTooltip.SetItemByID then
+      GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+      pcall(GameTooltip.SetItemByID, GameTooltip, self.itemID)
+      GameTooltip:Show()
+    end
+  end)
+  row:SetScript("OnLeave", function()
+    GameTooltip:Hide()
+  end)
+  autoSellPreviewRows[i] = row
+  return row
+end
+
+local function AutoSellDrop()
+  if not autoSellDropRow then
+    autoSellDropRow = CreateFrame("Frame", nil, Content())
+    autoSellDropRow:SetSize(CONTENT_W, ROW_H)
+    autoSellDropRow:EnableMouse(true)
+    autoSellDropRow:RegisterForDrag("LeftButton")
+    local hl = autoSellDropRow:CreateTexture(nil, "BACKGROUND")
+    hl:SetAllPoints()
+    hl:SetColorTexture(0.2, 0.6, 1, 0.12)
+    hl:Hide()
+    autoSellDropRow.hl = hl
+    local fs = autoSellDropRow:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    fs:SetPoint("LEFT", 6, 0)
+    fs:SetText("Drag item here — always sell at vendor (this character)")
+    autoSellDropRow.label = fs
+    local function TryDrop()
+      local VJ = Feat("VendorJunk")
+      if VJ and VJ.MarkFromCursor and VJ.MarkFromCursor() then
+        Settings.Refresh()
+      end
+    end
+    autoSellDropRow:SetScript("OnReceiveDrag", TryDrop)
+    autoSellDropRow:SetScript("OnMouseUp", TryDrop)
+    autoSellDropRow:SetScript("OnEnter", function(self)
+      self.hl:Show()
+    end)
+    autoSellDropRow:SetScript("OnLeave", function(self)
+      self.hl:Hide()
+    end)
+  end
+  return autoSellDropRow
+end
+
+local function ReasonLabel(reason)
+  if reason == "grey" then
+    return "grey"
+  end
+  if reason == "junk lane" then
+    return "junk lane"
+  end
+  if reason == "marked" then
+    return "marked"
+  end
+  return ""
+end
+
+local function PaintAutoSell(y)
+  local VJ = Feat("VendorJunk")
+  if not VJ then
+    return y
+  end
+  y = y + 8
+  y = Note(9, "Vendor auto-sell is |cff88ccffper character|r. Marked itemIDs always sell when vendor sell runs.", y)
+  local drop = AutoSellDrop()
+  drop:ClearAllPoints()
+  drop:SetPoint("TOPLEFT", Content(), "TOPLEFT", 0, -y)
+  drop:Show()
+  y = y + ROW_H + 4
+  local marked = VJ.MarkedIDs and VJ.MarkedIDs() or {}
+  if #marked > 0 then
+    y = Note(10, "Marked always sell:", y)
+    for i = 1, #marked do
+      local id = marked[i]
+      local r = AutoSellMarkedRow(i)
+      r.itemID = id
+      r:ClearAllPoints()
+      r:SetPoint("TOPLEFT", Content(), "TOPLEFT", 0, -y)
+      r.icon:SetTexture(VJ.ItemIcon and VJ.ItemIcon(id))
+      r.label:SetText(VJ.ItemName and VJ.ItemName(id) or tostring(id))
+      r.extra:SetText("")
+      r.forget:SetScript("OnClick", function()
+        if VJ.Unmark then
+          VJ.Unmark(id)
+          Settings.Refresh()
+        end
+      end)
+      r:Show()
+      y = y + ROW_H
+    end
+  end
+  local preview = VJ.PreviewBagItems and VJ.PreviewBagItems() or {}
+  y = Note(11, "In bags now (will sell at vendor):", y)
+  if #preview == 0 then
+    y = Note(12, "Nothing matched — carry grey junk, Junk lane items, or mark itemIDs above.", y)
+  else
+    for i = 1, #preview do
+      local e = preview[i]
+      local id = e.itemID
+      local r = AutoSellPreviewRow(i)
+      r.itemID = id
+      r:ClearAllPoints()
+      r:SetPoint("TOPLEFT", Content(), "TOPLEFT", 0, -y)
+      r.icon:SetTexture(VJ.ItemIcon and VJ.ItemIcon(id))
+      r.label:SetText(VJ.ItemName and VJ.ItemName(id) or tostring(id))
+      local bits = {}
+      if e.stacks and e.stacks > 1 then
+        bits[#bits + 1] = "x" .. e.stacks
+      end
+      local rl = ReasonLabel(e.reason)
+      if rl ~= "" then
+        bits[#bits + 1] = rl
+      end
+      r.extra:SetText(table.concat(bits, " · "))
+      r:Show()
+      y = y + ROW_H
+    end
+  end
+  return y
 end
 
 local FEATURES = {
@@ -511,6 +697,7 @@ local FEATURES = {
       else
         Profile().autoSellJunk = on
       end
+      Settings.Refresh()
     end,
   },
   {
@@ -526,6 +713,7 @@ local FEATURES = {
       else
         Profile().autoSellJunkLane = on
       end
+      Settings.Refresh()
     end,
   },
   {
@@ -565,6 +753,7 @@ local function PaintFeatures(y)
     end)
     y = y + ROW_H
   end
+  y = PaintAutoSell(y)
   return y
 end
 

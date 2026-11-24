@@ -1,9 +1,116 @@
 # BetterBackpack changelog
 
-## 1.2.2 — search vs Other lane UX
+## 1.2.10 — TraceAction never chats
 
-- **Settings:** lane sidebar counts are **taught rules**, labeled `N rules` (not bag item count).
-- **Search:** **Other** header stays visible while search/filter active when unfiltered Other still has items (count **0** = no match — clear search).
+- **`TraceAction`:** always SessionLog only; chat **only** with `opts.forceChat` (not `/bb debug`, not `silentTrace off`).
+- Fixes B-key spam when `silentTrace`/`actionTraceOn` off or legacy profile flags.
+
+### Playtest (1.2.10)
+
+1. `/reload` → `loaded v1.2.10`; `/bb debug on` + **B** — no `BAGKEY` / `onBagKey` in chat.
+2. FElog/chat: errors only; `actionTrace` in SV after `/reload`.
+
+## 1.2.8 — bag-key / combat / esc trace → SV only
+
+- **No chat** for `onBagKey`, `combat-diag`, `combat B ·`, or `esc ·` (even with `/bb debug on`).
+- **`BAGKEY`** lines in `actionTrace` / `sessionLog` (default silent trace on).
+- **`/bb bagkey`** still prints diagnose to chat on demand.
+
+### Playtest (1.2.8)
+
+1. `/reload` → `v1.2.8`; press **B** — no `onBagKey` in chat.
+2. `/bb debug on` + **B** — still no chat; `/bb dump` or SV shows `BAGKEY` tail.
+
+## 1.2.7 — silent ACTION trace (agent-readable)
+
+- **Silent by default:** `silentTrace` + `actionTraceOn` (schema **10**) — bulk/vendor diagnostics → SV, not chat.
+- **ACTION lines:** lane bulk sell (`queued`/`sold`/`MISMATCH=1`), vendor auto-sell, esc debug when `profile.debug`.
+- **Stores:** `sessionLog.export`, `actionTrace.export`, `lastActionTrace`; wiped each login.
+- **Agent:** `./scripts/watch-forever-traces.sh` (shared with Plateband / FElog).
+
+### Playtest (1.2.7)
+
+1. `/reload` → `loaded v1.2.7` (no BulkTransfer spam).
+2. Vendor → Ctrl+Shift+RMB lane or auto-sell → `/bb dump` shows `lastAction`.
+3. Mac agent: `watch-forever-traces.sh watch 8` after one `/reload`.
+
+## GitHub release 1.2.6 (PR merge `cursor/bb-shift-stack-recipe-9374`)
+
+Tag `betterbackpack-v1.2.6` · includes **1.2.2–1.2.6**:
+
+| Version | Highlights |
+|---------|------------|
+| **1.2.2** | Shift+RMB merged stack sell/mail; Recipes lane; Ctrl+Shift+RMB lane bulk |
+| **1.2.3** | Recipe detection; stable merge anchors; merge-group transfer scan fix |
+| **1.2.4** | Vendor auto-sell queue; per-char auto-sell + Settings preview (schema 8) |
+| **1.2.5** | Mail subject from first attach when empty |
+| **1.2.6** | Custom lanes + rules per character (schema 9) |
+
+## 1.2.6 — custom lanes per character
+
+- **Custom lanes** (`custom_*`), their **item assignments**, and drag-teach rules targeting those lanes live in `BetterBackpackDB.chars["Name-Realm"]` (schema **9**). Built-in lane toggles (`categories`, `hiddenDefaults`) and teachings to **default** lanes stay on account `profile`.
+- **Upgrade:** first login after 1.2.6 copies `profile.customCategories` + `profile.itemRules` (custom_* only) into the **current** character, then clears account-wide custom storage.
+
+### Playtest (1.2.6)
+
+1. `/reload` → `loaded v1.2.6`.
+2. Char A: Settings → Custom lanes → create lane + assign item → lane visible in bag.
+3. Log to Char B → **no** Char A custom lane header.
+4. Back to Char A → custom lane and assignments still there.
+5. Built-in lane toggles (Recipes on/off) still shared unless you change them (expected).
+
+## 1.2.5 — mail subject from first attach
+
+- **Send mail:** when the subject field is **empty**, attaching an item (RMB, Shift merged stack, Ctrl+Shift lane bulk) sets the subject to that item’s **display name**. First successful attach wins; existing subject text is never overwritten.
+
+### Playtest (1.2.5)
+
+1. `/reload` → `loaded v1.2.5`.
+2. Mailbox → Send; leave subject blank → **RMB** an item in BB → subject = item name.
+3. Clear subject → **Shift+RMB** merged stack → subject = first stack’s item name.
+4. New mail, blank subject → **Ctrl+Shift+RMB** lane header → subject = first attached item name.
+5. Type a custom subject first → attach items → subject unchanged.
+
+## 1.2.4 — vendor auto-sell (WFA-36)
+
+- **Auto-sell reliability:** `MERCHANT_SHOW` uses the same `BulkTransfer` merchant **queue** as lane/merge sells (sync pump), re-scanning bag slots at sell time instead of one-off `TransferSlot` timer steps.
+- **Per character:** grey toggle, Junk-lane toggle, and **marked itemIDs** live in `BetterBackpackDB.chars["Name-Realm"]` (schema **8** migrates the logged-in character from account `profile`).
+- **Settings → Features:** lists **marked** items (drag row to teach, Remove) and **in bags now** preview with icons, names, stack count, and reason (grey / junk lane / marked). Chat summary names up to 6 items.
+
+### Playtest (1.2.4)
+
+1. `/reload` → `loaded v1.2.4`.
+2. **Char A:** Settings → Features → enable **Auto-sell grey**; open Features — see grey junk in **In bags now** with icons.
+3. Vendor → greys sell; chat `Bulk sold N / N · auto-sell` and item names (not count only).
+4. **Char B:** disable grey, mark one item (drag to auto-sell row) → preview shows marked; vendor sells marked only.
+5. Char A vs B toggles/marked lists differ after `/reload` (per character).
+
+## 1.2.3 — playtest fixes (WFA-33/34/35)
+
+- **Recipes (WFA-34):** broader detection — `C_Item.IsRecipeItem`, `GetItemClassAndSubClass`, trade-goods recipe subtype, `Recipe:` / `Pattern:` name prefixes; still respects taught rules and Settings lane toggle.
+- **Merge layout (WFA-35):** lane lists sorted by bag/slot; merge **stable anchor** per merge key so opening one stack does not jump siblings; representative stays put until that slot empties.
+- **Vendor/mail merge (WFA-33):** `CollectMergeGroup` scanned wrong bag ranges (`from`/`to` vs `bag`/`slots`) → always found 1 slot. Fixed inventory scan; shift latched on RMB down; merged icons transfer **whole group** on RMB at vendor/mail.
+
+### Playtest (1.2.3)
+
+1. `/reload` → `loaded v1.2.3`.
+2. **Recipe** in bag → **Recipes** lane (disable lane in Settings → **Other**).
+3. **3× same item** (stack merge): open/use one → other merged icons **same grid cells**.
+4. Vendor: **RMB** merged icon → chat `moved N / N` or `sold N / N` for **all** stacks; mail same.
+5. **Ctrl+Shift+RMB** lane header still bulk lane only.
+
+## 1.2.2 — merged stack sell + Recipes lane
+
+- **Vendor/mail:** **Shift+RMB** on a **stack-merged** slot sells/attaches **every physical stack** in that merge group (`StackMerge.CollectMergeGroup` → `BulkTransfer.TransferMergeGroup`). Plain **RMB** still moves one stack.
+- **Lane bulk:** moved to **Ctrl+Shift+RMB** on the lane header (Shift+RMB alone no longer sells the whole lane).
+- **Recipes lane:** built-in lane **Recipes** (`recipe` category); class **Recipe**, type/subtype heuristics, and **Learn** use-spell detection. Toggle in Settings → Lanes like other categories. Schema **7** adds `categories.recipe=true` for existing profiles.
+
+### Playtest (1.2.2)
+
+1. `/reload` → chat `loaded v1.2.2` · bulk hint mentions Ctrl+Shift header + Shift merged stack.
+2. Duplicate stacks of one item (stack merge on) → vendor → **Shift+RMB** icon → all copies sell; **RMB** → one stack only.
+3. **Ctrl+Shift+RMB** Materials (or other) header → whole lane sells; **Shift+RMB** header without Ctrl → collapse only (no lane sell).
+4. Carry a recipe / pattern item → appears under **Recipes**; disable lane in Settings → item goes to **Other** (or next classifier).
 
 ## 1.2.1 — stack merge + lock state
 

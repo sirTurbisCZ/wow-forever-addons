@@ -1,7 +1,8 @@
 --[[
   BetterBackpack.CustomCategories — user lanes + hide defaults (v1).
   Hidden defaults still route items to Other (existing CategoryEnabled path).
-  Custom cats: profile.customCategories = { { id, name, itemIDs = { [id]=true } } }
+  Custom cats + rules targeting custom_* live per character (Config.GetCharProfile).
+  Built-in lane teachings stay on account profile.itemRules.
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -14,6 +15,36 @@ local Config = BetterBackpack.Config
 
 local function Profile()
   return Config.GetProfile()
+end
+
+local function Char()
+  return Config.GetCharProfile()
+end
+
+local function IsCustomLaneId(id)
+  return type(id) == "string" and id:find("^custom_", 1) ~= nil
+end
+
+local function EnsureCharTables()
+  local c = Char()
+  if type(c.customCategories) ~= "table" then
+    c.customCategories = {}
+  end
+  if type(c.itemRules) ~= "table" then
+    c.itemRules = {}
+  end
+  return c
+end
+
+local function EnsureProfileTables()
+  local p = Profile()
+  if type(p.hiddenDefaults) ~= "table" then
+    p.hiddenDefaults = {}
+  end
+  if type(p.itemRules) ~= "table" then
+    p.itemRules = {}
+  end
+  return p
 end
 
 local function Changed()
@@ -31,29 +62,15 @@ local function Changed()
   end
 end
 
-local function EnsureTables()
-  local p = Profile()
-  if type(p.customCategories) ~= "table" then
-    p.customCategories = {}
-  end
-  if type(p.hiddenDefaults) ~= "table" then
-    p.hiddenDefaults = {}
-  end
-  if type(p.itemRules) ~= "table" then
-    p.itemRules = {}
-  end
-  return p
-end
-
 function CustomCategories.List()
-  return EnsureTables().customCategories
+  return EnsureCharTables().customCategories
 end
 
 function CustomCategories.IsDefaultHidden(key)
   if key == "other" then
     return false
   end
-  local h = EnsureTables().hiddenDefaults
+  local h = EnsureProfileTables().hiddenDefaults
   return h[key] == true
 end
 
@@ -61,9 +78,8 @@ function CustomCategories.SetDefaultHidden(key, hidden)
   if key == "other" or type(key) ~= "string" then
     return
   end
-  local p = EnsureTables()
+  local p = EnsureProfileTables()
   p.hiddenDefaults[key] = hidden and true or nil
-  -- Mirror into categories enable so Layout.CategoryEnabled stays consistent.
   if type(p.categories) ~= "table" then
     p.categories = {}
   end
@@ -86,33 +102,32 @@ local function NormalizeId(id)
 end
 
 function CustomCategories.Add(name)
-  local p = EnsureTables()
+  local c = EnsureCharTables()
   name = type(name) == "string" and name:match("^%s*(.-)%s*$") or ""
   if name == "" then
     return nil
   end
-  local base = "custom_" .. tostring((GetTime and math.floor(GetTime() * 1000)) or (#p.customCategories + 1))
+  local base = "custom_" .. tostring((GetTime and math.floor(GetTime() * 1000)) or (#c.customCategories + 1))
   local id, n = base, 1
   while CustomCategories.Label(id) do
     n = n + 1
     id = base .. "_" .. n
   end
   local entry = { id = id, name = name, itemIDs = {} }
-  p.customCategories[#p.customCategories + 1] = entry
+  c.customCategories[#c.customCategories + 1] = entry
   return entry
 end
 
 function CustomCategories.Remove(id)
-  local p = EnsureTables()
-  for i = #p.customCategories, 1, -1 do
-    if p.customCategories[i].id == id then
-      -- Clear itemRules pointing at this cat.
-      for itemID, rule in pairs(p.itemRules) do
+  local c = EnsureCharTables()
+  for i = #c.customCategories, 1, -1 do
+    if c.customCategories[i].id == id then
+      for itemID, rule in pairs(c.itemRules) do
         if rule == id then
-          p.itemRules[itemID] = nil
+          c.itemRules[itemID] = nil
         end
       end
-      table.remove(p.customCategories, i)
+      table.remove(c.customCategories, i)
       break
     end
   end
@@ -124,24 +139,48 @@ function CustomCategories.AssignItem(itemID, categoryId)
   if not itemID then
     return
   end
-  local p = EnsureTables()
+  local c = EnsureCharTables()
+  local p = EnsureProfileTables()
   if not categoryId then
+    c.itemRules[itemID] = nil
+    c.itemRules[tostring(itemID)] = nil
     p.itemRules[itemID] = nil
     p.itemRules[tostring(itemID)] = nil
+    for i = 1, #c.customCategories do
+      local cat = c.customCategories[i]
+      if type(cat.itemIDs) == "table" then
+        cat.itemIDs[itemID] = nil
+        cat.itemIDs[tostring(itemID)] = nil
+      end
+    end
+  elseif IsCustomLaneId(categoryId) then
+    p.itemRules[itemID] = nil
+    p.itemRules[tostring(itemID)] = nil
+    c.itemRules[tostring(itemID)] = nil
+    c.itemRules[itemID] = categoryId
+    for i = 1, #c.customCategories do
+      local cat = c.customCategories[i]
+      if type(cat.itemIDs) ~= "table" then
+        cat.itemIDs = {}
+      end
+      if cat.id == categoryId then
+        cat.itemIDs[itemID] = true
+      else
+        cat.itemIDs[itemID] = nil
+        cat.itemIDs[tostring(itemID)] = nil
+      end
+    end
   else
+    c.itemRules[itemID] = nil
+    c.itemRules[tostring(itemID)] = nil
     p.itemRules[tostring(itemID)] = nil
     p.itemRules[itemID] = categoryId
-  end
-  -- Also stash on the custom cat table for Settings UI.
-  for i = 1, #p.customCategories do
-    local c = p.customCategories[i]
-    if type(c.itemIDs) ~= "table" then
-      c.itemIDs = {}
-    end
-    if c.id == categoryId then
-      c.itemIDs[itemID] = true
-    else
-      c.itemIDs[itemID] = nil
+    for i = 1, #c.customCategories do
+      local cat = c.customCategories[i]
+      if type(cat.itemIDs) == "table" then
+        cat.itemIDs[itemID] = nil
+        cat.itemIDs[tostring(itemID)] = nil
+      end
     end
   end
   Changed()
@@ -153,26 +192,26 @@ function CustomCategories.Resolve(itemID)
   if not itemID then
     return nil
   end
-  local p = EnsureTables()
-  local rule = p.itemRules[itemID] or p.itemRules[tostring(itemID)]
+  local c = EnsureCharTables()
+  local rule = c.itemRules[itemID] or c.itemRules[tostring(itemID)]
   if type(rule) == "string" and rule ~= "" then
     return rule
   end
-  for i = 1, #p.customCategories do
-    local c = p.customCategories[i]
-    if type(c.itemIDs) == "table" and (c.itemIDs[itemID] or c.itemIDs[tostring(itemID)]) then
-      return c.id
+  for i = 1, #c.customCategories do
+    local cat = c.customCategories[i]
+    if type(cat.itemIDs) == "table" and (cat.itemIDs[itemID] or cat.itemIDs[tostring(itemID)]) then
+      return cat.id
     end
   end
   return nil
 end
 
 function CustomCategories.Label(key)
-  local p = EnsureTables()
-  for i = 1, #p.customCategories do
-    local c = p.customCategories[i]
-    if c.id == key then
-      return c.name or key
+  local c = EnsureCharTables()
+  for i = 1, #c.customCategories do
+    local cat = c.customCategories[i]
+    if cat.id == key then
+      return cat.name or key
     end
   end
   return nil
@@ -180,7 +219,7 @@ end
 
 --- Extended order: defaults (minus hidden) + custom + trash + other last.
 function CustomCategories.ExtendOrder(baseOrder)
-  local p = EnsureTables()
+  local c = EnsureCharTables()
   local out = {}
   local seen = {}
   local hasTrash = false
@@ -195,8 +234,8 @@ function CustomCategories.ExtendOrder(baseOrder)
       seen[key] = true
     end
   end
-  for i = 1, #p.customCategories do
-    local id = p.customCategories[i].id
+  for i = 1, #c.customCategories do
+    local id = c.customCategories[i].id
     if id and not seen[id] then
       out[#out + 1] = id
       seen[id] = true
@@ -214,17 +253,15 @@ function CustomCategories.Rename(id, name)
   if name == "" then
     return
   end
-  local p = EnsureTables()
-  for i = 1, #p.customCategories do
-    if p.customCategories[i].id == id then
-      p.customCategories[i].name = name
+  local c = EnsureCharTables()
+  for i = 1, #c.customCategories do
+    if c.customCategories[i].id == id then
+      c.customCategories[i].name = name
     end
   end
   Changed()
 end
 
---- Drag-teach: send itemID to laneKey from now on. Dropping on the lane the item would
---- land in anyway (its natural lane) clears the rule instead of storing a redundant one.
 function CustomCategories.Teach(itemID, laneKey, naturalKey)
   if not NormalizeId(itemID) or type(laneKey) ~= "string" then
     return
@@ -236,9 +273,12 @@ function CustomCategories.Teach(itemID, laneKey, naturalKey)
   end
 end
 
-function CustomCategories.CountRules()
+local function CountRulesIn(tableRules)
   local n = 0
-  for _, rule in pairs(EnsureTables().itemRules) do
+  if type(tableRules) ~= "table" then
+    return 0
+  end
+  for _, rule in pairs(tableRules) do
     if type(rule) == "string" and rule ~= "" then
       n = n + 1
     end
@@ -246,9 +286,23 @@ function CustomCategories.CountRules()
   return n
 end
 
+function CustomCategories.CountRules()
+  local c = EnsureCharTables()
+  local p = EnsureProfileTables()
+  return CountRulesIn(c.itemRules) + CountRulesIn(p.itemRules)
+end
+
 function CustomCategories.CountLaneRules(laneKey)
   local n = 0
-  for _, rule in pairs(EnsureTables().itemRules) do
+  if IsCustomLaneId(laneKey) then
+    for _, rule in pairs(EnsureCharTables().itemRules) do
+      if rule == laneKey then
+        n = n + 1
+      end
+    end
+    return n
+  end
+  for _, rule in pairs(EnsureProfileTables().itemRules) do
     if rule == laneKey then
       n = n + 1
     end
@@ -257,11 +311,13 @@ function CustomCategories.CountLaneRules(laneKey)
 end
 
 function CustomCategories.ForgetAll()
-  local p = EnsureTables()
-  p.itemRules = {}
-  for i = 1, #p.customCategories do
-    p.customCategories[i].itemIDs = {}
+  local c = EnsureCharTables()
+  local p = EnsureProfileTables()
+  c.itemRules = {}
+  for i = 1, #c.customCategories do
+    c.customCategories[i].itemIDs = {}
   end
+  p.itemRules = {}
   Changed()
 end
 
@@ -278,7 +334,6 @@ function CustomCategories.CreateLane(name, itemID)
   return entry
 end
 
--- StaticPopup edit box key differs across clients (editBox → EditBox / GetEditBox).
 local function PopupEdit(dialog)
   if not dialog then
     return nil
@@ -405,3 +460,10 @@ end
 function CustomCategories.PromptForgetAll()
   ShowPopup("BETTERBACKPACK_FORGET_RULES", nil, nil)
 end
+
+--- Called on PLAYER_LOGIN / character switch so layout matches new char tables.
+function CustomCategories.OnCharacterActive()
+  Changed()
+end
+
+return CustomCategories
