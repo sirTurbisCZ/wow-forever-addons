@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.24** (NativeShownKeySet + tfRows/cov PAINT)
+Version: **0.2.25** (API-first harvest, GapAuraLive prune fix)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 

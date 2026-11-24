@@ -67,6 +67,7 @@ local CollectTargetFrameButtons
 local CollectTargetFrameMissing
 local CollectTargetFramePersonalGaps
 local CollectTargetHarmfulFromApi
+local CountTargetHarmfulApi
 local CollectTargetHarmfulRows
 local CollectUnitHarmfulMirror
 local DeduplicateHarmfulRows
@@ -2190,14 +2191,17 @@ GapAuraLive = function(entry, unitToken)
       end
       return true
     end
-    return false
+    -- Stale instance on TF row — keep until explicit expiry (Forever secrets).
   end
   if entry.spellId and unitToken and C_UnitAuras and C_UnitAuras.GetAuraDataBySpellID then
     local ok, data = pcall(C_UnitAuras.GetAuraDataBySpellID, unitToken, entry.spellId)
     if ok and type(data) == "table" then
+      local e2 = data.expirationTime
+      if type(e2) == "number" and not IsSecret(e2) and e2 > 0 and now >= e2 then
+        return false
+      end
       return true
     end
-    return false
   end
   return true
 end
@@ -2304,18 +2308,38 @@ RefreshHeldGapFallback = function(unit, plate, fb, icons, auraUnit)
   return painted, cdN
 end
 
-CollectTargetHarmfulFromApi = function(rows, maxN)
+CountTargetHarmfulApi = function(unitToken)
+  unitToken = unitToken or "target"
+  if not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
+    return 0
+  end
+  local n = 0
+  for idx = 1, 40 do
+    local data
+    local ok = pcall(function()
+      data = C_UnitAuras.GetAuraDataByIndex(unitToken, idx, "HARMFUL")
+    end)
+    if not ok or not data then
+      break
+    end
+    n = n + 1
+  end
+  return n
+end
+
+CollectTargetHarmfulFromApi = function(rows, maxN, unitToken)
   if type(rows) ~= "table" or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
     return
   end
   maxN = maxN or MaxIcons()
+  unitToken = unitToken or "target"
   for idx = 1, 40 do
     if #rows >= maxN then
       return
     end
     local data
     local ok = pcall(function()
-      data = C_UnitAuras.GetAuraDataByIndex("target", idx, "HARMFUL")
+      data = C_UnitAuras.GetAuraDataByIndex(unitToken, idx, "HARMFUL")
     end)
     if not ok or not data then
       break
@@ -3103,6 +3127,7 @@ end
 CollectTargetHarmfulRows = function(maxN)
   maxN = maxN or MaxIcons()
   local rows = {}
+  CollectTargetHarmfulFromApi(rows, maxN, "target")
   local container = GetTargetAuraContainer()
   if container then
     pcall(function()
@@ -3355,9 +3380,15 @@ BuildPaintTraceLine = function(why, unit, plate)
     CollectPlateDebuffButtons(plate, buttons, MaxIcons())
     poolKids = #buttons
   end
-  local tf = HasTarget() and #CollectTargetHarmfulRows(MaxIcons()) or 0
-  if tf == 0 and HasTarget() then
-    tf = CountTargetFrameAuras()
+  local tf = 0
+  if HasTarget() then
+    tf = CountTargetHarmfulApi("target")
+    if tf == 0 then
+      tf = #CollectTargetHarmfulRows(MaxIcons())
+    end
+    if tf == 0 then
+      tf = CountTargetFrameAuras()
+    end
   end
   local fb = 0
   if unit and fallbacks[unit] then
@@ -3467,6 +3498,17 @@ PaintMergeMissing = function(unit, plate)
     return 0
   end
 
+  lastPaintDebug.harv = 0
+  lastPaintDebug.tgtSrc = 0
+  lastPaintDebug.miss = 0
+  lastPaintDebug.painted = 0
+  lastPaintDebug.personal = 0
+  lastPaintDebug.foreign = 0
+  lastPaintDebug.cdN = 0
+  lastPaintDebug.tfRows = 0
+  lastPaintDebug.gapSz = nil
+  lastPaintDebug.lockSz = nil
+
   local paintKeys = NativeShownKeySet(plate)
   local maxN = MaxIcons()
   local missing = {}
@@ -3477,6 +3519,12 @@ PaintMergeMissing = function(unit, plate)
   local allowSecret = useTargetSrc or nativeN == 0
 
   local queueSkip = CopyKeySet(paintKeys)
+
+  if useTargetSrc then
+    CollectUnitHarmfulMirror("target", queueSkip, missing, maxN, stats)
+  elseif friendPlate and type(unit) == "string" then
+    CollectUnitHarmfulMirror(unit, queueSkip, missing, maxN, stats)
+  end
 
   -- TF-first: mirror harmful row when target plate (party DoTs + personal when native=0).
   local harvN = 0
@@ -3550,7 +3598,12 @@ PaintMergeMissing = function(unit, plate)
   lastPaintDebug.nativeN = nativeN
   lastPaintDebug.friendPlate = friendPlate and 1 or 0
   if useTargetSrc and HasTarget() then
-    lastPaintDebug.tfRows = #CollectTargetHarmfulRows(maxN)
+    lastPaintDebug.tfRows = CountTargetHarmfulApi("target")
+    if lastPaintDebug.tfRows == 0 then
+      lastPaintDebug.tfRows = #CollectTargetHarmfulRows(maxN)
+    end
+  elseif friendPlate and type(unit) == "string" then
+    lastPaintDebug.tfRows = CountTargetHarmfulApi(unit)
   else
     lastPaintDebug.tfRows = 0
   end

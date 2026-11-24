@@ -1,5 +1,16 @@
 # Plateband changelog
 
+## 0.2.25 — API-first harvest + prune fix (Stockade)
+
+- **`GapAuraLive`:** no longer drops rows when `GetAuraDataByAuraInstanceID` fails (was emptying queue → `miss=0 painted=0`).
+- **`CollectTargetHarmfulFromApi` first** in TF harvest; **`CountTargetHarmfulApi`** drives PAINT `tf=` / `tfRows`.
+- **Seed `CollectUnitHarmfulMirror`** at paint start (target + friend plates); reset stale PAINT debug fields per paint.
+
+### Playtest (0.2.25)
+
+1. `/reload` → chat **loaded v0.2.25**; Defias target: `tf≥1`, `miss≥1`, `painted≥1`, `cov≥tfRows`.
+2. Friend dot (Pichy): `friend=1`, `miss≥1` without targeting them.
+
 ## 0.2.24 — TF coverage parity (tfRows / cov)
 
 - **`NativeShownKeySet`:** gap skip uses **shown** native harmful only (pool hidden kids no longer drop TF rows).
