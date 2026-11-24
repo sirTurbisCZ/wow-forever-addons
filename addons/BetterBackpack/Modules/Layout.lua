@@ -754,13 +754,13 @@ local function LogPlayerSlotsOnce(used, total, parts)
   end
   freeSpaceLogged = true
   local msg = string.format(
-    "|cff88ff88BetterBackpack|r slots %s → used/total=%d/%d (player+reagent, no keyring/bank)",
+    "slots %s used/total=%d/%d",
     tostring(parts or "?"),
     used or 0,
     total or 0
   )
-  if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
-    pcall(DEFAULT_CHAT_FRAME.AddMessage, DEFAULT_CHAT_FRAME, msg)
+  if BetterBackpack.TraceAction then
+    BetterBackpack.TraceAction("BAGKEY " .. msg)
   end
 end
 
@@ -1180,9 +1180,9 @@ local function WireSectionHeader(key, header)
     if button == "RightButton" then
       local bulk = HeaderLaneBulkDown(self)
       if bulk and not CursorHoldingItem() then
-        if BetterBackpack.Print then
-          BetterBackpack.Print(string.format(
-            "|cff88ccffBulk|r header MouseUp · lane=%s ctrl+shift=%s",
+        if BetterBackpack.TraceAction then
+          BetterBackpack.TraceAction(string.format(
+            "BULK header MouseUp lane=%s ctrl+shift=%s",
             tostring(key),
             tostring(bulk)
           ))
@@ -2047,14 +2047,14 @@ local function LogChromeOnce(tidy, gear, close)
     return string.format("%s %.0fx%.0f", tostring(name), w or 0, h or 0)
   end
   local msg = string.format(
-    "|cff88ff88BetterBackpack|r chrome tidy=%s gear=%s close=%s ver=%d",
+    "chrome tidy=%s gear=%s close=%s ver=%d",
     wh(tidy),
     wh(gear),
     wh(close),
     CHROME_VER
   )
-  if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
-    pcall(DEFAULT_CHAT_FRAME.AddMessage, DEFAULT_CHAT_FRAME, msg)
+  if BetterBackpack.TraceAction then
+    BetterBackpack.TraceAction("BAGKEY " .. msg)
   end
 end
 
@@ -2931,7 +2931,8 @@ end
 
 function Layout.EscDebugTrace(phase, detail)
   local p = Profile()
-  if not (p and p.debug) then
+  local silent = BetterBackpack.SilentTraceEnabled and BetterBackpack.SilentTraceEnabled()
+  if not silent and not (p and p.debug) then
     return
   end
   local f = main or _G.BetterBackpackFrame

@@ -1193,13 +1193,8 @@ local function LogHooksOnce(detail)
     return
   end
   hooksLogged = true
-  if not Profile().debug then
-    return
-  end
-  if DEFAULT_CHAT_FRAME then
-    DEFAULT_CHAT_FRAME:AddMessage(
-      "|cff88ff88BetterBackpack|r hooks ok · " .. tostring(detail or "bag-bar")
-    )
+  if BetterBackpack.TraceAction then
+    BetterBackpack.TraceAction("BAGKEY hooks ok · " .. tostring(detail or "bag-bar"))
   end
 end
 
@@ -1208,13 +1203,9 @@ local function LogBagPathOnce(which, bagID)
     return
   end
   bagPathLogged = true
-  if DEFAULT_CHAT_FRAME then
-    DEFAULT_CHAT_FRAME:AddMessage(
-      string.format(
-        "|cff88ff88BetterBackpack|r bag path · %s bag=%s",
-        tostring(which or "?"),
-        tostring(bagID)
-      )
+  if BetterBackpack.TraceAction then
+    BetterBackpack.TraceAction(
+      string.format("BAGKEY bag path · %s bag=%s", tostring(which or "?"), tostring(bagID))
     )
   end
 end

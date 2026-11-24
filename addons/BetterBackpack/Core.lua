@@ -105,8 +105,8 @@ function BetterBackpack.SilentTraceEnabled()
   return p.silentTrace ~= false and p.actionTraceOn ~= false
 end
 
---- Route bulk/vendor diagnostics to SV; chat only when silentTrace off or profile.debug.
-function BetterBackpack.TraceAction(detail, chatPrefix)
+--- Diagnostics → SessionLog only. Chat when silentTrace explicitly off (not /bb debug).
+function BetterBackpack.TraceAction(detail, chatPrefix, opts)
   detail = tostring(detail or "")
   if detail == "" then
     return
@@ -114,14 +114,26 @@ function BetterBackpack.TraceAction(detail, chatPrefix)
   if SessionLog and SessionLog.RecordAction then
     pcall(SessionLog.RecordAction, detail)
   end
-  local p = Config.GetProfile()
-  if BetterBackpack.SilentTraceEnabled() and not p.debug then
+  opts = type(opts) == "table" and opts or {}
+  if opts.forceChat then
+    if Print then
+      local msg = chatPrefix and (chatPrefix .. " " .. detail) or detail
+      Print(msg)
+    end
+    return
+  end
+  if BetterBackpack.SilentTraceEnabled() then
     return
   end
   if Print then
     local msg = chatPrefix and (chatPrefix .. " " .. detail) or detail
     Print(msg)
   end
+end
+
+--- Intentional player feedback — always chat (Trash destroy, settings, slash responses).
+function BetterBackpack.Say(...)
+  Print(...)
 end
 
 local function SafeCall(context, fn, ...)
@@ -493,9 +505,7 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
       BetterBackpack._combatFrozen = true
     end
     local p = Config.GetProfile()
-    if p.debug then
-      Print("BLOCKED soft:", tostring(func), "— /felog list")
-    end
+    BetterBackpack.TraceAction("BLOCKED soft " .. tostring(func or "?"))
     return
   end
 end)
@@ -834,7 +844,13 @@ SlashCmdList.BETTERBACKPACK = function(msg)
     else
       p.debug = not p.debug
     end
-    Print("debug=", tostring(p.debug))
+    Print(
+      string.format(
+        "debug=%s (SV trace only — chat only via /bb bagkey; silentTrace=%s)",
+        tostring(p.debug),
+        tostring(BetterBackpack.SilentTraceEnabled())
+      )
+    )
     return
   end
 

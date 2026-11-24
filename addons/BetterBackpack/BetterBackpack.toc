@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 1.2.8 — bag-key trace silent (no chat spam).
+## Notes: 1.2.9 — debug no longer re-enables chat spam.
 ## Author: tuma
-## Version: 1.2.8
+## Version: 1.2.9
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled
