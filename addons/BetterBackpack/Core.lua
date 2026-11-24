@@ -23,6 +23,7 @@ local function BT()
 end
 local OpenClose = BetterBackpack.Modules.OpenClose
 local Tidy = BetterBackpack.Modules.Tidy
+local SessionLog = BetterBackpack.Modules.SessionLog
 
 local function EnsureDB()
   return Config.EnsureDB()
@@ -90,8 +91,36 @@ function BetterBackpack.RecordError(context, err)
     table.remove(list, 1)
   end
 
+  if SessionLog and SessionLog.Append then
+    pcall(SessionLog.Append, string.format("ERROR [%s] %s", ctx, msg))
+  end
+
   if ForeverErrorLog and ForeverErrorLog.Record then
     pcall(ForeverErrorLog.Record, "BetterBackpack:" .. ctx .. " " .. msg, stack)
+  end
+end
+
+function BetterBackpack.SilentTraceEnabled()
+  local p = Config.GetProfile()
+  return p.silentTrace ~= false and p.actionTraceOn ~= false
+end
+
+--- Route bulk/vendor diagnostics to SV; chat only when silentTrace off or profile.debug.
+function BetterBackpack.TraceAction(detail, chatPrefix)
+  detail = tostring(detail or "")
+  if detail == "" then
+    return
+  end
+  if SessionLog and SessionLog.RecordAction then
+    pcall(SessionLog.RecordAction, detail)
+  end
+  local p = Config.GetProfile()
+  if BetterBackpack.SilentTraceEnabled() and not p.debug then
+    return
+  end
+  if Print then
+    local msg = chatPrefix and (chatPrefix .. " " .. detail) or detail
+    Print(msg)
   end
 end
 
@@ -174,6 +203,18 @@ local function DumpRing()
   local list = db.errors
   local p = db.profile
   Print(string.format(L.DUMP_HEADER or "dump — errors=%d · ver=%s", #list, tostring(Config.VERSION)))
+  if SessionLog and SessionLog.Status then
+    local st = SessionLog.Status()
+    Print(string.format(
+      "sessionLog lines=%d · actionTrace=%d · silent=%s",
+      st.lines or 0,
+      st.actionEntries or 0,
+      tostring(BetterBackpack.SilentTraceEnabled())
+    ))
+    if db.lastActionTrace then
+      print("|cff888888lastAction: " .. tostring(db.lastActionTrace) .. "|r")
+    end
+  end
   Print(string.format(
     L.STATUS_LINE or "enabled=%s · safe=%s · replace=%s · schema=%s · ver=%s · open=%s",
     tostring(p.enabled),
@@ -235,6 +276,10 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
     local name = ...
     if name == addonName then
       EnsureDB()
+      SessionLog = BetterBackpack.Modules.SessionLog or SessionLog
+      if SessionLog and SessionLog.BeginSession then
+        SafeCall("session:begin", SessionLog.BeginSession)
+      end
       BulkTransfer = BT()
       if not BulkTransfer or not BulkTransfer.TransferLane then
         Print("ERROR: BulkTransfer failed to load — check FrameXML.log / TOC")
@@ -270,7 +315,7 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
     EnsureDB()
     OpenClose = OC() or OpenClose
     BulkTransfer = BT() or BulkTransfer
-    if BulkTransfer and BulkTransfer.TransferLane then
+    if BulkTransfer and BulkTransfer.TransferLane and not BetterBackpack.SilentTraceEnabled() then
       Print("BulkTransfer ok · Ctrl+Shift+RMB lane header · Shift+RMB merged stack at vendor/mail")
     end
     if ModuleWanted() then

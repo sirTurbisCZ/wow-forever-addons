@@ -405,6 +405,10 @@ function BulkTransfer.SlotShiftTooltipLine(ctx)
 end
 
 local function BulkPrint(msg)
+  if BetterBackpack.TraceAction then
+    BetterBackpack.TraceAction(tostring(msg), "|cff88ccffBulk|r")
+    return
+  end
   if BetterBackpack.Print then
     BetterBackpack.Print("|cff88ccffBulk|r " .. tostring(msg))
   end
@@ -415,10 +419,11 @@ local function FinishMerchantPump(q)
     return
   end
   BulkPrint(string.format(
-    "sold %d / %d%s",
-    q.sold or 0,
+    "BULK done ctx=merchant lane=%s queued=%d sold=%d%s",
+    tostring(q.label or "?"),
     q.total or 0,
-    q.label and (" · " .. q.label) or ""
+    q.sold or 0,
+    (q.sold or 0) ~= (q.total or 0) and " MISMATCH=1" or ""
   ))
   if q.diag and q.diag ~= "" then
     BulkPrint(q.diag)

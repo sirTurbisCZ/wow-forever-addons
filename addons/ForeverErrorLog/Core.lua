@@ -290,12 +290,22 @@ local function InstallHandler()
         end
       end)
     end)
-    Print(L.BUGGRABBER or "hooked into BugGrabber")
+    local db = EnsureDB()
+    if db.silentBoot == false then
+      Print(L.BUGGRABBER or "hooked into BugGrabber")
+    else
+      AppendSession("INFO hooked BugGrabber silentBoot=1")
+    end
     return
   end
 
   if type(seterrorhandler) ~= "function" then
-    Print(L.NO_SETHANDLER or "seterrorhandler missing")
+    local db = EnsureDB()
+    if db.silentBoot == false then
+      Print(L.NO_SETHANDLER or "seterrorhandler missing")
+    else
+      AppendSession("WARN seterrorhandler missing")
+    end
     return
   end
 
@@ -335,10 +345,14 @@ frame:SetScript("OnEvent", function(_, event, name)
     SuppressScriptErrorsPopup()
     local db = ForeverErrorLogDB
     local n = #(db.errors or {})
-    if n > 0 then
+    if db.silentBoot == false then
+      if n > 0 then
+        Print(string.format(L.LOADED_COUNT or "loaded — %d stored", n))
+      else
+        Print(L.LOADED_EMPTY or "loaded — capturing to log, popup off · /felog")
+      end
+    elseif n > 0 then
       Print(string.format(L.LOADED_COUNT or "loaded — %d stored", n))
-    else
-      Print(L.LOADED_EMPTY or "loaded — capturing to log, popup off · /felog")
     end
   end
 end)

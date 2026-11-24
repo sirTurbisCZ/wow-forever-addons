@@ -1119,15 +1119,23 @@ end
 local function HeaderInvokeBulkTransfer(header, laneKey)
   header._bbShiftDown = nil
   header._bbCtrlDown = nil
-  if BetterBackpack.Print then
+  if BetterBackpack.TraceAction then
+    BetterBackpack.TraceAction("BULK header lane=" .. tostring(laneKey), "|cff88ccffBulk|r")
+  elseif BetterBackpack.Print then
     BetterBackpack.Print("|cff88ccffBulk|r header Ctrl+Shift+RMB · lane=" .. tostring(laneKey))
   end
   local BT = BetterBackpack.Modules.BulkTransfer or Feat("BulkTransfer")
   if BT and BT.TransferLane then
     local ok, err = pcall(BT.TransferLane, laneKey)
-    if not ok and BetterBackpack.Print then
-      BetterBackpack.Print("|cff88ccffBulk|r TransferLane error · " .. tostring(err))
+    if not ok then
+      if BetterBackpack.RecordError then
+        BetterBackpack.RecordError("TransferLane", err)
+      elseif BetterBackpack.Print then
+        BetterBackpack.Print("|cff88ccffBulk|r TransferLane error · " .. tostring(err))
+      end
     end
+  elseif BetterBackpack.RecordError then
+    BetterBackpack.RecordError("BulkTransfer", "module not loaded")
   elseif BetterBackpack.Print then
     BetterBackpack.Print("|cff88ccffBulk|r ERROR — BulkTransfer module not loaded (TOC/Core)")
   end
@@ -2938,7 +2946,9 @@ function Layout.EscDebugTrace(phase, detail)
     tostring(BetterBackpack._bbKeepShown),
     detail and tostring(detail) or ""
   )
-  if BetterBackpack.Print then
+  if BetterBackpack.TraceAction then
+    BetterBackpack.TraceAction("ESC " .. line, nil)
+  elseif BetterBackpack.Print then
     BetterBackpack.Print(line)
   elseif DEFAULT_CHAT_FRAME then
     DEFAULT_CHAT_FRAME:AddMessage("|cffc9a227BetterBackpack|r " .. line)

@@ -25,8 +25,10 @@ Aliases: `/ferrors`, `/forevererrors`.
 ## Default behavior
 
 - Errors are **collected** into `ForeverErrorLogDB`.
+- **Chat:** only real **errors** (short `[FElog]` line) + intentional `/felog` commands — no boot spam (`silentBoot`, 0.1.2+).
 - The Blizzard error popup is **off** by default (it queues old errors and is painful to dismiss).
 - After `/reload`, capture stays active and settings persist via SavedVariables.
+- **Agent watch:** `./scripts/watch-forever-traces.sh` (BB + Plateband + FElog SV paths).
 
 ## Sharing a bug
 

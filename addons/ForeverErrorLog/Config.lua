@@ -2,7 +2,7 @@
 
 ForeverErrorLog = ForeverErrorLog or {}
 
-local CURRENT_SCHEMA = 2
+local CURRENT_SCHEMA = 3
 local MAX_ERRORS = 80
 local MAX_MSG = 4000
 local MAX_SESSION_LINES = 200
@@ -14,7 +14,7 @@ Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
 Config.MAX_SESSION_LINES = MAX_SESSION_LINES
-Config.VERSION = "0.1.1"
+Config.VERSION = "0.1.2"
 
 local function Defaults()
   return {
@@ -23,6 +23,8 @@ local function Defaults()
     -- Default OFF: Blizzard popup queues stale errors and users click "next" forever.
     -- Capture into ForeverErrorLogDB still runs.
     scriptErrors = false,
+    -- Chat on login/install only when errors exist (session still logs).
+    silentBoot = true,
     errors = {},
     sessionLog = {
       startedAt = 0,
@@ -77,6 +79,14 @@ function Config.EnsureDB()
   if from < 2 then
     EnsureSessionLog(db)
     db.schemaVersion = 2
+    from = 2
+  end
+
+  if from < 3 then
+    if db.silentBoot == nil then
+      db.silentBoot = true
+    end
+    db.schemaVersion = 3
   end
 
   if type(db.errors) ~= "table" then

@@ -1,5 +1,18 @@
 # BetterBackpack changelog
 
+## 1.2.7 — silent ACTION trace (agent-readable)
+
+- **Silent by default:** `silentTrace` + `actionTraceOn` (schema **10**) — bulk/vendor diagnostics → SV, not chat.
+- **ACTION lines:** lane bulk sell (`queued`/`sold`/`MISMATCH=1`), vendor auto-sell, esc debug when `profile.debug`.
+- **Stores:** `sessionLog.export`, `actionTrace.export`, `lastActionTrace`; wiped each login.
+- **Agent:** `./scripts/watch-forever-traces.sh` (shared with Plateband / FElog).
+
+### Playtest (1.2.7)
+
+1. `/reload` → `loaded v1.2.7` (no BulkTransfer spam).
+2. Vendor → Ctrl+Shift+RMB lane or auto-sell → `/bb dump` shows `lastAction`.
+3. Mac agent: `watch-forever-traces.sh watch 8` after one `/reload`.
+
 ## GitHub release 1.2.6 (PR merge `cursor/bb-shift-stack-recipe-9374`)
 
 Tag `betterbackpack-v1.2.6` · includes **1.2.2–1.2.6**:

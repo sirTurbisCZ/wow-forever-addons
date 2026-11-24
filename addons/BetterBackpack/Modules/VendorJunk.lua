@@ -293,7 +293,12 @@ local function RunSell(list)
   if #list == 0 then
     return
   end
-  if BetterBackpack.Print then
+  if BetterBackpack.TraceAction then
+    BetterBackpack.TraceAction(
+      string.format("SELL auto start queued=%d label=auto-sell", #list),
+      "|cff88ccffVendor|r"
+    )
+  elseif BetterBackpack.Print then
     local summary = FormatSellSummary(list)
     BetterBackpack.Print(
       string.format("|cff88ccffVendor|r auto-sell · %d stacks%s", #list, summary ~= "" and (" · " .. summary) or "")
