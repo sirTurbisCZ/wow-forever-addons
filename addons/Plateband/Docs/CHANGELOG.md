@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.2.35 — ADDON_ACTION_BLOCKED fix (taint)
+
+- **Removed** per-`nameplateN` `RegisterUnitEvent(UNIT_AURA)` (0.2.34) — flooded secure path, caused *Akce rozhraní selhala kvůli addonu*.
+- Paint/layout **skipped under `InCombatLockdown`** except cooldown refresh on existing gap frames; full merge on next safe frame via `ScheduleOverlayUpdate` (deferred).
+- Off-target debuff paint: `NAME_PLATE_UNIT_ADDED` + target `UNIT_AURA` (unchanged).
+
 ## Release 0.2.34 — per-plate UNIT_AURA watch
 
 - Register `UNIT_AURA` on each `nameplateN` at add / unregister at remove — off-target visible enemies refresh gaps when debuffs change (still event-driven, no scan).
