@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## Release 0.2.36 — gap icon size lock (personal DoT)
+
+- **`MergeRowIconSize`:** when native harmful row shows your DoT, gap icons **do not grow** — lock uses `min(previous, sample)`; sample = smallest native kid (12–32px), capped by `/pb size` hint.
+- Fixes oversized merge row (e.g. Rabid Shadowhide stack chrome) beside health bar.
+
 ## Release 0.2.35 — ADDON_ACTION_BLOCKED fix (taint)
 
 - **Removed** per-`nameplateN` `RegisterUnitEvent(UNIT_AURA)` (0.2.34) — flooded secure path, caused *Akce rozhraní selhala kvůli addonu*.
