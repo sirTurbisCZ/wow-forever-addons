@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.22** (GapAuraLive sticky purge + target API harvest)
+Version: **0.2.23** (mergeFriendPlates — harmful on friendly nameplates)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 

@@ -2,7 +2,7 @@
 
 Plateband = Plateband or {}
 
-local CURRENT_SCHEMA = 8
+local CURRENT_SCHEMA = 9
 local MAX_ERRORS = 40
 local MAX_MSG = 2000
 
@@ -12,7 +12,7 @@ local Config = Plateband.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.2.22"
+Config.VERSION = "0.2.23"
 
 local function ProfileDefaults()
   return {
@@ -25,6 +25,8 @@ local function ProfileDefaults()
     paintOverlay = false,
     -- 0.1.15: safe beside-native merge default on (schema 6 had opt-in off).
     mergeMissing = true,
+    -- 0.2.23: party/friend/player nameplates — same harmful merge as enemies.
+    mergeFriendPlates = true,
     watchOn = false,
     watchInterval = 2,
     autoDiag = true,
@@ -172,6 +174,15 @@ function Config.EnsureDB()
     end
     db.schemaVersion = 8
     from = 8
+  end
+
+  if from < 9 then
+    EnsureProfile(db)
+    if db.profile.mergeFriendPlates == nil then
+      db.profile.mergeFriendPlates = true
+    end
+    db.schemaVersion = 9
+    from = 9
   end
 
   EnsureProfile(db)

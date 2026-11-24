@@ -1,5 +1,15 @@
 # Plateband changelog
 
+## 0.2.23 — friendly nameplate harmful merge
+
+- **`mergeFriendPlates`** (default on, schema 9): party/friend/player nameplates use same gap row + native chrome as enemies (no early `ClearFallback`).
+- **`EnsureUnitHarmfulParity`:** full harmful `C_UnitAuras` pass per `nameplateN` / party token when not on target-aura path.
+- Opt out: `PlatebandDB.profile.mergeFriendPlates = false`.
+
+### Playtest (0.2.23)
+
+1. `/reload` → `SESSION_START ver=0.2.23`; party member with DoT — debuff row on **friendly** nameplate (PAINT `friendPlate=1`).
+
 ## 0.2.22 — expired sticky purge + target API harvest
 
 - **`GapAuraLive` / `PruneInactiveGapRows`:** sticky, paint_hold, and queue drop **expired** or unit-absent auras (no ghost party icons).

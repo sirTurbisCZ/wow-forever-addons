@@ -50,7 +50,7 @@ flowchart TD
 |-------|--------|
 | Target enemy | `NativeKeySet` → `C_UnitAuras` foreign (`owned~=true`, skip native keys) → **`CollectTargetFrameMissing`** → `nameplateN` token |
 | Other enemy | `C_UnitAuras` on `nameplateN` only (no TF) |
-| Friend / party | No merge |
+| Friend / party / player NP | **`mergeFriendPlates`** (default on): same harmful gap merge via unit `C_UnitAuras` + `EnsureUnitHarmfulParity`; `/pb merge off` or profile off still skips |
 
 `CollectPlayerOwnedKeys` → `skipKeys` (secret dedupe only; **not** personal fallback paint).
 

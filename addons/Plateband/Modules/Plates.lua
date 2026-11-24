@@ -85,6 +85,8 @@ local CreateBandContainer
 local CreateGapAuraButton
 local CanonicalGapKey
 local EnsureTargetHarmfulParity
+local EnsureUnitHarmfulParity
+local MergeFriendPlatesEnabled
 local GapAuraKey
 local MergeRowIconSize
 local DedupeGapIcons
@@ -666,6 +668,14 @@ CopyKeySet = function(src)
     end
   end
   return t
+end
+
+MergeFriendPlatesEnabled = function()
+  local p = Profile()
+  if p.mergeMissing ~= true then
+    return false
+  end
+  return p.mergeFriendPlates ~= false
 end
 
 --- Friend / player plates: name must sit above auras (preference).
@@ -1282,7 +1292,7 @@ end
 --- Opt-in merge layout: only move Plateband fallback frame — never name / DebuffList.
 LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
   painted = tonumber(painted) or 0
-  if IsPlayerOrFriendPlate(unit, plate) then
+  if IsPlayerOrFriendPlate(unit, plate) and not MergeFriendPlatesEnabled() then
     return
   end
   if not mergeFb or painted <= 0 then
@@ -2625,6 +2635,59 @@ EnsureTargetHarmfulParity = function(plate, missing, skipKeys, maxN, stats)
   end
 end
 
+--- Nameplate unit token (party/friend/player) — full harmful row from C_UnitAuras.
+EnsureUnitHarmfulParity = function(unitToken, plate, missing, skipKeys, maxN, stats)
+  if not unitToken or not plate or not missing or not skipKeys then
+    return
+  end
+  if not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
+    return
+  end
+  local nativeKeys = NativeKeySet(plate)
+  for idx = 1, 40 do
+    if #missing >= maxN then
+      return
+    end
+    local data
+    local ok = pcall(function()
+      data = C_UnitAuras.GetAuraDataByIndex(unitToken, idx, "HARMFUL")
+    end)
+    if not ok or not data then
+      break
+    end
+    local ck = GapAuraKey(data, data.icon)
+    if ck and nativeKeys[ck] then
+      -- native DebuffList
+    elseif ck and skipKeys[ck] then
+      -- queued
+    else
+      local inMissing = false
+      for j = 1, #missing do
+        if CanonicalGapKey(missing[j]) == ck then
+          inMissing = true
+          break
+        end
+      end
+      if not inMissing then
+        local row = {
+          icon = data.icon,
+          spellId = data.spellId,
+          auraInstanceID = data.auraInstanceID,
+          applications = data.applications,
+          expirationTime = data.expirationTime,
+          duration = data.duration,
+          fromUnitApi = true,
+        }
+        if AuraIsOurPersonalOnly(data) then
+          AppendGapRow(skipKeys, missing, maxN, stats, row, false)
+        else
+          AppendGapRow(skipKeys, missing, maxN, stats, row, true)
+        end
+      end
+    end
+  end
+end
+
 DedupeGapIcons = function(missing, maxN)
   if type(missing) ~= "table" then
     return missing
@@ -3282,7 +3345,8 @@ PaintMergeMissing = function(unit, plate)
   EnsureNativeVisible(plate)
   RestoreNameShift(unit, plate)
 
-  if IsPlayerOrFriendPlate(unit, plate) then
+  local friendPlate = IsPlayerOrFriendPlate(unit, plate)
+  if friendPlate and not MergeFriendPlatesEnabled() then
     ClearFallback(unit)
     return 0
   end
@@ -3342,6 +3406,9 @@ PaintMergeMissing = function(unit, plate)
       local foreignSkip = CopyKeySet(paintKeys)
       CollectPlayerOwnedKeys(unit, foreignSkip)
       CollectForeignAuraGaps(unit, foreignSkip, missing, maxN, allowSecret, stats)
+      CollectUnitHarmfulMirror(unit, foreignSkip, missing, maxN, stats)
+      EnsureUnitHarmfulParity(unit, plate, missing, foreignSkip, maxN, stats)
+      DedupeGapIcons(missing, maxN)
       PruneInactiveGapRows(missing, unit, maxN)
     end
   end
@@ -3356,6 +3423,7 @@ PaintMergeMissing = function(unit, plate)
   lastPaintDebug.miss = #missing
   lastPaintDebug.unit = tostring(unit)
   lastPaintDebug.nativeN = nativeN
+  lastPaintDebug.friendPlate = friendPlate and 1 or 0
 
   if #missing == 0 then
     local held = fallbacks[unit]
