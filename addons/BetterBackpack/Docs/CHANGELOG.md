@@ -1,5 +1,15 @@
 # BetterBackpack changelog
 
+## Release 1.2.13 — hotfix: bags open
+
+**1.2.12 regression:** **B** did nothing — `DoLayout` called `VisibleGridSignature` before its `local function` declaration (Lua scope → nil global → layout error).
+
+- Forward-declare `VisibleGridSignature` (same pattern as `EnsureTitleChrome`).
+
+### Playtest (1.2.13)
+
+1. `/reload` → `v1.2.13`; **B** opens bags; merged grid packing from 1.2.12 still OK.
+
 ## Release 1.2.12 — pack merged grid (no holes)
 
 Materials / Reagent lanes no longer show wide gaps or icons floating off-grid when stack merge collapses slots — grid repacks left like native.

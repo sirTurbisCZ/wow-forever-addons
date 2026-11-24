@@ -102,6 +102,7 @@ local EnsureTitleChrome
 local ApplyCombinedBagsChrome
 local SetBagMatchHighlight
 local ClearBagMatchGlows
+local VisibleGridSignature
 
 local function SafeNum(v, fallback)
   return Slots.SafeNum(v, fallback)
@@ -3485,7 +3486,7 @@ local function InventoryOccupiedCount()
   return n
 end
 
-local function VisibleGridSignature()
+VisibleGridSignature = function()
   local order = Layout.GetCategoryOrder()
   local SM = Feat("StackMerge")
   local buckets = CollectBuckets(false)
