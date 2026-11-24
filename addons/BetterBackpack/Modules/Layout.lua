@@ -3689,6 +3689,41 @@ function Layout.RunSelfTest()
   ok(attrN >= 36 or (InCombatLockdown and InCombatLockdown()), "attrs < 36")
   local d = Layout.DebugState()
   ok(d.exists, "main frame missing")
+  ok(type(VisibleGridSignature) == "function", "VisibleGridSignature missing")
+  local sigOk = pcall(function()
+    local _ = VisibleGridSignature()
+  end)
+  ok(sigOk, "VisibleGridSignature call failed")
+  ok(type(Layout.RefreshLight) == "function", "RefreshLight missing")
+  ok(type(NeedsMergedGridRepaint) == "function" or Feat("StackMerge") ~= nil, "merge repaint hook missing")
+  local SM = Feat("StackMerge")
+  if SM and SM.RunSelfTest then
+    local smOk, _, smFail, smNotes = SM.RunSelfTest()
+    if smOk then
+      pass = pass + 1
+    else
+      fail = fail + (smFail or 1)
+      if smNotes then
+        for i = 1, #smNotes do
+          notes[#notes + 1] = "stack:" .. smNotes[i]
+        end
+      end
+    end
+  end
+  local BT = Feat("BulkTransfer")
+  if BT and BT.RunSelfTest then
+    local btOk, _, btFail, btNotes = BT.RunSelfTest()
+    if btOk then
+      pass = pass + 1
+    else
+      fail = fail + (btFail or 1)
+      if btNotes then
+        for i = 1, #btNotes do
+          notes[#notes + 1] = "bulk:" .. btNotes[i]
+        end
+      end
+    end
+  end
   local combat = (InCombatLockdown and InCombatLockdown()) and 1 or 0
   local card = string.format(
     "BETTERBACKPACK_SELFTEST ver=%s pass=%d fail=%d combat=%d secure=%d attrs=%d shown=%s w=%s h=%s strata=%s",

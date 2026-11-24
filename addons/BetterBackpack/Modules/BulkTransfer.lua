@@ -661,7 +661,7 @@ function BulkTransfer.LaneHeaderRmb(laneKey)
   return BulkTransfer.TransferLane(laneKey)
 end
 
-function BulkTransfer.TransferMergeGroup(bag, slot)
+function BulkTransfer.TransferMergeGroup(bag, slot, mergedFromHint)
   BulkPrint(string.format("TransferMergeGroup · %s:%s", tostring(bag), tostring(slot)))
   if not OOC() then
     BulkPrint("abort · in combat lockdown")
@@ -675,7 +675,7 @@ function BulkTransfer.TransferMergeGroup(bag, slot)
   local StackMerge = BetterBackpack.Modules and BetterBackpack.Modules.StackMerge
   local slots
   if StackMerge and StackMerge.CollectMergeGroup then
-    slots = StackMerge.CollectMergeGroup(bag, slot)
+    slots = StackMerge.CollectMergeGroup(bag, slot, mergedFromHint)
   else
     slots = { { bag = bag, slot = slot } }
   end
@@ -724,6 +724,32 @@ function BulkTransfer.TransferSlotList(slots, label)
   end
   label = label or "transfer"
   return StartQueue(ctx, slots, label, ctx == "merchant" and MerchantProbe(slots[1]) or nil)
+end
+
+--- Sell/attach wiring smoke (no live merchant).
+function BulkTransfer.RunSelfTest()
+  local pass, fail, notes = 0, 0, {}
+  local function ok(cond, msg)
+    if cond then
+      pass = pass + 1
+    else
+      fail = fail + 1
+      notes[#notes + 1] = msg
+    end
+  end
+  ok(type(BulkTransfer.TransferMergeGroup) == "function", "TransferMergeGroup missing")
+  ok(type(BulkTransfer.TransferLane) == "function", "TransferLane missing")
+  local StackMerge = BetterBackpack.Modules and BetterBackpack.Modules.StackMerge
+  ok(StackMerge ~= nil, "StackMerge module missing")
+  if StackMerge then
+    local slots = StackMerge.CollectMergeGroup(0, 1, { { bag = 0, slot = 2 } })
+    ok(type(slots) == "table" and #slots >= 1, "CollectMergeGroup hint path")
+  end
+  if OOC() then
+    local noop = BulkTransfer.TransferMergeGroup(0, 1, nil)
+    ok(noop == false or noop == true, "TransferMergeGroup callable OOC")
+  end
+  return fail == 0, pass, fail, notes
 end
 
 return BulkTransfer

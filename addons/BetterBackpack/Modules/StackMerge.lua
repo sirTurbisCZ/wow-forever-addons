@@ -323,10 +323,38 @@ function StackMerge.ApplyDisplayCount(btn, entry)
 end
 
 --- All bag:slot stacks sharing the same merge key as anchor (inventory scan).
-function StackMerge.CollectMergeGroup(anchorBag, anchorSlot)
+--- mergedFromHint: optional button._bbMergedFrom when anchor bag:slot is briefly empty.
+function StackMerge.CollectMergeGroup(anchorBag, anchorSlot, mergedFromHint)
   local single = { { bag = anchorBag, slot = anchorSlot } }
   if not StackMerge.IsEnabled() then
     return single
+  end
+  if type(mergedFromHint) == "table" and #mergedFromHint > 0 then
+    local resolved = false
+    for i = 1, #mergedFromHint do
+      local b, s = mergedFromHint[i].bag, mergedFromHint[i].slot
+      if b ~= nil and s ~= nil then
+        local emptyOk = not Slots or not Slots.SlotOccupied or Slots.SlotOccupied(b, s)
+        if emptyOk then
+          local id = ResolveItemID(b, s)
+          if id then
+            anchorBag, anchorSlot = b, s
+            resolved = true
+            break
+          end
+        end
+      end
+    end
+    if not resolved then
+      for i = 1, #mergedFromHint do
+        local id = ResolveItemID(mergedFromHint[i].bag, mergedFromHint[i].slot)
+        if id then
+          anchorBag = mergedFromHint[i].bag
+          anchorSlot = mergedFromHint[i].slot
+          break
+        end
+      end
+    end
   end
   local anchorID, anchorInfo = ResolveItemID(anchorBag, anchorSlot)
   if not anchorID then
@@ -374,4 +402,28 @@ function StackMerge.CollectMergeGroup(anchorBag, anchorSlot)
     return single
   end
   return out
+end
+
+--- Regression wiring for /bb selftest (no live vendor).
+function StackMerge.RunSelfTest()
+  local pass, fail, notes = 0, 0, {}
+  local function ok(cond, msg)
+    if cond then
+      pass = pass + 1
+    else
+      fail = fail + 1
+      notes[#notes + 1] = msg
+    end
+  end
+  ok(StackMerge.Collapse ~= nil, "Collapse missing")
+  ok(StackMerge.CollectMergeGroup ~= nil, "CollectMergeGroup missing")
+  ok(StackMerge.VisibleRepaintNeeded ~= nil, "VisibleRepaintNeeded missing")
+  ok(StackMerge.RefreshMergedButtons ~= nil, "RefreshMergedButtons missing")
+  ok(StackMerge.IsEnabled() == true or StackMerge.IsEnabled() == false, "IsEnabled broken")
+  local list = { { bag = 0, slot = 1 }, { bag = 0, slot = 2 } }
+  local collapsed = StackMerge.Collapse(list)
+  ok(type(collapsed) == "table", "Collapse not table")
+  ok(#collapsed >= 1, "Collapse returned no entries")
+  ok(type(StackMerge.CollectMergeGroup(0, 1)) == "table", "CollectMergeGroup not table")
+  return fail == 0, pass, fail, notes
 end

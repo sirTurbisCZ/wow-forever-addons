@@ -1,5 +1,20 @@
 # BetterBackpack changelog
 
+## Release 1.2.15 — merge sell + selftest regression
+
+Vendor/mail **Shift+RMB** (or merged-stack RMB) still sells **all** physical stacks after grid-anchor fixes — `CollectMergeGroup` uses `btn._bbMergedFrom` when representative `bag:slot` is empty.
+
+## 1.2.15 — merge sell + `/bb selftest`
+
+- **`CollectMergeGroup(bag, slot, mergedFromHint)`** — resolve merge key from any occupied sibling stack.
+- **`BulkTransfer.TransferMergeGroup`** + **`Context.TrySpecialRmb`** pass `_bbMergedFrom`.
+- **`/bb selftest`:** StackMerge + BulkTransfer smoke, `VisibleGridSignature` call, open/close test (existing).
+
+### Playtest (1.2.15)
+
+1. `/reload` → `/bb selftest` — pass + merge regression line.
+2. Vendor → merged reagents → **Shift+RMB** — all stacks queue-sell (SV `actionTrace`).
+
 ## Release 1.2.14 — merge repack on stack click
 
 After LMB on a merged stack (mussels), Materials lane no longer leaves an **empty first cell** or **green bag highlight** ghost while the stack is on the cursor.

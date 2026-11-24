@@ -132,7 +132,8 @@ function Context.TrySpecialRmb(self)
   if shift or merged then
     local BT = BetterBackpack.Modules and BetterBackpack.Modules.BulkTransfer
     if BT and BT.TransferMergeGroup then
-      return BT.TransferMergeGroup(b, s) and true or false
+      local hint = merged and self._bbMergedFrom
+      return BT.TransferMergeGroup(b, s, hint) and true or false
     end
   end
   if not PickupSlotToCursor(b, s) then

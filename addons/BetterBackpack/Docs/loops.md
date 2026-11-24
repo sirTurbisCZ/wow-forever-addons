@@ -56,6 +56,7 @@ flowchart TD
 Optional feature modules: `Feat("Name")` lookups — Layout does not crash if a module is omitted from TOC.
 
 - **Bag events:** `QueueBagRefresh` → `RefreshLight` (sync + `StackMerge.RefreshMergedButtons`); full `DoLayout` when occupied count, **grid signature (incl. merge anchor bag.slot)**, or `VisibleRepaintNeeded` (empty merged cell on cursor), else explicit `Relayout`.
+- **`/bb selftest`:** layout secure slots + **`VisibleGridSignature`** + `StackMerge`/`BulkTransfer` wiring + **`OpenClose.RunOpenCloseSelfTest`** (open bags).
 
 - **Custom lanes:** `BetterBackpackDB.chars["Name-Realm"].customCategories` + char `itemRules` (custom_*). Built-in lane toggles remain on `profile`. `PLAYER_ENTERING_WORLD` → `CustomCategories.OnCharacterActive` refreshes layout on character switch.
 

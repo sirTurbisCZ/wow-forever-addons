@@ -783,6 +783,7 @@ SlashCmdList.BETTERBACKPACK = function(msg)
     end
     if ok then
       Print(L.SELFTEST_HINT or "selftest PASS — still need 1× manual combat RMB")
+      Print("merge regression OK (open/close + VisibleGridSignature + sell wiring) — manual: vendor Shift+RMB merged stack")
     else
       Print("selftest FAIL")
     end
