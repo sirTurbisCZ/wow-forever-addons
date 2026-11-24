@@ -1,5 +1,16 @@
 # Plateband changelog
 
+## 0.2.17 — native gap aura chrome (merge row)
+
+- **Gap row uses Blizzard debuff button templates** (`DebuffButtonTemplate`, …) via `CreateGapAuraButton` + `InitAuraButton` — border, cooldown swipe, stack font like personal DebuffList.
+- **`NativeAuraMetrics`:** min shown aura width 12–48px; TF fallback size; cap vs health bar (no oversized chrome).
+- **Paint** stores aura rows (stacks/instance); `ApplyGapAuraVisual` applies icon + stack text.
+
+### Playtest (0.2.17)
+
+1. `/reload` → `ver=0.2.17`; own + party DoT on target — **same size/chrome** as native personal on plate.
+2. No FElog `paint` nil spam when idle.
+
 ## 0.2.16 — personal + foreign coexist
 
 - **`AuraIsOurPersonalOnly`** — party DoTs no longer routed only to personal / blocked from foreign.

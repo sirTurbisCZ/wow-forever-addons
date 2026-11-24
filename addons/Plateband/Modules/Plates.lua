@@ -76,8 +76,11 @@ local CountNativeAuraRow
 local CountPlateHarmfulShown
 local CountShownAuraKids
 local CountTargetFrameAuras
+local ApplyGapAuraVisual
 local CreateBandContainer
+local CreateGapAuraButton
 local CanonicalGapKey
+local MergeRowIconSize
 local DedupeGapIcons
 local Defer
 local EnsureFallback
@@ -128,6 +131,7 @@ local PublicTexKey
 local PushTfAuraFrame
 local RawChildCount
 local RefreshAll
+local SampleTfDebuffIconSize
 local RememberGapSticky
 local RestoreNameShift
 local SafeFallbackParent
@@ -954,6 +958,30 @@ MaxIcons = function()
   return n
 end
 
+local GAP_AURA_TEMPLATES = {
+  "DebuffButtonTemplate",
+  "BuffButtonTemplate",
+  "TargetDebuffFrameTemplate",
+  "TargetBuffFrameTemplate",
+}
+
+CreateGapAuraButton = function(parent, size)
+  size = size or IconSize()
+  for i = 1, #GAP_AURA_TEMPLATES do
+    local tpl = GAP_AURA_TEMPLATES[i]
+    local ok, btn = pcall(CreateFrame, "Button", nil, parent, tpl)
+    if ok and btn then
+      btn:Hide()
+      pcall(InitAuraButton, btn, size)
+      return btn
+    end
+  end
+  local frame = CreateFrame("Frame", nil, parent)
+  frame:Hide()
+  pcall(InitAuraButton, frame, size)
+  return frame
+end
+
 InitAuraButton = function(button, size)
   -- Forever aura icons are often masked: SetTexCoord → FE flood
   -- "Texture:SetTextCoord(): Cannot set tex coords when texture has mask"
@@ -1254,7 +1282,7 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
   end
 
   local native = NativeDebuffList(plate)
-  local _, pad = NativeAuraMetrics(plate)
+  local _, pad = MergeRowIconSize(plate)
   mergeFb:ClearAllPoints()
   local right = NativeBandRightAnchor(plate)
   local anchor = right or native
@@ -1319,26 +1347,40 @@ EnsureFallback = function(unit, plate)
   end
   local fb = fallbacks[unit]
   if fb then
-    if fb:GetParent() ~= parent then
-      pcall(fb.SetParent, fb, parent)
+    if fb._pbGapVer ~= 2 or not fb.icons or not fb.icons[1] then
+      fb._pbGapVer = nil
+    elseif fb.icons[1] and fb.icons[1].SetTexture and not (fb.icons[1].icon or fb.icons[1].Icon) then
+      fb._pbGapVer = nil
     end
-    fb._pbPlate = plate
-    return fb
+    if not fb._pbGapVer then
+      if fb.icons then
+        for i = 1, #fb.icons do
+          pcall(fb.icons[i].Hide, fb.icons[i])
+        end
+      end
+      fb.icons = nil
+    else
+      if fb:GetParent() ~= parent then
+        pcall(fb.SetParent, fb, parent)
+      end
+      fb._pbPlate = plate
+      return fb
+    end
   end
   fb = CreateFrame("Frame", nil, parent)
   fb:EnableMouse(false)
   fb:Hide()
   fb.icons = {}
   local maxN = MaxIcons()
-  local sz = IconSize()
+  local sz = MergeRowIconSize(plate)
+  fb._pbPlate = plate
   for i = 1, maxN do
-    local tex = fb:CreateTexture(nil, "ARTWORK")
-    tex:SetSize(sz, sz)
-    tex:Hide()
-    -- No SetTexCoord — Forever masks.
-    fb.icons[i] = tex
+    local btn = CreateGapAuraButton(fb, sz)
+    btn._pbPlate = plate
+    fb.icons[i] = btn
   end
   fb._pbFallback = true
+  fb._pbGapVer = 2
   fb._pbPlate = plate
   fallbacks[unit] = fb
   return fb
@@ -1436,62 +1478,98 @@ NativeKeySet = function(plate)
   return keys
 end
 
---- Match native debuff chrome (e.g. Rake left of health): size + spacing from shown kid.
-NativeAuraMetrics = function(plate)
-  local list = NativeDebuffList(plate)
-  local sz = IconSize()
-  local pad = OVERLAY_PAD
-  if not list then
-    return sz, pad
+local function AuraChromeWidth(frame)
+  if not frame then
+    return nil
   end
-  local ok, kids = pcall(function()
-    return { list:GetChildren() }
+  local w
+  pcall(function()
+    w = frame:GetWidth()
   end)
-  local buttons = {}
-  CollectPlateDebuffButtons(plate, buttons, MaxIcons())
-  for i = 1, #buttons do
-    local child = buttons[i]
-    if child and SafeShown(child) then
-      pcall(function()
-        local w = child:GetWidth()
-        local h = child:GetHeight()
-        if type(w) == "number" and not IsSecret(w) and w >= 8 and w <= 64 then
-          sz = w
-        end
-        if type(h) == "number" and not IsSecret(h) and h >= 8 and h <= 64 then
-          if type(w) == "number" and not IsSecret(w) then
-            sz = w
-          else
-            sz = h
-          end
-        end
-      end)
-      break
-    end
+  if type(w) ~= "number" or IsSecret(w) then
+    return nil
   end
-  if ok and type(kids) == "table" then
-    for i = 1, #kids do
-      local child = kids[i]
-      if child and SafeShown(child) and (child.Icon or child.icon or child.GetAuraInstance) then
-        pcall(function()
-          local w = child:GetWidth()
-          local h = child:GetHeight()
-          if type(w) == "number" and not IsSecret(w) and w >= 8 and w <= 64 then
-            sz = w
-          end
-          if type(h) == "number" and not IsSecret(h) and h >= 8 and h <= 64 then
-            if type(w) == "number" and not IsSecret(w) then
-              sz = w
-            else
-              sz = h
-            end
-          end
-        end)
-        break
+  if w < 12 or w > 48 then
+    return nil
+  end
+  return w
+end
+
+SampleTfDebuffIconSize = function()
+  for i = 1, 16 do
+    local f = _G["TargetFrameDebuff" .. i]
+    if f and SafeShown(f) then
+      local w = AuraChromeWidth(f)
+      if w then
+        return w
       end
     end
   end
+  local container = GetTargetAuraContainer()
+  if container and container.debuffAuraGroup and container.debuffAuraGroup.GetFramesByIndex then
+    local frames
+    pcall(function()
+      frames = container.debuffAuraGroup:GetFramesByIndex()
+    end)
+    if type(frames) == "table" then
+      for j = 1, #frames do
+        local w = AuraChromeWidth(frames[j])
+        if w then
+          return w
+        end
+      end
+    end
+  end
+  return nil
+end
+
+--- Match native debuff chrome — reject oversized chrome (stack parent, not aura kid).
+NativeAuraMetrics = function(plate)
+  local pad = OVERLAY_PAD
+  local sz = IconSize()
+  local widths = {}
+  local buttons = {}
+  CollectPlateDebuffButtons(plate, buttons, MaxIcons())
+  for i = 1, #buttons do
+    local w = AuraChromeWidth(buttons[i])
+    if w then
+      widths[#widths + 1] = w
+    end
+  end
+  if #widths > 0 then
+    table.sort(widths)
+    sz = widths[1]
+    if widths[#widths] - widths[1] <= 4 then
+      sz = widths[1]
+    end
+  else
+    local tf = SampleTfDebuffIconSize()
+    if tf then
+      sz = tf
+    end
+  end
+  local bar = HealthBar(plate)
+  if bar then
+    pcall(function()
+      local bh = bar:GetHeight()
+      if type(bh) == "number" and not IsSecret(bh) and bh > 0 then
+        local cap = math.floor(bh * 0.92)
+        if cap >= 12 and sz > cap then
+          sz = cap
+        end
+      end
+    end)
+  end
+  if sz < 12 then
+    sz = 12
+  elseif sz > 40 then
+    sz = 40
+  end
   return sz, pad
+end
+
+MergeRowIconSize = function(plate)
+  return NativeAuraMetrics(plate)
 end
 
 PickRightmostAuraFrame = function(frames)
@@ -1658,9 +1736,11 @@ CollectPlayerOwnedKeys = function(unitToken, into)
       if key then
         into[key] = true
       end
-      local ck = CanonicalGapKey({ icon = data.icon, spellId = data.spellId, auraInstanceID = data.auraInstanceID })
-      if ck then
-        into[ck] = true
+      if type(CanonicalGapKey) == "function" then
+        local ck = CanonicalGapKey({ icon = data.icon, spellId = data.spellId, auraInstanceID = data.auraInstanceID })
+        if ck then
+          into[ck] = true
+        end
       end
     end
   end
@@ -1752,7 +1832,12 @@ CollectForeignAuraGaps = function(unitToken, skipKeys, out, maxN, allowSecretUnk
       if ck and skipKeys[ck] then
         -- dup
       elseif take and key and not skipKeys[key] then
-        out[#out + 1] = icon
+        out[#out + 1] = {
+          icon = icon,
+          spellId = data.spellId,
+          auraInstanceID = data.auraInstanceID,
+          applications = data.applications,
+        }
         skipKeys[key] = true
         if ck then
           skipKeys[ck] = true
@@ -1793,7 +1878,12 @@ CollectPersonalAuraGaps = function(unitToken, paintKeys, out, maxN, stats)
       if ck and paintKeys[ck] then
         -- already queued (TF harvest / texture dedupe)
       elseif key and not paintKeys[key] then
-        out[#out + 1] = icon
+        out[#out + 1] = {
+          icon = icon,
+          spellId = data.spellId,
+          auraInstanceID = data.auraInstanceID,
+          applications = data.applications,
+        }
         paintKeys[key] = true
         if ck then
           paintKeys[ck] = true
@@ -2486,9 +2576,10 @@ AppendGapRow = function(skipKeys, out, maxN, stats, row, countForeign)
     end)
   end
   if AuraIconPresent(icon) then
-    out[#out + 1] = icon
+    row.icon = icon
+    out[#out + 1] = row
   elseif row.iconTex then
-    out[#out + 1] = { iconTex = row.iconTex, icon = icon }
+    out[#out + 1] = { iconTex = row.iconTex, icon = icon, spellId = row.spellId, auraInstanceID = row.auraInstanceID }
   else
     return
   end
@@ -2562,6 +2653,43 @@ SetIconTexture = function(icon, t)
     end
   end)
   return okSet
+end
+
+ApplyGapAuraVisual = function(button, entry)
+  if not button then
+    return false
+  end
+  local tex = button.icon or button.Icon
+  if not tex then
+    pcall(function()
+      local psz = MergeRowIconSize(button._pbPlate)
+      InitAuraButton(button, button:GetWidth() or psz or IconSize())
+    end)
+    tex = button.icon or button.Icon
+  end
+  if not tex then
+    return false
+  end
+  local ok = SetIconTexture(tex, entry)
+  if type(entry) == "table" then
+    local apps = entry.applications or entry.stacks
+    pcall(function()
+      if button.count and apps ~= nil and not IsSecret(apps) and type(apps) == "number" then
+        if apps > 1 then
+          button.count:SetText(tostring(apps))
+          button.count:Show()
+        else
+          button.count:SetText("")
+        end
+      end
+    end)
+    pcall(function()
+      if button.SetAuraInstance and entry.auraInstanceID then
+        button:SetAuraInstance(entry.auraInstanceID)
+      end
+    end)
+  end
+  return ok
 end
 
 TfSupplementSkipKeys = function(paintKeys, missing)
@@ -2793,30 +2921,40 @@ PaintMergeMissing = function(unit, plate)
     return 0
   end
   lastPaintDebug.parent = nativeN > 0 and "nativeRow" or "healthBar"
-  local sz, pad = NativeAuraMetrics(plate)
+  local sz, pad = MergeRowIconSize(plate)
+  fb._pbPlate = plate
   local painted = 0
   for i = 1, #missing do
     if painted >= maxN then
       break
     end
     painted = painted + 1
-    local icon = fb.icons[painted]
+    local slot = fb.icons[painted]
+    if not slot or not slot.SetSize then
+      slot = CreateGapAuraButton(fb, sz)
+      slot._pbPlate = plate
+      fb.icons[painted] = slot
+    end
     local okLay = pcall(function()
-      icon:ClearAllPoints()
-      icon:SetSize(sz, sz)
-      icon:SetPoint("LEFT", fb, "LEFT", (painted - 1) * (sz + pad), 0)
+      pcall(InitAuraButton, slot, sz)
+      slot:ClearAllPoints()
+      slot:SetSize(sz, sz)
+      slot:SetPoint("LEFT", fb, "LEFT", (painted - 1) * (sz + pad), 0)
     end)
     if not okLay then
       painted = painted - 1
-    elseif SetIconTexture(icon, missing[i]) then
-      pcall(icon.Show, icon)
+    elseif ApplyGapAuraVisual(slot, missing[i]) then
+      pcall(slot.Show, slot)
     else
-      pcall(icon.Hide, icon)
+      pcall(slot.Hide, slot)
       painted = painted - 1
     end
   end
   for i = painted + 1, #fb.icons do
-    pcall(fb.icons[i].Hide, fb.icons[i])
+    local slot = fb.icons[i]
+    if slot then
+      pcall(slot.Hide, slot)
+    end
   end
 
   if painted == 0 then

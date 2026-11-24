@@ -5,7 +5,7 @@
 
 ## Product rule (0.2.7)
 
-**One native-looking harmful row** on enemy **target** nameplates (e.g. Rake + timer left of health): Blizzard `DebuffList` / `auraPools` kids first; Plateband paints **personal gaps** (player DoTs missing from native) then **foreign gaps**. Dedupe **only** `NativeKeySet` for personal; `CollectPlayerOwnedKeys` applies to **foreign** skip set only. Gaps match **native kid size** (`NativeAuraMetrics`), appended **RIGHT of rightmost native** with **BOTTOM** band align. Gap icons are texture-only (timers on native). **No** AuraContainer overlay row.
+**One native-looking harmful row** on enemy **target** nameplates (e.g. Rake + timer left of health): Blizzard `DebuffList` / `auraPools` kids first; Plateband paints **personal gaps** (player DoTs missing from native) then **foreign gaps**. Dedupe **only** `NativeKeySet` for personal; `CollectPlayerOwnedKeys` applies to **foreign** skip set only. Gaps match **native kid size** (`NativeAuraMetrics`), appended **RIGHT of rightmost native** with **BOTTOM** band align. Gap icons use **native debuff button chrome** (`CreateGapAuraButton`); size from `MergeRowIconSize`. **No** AuraContainer overlay row.
 
 ## Hard rules (non-negotiable)
 
