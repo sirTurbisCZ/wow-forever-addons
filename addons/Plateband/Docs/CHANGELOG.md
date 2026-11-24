@@ -1,5 +1,14 @@
 # Plateband changelog
 
+## Release 0.2.39 — native nameplate cooldown font
+
+- Gap timers sample **native** debuff / nameplate aura cooldown: `SetUseAuraDisplayTime`, `SetCountdownFont` (`LayoutFont_Bold_Small_Outline` fallback), font **path + px** from `GetCountdownFontString` or `Duration` (scaled to `/pb size`).
+- Removes custom 44% timer estimate — **6 / 9** fit like Blizzard row.
+
+### Playtest (0.2.39)
+
+1. `/reload` → `v0.2.39`; merge icon ~6–10s — center digits match native row beside it.
+
 ## Release 0.2.38 — subtle cooldown timer text
 
 - Gap/merge **duration** uses scaled `SetDurationText` (≈44% of icon px, min 8) — matches native subtle digits, not oversized CooldownFrame “21”.

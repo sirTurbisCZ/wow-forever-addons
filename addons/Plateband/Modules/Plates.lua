@@ -1180,31 +1180,174 @@ local GAP_AURA_TEMPLATES = {
   "TargetBuffFrameTemplate",
 }
 
-local function PbAuraTimerFontSize(iconSz)
-  local sz = tonumber(iconSz) or 18
-  return math.max(8, math.floor(sz * 0.44 + 0.5))
+local NATIVE_AURA_COUNTDOWN_FONT = "LayoutFont_Bold_Small_Outline"
+local nativeAuraTimerStyle
+
+local function ReadFontStringStyle(fs)
+  if not fs or not fs.GetFont then
+    return nil
+  end
+  local path, size, flags = fs:GetFont()
+  if type(path) ~= "string" or type(size) ~= "number" then
+    return nil
+  end
+  return { path = path, size = size, flags = flags or "" }
 end
 
-local function PbAuraStackFontSize(iconSz)
-  local sz = tonumber(iconSz) or 18
-  return math.max(7, math.floor(sz * 0.38 + 0.5))
+--- Sample native debuff / target aura countdown (nameplate parity).
+SampleNativeAuraTimerStyle = function()
+  if nativeAuraTimerStyle then
+    return nativeAuraTimerStyle
+  end
+  nativeAuraTimerStyle = {
+    fontName = NATIVE_AURA_COUNTDOWN_FONT,
+    path = nil,
+    size = 7,
+    flags = "OUTLINE",
+    iconSize = 18,
+  }
+  local probes = {}
+  pcall(function()
+    CollectTargetFrameButtons(probes, 6)
+  end)
+  if #probes == 0 then
+    for i = 1, 40 do
+      local f = _G["TargetFrameDebuff" .. i]
+      if f and (f.Icon or f.icon or f.GetAuraInstance) then
+        probes[#probes + 1] = f
+        break
+      end
+    end
+  end
+  local plates = {}
+  pcall(function()
+    plates = EnumerateLivePlates() or {}
+  end)
+  for pi = 1, math.min(#plates, 12) do
+    if #probes >= 8 then
+      break
+    end
+    local p = plates[pi]
+    local plate = (type(p) == "table" and (p.plate or p.frame)) or p
+    if plate then
+      pcall(CollectPlateDebuffButtons, plate, probes, 8)
+    end
+  end
+  for i = 1, #probes do
+    local btn = probes[i]
+    if not btn then
+      break
+    end
+    pcall(function()
+      local iw = btn:GetWidth()
+      if type(iw) == "number" and iw >= 10 and iw <= 40 then
+        nativeAuraTimerStyle.iconSize = iw
+      end
+      local cd = btn.cooldown or btn.Cooldown
+      if cd then
+        if cd.GetCountdownFont then
+          local fn = cd:GetCountdownFont()
+          if type(fn) == "string" and fn ~= "" then
+            nativeAuraTimerStyle.fontName = fn
+          end
+        end
+        if cd.GetCountdownFontString then
+          local st = ReadFontStringStyle(cd:GetCountdownFontString())
+          if st then
+            nativeAuraTimerStyle.path = st.path
+            nativeAuraTimerStyle.size = st.size
+            nativeAuraTimerStyle.flags = st.flags
+          end
+        end
+      end
+      if not nativeAuraTimerStyle.path then
+        for _, key in ipairs({ "Duration", "durationText" }) do
+          local st = ReadFontStringStyle(btn[key])
+          if st then
+            nativeAuraTimerStyle.path = st.path
+            nativeAuraTimerStyle.size = st.size
+            nativeAuraTimerStyle.flags = st.flags
+            break
+          end
+        end
+      end
+      if not nativeAuraTimerStyle.stackPath then
+        local st = ReadFontStringStyle(btn.Count or btn.count)
+        if st then
+          nativeAuraTimerStyle.stackPath = st.path
+          nativeAuraTimerStyle.stackSize = st.size
+          nativeAuraTimerStyle.stackFlags = st.flags
+        end
+      end
+    end)
+    if nativeAuraTimerStyle.path then
+      break
+    end
+  end
+  if not nativeAuraTimerStyle.path then
+    pcall(function()
+      local ref = NumberFontNormalSmall or GameFontHighlightSmall
+      local path, size, flags = ref:GetFont()
+      if path and size then
+        nativeAuraTimerStyle.path = path
+        nativeAuraTimerStyle.size = math.min(size, 9)
+        nativeAuraTimerStyle.flags = flags or "OUTLINE"
+      end
+    end)
+  end
+  return nativeAuraTimerStyle
 end
 
-local function StyleAuraTimerFont(fs, iconSz)
+local function ScaledNativeFontSize(iconSz, baseSize, baseIcon)
+  local sz = tonumber(iconSz) or IconSize()
+  baseSize = tonumber(baseSize) or 7
+  baseIcon = tonumber(baseIcon) or 18
+  if baseIcon < 1 then
+    baseIcon = 18
+  end
+  return math.max(6, math.floor(baseSize * (sz / baseIcon) + 0.5))
+end
+
+local function ApplyNativeAuraDurationFont(fs, iconSz)
   if not fs or not fs.SetFont then
     return
   end
+  local sample = SampleNativeAuraTimerStyle()
   pcall(function()
-    local path, _, flags = fs:GetFont()
-    if not path and fs.SetFontObject then
-      fs:SetFontObject(NumberFontNormalSmall or NumberFontNormal)
-      path, _, flags = fs:GetFont()
+    if sample.path and sample.size then
+      local sz = ScaledNativeFontSize(iconSz, sample.size, sample.iconSize)
+      fs:SetFont(sample.path, sz, sample.flags or "OUTLINE")
+      fs:SetShadowOffset(0, 0)
     end
-    if path then
-      fs:SetFont(path, PbAuraTimerFontSize(iconSz), flags or "OUTLINE")
+  end)
+end
+
+local function ApplyNativeAuraCooldown(cd, iconSz)
+  if not cd then
+    return
+  end
+  local sample = SampleNativeAuraTimerStyle()
+  pcall(function()
+    if cd.SetUseAuraDisplayTime then
+      cd:SetUseAuraDisplayTime(true)
     end
-    if fs.SetShadowOffset then
-      fs:SetShadowOffset(1, -1)
+    if cd.SetDrawEdge then
+      cd:SetDrawEdge(false)
+    end
+    if sample.fontName and cd.SetCountdownFont then
+      cd:SetCountdownFont(sample.fontName)
+    elseif cd.SetCountdownFont then
+      cd:SetCountdownFont(NATIVE_AURA_COUNTDOWN_FONT)
+    end
+    if cd.GetCountdownFontString then
+      local fs = cd:GetCountdownFontString()
+      if fs and fs.SetFont and sample.path then
+        local sz = ScaledNativeFontSize(iconSz, sample.size, sample.iconSize)
+        fs:SetFont(sample.path, sz, sample.flags or "OUTLINE")
+        if fs.SetShadowOffset then
+          fs:SetShadowOffset(0, 0)
+        end
+      end
     end
   end)
 end
@@ -1213,14 +1356,21 @@ local function StyleAuraStackFont(fs, iconSz)
   if not fs or not fs.SetFont then
     return
   end
+  local sample = SampleNativeAuraTimerStyle()
   pcall(function()
+    if sample.stackPath and sample.stackSize then
+      local sz = ScaledNativeFontSize(iconSz, sample.stackSize, sample.iconSize)
+      fs:SetFont(sample.stackPath, sz, sample.stackFlags or "OUTLINE")
+      return
+    end
     local path, _, flags = fs:GetFont()
     if not path and fs.SetFontObject then
       fs:SetFontObject(NumberFontNormalSmall or NumberFontNormal)
       path, _, flags = fs:GetFont()
     end
     if path then
-      fs:SetFont(path, PbAuraStackFontSize(iconSz), flags or "OUTLINE")
+      local sz = ScaledNativeFontSize(iconSz, (sample.size or 7) - 1, sample.iconSize)
+      fs:SetFont(path, sz, flags or "OUTLINE")
     end
   end)
 end
@@ -1279,10 +1429,9 @@ InitAuraButton = function(button, size)
     pcall(cd.SetDrawSwipe, cd, true)
     -- Neutral dark swipe only — no orange/sepia tint.
     pcall(cd.SetSwipeColor, cd, 0, 0, 0, 0.5)
-    -- Digits via SetDurationText (scaled), not CooldownFrameTemplate giant font.
-    pcall(cd.SetHideCountdownNumbers, cd, true)
     cd.noCooldownCount = true
     button.cooldown = cd
+    ApplyNativeAuraCooldown(cd, size)
     if button.SetDurationCooldown then
       pcall(button.SetDurationCooldown, button, cd)
     end
@@ -1298,33 +1447,29 @@ InitAuraButton = function(button, size)
     end
   end
 
-  if button.SetDurationText and not button._pbDur then
-    local dur = button:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
-    dur:SetPoint("CENTER", button, "CENTER", 0, 1)
-    StyleAuraTimerFont(dur, size)
-    pcall(button.SetDurationText, button, dur)
-    button._pbDur = dur
-  elseif button._pbDur then
-    StyleAuraTimerFont(button._pbDur, size)
+  if not button._pbDur then
+    local dur = button.Duration or button.durationText
+    if not dur and button.SetDurationText then
+      dur = button:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+      dur:SetPoint("CENTER", button, "CENTER", 0, 0)
+      pcall(button.SetDurationText, button, dur)
+    end
+    if dur then
+      button._pbDur = dur
+    end
+  end
+  if button._pbDur then
+    ApplyNativeAuraDurationFont(button._pbDur, size)
   end
 
   if button.cooldown then
     local cd = button.cooldown
-    local useDurText = button._pbDur or button.SetDurationText
+    local useDurText = button._pbDur and button.SetDurationText
     if useDurText then
       pcall(cd.SetHideCountdownNumbers, cd, true)
     else
-      pcall(function()
-        cd:SetHideCountdownNumbers(false)
-        if cd.SetCountdownFontObject then
-          cd:SetCountdownFontObject(NumberFontNormalSmall or NumberFontNormal)
-        end
-        local ref = NumberFontNormalSmall or GameFontHighlightSmall
-        local path = ref and select(1, ref:GetFont())
-        if path and cd.SetCountdownFont then
-          cd:SetCountdownFont(path, PbAuraTimerFontSize(size), "OUTLINE")
-        end
-      end)
+      pcall(cd.SetHideCountdownNumbers, cd, false)
+      ApplyNativeAuraCooldown(cd, size)
     end
   end
   if button.count then
