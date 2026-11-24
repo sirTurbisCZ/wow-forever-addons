@@ -94,8 +94,11 @@ alert_check() {
   local pb
   pb=$(pick_newest "Plateband" 2>/dev/null || true)
   if [[ -n "${pb:-}" && -f "$pb" ]]; then
-    if rg -q 'ver=0\.1\.|PLATEBAND_CARD' "$pb" 2>/dev/null && ! rg -q 'PAINT ver=' "$pb" 2>/dev/null; then
-      emit_alert "[Plateband] SV stale 0.1.x — need 0.2.11+ /reload"
+    if rg -q 'SESSION_START ver=0\.2\.(10|11) ' "$pb" 2>/dev/null; then
+      emit_alert "[Plateband] SV session < 0.2.12 — /reload on latest Plateband"
+      alerts=$((alerts + 1))
+    elif rg -q 'ver=0\.1\.|PLATEBAND_CARD' "$pb" 2>/dev/null && ! rg -q 'PAINT ver=' "$pb" 2>/dev/null; then
+      emit_alert "[Plateband] SV stale 0.1.x — need 0.2.12+ /reload"
       alerts=$((alerts + 1))
     fi
     if rg -q 'PAINT .*tf=[1-9][0-9]* .*painted=0' "$pb" 2>/dev/null || \
@@ -118,6 +121,11 @@ alert_check() {
   local fel
   fel=$(pick_newest "ForeverErrorLog" 2>/dev/null || true)
   if [[ -n "${fel:-}" && -f "$fel" ]]; then
+    if rg -q 'ERROR .*Plateband' "$fel" 2>/dev/null; then
+      emit_alert "[FElog] Plateband ERROR — $fel"
+      extract_tail "$fel" 'ERROR .*Plateband' 3
+      alerts=$((alerts + 1))
+    fi
     if ! felog_new_errors "$fel"; then
       alerts=$((alerts + 1))
     elif rg -q 'ERROR ' "$fel" 2>/dev/null; then

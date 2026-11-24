@@ -41,11 +41,14 @@ local SILENT_SWEEP_SEC = 0.5
 local gapSticky = {} -- [unit] = { icons = {}, at = number }
 local lastPaintDebug = {} -- diagnose: last PaintMergeMissing / Refresh snapshot
 local lastSilentSweepAt = 0
--- Forward decl — CountPlateHarmfulShown / RefreshAll call these before assignment below.
+-- Forward decl — Lua locals are not visible above their `local function` line in this chunk.
 local CollectPlateDebuffButtons
 local BuildPaintTraceLine
 local SilentTracePaint
 local SilentTraceSweep
+local ButtonAuraIcon
+local AuraDedupeKey
+local NativeAuraMetrics
 
 local function OverlayUnitKey(unit, plate)
   if type(unit) == "string" and unit ~= "" and not unit:match("^pb:") then
@@ -1337,7 +1340,7 @@ local function NativeKeySet(plate)
 end
 
 --- Match native debuff chrome (e.g. Rake left of health): size + spacing from shown kid.
-local function NativeAuraMetrics(plate)
+NativeAuraMetrics = function(plate)
   local list = NativeDebuffList(plate)
   local sz = IconSize()
   local pad = OVERLAY_PAD
@@ -1552,7 +1555,7 @@ local function CollectPlayerOwnedKeys(unitToken, into)
 end
 
 --- Dedupe key: public texture, else public spellId, else nil (caller may still paint).
-local function AuraDedupeKey(data, icon)
+AuraDedupeKey = function(data, icon)
   local key = PublicTexKey(icon)
   if key then
     return key
@@ -1746,7 +1749,7 @@ end
 --- Pull icon texture from a TF aura button (secret FileIDs OK for SetTexture).
 --- mode: nil/"foreign" skips personal; "personal" skips non-personal.
 --- Returns icon, skippedPersonal, gotIcon — never compare icon to nil (secret throws).
-local function ButtonAuraIcon(btn, mode)
+ButtonAuraIcon = function(btn, mode)
   if not btn then
     return nil, false, false
   end

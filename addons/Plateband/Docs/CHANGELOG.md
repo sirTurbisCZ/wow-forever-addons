@@ -1,5 +1,15 @@
 # Plateband changelog
 
+## 0.2.12 — paint path forward decls (ButtonAuraIcon / metrics)
+
+- **`NativeKeySet` L1318:** `ButtonAuraIcon`, `AuraDedupeKey` — forward decl + assignment fns (same class as 0.2.11).
+- **`LayoutMergeBesideNative`:** `NativeAuraMetrics` forward decl.
+
+### Playtest (0.2.12)
+
+1. `/reload` → `v0.2.12`; `/felog clear` optional.
+2. Target + DoTs → no FElog `paint` nil; PAINT in SV after `/reload`.
+
 ## 0.2.11 — Lua forward-decl fix (nil trace/paint)
 
 - **`CollectPlateDebuffButtons` / `SilentTraceSweep`:** file-level forward decls; late `local function` left callers resolving **global nil** (`paint:527`, `RefreshAll:2592`).
