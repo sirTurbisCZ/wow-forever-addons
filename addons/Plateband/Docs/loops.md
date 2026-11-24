@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.30** (paint scope: target + party/raid only; per-plate throttle)
+Version: **0.2.31** (lean harvest / tick stagger; heavy TF only when needed)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 

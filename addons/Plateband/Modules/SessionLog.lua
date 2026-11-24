@@ -202,8 +202,8 @@ function Mod.RecordPaint(line)
   if line:sub(1, 6) ~= "PAINT " and line:sub(1, 6) ~= "PLATE " then
     line = "PAINT " .. line
   end
+  -- paintTrace ring only — mirroring every PAINT into sessionLog.export was stuttering (table.concat).
   PushPaintEntry(line)
-  Mod.Append(line)
 end
 
 function Mod.Status()

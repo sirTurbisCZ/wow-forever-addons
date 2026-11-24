@@ -16,9 +16,11 @@ ns.Modules.Plates = Mod
 local AC_GROUP = "platebandHarmful"
 local OVERLAY_PAD = 2
 local OVERLAY_GAP_ABOVE = 2
-local TICKER_SEC = 0.35
-local PAINT_TARGET_SEC = 0.22
-local PAINT_PARTY_SEC = 0.65
+local TICKER_SEC = 0.25
+local PAINT_TARGET_SEC = 0.2
+local PAINT_PARTY_SEC = 0.5
+local PAINT_ENEMY_SEC = 0.55
+local PAINT_TRACE_MIN_SEC = 1.5
 local AUTO_DIAG_MIN = 0.5
 local WATCH_DEFAULT_SEC = 2
 
@@ -45,6 +47,9 @@ local lastPaintDebug = {} -- diagnose: last PaintMergeMissing / Refresh snapshot
 local lastSilentSweepAt = 0
 local lastOverlayPaintAt = {} -- [overlay unit key] = GetTime()
 local partyTokenCache = {} -- [plate] = party token | false (cached miss)
+local lastPaintTraceAt = {} -- [unit] = GetTime()
+local lastPaintTraceSig = {} -- [unit] = sig
+local refreshPass = 0
 -- Forward decl — module fns use assignment form (Lua 5.1: locals invisible above `local function`).
 local AnchorBand
 local AppendGapRow
@@ -142,6 +147,7 @@ local ResolvePartyTokenForPlate
 local InvalidatePartyTokenCache
 local IsPartyRaidMergePlate
 local ShouldPaintOverlayNow
+local NeedsHeavyTargetHarvest
 local OnEvent
 local OverlayUnitKey
 local PaintMergeMissing
@@ -772,7 +778,7 @@ ShouldPaintOverlayNow = function(unit, isTarget, useTargetSrc, partyMerge)
   end
   local now = GetTime and GetTime() or 0
   local last = lastOverlayPaintAt[unit] or 0
-  local sec = PAINT_PARTY_SEC
+  local sec = PAINT_ENEMY_SEC
   if useTargetSrc or isTarget then
     sec = PAINT_TARGET_SEC
   elseif partyMerge then
@@ -783,6 +789,27 @@ ShouldPaintOverlayNow = function(unit, isTarget, useTargetSrc, partyMerge)
   end
   lastOverlayPaintAt[unit] = now
   return true
+end
+
+NeedsHeavyTargetHarvest = function(unit, plate, nativeN)
+  if not HasTarget() then
+    return false
+  end
+  if (nativeN or 0) == 0 then
+    return true
+  end
+  if unit and gapSticky[unit] then
+    return true
+  end
+  local fb = unit and fallbacks[unit]
+  if fb and (tonumber(fb._painted) or 0) > 0 then
+    return true
+  end
+  local tfUi = CountTargetFrameAuras()
+  if tfUi > (nativeN or 0) then
+    return true
+  end
+  return false
 end
 
 --- Friend / player plates: name must sit above auras (preference).
@@ -2356,10 +2383,7 @@ GapAuraLive = function(entry, unitToken)
   local now = GetTime and GetTime() or 0
   local exp = entry.expirationTime
   if type(exp) == "number" and not IsSecret(exp) and exp > 0 then
-    if now >= exp then
-      return false
-    end
-    return true
+    return now < exp
   end
   if entry.auraInstanceID and unitToken and C_UnitAuras and C_UnitAuras.GetAuraDataByAuraInstanceID then
     local ok, data = pcall(C_UnitAuras.GetAuraDataByAuraInstanceID, unitToken, entry.auraInstanceID)
@@ -3791,60 +3815,26 @@ BuildPaintTraceLine = function(why, unit, plate)
   end
   unit = OverlayUnitKey(unit, plate) or tostring(unit or "?")
   local p = Profile()
-  local nativeN = plate and CountPlateHarmfulShown(plate) or 0
-  local nativeList = plate and NativeDebuffList(plate)
-  local nativeKids = nativeList and RawChildCount(nativeList) or 0
-  local poolKids = 0
-  if plate then
-    local buttons = {}
-    CollectPlateDebuffButtons(plate, buttons, MaxIcons())
-    poolKids = #buttons
-  end
-  local tf = 0
-  if HasTarget() then
-    tf = CountTargetHarmfulExpected("target")
-  end
+  local lpd = lastPaintDebug or {}
   local fb = 0
   if unit and fallbacks[unit] then
     fb = tonumber(fallbacks[unit]._painted) or 0
   end
-  local lpd = lastPaintDebug or {}
   local tgtSrc = ShouldUseTargetAuraSource(unit, plate) and 1 or 0
-  local parentKind = lpd.parent or (nativeN > 0 and "nativeRow" or "healthBar")
-  local nativeVis = nativeList and (SafeShown(nativeList) and 1 or 0) or 0
-  local bar = plate and HealthBar(plate)
-  local barVis = bar and (SafeShown(bar) and 1 or 0) or 0
   return string.format(
-    "PAINT ver=%s why=%s unit=%s tgt=%s merge=%s native=%s pool=%s kids=%s tf=%s harv=%s miss=%s painted=%s fb=%s pers=%s for=%s tgtSrc=%s parent=%s natVis=%s barVis=%s active=%s safe=%s acFail=%s gapSz=%s lockSz=%s cdN=%s tfRows=%s cov=%s friend=%s tfBtn=%s party=%s",
+    "PAINT ver=%s why=%s unit=%s tgt=%s merge=%s native=%s harv=%s miss=%s painted=%s tgtSrc=%s tfRows=%s friend=%s party=%s",
     tostring(ns.Config.VERSION),
     tostring(why or "?"),
     tostring(unit),
     HasTarget() and "1" or "0",
     p.mergeMissing == true and "1" or "0",
-    tostring(nativeN),
-    tostring(poolKids),
-    tostring(nativeKids),
-    tostring(tf),
+    tostring(lpd.nativeN or "?"),
     tostring(lpd.harv or "?"),
     tostring(lpd.miss or "?"),
     tostring(lpd.painted or fb),
-    tostring(fb),
-    tostring(lpd.personal or (fallbacks[unit] and fallbacks[unit]._gapPersonal) or "?"),
-    tostring(lpd.foreign or (fallbacks[unit] and fallbacks[unit]._gapForeign) or "?"),
     tostring(tgtSrc),
-    tostring(parentKind),
-    tostring(nativeVis),
-    tostring(barVis),
-    ModuleActive() and "1" or "0",
-    p.safeMode and "1" or "0",
-    acCreateFailed and "1" or "0",
-    tostring(lpd.gapSz or "?"),
-    tostring(lpd.lockSz or "?"),
-    tostring(lpd.cdN or "?"),
     tostring(lpd.tfRows or "?"),
-    tostring((lpd.nativeN or nativeN) + (tonumber(lpd.painted) or tonumber(fb) or 0)),
     tostring(lpd.friendPlate or "?"),
-    tostring(lpd.tfBtn or "?"),
     tostring(lpd.partyTok or "?")
   )
 end
@@ -3853,6 +3843,31 @@ SilentTracePaint = function(why, unit, plate)
   if not SilentTraceEnabled() then
     return
   end
+  if InCombatLockdown and InCombatLockdown() then
+    return
+  end
+  why = tostring(why or "?")
+  if why == "refresh" or why:match("^refresh") or why:match("^sweep") then
+    return
+  end
+  unit = OverlayUnitKey(unit, plate) or tostring(unit or "?")
+  local now = GetTime and GetTime() or 0
+  if (now - (lastPaintTraceAt[unit] or 0)) < PAINT_TRACE_MIN_SEC then
+    return
+  end
+  local lpd = lastPaintDebug or {}
+  local sig = string.format(
+    "%s:%s:%s:%s",
+    tostring(lpd.miss or 0),
+    tostring(lpd.painted or 0),
+    tostring(lpd.harv or 0),
+    tostring(lpd.cdN or 0)
+  )
+  if lastPaintTraceSig[unit] == sig and (tonumber(lpd.painted) or 0) == 0 and (tonumber(lpd.miss) or 0) == 0 then
+    return
+  end
+  lastPaintTraceSig[unit] = sig
+  lastPaintTraceAt[unit] = now
   local line = BuildPaintTraceLine(why, unit, plate)
   if line and ns.SessionLog and ns.SessionLog.RecordPaint then
     pcall(ns.SessionLog.RecordPaint, line)
@@ -3937,31 +3952,15 @@ PaintMergeMissing = function(unit, plate)
   local isTarget = IsTargetPlate(unit, plate)
   local useTargetSrc = ShouldUseTargetAuraSource(unit, plate)
 
-  if not isTarget and not useTargetSrc then
-    if type(unit) == "string" and unit:match("^nameplate") and not partyMerge then
-      ClearFallback(unit)
-      return 0
-    end
-  end
   local nativeN = CountPlateHarmfulShown(plate)
+  lastPaintDebug.nativeN = nativeN
   local allowSecret = useTargetSrc or nativeN == 0
-
   local queueSkip = CopyKeySet(paintKeys)
-
-  if useTargetSrc then
-    CollectUnitHarmfulMirror("target", queueSkip, missing, maxN, stats)
-    pcall(ReconcileTargetFrameUiButtons, plate, missing, queueSkip, maxN, stats)
-  elseif partyMerge and type(unit) == "string" then
-    local auraTok = partyAuraTok or unit
-    CollectUnitHarmfulMirror(auraTok, queueSkip, missing, maxN, stats)
-    CollectForeignAuraGaps(auraTok, queueSkip, missing, maxN, true, stats)
-    CollectAuraSlotsGaps(auraTok, queueSkip, missing, maxN, stats)
-    EnsureUnitHarmfulParity(auraTok, plate, missing, queueSkip, maxN, stats)
-  end
-
-  -- TF-first: mirror harmful row when target plate (party DoTs + personal when native=0).
   local harvN = 0
+  local heavyTarget = useTargetSrc and NeedsHeavyTargetHarvest(unit, plate, nativeN)
+
   if useTargetSrc then
+    if heavyTarget then
     local harv = {}
     pcall(function()
       harv = CollectTargetHarmfulRows(maxN) or {}
@@ -3972,25 +3971,17 @@ PaintMergeMissing = function(unit, plate)
     for i = 1, #harv do
       AppendGapRow(queueSkip, missing, maxN, stats, harv[i], false)
     end
-  else
-    lastPaintDebug.tgtSrc = 0
-    lastPaintDebug.harv = 0
-  end
-
-  if useTargetSrc then
     CollectPersonalAuraGaps("target", queueSkip, missing, maxN, stats)
     if type(unit) == "string" and unit ~= "target" then
       CollectPersonalAuraGaps(unit, queueSkip, missing, maxN, stats)
     end
     CollectTargetFramePersonalGaps(queueSkip, missing, maxN, stats)
-
     local foreignSkip = CopyKeySet(queueSkip)
     CollectForeignAuraGaps("target", foreignSkip, missing, maxN, allowSecret, stats)
     CollectAuraSlotsGaps("target", foreignSkip, missing, maxN, stats)
     if type(unit) == "string" and unit ~= "target" then
       CollectForeignAuraGaps(unit, foreignSkip, missing, maxN, allowSecret, stats)
     end
-    -- TF supplement: queueSkip + CanonicalGapKey dedupe; catches party harm TF/API missed in harv.
     CollectTargetFrameMissing(queueSkip, missing, maxN, stats)
     CollectUnitHarmfulMirror("target", queueSkip, missing, maxN, stats)
     if type(unit) == "string" and unit ~= "target" then
@@ -4000,51 +3991,57 @@ PaintMergeMissing = function(unit, plate)
     DedupeGapIcons(missing, maxN)
     ReconcileTfHarmfulCoverage(plate, missing, queueSkip, maxN, stats, "target")
     DedupeGapIcons(missing, maxN)
-    local auraTok = "target"
     local tfUiN = CountTargetFrameAuras()
     if not (tfUiN > 0 and #missing > 0) then
-      PruneInactiveGapRows(missing, auraTok, maxN)
+      PruneInactiveGapRows(missing, "target", maxN)
     end
-    ReconcileTfHarmfulCoverage(plate, missing, queueSkip, maxN, stats, "target")
-    DedupeGapIcons(missing, maxN)
     ReconcileTargetFrameUiButtons(plate, missing, queueSkip, maxN, stats)
     DedupeGapIcons(missing, maxN)
     if #missing == 0 then
       pcall(ForceFillTargetFrameGaps, missing, queueSkip, maxN, stats)
       DedupeGapIcons(missing, maxN)
     end
+  else
+    lastPaintDebug.tgtSrc = 1
+    lastPaintDebug.harv = 0
+    CollectPersonalAuraGaps("target", queueSkip, missing, maxN, stats)
+    local foreignSkip = CopyKeySet(queueSkip)
+    CollectPlayerOwnedKeys("target", foreignSkip)
+    CollectForeignAuraGaps("target", foreignSkip, missing, maxN, allowSecret, stats)
+    CollectAuraSlotsGaps("target", foreignSkip, missing, maxN, stats)
+    if type(unit) == "string" and unit ~= "target" then
+      CollectPlayerOwnedKeys(unit, foreignSkip)
+      CollectForeignAuraGaps(unit, foreignSkip, missing, maxN, allowSecret, stats)
+    end
+    DedupeGapIcons(missing, maxN)
+    PruneInactiveGapRows(missing, "target", maxN)
+    end
   elseif partyMerge and type(unit) == "string" then
+    lastPaintDebug.tgtSrc = 0
+    lastPaintDebug.harv = 0
     local auraTok = partyAuraTok or unit
     local foreignSkip = CopyKeySet(paintKeys)
     CollectPersonalAuraGaps(auraTok, foreignSkip, missing, maxN, stats)
     CollectPlayerOwnedKeys(auraTok, foreignSkip)
     CollectForeignAuraGaps(auraTok, foreignSkip, missing, maxN, true, stats)
     CollectAuraSlotsGaps(auraTok, foreignSkip, missing, maxN, stats)
-    CollectUnitHarmfulMirror(auraTok, foreignSkip, missing, maxN, stats)
     EnsureUnitHarmfulParity(auraTok, plate, missing, foreignSkip, maxN, stats)
-    ReconcileTfHarmfulCoverage(plate, missing, foreignSkip, maxN, stats, auraTok)
     DedupeGapIcons(missing, maxN)
-    local harmN = CountTargetHarmfulApi(auraTok)
-    if not (harmN > 0 and #missing > 0) then
-      PruneInactiveGapRows(missing, auraTok, maxN)
-    end
-    if #missing == 0 and harmN > 0 then
-      EnsureUnitHarmfulParity(auraTok, plate, missing, foreignSkip, maxN, stats)
-      DedupeGapIcons(missing, maxN)
-    end
+    PruneInactiveGapRows(missing, auraTok, maxN)
   elseif type(unit) == "string" then
+    lastPaintDebug.tgtSrc = 0
+    lastPaintDebug.harv = 0
     CollectPersonalAuraGaps(unit, paintKeys, missing, maxN, stats)
     local foreignSkip = CopyKeySet(paintKeys)
     CollectPlayerOwnedKeys(unit, foreignSkip)
     CollectForeignAuraGaps(unit, foreignSkip, missing, maxN, allowSecret, stats)
-    CollectUnitHarmfulMirror(unit, foreignSkip, missing, maxN, stats)
-    EnsureUnitHarmfulParity(unit, plate, missing, foreignSkip, maxN, stats)
+    CollectAuraSlotsGaps(unit, foreignSkip, missing, maxN, stats)
     DedupeGapIcons(missing, maxN)
     PruneInactiveGapRows(missing, unit, maxN)
   end
 
   ApplyGapSticky(unit, missing, useTargetSrc, useTargetSrc and "target" or unit)
-  if useTargetSrc then
+  if useTargetSrc and heavyTarget then
     local tfUiLate = CountTargetFrameAuras()
     if not (tfUiLate > 0 and #missing > 0) then
       PruneInactiveGapRows(missing, "target", maxN)
@@ -4053,12 +4050,10 @@ PaintMergeMissing = function(unit, plate)
       pcall(ForceFillTargetFrameGaps, missing, queueSkip, maxN, stats)
       DedupeGapIcons(missing, maxN)
     end
-  elseif type(unit) == "string" then
-    PruneInactiveGapRows(missing, unit, maxN)
   end
 
   lastPaintDebug.miss = #missing
-  lastPaintDebug.tfBtn = CountTargetFrameAuras()
+  lastPaintDebug.tfBtn = (useTargetSrc and heavyTarget) and CountTargetFrameAuras() or 0
   lastPaintDebug.unit = tostring(unit)
   lastPaintDebug.nativeN = nativeN
   lastPaintDebug.friendPlate = partyMerge and 1 or 0
@@ -4264,7 +4259,31 @@ end
 local SnapshotDiagnose
 local MaybeAutoDiagnose
 
-RefreshAll = function()
+local function WantsTickPaint(entry, index, mode)
+  local unit = entry.unit
+  local plate = entry.plate
+  if mode == "full" or not unit or not plate then
+    return true
+  end
+  if IsTargetPlate(unit, plate) or ShouldUseTargetAuraSource(unit, plate) then
+    return true
+  end
+  local fb = fallbacks[unit]
+  if fb and (tonumber(fb._painted) or 0) > 0 then
+    return true
+  end
+  if gapSticky[unit] then
+    return true
+  end
+  if IsPartyRaidMergePlate(unit, plate) then
+    return (refreshPass % 2) == (index % 2)
+  end
+  return (refreshPass % 3) == (index % 3)
+end
+
+RefreshAll = function(mode)
+  mode = mode or "full"
+  refreshPass = refreshPass + 1
   local live = {}
   local list = EnumerateLivePlates()
   for i = 1, #list do
@@ -4274,7 +4293,11 @@ RefreshAll = function()
     if unit then
       live[unit] = true
       if ModuleActive() then
-        UpdateOverlay(unit, plate)
+        if WantsTickPaint(entry, i, mode) then
+          UpdateOverlay(unit, plate)
+        elseif plate then
+          EnsureNativeVisible(plate)
+        end
       else
         ClearOverlay(unit)
       end
@@ -4311,8 +4334,11 @@ RefreshAll = function()
       lastOverlayPaintAt[u] = nil
     end
   end
-  if type(SilentTraceSweep) == "function" then
-    pcall(SilentTraceSweep, "refresh")
+  for u in pairs(lastPaintTraceAt) do
+    if not live[u] then
+      lastPaintTraceAt[u] = nil
+      lastPaintTraceSig[u] = nil
+    end
   end
 end
 
@@ -4324,7 +4350,7 @@ EnsureTicker = function()
     if not ModuleActive() then
       return
     end
-    RefreshAll()
+    RefreshAll("tick")
   end)
 end
 

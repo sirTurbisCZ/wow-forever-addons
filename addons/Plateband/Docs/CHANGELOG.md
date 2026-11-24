@@ -1,5 +1,16 @@
 # Plateband changelog
 
+## Release 0.2.31 — lean harvest (all-visible merge back, no stutter)
+
+- **Live ver confirmed:** `SESSION_START ver=0.2.30` — stutter was **not** old build; fixed in 0.2.31.
+- **Root cost (0.2.24–0.2.30):** double `ReconcileTfHarmfulCoverage`, TF UI scrape every tick on lean targets, `BuildPaintTraceLine` scraping pools/TF on each PAINT, `RecordPaint` mirroring into `sessionLog.export` (`table.concat`), `SilentTraceSweep` on every `RefreshAll`.
+- **Fix:** heavy target harvest only when native row incomplete; lean API path when TF matches plate; visible enemy merge restored (0.1.15-style gaps, no TF scrape); party stays group-only; tick stagger; no PAINT trace in combat / on refresh sweeps.
+
+### Playtest (0.2.31)
+
+1. `/reload` → `SESSION_START ver=0.2.31`; combat — no PAINT spam every 2s in SV.
+2. Multi-mob pull: foreign DoTs on visible enemy plates return; target still heavy when `native<tf`.
+
 ## Release 0.2.30 — lag fix (paint scope + throttle)
 
 - **Merge paint** runs only on **current target** (+ TF path) and **party/raid/player** nameplates — not every friendly `UnitReaction≥4` passerby plate in cities.

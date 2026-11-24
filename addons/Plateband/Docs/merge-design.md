@@ -22,23 +22,16 @@
 ```mermaid
 flowchart TD
   tick[UpdateOverlay] --> gate{mergeMissing?}
-  gate -->|false| nativeOnly[EnsureNativeVisible + clear Plateband chrome]
-  gate -->|true| tgt{Target plate?}
-  tgt -->|yes| row
-  tgt -->|no| party{Party/raid/player?}
-  party -->|yes mergeFriend| unitParity[EnsureUnitHarmfulParity + unit API]
-  party -->|no| skip[ClearFallback — native only]
+  gate -->|false| nativeOnly[EnsureNativeVisible + clear chrome]
+  gate -->|true| kind{Target / party / other enemy?}
+  kind -->|target heavy| tfPath[TF harvest + Reconcile when native lt TF]
+  kind -->|target lean| leanT[Foreign API gaps only]
+  kind -->|party| unitParity[Unit API + EnsureUnitHarmfulParity]
+  kind -->|other enemy| leanE[Foreign API gaps only]
+  tfPath --> paint[Fallback beside native]
+  leanT --> paint
   unitParity --> paint
-  friend -->|no| row{Debuff anchor exists?}
-  row -->|no| skip
-  row -->|yes| native[NativeKeySet pools + children]
-  native --> per[CollectPersonalAuraGaps + TF personal if not in native]
-  per --> api[CollectForeignAuraGaps + GetAuraSlots]
-  api --> tf[CollectTargetHarmfulRows Retinue TF mirror minus paintKeys]
-  tf --> sticky[Gap sticky TTL optional]
-  sticky --> paint[Fallback textures DebuffList parent]
-  paint --> metrics[NativeAuraMetrics]
-  metrics --> layout[LEFT+BOTTOM rightmost native]
+  leanE --> paint
 ```
 
 ## Layout
