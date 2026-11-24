@@ -23,9 +23,11 @@
 flowchart TD
   tick[UpdateOverlay] --> gate{mergeMissing?}
   gate -->|false| nativeOnly[EnsureNativeVisible + clear Plateband chrome]
-  gate -->|true| enemy{Friend/party plate?}
-  enemy -->|yes| skip[ClearFallback]
-  enemy -->|no| row{Debuff anchor exists?}
+  gate -->|true| friend{Friend/party plate?}
+  friend -->|yes mergeFriend| unitParity[EnsureUnitHarmfulParity + unit API]
+  friend -->|no mergeFriend| skip[ClearFallback]
+  unitParity --> paint
+  friend -->|no| row{Debuff anchor exists?}
   row -->|no| skip
   row -->|yes| native[NativeKeySet pools + children]
   native --> per[CollectPersonalAuraGaps + TF personal if not in native]

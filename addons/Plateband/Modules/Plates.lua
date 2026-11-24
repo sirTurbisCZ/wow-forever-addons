@@ -67,7 +67,9 @@ local CollectTargetFrameButtons
 local CollectTargetFrameMissing
 local CollectTargetFramePersonalGaps
 local CollectTargetHarmfulFromApi
+local CountHarmfulAuraSlots
 local CountTargetHarmfulApi
+local CountTargetHarmfulExpected
 local CollectTargetHarmfulRows
 local CollectUnitHarmfulMirror
 local DeduplicateHarmfulRows
@@ -129,6 +131,7 @@ local NativeDebuffList
 local NativeKeySet
 local NativeShownKeySet
 local ReconcileTfHarmfulCoverage
+local ReconcileTargetFrameUiButtons
 local OnEvent
 local OverlayUnitKey
 local PaintMergeMissing
@@ -698,6 +701,17 @@ IsPlayerOrFriendPlate = function(unit, plate)
     end
     local okF, isFriend = pcall(UnitIsFriend, "player", unit)
     if okF and not IsSecret(isFriend) and isFriend then
+      hit = true
+    end
+  end)
+  if hit then
+    return true
+  end
+  pcall(function()
+    if UnitInParty and UnitInParty(unit) then
+      hit = true
+    end
+    if UnitInRaid and UnitInRaid(unit) then
       hit = true
     end
   end)
@@ -2308,6 +2322,23 @@ RefreshHeldGapFallback = function(unit, plate, fb, icons, auraUnit)
   return painted, cdN
 end
 
+CountHarmfulAuraSlots = function(unitToken)
+  if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraSlots then
+    return 0
+  end
+  local pack = { pcall(C_UnitAuras.GetAuraSlots, unitToken, "HARMFUL") }
+  if not pack[1] then
+    return 0
+  end
+  local n = 0
+  for i = 3, #pack do
+    if pack[i] ~= nil then
+      n = n + 1
+    end
+  end
+  return n
+end
+
 CountTargetHarmfulApi = function(unitToken)
   unitToken = unitToken or "target"
   if not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
@@ -2324,7 +2355,29 @@ CountTargetHarmfulApi = function(unitToken)
     end
     n = n + 1
   end
+  local slots = CountHarmfulAuraSlots(unitToken)
+  if slots > n then
+    n = slots
+  end
   return n
+end
+
+CountTargetHarmfulExpected = function(unitToken)
+  unitToken = unitToken or "target"
+  if unitToken == "target" and not HasTarget() then
+    return 0
+  end
+  if unitToken ~= "target" and type(unitToken) == "string" and not SafeUnitExists(unitToken) then
+    return 0
+  end
+  local api = CountTargetHarmfulApi(unitToken)
+  local harvest = 0
+  local tfUi = 0
+  if unitToken == "target" then
+    harvest = #CollectTargetHarmfulRows(MaxIcons())
+    tfUi = CountTargetFrameAuras()
+  end
+  return math.max(api, harvest, tfUi)
 end
 
 CollectTargetHarmfulFromApi = function(rows, maxN, unitToken)
@@ -2637,7 +2690,7 @@ ReconcileTfHarmfulCoverage = function(plate, missing, skipKeys, maxN, stats, uni
     local row = tfRows[i]
     EnrichGapAuraEntry(row, unitToken)
     local ck = CanonicalGapKey(row) or TfRowKey(row)
-    if ck and not covered(ck) and GapAuraLive(row, unitToken) then
+    if ck and not covered(ck) then
       local before = #missing
       AppendGapRow(skipKeys, missing, maxN, stats, row, true)
       if #missing > before then
@@ -2676,6 +2729,100 @@ ReconcileTfHarmfulCoverage = function(plate, missing, skipKeys, maxN, stats, uni
         end
         if #missing > before then
           added = added + 1
+        end
+      end
+    end
+  end
+  return added
+end
+
+--- One TF debuff button = one gap row when API index undercounts (secret icon / slot lag).
+ReconcileTargetFrameUiButtons = function(plate, missing, skipKeys, maxN, stats)
+  if not plate or type(missing) ~= "table" or not skipKeys or not HasTarget() then
+    return 0
+  end
+  local nativeKeys = NativeShownKeySet(plate)
+  local added = 0
+  local covered = function(ck)
+    if not ck then
+      return false
+    end
+    if nativeKeys[ck] or skipKeys[ck] then
+      return true
+    end
+    for j = 1, #missing do
+      if missing[j]._key == ck or CanonicalGapKey(missing[j]) == ck or TfRowKey(missing[j]) == ck then
+        return true
+      end
+    end
+    return false
+  end
+  local buttons = {}
+  CollectTargetFrameButtons(buttons, maxN)
+  for i = 1, #buttons do
+    if #missing >= maxN then
+      break
+    end
+    local btn = buttons[i]
+    if not btn or IsLikelyBuffFrame(btn) or IsCastOrSpellBarFrame(btn) then
+      -- skip
+    else
+      local icon, sid, aid, tex, expTime, dur, apps
+      tex = btn.Icon or btn.icon
+      pcall(function()
+        if btn.GetAuraInstance then
+          local _, data = btn:GetAuraInstance()
+          if type(data) == "table" then
+            icon = data.icon
+            sid = data.spellId
+            aid = data.auraInstanceID
+            expTime = data.expirationTime
+            dur = data.duration
+            apps = data.applications
+          end
+        end
+      end)
+      if not AuraIconPresent(icon) and tex then
+        local got
+        pcall(function()
+          if tex.GetTexture then
+            icon = tex:GetTexture()
+            got = true
+          end
+        end)
+        if not got then
+          icon = tex
+        end
+      end
+      local liveBtn = SafeShown(btn) or btn.GetAuraInstance ~= nil
+      if not AuraIconPresent(icon) and not liveBtn and not TextureHasArt(tex) then
+        -- empty chrome
+      else
+        local row = {
+          icon = icon,
+          iconTex = tex,
+          spellId = sid,
+          auraInstanceID = aid,
+          applications = apps,
+          expirationTime = expTime,
+          duration = dur,
+          fromTargetFrame = true,
+          _key = "tfbtn:" .. tostring(i) .. ":" .. tostring(btn),
+        }
+        local ck = CanonicalGapKey(row) or row._key
+        if not covered(ck) and not covered(row._key) then
+          local before = #missing
+          AppendGapRow(skipKeys, missing, maxN, stats, row, true)
+          if #missing > before then
+            added = added + 1
+          elseif not covered(row._key) then
+            skipKeys[row._key] = true
+            missing[#missing + 1] = row
+            added = added + 1
+            if stats then
+              stats.foreign = (stats.foreign or 0) + 1
+            end
+          end
         end
       end
     end
@@ -2912,6 +3059,9 @@ PushTfAuraFrame = function(frame, rows, maxN)
         liveBtn = true
       end
     end)
+    if not liveBtn and SafeShown(frame) and (tex or frame.Icon or frame.icon or frame.GetAuraInstance) then
+      liveBtn = true
+    end
     if not IsUsableSpellIcon(icon, true) and not liveBtn and not TextureHasArt(tex) then
       return
     end
@@ -3382,13 +3532,7 @@ BuildPaintTraceLine = function(why, unit, plate)
   end
   local tf = 0
   if HasTarget() then
-    tf = CountTargetHarmfulApi("target")
-    if tf == 0 then
-      tf = #CollectTargetHarmfulRows(MaxIcons())
-    end
-    if tf == 0 then
-      tf = CountTargetFrameAuras()
-    end
+    tf = CountTargetHarmfulExpected("target")
   end
   local fb = 0
   if unit and fallbacks[unit] then
@@ -3568,6 +3712,8 @@ PaintMergeMissing = function(unit, plate)
     PruneInactiveGapRows(missing, auraTok, maxN)
     ReconcileTfHarmfulCoverage(plate, missing, queueSkip, maxN, stats, "target")
     DedupeGapIcons(missing, maxN)
+    ReconcileTargetFrameUiButtons(plate, missing, queueSkip, maxN, stats)
+    DedupeGapIcons(missing, maxN)
   else
     if type(unit) == "string" then
       CollectPersonalAuraGaps(unit, paintKeys, missing, maxN, stats)
@@ -3583,6 +3729,10 @@ PaintMergeMissing = function(unit, plate)
       end
       DedupeGapIcons(missing, maxN)
       PruneInactiveGapRows(missing, unit, maxN)
+      if friendPlate and CountTargetHarmfulApi(unit) > nativeN + #missing then
+        EnsureUnitHarmfulParity(unit, plate, missing, foreignSkip, maxN, stats)
+        DedupeGapIcons(missing, maxN)
+      end
     end
   end
 
@@ -3598,12 +3748,9 @@ PaintMergeMissing = function(unit, plate)
   lastPaintDebug.nativeN = nativeN
   lastPaintDebug.friendPlate = friendPlate and 1 or 0
   if useTargetSrc and HasTarget() then
-    lastPaintDebug.tfRows = CountTargetHarmfulApi("target")
-    if lastPaintDebug.tfRows == 0 then
-      lastPaintDebug.tfRows = #CollectTargetHarmfulRows(maxN)
-    end
+    lastPaintDebug.tfRows = CountTargetHarmfulExpected("target")
   elseif friendPlate and type(unit) == "string" then
-    lastPaintDebug.tfRows = CountTargetHarmfulApi(unit)
+    lastPaintDebug.tfRows = CountTargetHarmfulExpected(unit)
   else
     lastPaintDebug.tfRows = 0
   end

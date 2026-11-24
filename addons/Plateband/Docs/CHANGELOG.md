@@ -1,5 +1,18 @@
 # Plateband changelog
 
+## 0.2.26 — TF UI cov parity (Defias 1-of-2)
+
+- **`CountTargetHarmfulExpected`:** `tfRows` / PAINT `tf=` = max(API, slots, harvest, TF button count).
+- **`ReconcileTargetFrameUiButtons`:** one row per Target Frame debuff button (`tfbtn:` keys) when API/harvest undercount.
+- **`PushTfAuraFrame`:** accept shown TF buttons with secret icons (no public fileID).
+- **`ReconcileTfHarmfulCoverage`:** reconcile no longer gates TF rows on `GapAuraLive` (prune still does).
+- **Friend plates:** `UnitInParty`/`UnitInRaid`; re-run `EnsureUnitHarmfulParity` when API harmful > queue.
+
+### Playtest (0.2.26)
+
+1. `/reload` → **v0.2.26**; Defias Captive TF 2 harm → `tfRows≥2`, `miss≥2`, `cov≥2` on tgtSrc plate.
+2. Pichy party dot → `friend=1`, `miss≥1`, `painted≥1`.
+
 ## 0.2.25 — API-first harvest + prune fix (Stockade)
 
 - **`GapAuraLive`:** no longer drops rows when `GetAuraDataByAuraInstanceID` fails (was emptying queue → `miss=0 painted=0`).
