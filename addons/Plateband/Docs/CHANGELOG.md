@@ -1,5 +1,15 @@
 # Plateband changelog
 
+## 0.2.11 — Lua forward-decl fix (nil trace/paint)
+
+- **`CollectPlateDebuffButtons` / `SilentTraceSweep`:** file-level forward decls; late `local function` left callers resolving **global nil** (`paint:527`, `RefreshAll:2592`).
+- Silent trace assignments moved **before** `PaintMergeMissing`; `pcall` on sweep.
+
+### Playtest (0.2.11)
+
+1. `/reload` → `loaded v0.2.11` — no FElog nil spam.
+2. DoTs on target plate → PAINT lines in SV after `/reload`.
+
 ## 0.2.10 — silent paint trace (agent-readable)
 
 - **Silent by default:** `silentTrace` + `paintTraceOn` (schema **8**) — no chat spam; `/pb diagnose` optional.

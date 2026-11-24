@@ -41,6 +41,11 @@ local SILENT_SWEEP_SEC = 0.5
 local gapSticky = {} -- [unit] = { icons = {}, at = number }
 local lastPaintDebug = {} -- diagnose: last PaintMergeMissing / Refresh snapshot
 local lastSilentSweepAt = 0
+-- Forward decl — CountPlateHarmfulShown / RefreshAll call these before assignment below.
+local CollectPlateDebuffButtons
+local BuildPaintTraceLine
+local SilentTracePaint
+local SilentTraceSweep
 
 local function OverlayUnitKey(unit, plate)
   if type(unit) == "string" and unit ~= "" and not unit:match("^pb:") then
@@ -524,7 +529,9 @@ local function CountPlateHarmfulShown(plate)
     return 0
   end
   local buttons = {}
-  CollectPlateDebuffButtons(plate, buttons, MaxIcons())
+  if type(CollectPlateDebuffButtons) == "function" then
+    CollectPlateDebuffButtons(plate, buttons, MaxIcons())
+  end
   local n = 0
   for i = 1, #buttons do
     if SafeShown(buttons[i]) then
@@ -679,7 +686,7 @@ local function PlateAuraPools(plate)
   return pools
 end
 
-local function CollectPlateDebuffButtons(plate, out, maxN)
+CollectPlateDebuffButtons = function(plate, out, maxN)
   if not plate or not out then
     return
   end
@@ -2330,6 +2337,110 @@ local function TfSupplementSkipKeys(paintKeys, missing)
   return skip
 end
 
+local function SilentTraceEnabled()
+  local p = Profile()
+  return p.silentTrace ~= false and p.paintTraceOn ~= false
+end
+
+BuildPaintTraceLine = function(why, unit, plate)
+  if not SilentTraceEnabled() then
+    return nil
+  end
+  unit = OverlayUnitKey(unit, plate) or tostring(unit or "?")
+  local p = Profile()
+  local nativeN = plate and CountPlateHarmfulShown(plate) or 0
+  local nativeList = plate and NativeDebuffList(plate)
+  local nativeKids = nativeList and RawChildCount(nativeList) or 0
+  local poolKids = 0
+  if plate and type(CollectPlateDebuffButtons) == "function" then
+    local buttons = {}
+    CollectPlateDebuffButtons(plate, buttons, MaxIcons())
+    poolKids = #buttons
+  end
+  local tf = HasTarget() and #CollectTargetHarmfulRows(MaxIcons()) or 0
+  if tf == 0 and HasTarget() then
+    tf = CountTargetFrameAuras()
+  end
+  local fb = 0
+  if unit and fallbacks[unit] then
+    fb = tonumber(fallbacks[unit]._painted) or 0
+  end
+  local lpd = lastPaintDebug or {}
+  local tgtSrc = ShouldUseTargetAuraSource(unit, plate) and 1 or 0
+  local parentKind = lpd.parent or (nativeN > 0 and "nativeRow" or "healthBar")
+  local nativeVis = nativeList and (SafeShown(nativeList) and 1 or 0) or 0
+  local bar = plate and HealthBar(plate)
+  local barVis = bar and (SafeShown(bar) and 1 or 0) or 0
+  return string.format(
+    "PAINT ver=%s why=%s unit=%s tgt=%s merge=%s native=%s pool=%s kids=%s tf=%s harv=%s miss=%s painted=%s fb=%s pers=%s for=%s tgtSrc=%s parent=%s natVis=%s barVis=%s active=%s safe=%s acFail=%s",
+    tostring(ns.Config.VERSION),
+    tostring(why or "?"),
+    tostring(unit),
+    HasTarget() and "1" or "0",
+    p.mergeMissing == true and "1" or "0",
+    tostring(nativeN),
+    tostring(poolKids),
+    tostring(nativeKids),
+    tostring(tf),
+    tostring(lpd.harv or "?"),
+    tostring(lpd.miss or "?"),
+    tostring(lpd.painted or fb),
+    tostring(fb),
+    tostring(lpd.personal or (fallbacks[unit] and fallbacks[unit]._gapPersonal) or "?"),
+    tostring(lpd.foreign or (fallbacks[unit] and fallbacks[unit]._gapForeign) or "?"),
+    tostring(tgtSrc),
+    tostring(parentKind),
+    tostring(nativeVis),
+    tostring(barVis),
+    ModuleActive() and "1" or "0",
+    p.safeMode and "1" or "0",
+    acCreateFailed and "1" or "0"
+  )
+end
+
+SilentTracePaint = function(why, unit, plate)
+  if not SilentTraceEnabled() then
+    return
+  end
+  local line = BuildPaintTraceLine(why, unit, plate)
+  if line and ns.SessionLog and ns.SessionLog.RecordPaint then
+    pcall(ns.SessionLog.RecordPaint, line)
+  end
+end
+
+SilentTraceSweep = function(why)
+  if not SilentTraceEnabled() then
+    return
+  end
+  local now = GetTime and GetTime() or 0
+  if (now - lastSilentSweepAt) < SILENT_SWEEP_SEC then
+    return
+  end
+  lastSilentSweepAt = now
+  local list = EnumerateLivePlates()
+  local swept = {}
+  if HasTarget() then
+    local tp = PlateFor("target")
+    local tu = NameplateUnitFor("target") or (tp and UnitTokenFromPlate(tp))
+    tu = OverlayUnitKey(tu, tp)
+    if tp then
+      SilentTracePaint(why or "sweep_tgt", tu, tp)
+      swept[tu or tostring(tp)] = true
+    end
+  end
+  for i = 1, #list do
+    if i > 8 then
+      break
+    end
+    local entry = list[i]
+    local u = OverlayUnitKey(entry.unit, entry.plate)
+    if u and not swept[u] and entry.plate then
+      SilentTracePaint((why or "sweep") .. "_np", u, entry.plate)
+      swept[u] = true
+    end
+  end
+end
+
 --- Paint personal + foreign gaps beside native — 0.1.15 sources + 0.2 layout (§5 P0/P1).
 local function PaintMergeMissing(unit, plate)
   if not plate then
@@ -2589,7 +2700,9 @@ local function RefreshAll()
       fallbacks[unit] = nil
     end
   end
-  SilentTraceSweep("refresh")
+  if type(SilentTraceSweep) == "function" then
+    pcall(SilentTraceSweep, "refresh")
+  end
 end
 
 local function EnsureTicker()
@@ -2660,110 +2773,6 @@ local function Defer(fn)
     end)
   else
     pcall(fn)
-  end
-end
-
-local function SilentTraceEnabled()
-  local p = Profile()
-  return p.silentTrace ~= false and p.paintTraceOn ~= false
-end
-
-local function BuildPaintTraceLine(why, unit, plate)
-  if not SilentTraceEnabled() then
-    return nil
-  end
-  unit = OverlayUnitKey(unit, plate) or tostring(unit or "?")
-  local p = Profile()
-  local nativeN = plate and CountPlateHarmfulShown(plate) or 0
-  local nativeList = plate and NativeDebuffList(plate)
-  local nativeKids = nativeList and RawChildCount(nativeList) or 0
-  local poolKids = 0
-  if plate then
-    local buttons = {}
-    CollectPlateDebuffButtons(plate, buttons, MaxIcons())
-    poolKids = #buttons
-  end
-  local tf = HasTarget() and #CollectTargetHarmfulRows(MaxIcons()) or 0
-  if tf == 0 and HasTarget() then
-    tf = CountTargetFrameAuras()
-  end
-  local fb = 0
-  if unit and fallbacks[unit] then
-    fb = tonumber(fallbacks[unit]._painted) or 0
-  end
-  local lpd = lastPaintDebug or {}
-  local tgtSrc = ShouldUseTargetAuraSource(unit, plate) and 1 or 0
-  local parentKind = lpd.parent or (nativeN > 0 and "nativeRow" or "healthBar")
-  local nativeVis = nativeList and (SafeShown(nativeList) and 1 or 0) or 0
-  local bar = plate and HealthBar(plate)
-  local barVis = bar and (SafeShown(bar) and 1 or 0) or 0
-  return string.format(
-    "PAINT ver=%s why=%s unit=%s tgt=%s merge=%s native=%s pool=%s kids=%s tf=%s harv=%s miss=%s painted=%s fb=%s pers=%s for=%s tgtSrc=%s parent=%s natVis=%s barVis=%s active=%s safe=%s acFail=%s",
-    tostring(ns.Config.VERSION),
-    tostring(why or "?"),
-    tostring(unit),
-    HasTarget() and "1" or "0",
-    p.mergeMissing == true and "1" or "0",
-    tostring(nativeN),
-    tostring(poolKids),
-    tostring(nativeKids),
-    tostring(tf),
-    tostring(lpd.harv or "?"),
-    tostring(lpd.miss or "?"),
-    tostring(lpd.painted or fb),
-    tostring(fb),
-    tostring(lpd.personal or (fallbacks[unit] and fallbacks[unit]._gapPersonal) or "?"),
-    tostring(lpd.foreign or (fallbacks[unit] and fallbacks[unit]._gapForeign) or "?"),
-    tostring(tgtSrc),
-    tostring(parentKind),
-    tostring(nativeVis),
-    tostring(barVis),
-    ModuleActive() and "1" or "0",
-    p.safeMode and "1" or "0",
-    acCreateFailed and "1" or "0"
-  )
-end
-
-local function SilentTracePaint(why, unit, plate)
-  if not SilentTraceEnabled() then
-    return
-  end
-  local line = BuildPaintTraceLine(why, unit, plate)
-  if line and ns.SessionLog and ns.SessionLog.RecordPaint then
-    pcall(ns.SessionLog.RecordPaint, line)
-  end
-end
-
-local function SilentTraceSweep(why)
-  if not SilentTraceEnabled() then
-    return
-  end
-  local now = GetTime and GetTime() or 0
-  if (now - lastSilentSweepAt) < SILENT_SWEEP_SEC then
-    return
-  end
-  lastSilentSweepAt = now
-  local list = EnumerateLivePlates()
-  local swept = {}
-  if HasTarget() then
-    local tp = PlateFor("target")
-    local tu = NameplateUnitFor("target") or (tp and UnitTokenFromPlate(tp))
-    tu = OverlayUnitKey(tu, tp)
-    if tp then
-      SilentTracePaint(why or "sweep_tgt", tu, tp)
-      swept[tu or tostring(tp)] = true
-    end
-  end
-  for i = 1, #list do
-    if i > 8 then
-      break
-    end
-    local entry = list[i]
-    local u = OverlayUnitKey(entry.unit, entry.plate)
-    if u and not swept[u] and entry.plate then
-      SilentTracePaint((why or "sweep") .. "_np", u, entry.plate)
-      swept[u] = true
-    end
   end
 end
 
