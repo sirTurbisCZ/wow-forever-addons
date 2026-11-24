@@ -135,19 +135,57 @@ end
 local function PickStableAnchor(mergeKey, mergedFrom)
   SortBagSlots(mergedFrom)
   if #mergedFrom == 0 then
+    mergeAnchors[mergeKey] = nil
     return nil
   end
   local anchor = mergeAnchors[mergeKey]
-  if anchor and SlotStillOccupied(anchor.bag, anchor.slot) then
+  if anchor then
+    -- Keep grid cell while anchor is briefly empty (stack on cursor); only move when group loses that slot permanently.
     for i = 1, #mergedFrom do
       if mergedFrom[i].bag == anchor.bag and mergedFrom[i].slot == anchor.slot then
         return anchor
       end
     end
+    if #mergedFrom > 0 then
+      return anchor
+    end
   end
   local pick = mergedFrom[1]
   mergeAnchors[mergeKey] = { bag = pick.bag, slot = pick.slot }
   return pick
+end
+
+local function SumMergedGroupCount(mergedFrom)
+  if type(mergedFrom) ~= "table" then
+    return 0
+  end
+  local total = 0
+  for i = 1, #mergedFrom do
+    local bag, slot = mergedFrom[i].bag, mergedFrom[i].slot
+    local _, info = ResolveItemID(bag, slot)
+    total = total + StackCount(bag, slot, info)
+  end
+  return total
+end
+
+--- Update summed stack text without Layout.DoLayout (BAG_UPDATE / pickup).
+function StackMerge.RefreshMergedButtons()
+  if not StackMerge.IsEnabled() or not Slots or not Slots.ForEach then
+    return
+  end
+  Slots.ForEach(function(btn)
+    if not btn or not btn._bbMergedFrom or #btn._bbMergedFrom < 2 then
+      return
+    end
+    local total = SumMergedGroupCount(btn._bbMergedFrom)
+    if total < 1 then
+      return
+    end
+    StackMerge.ApplyDisplayCount(btn, {
+      displayCount = total,
+      mergedFrom = btn._bbMergedFrom,
+    })
+  end)
 end
 
 --- Collapse list of {bag,slot} into entries with displayCount / mergedFrom.

@@ -46,7 +46,7 @@ flowchart TD
   Class --> Buckets[CollectBuckets]
   Buckets --> SF[Search.Passes + Filter.Passes]
   SF --> Merge[StackMerge.Collapse per lane<br/>key = itemID + isLocked]
-  Merge --> Place[Slots.Acquire + Place]
+  Merge --> Place[Slots.Acquire + Place<br/>PickStableAnchor sticky through cursor pickup]
   Place --> Visual[SyncVisual + quest bang if questID and not isActive]
   Visual --> Attrs{OOC?}
   Attrs -->|yes| Sync[SyncAttrs type2=item]
@@ -54,6 +54,8 @@ flowchart TD
 ```
 
 Optional feature modules: `Feat("Name")` lookups — Layout does not crash if a module is omitted from TOC.
+
+- **Bag events:** `QueueBagRefresh` → `RefreshLight` (sync + `StackMerge.RefreshMergedButtons`); full `DoLayout` only when inventory occupied-slot count changes or explicit `Relayout` (search, collapse, open).
 
 - **Custom lanes:** `BetterBackpackDB.chars["Name-Realm"].customCategories` + char `itemRules` (custom_*). Built-in lane toggles remain on `profile`. `PLAYER_ENTERING_WORLD` → `CustomCategories.OnCharacterActive` refreshes layout on character switch.
 

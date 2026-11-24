@@ -1619,6 +1619,7 @@ local function DoLayout()
     if focusBagID ~= nil then
       SetBagMatchHighlight(focusBagID, true)
     end
+    BetterBackpack._bbLastOccupiedCount = InventoryOccupiedCount()
   end)
   layoutBusy = false
   if not ok and BetterBackpack.RecordError then
@@ -3453,6 +3454,56 @@ function Layout.Relayout()
   end
 end
 
+local function InventoryOccupiedCount()
+  local ranges = Slots.InventoryBagRanges and Slots.InventoryBagRanges()
+  if type(ranges) ~= "table" then
+    return 0
+  end
+  local n = 0
+  for ri = 1, #ranges do
+    local b = ranges[ri].bag
+    local numSlots = ranges[ri].slots
+    if b ~= nil and type(numSlots) ~= "number" then
+      if Slots.NumSlotsForBag then
+        numSlots = Slots.NumSlotsForBag(b)
+      elseif C_Container and C_Container.GetContainerNumSlots then
+        local okN, ns = pcall(C_Container.GetContainerNumSlots, b)
+        if okN then
+          numSlots = ns
+        end
+      end
+    end
+    if b ~= nil and type(numSlots) == "number" and numSlots > 0 then
+      for s = 1, numSlots do
+        if Slots.SlotOccupied and Slots.SlotOccupied(b, s) then
+          n = n + 1
+        end
+      end
+    end
+  end
+  return n
+end
+
+--- Bag events: sync icons/counts only — no full grid reflow (merged stacks stay put).
+function Layout.RefreshLight()
+  if not Layout.IsShown() then
+    return
+  end
+  local SM = Feat("StackMerge")
+  if SM and SM.RefreshMergedButtons then
+    SM.RefreshMergedButtons()
+  end
+  Slots.ForEach(function(btn)
+    if btn and btn:GetAlpha() > 0.5 and btn._bbBag ~= nil then
+      Slots.SyncCooldown(btn, btn._bbBag, btn._bbSlot)
+      Slots.SyncVisual(btn, btn._bbBag, btn._bbSlot)
+      if Slots.Normalize then
+        Slots.Normalize(btn)
+      end
+    end
+  end)
+end
+
 function Layout.Refresh()
   if InCombatLockdown and InCombatLockdown() then
     Layout.RefreshCooldowns()
@@ -3461,9 +3512,17 @@ function Layout.Refresh()
   if BetterBackpack._combatFrozen or BetterBackpack._sortSuppressRefresh then
     return
   end
-  if Layout.IsShown() then
-    DoLayout()
+  if not Layout.IsShown() then
+    return
   end
+  local occ = InventoryOccupiedCount()
+  local prev = BetterBackpack._bbLastOccupiedCount
+  BetterBackpack._bbLastOccupiedCount = occ
+  if prev == nil or prev ~= occ then
+    DoLayout()
+    return
+  end
+  Layout.RefreshLight()
 end
 
 function Layout.RefreshCooldowns()

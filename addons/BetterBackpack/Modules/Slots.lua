@@ -1253,6 +1253,9 @@ local function WireScripts(btn)
   btn:SetScript("OnReceiveDrag", pickup)
   if btn.HookScript then
     btn:HookScript("OnMouseDown", function(self, button)
+      if self.StopAnimating then
+        pcall(self.StopAnimating, self)
+      end
       -- Flush waiting Trash stacks on click, but not while picking up (would fight the cursor).
       if button == "LeftButton" and not CursorItemID() then
         local Trash = BetterBackpack.Modules.Trash
@@ -1574,6 +1577,20 @@ local function NormalizeSlotVisual(btn)
       cd:SetAllPoints(btn)
     end)
   end
+  pcall(function()
+    if btn.StopAnimating then
+      btn:StopAnimating()
+    end
+    local flash = btn.flash or btn.Flash
+    if flash and flash.Hide then
+      flash:Hide()
+      flash:SetAlpha(0)
+    end
+    local nt = btn.GetNormalTexture and btn:GetNormalTexture()
+    if nt and btn.SetPushedTexture then
+      btn:SetPushedTexture(nt)
+    end
+  end)
 end
 
 function Slots.Normalize(btn)

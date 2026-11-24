@@ -1,5 +1,22 @@
 # BetterBackpack changelog
 
+## Release 1.2.11 — stable merged-stack grid
+
+Clicking or picking up a **merged** stack (e.g. mussels) no longer re-anchors the icon to another bag slot or runs a full layout on every `BAG_UPDATE` tick — no inventory jump, no ItemButton press “expand” animation.
+
+## 1.2.11 — merged stack click stability
+
+- **`StackMerge.PickStableAnchor`:** keep the same representative `bag:slot` while any stack in the merge group remains (including when the anchor is briefly empty on the cursor).
+- **`Layout.RefreshLight`:** bag events sync icons + merged counts only; **`Layout.Refresh`** full `DoLayout` only when occupied-slot **count** changes (loot / destroy / new empty slot).
+- **`QueueBagRefresh`:** early debounce ticks call `RefreshLight` only.
+- **Slots:** `StopAnimating` on press; pushed texture = normal (no depress expand); hide `flash`.
+
+### Playtest (1.2.11)
+
+1. `/reload` → `loaded v1.2.11`; enable stack merge; put same item in 2+ slots (e.g. mussels).
+2. **LMB** pick up / split / use from merged icon — grid cell stays fixed; bag frame does not reflow.
+3. Loot a **new** item into an empty slot — one full relayout; counts update on existing stacks without jump.
+
 ## Release 1.2.10 — silent action trace
 
 Bag-key and layout diagnostics write to SavedVariables only; chat stays quiet unless you use `forceChat`. Pair with Forever silent trace for agent playtests.

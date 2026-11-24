@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 1.2.10 — TraceAction never chats; B/debug → SV only.
+## Notes: 1.2.11 — merged stack click: no grid jump / no slot press expand.
 ## Author: tuma
-## Version: 1.2.10
+## Version: 1.2.11
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled

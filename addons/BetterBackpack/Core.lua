@@ -175,7 +175,9 @@ local function QueueBagRefresh()
     return
   end
   if not (C_Timer and C_Timer.After) then
-    if Layout.Refresh then
+    if Layout.RefreshLight then
+      Layout.RefreshLight()
+    elseif Layout.Refresh then
       Layout.Refresh()
     end
     return
@@ -195,7 +197,12 @@ local function QueueBagRefresh()
       if BetterBackpack._sortSuppressRefresh then
         return
       end
-      if Layout.IsShown and Layout.IsShown() and Layout.Refresh then
+      if not (Layout.IsShown and Layout.IsShown()) then
+        return
+      end
+      if i < #delays and Layout.RefreshLight then
+        Layout.RefreshLight()
+      elseif Layout.Refresh then
         Layout.Refresh()
       end
     end)
