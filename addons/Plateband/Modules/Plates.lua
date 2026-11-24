@@ -1180,6 +1180,51 @@ local GAP_AURA_TEMPLATES = {
   "TargetBuffFrameTemplate",
 }
 
+local function PbAuraTimerFontSize(iconSz)
+  local sz = tonumber(iconSz) or 18
+  return math.max(8, math.floor(sz * 0.44 + 0.5))
+end
+
+local function PbAuraStackFontSize(iconSz)
+  local sz = tonumber(iconSz) or 18
+  return math.max(7, math.floor(sz * 0.38 + 0.5))
+end
+
+local function StyleAuraTimerFont(fs, iconSz)
+  if not fs or not fs.SetFont then
+    return
+  end
+  pcall(function()
+    local path, _, flags = fs:GetFont()
+    if not path and fs.SetFontObject then
+      fs:SetFontObject(NumberFontNormalSmall or NumberFontNormal)
+      path, _, flags = fs:GetFont()
+    end
+    if path then
+      fs:SetFont(path, PbAuraTimerFontSize(iconSz), flags or "OUTLINE")
+    end
+    if fs.SetShadowOffset then
+      fs:SetShadowOffset(1, -1)
+    end
+  end)
+end
+
+local function StyleAuraStackFont(fs, iconSz)
+  if not fs or not fs.SetFont then
+    return
+  end
+  pcall(function()
+    local path, _, flags = fs:GetFont()
+    if not path and fs.SetFontObject then
+      fs:SetFontObject(NumberFontNormalSmall or NumberFontNormal)
+      path, _, flags = fs:GetFont()
+    end
+    if path then
+      fs:SetFont(path, PbAuraStackFontSize(iconSz), flags or "OUTLINE")
+    end
+  end)
+end
+
 CreateGapAuraButton = function(parent, size)
   size = size or IconSize()
   for i = 1, #GAP_AURA_TEMPLATES do
@@ -1234,7 +1279,9 @@ InitAuraButton = function(button, size)
     pcall(cd.SetDrawSwipe, cd, true)
     -- Neutral dark swipe only — no orange/sepia tint.
     pcall(cd.SetSwipeColor, cd, 0, 0, 0, 0.5)
-    pcall(cd.SetHideCountdownNumbers, cd, false)
+    -- Digits via SetDurationText (scaled), not CooldownFrameTemplate giant font.
+    pcall(cd.SetHideCountdownNumbers, cd, true)
+    cd.noCooldownCount = true
     button.cooldown = cd
     if button.SetDurationCooldown then
       pcall(button.SetDurationCooldown, button, cd)
@@ -1244,6 +1291,7 @@ InitAuraButton = function(button, size)
   if not button.count then
     local count = button:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
     count:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 0, 0)
+    StyleAuraStackFont(count, size)
     button.count = count
     if button.SetApplicationCount then
       pcall(button.SetApplicationCount, button, count)
@@ -1253,8 +1301,34 @@ InitAuraButton = function(button, size)
   if button.SetDurationText and not button._pbDur then
     local dur = button:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
     dur:SetPoint("CENTER", button, "CENTER", 0, 1)
+    StyleAuraTimerFont(dur, size)
     pcall(button.SetDurationText, button, dur)
     button._pbDur = dur
+  elseif button._pbDur then
+    StyleAuraTimerFont(button._pbDur, size)
+  end
+
+  if button.cooldown then
+    local cd = button.cooldown
+    local useDurText = button._pbDur or button.SetDurationText
+    if useDurText then
+      pcall(cd.SetHideCountdownNumbers, cd, true)
+    else
+      pcall(function()
+        cd:SetHideCountdownNumbers(false)
+        if cd.SetCountdownFontObject then
+          cd:SetCountdownFontObject(NumberFontNormalSmall or NumberFontNormal)
+        end
+        local ref = NumberFontNormalSmall or GameFontHighlightSmall
+        local path = ref and select(1, ref:GetFont())
+        if path and cd.SetCountdownFont then
+          cd:SetCountdownFont(path, PbAuraTimerFontSize(size), "OUTLINE")
+        end
+      end)
+    end
+  end
+  if button.count then
+    StyleAuraStackFont(button.count, size)
   end
 end
 

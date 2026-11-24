@@ -1,5 +1,15 @@
 # Plateband changelog
 
+## Release 0.2.38 — subtle cooldown timer text
+
+- Gap/merge **duration** uses scaled `SetDurationText` (≈44% of icon px, min 8) — matches native subtle digits, not oversized CooldownFrame “21”.
+- **`Cooldown:SetHideCountdownNumbers(true)`** — swipe only; digits from aura duration text (OmniCC off via `noCooldownCount`).
+
+### Playtest (0.2.38)
+
+1. `/reload` → `v0.2.38`; debuff with ~20s left on merge row — center timer small like Blizzard row.
+2. `/pb size 24` — timer scales down/up with icon.
+
 ## Release 0.2.37 — fixed merge-row icon size
 
 - **All** gap/merge icons use profile **`iconSize`** (default 18, `/pb size 12–32`) on every slot — no native/TF sampling, no grow/shrink when personal DoT or spell-damage buff appears.
