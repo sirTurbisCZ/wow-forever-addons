@@ -899,7 +899,9 @@ SetBagMatchHighlight = function(bagID, highlight)
         ShowBagIndicator(btn and btn.BagIndicator, false)
         return
       end
-      local show = highlight and BagsMatchForHighlight(btn._bbBag, bagID)
+      local occ = Slots.SlotOccupied and btn._bbBag ~= nil and btn._bbSlot ~= nil
+          and Slots.SlotOccupied(btn._bbBag, btn._bbSlot)
+      local show = highlight and occ and BagsMatchForHighlight(btn._bbBag, bagID)
       local ind = EnsureBagIndicator(btn)
       ShowBagIndicator(ind, show)
     end)
@@ -3499,14 +3501,29 @@ VisibleGridSignature = function()
         list = SM.Collapse(list)
       end
       parts[#parts + 1] = string.format("%s:%d", key, #list)
+      for j = 1, #list do
+        local e = list[j]
+        if e and e.bag ~= nil and e.slot ~= nil then
+          parts[#parts + 1] = string.format("%d.%d", e.bag, e.slot)
+        end
+      end
     end
   end
   return table.concat(parts, "|") .. "|occ:" .. tostring(InventoryOccupiedCount())
 end
 
+local function NeedsMergedGridRepaint()
+  local SM = Feat("StackMerge")
+  return SM and SM.VisibleRepaintNeeded and SM.VisibleRepaintNeeded()
+end
+
 --- Bag events: sync icons/counts only — no full grid reflow (merged stacks stay put).
 function Layout.RefreshLight()
   if not Layout.IsShown() then
+    return
+  end
+  if NeedsMergedGridRepaint() then
+    DoLayout()
     return
   end
   local SM = Feat("StackMerge")
@@ -3541,7 +3558,7 @@ function Layout.Refresh()
   local prevSig = BetterBackpack._bbGridSig
   BetterBackpack._bbLastOccupiedCount = occ
   BetterBackpack._bbGridSig = sig
-  if prevOcc == nil or prevOcc ~= occ or prevSig == nil or prevSig ~= sig then
+  if prevOcc == nil or prevOcc ~= occ or prevSig == nil or prevSig ~= sig or NeedsMergedGridRepaint() then
     DoLayout()
     return
   end

@@ -1,5 +1,19 @@
 # BetterBackpack changelog
 
+## Release 1.2.14 — merge repack on stack click
+
+After LMB on a merged stack (mussels), Materials lane no longer leaves an **empty first cell** or **green bag highlight** ghost while the stack is on the cursor.
+
+## 1.2.14 — merged cursor pickup
+
+- **`VisibleGridSignature`** includes representative `bag.slot` per cell — relayout when merge anchor shifts to another occupied stack.
+- **`StackMerge.VisibleRepaintNeeded`:** full `DoLayout` when a visible merged icon points at an empty slot but siblings still exist.
+- **Bag match glow:** skip indicator on empty slots.
+
+### Playtest (1.2.14)
+
+1. `/reload` → `v1.2.14`; merged Materials stacks → LMB pickup/split → first slot stays filled, no green glitch on empty well.
+
 ## Release 1.2.13 — hotfix: bags open
 
 **1.2.12 regression:** **B** did nothing — `DoLayout` called `VisibleGridSignature` before its `local function` declaration (Lua scope → nil global → layout error).

@@ -187,6 +187,34 @@ local function SumMergedGroupCount(mergedFrom)
   return total
 end
 
+--- True when a visible merged icon still points at an empty slot but siblings exist (cursor pickup).
+function StackMerge.VisibleRepaintNeeded()
+  if not StackMerge.IsEnabled() or not Slots or not Slots.ForEach or not Slots.SlotOccupied then
+    return false
+  end
+  local needs = false
+  Slots.ForEach(function(btn)
+    if needs or not btn or (btn:GetAlpha() or 0) < 0.5 then
+      return
+    end
+    if not btn._bbMergedFrom or #btn._bbMergedFrom < 2 then
+      return
+    end
+    local b, s = btn._bbBag, btn._bbSlot
+    if b == nil or s == nil or Slots.SlotOccupied(b, s) then
+      return
+    end
+    for i = 1, #btn._bbMergedFrom do
+      local mb, ms = btn._bbMergedFrom[i].bag, btn._bbMergedFrom[i].slot
+      if mb ~= nil and ms ~= nil and Slots.SlotOccupied(mb, ms) then
+        needs = true
+        return
+      end
+    end
+  end)
+  return needs
+end
+
 --- Update summed stack text without Layout.DoLayout (BAG_UPDATE / pickup).
 function StackMerge.RefreshMergedButtons()
   if not StackMerge.IsEnabled() or not Slots or not Slots.ForEach then

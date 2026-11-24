@@ -12,7 +12,7 @@ local Config = BetterBackpack.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "1.2.13"
+Config.VERSION = "1.2.14"
 
 local function CharVendorDefaults()
   return {

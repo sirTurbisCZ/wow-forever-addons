@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 1.2.13 — hotfix: bags open (VisibleGridSignature forward decl).
+## Notes: 1.2.14 — merged stack click: repack, no empty Materials slot.
 ## Author: tuma
-## Version: 1.2.13
+## Version: 1.2.14
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled
