@@ -1,5 +1,9 @@
 # BetterBackpack changelog
 
+## Release 1.2.17 — hotfix slot OnLeave tooltip
+
+- **Slots.OnLeave** used invalid `self` / `BagsMatch` refs (1.2.16) → fixed; glow restore via `SetBagFocus`.
+
 ## Release 1.2.16 — character “Brašny” tooltip bleed
 
 Bag-match glow no longer bleeds through character sheet bag tooltips; slot hints spaced below item lines.

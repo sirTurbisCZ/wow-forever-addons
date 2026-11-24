@@ -1326,53 +1326,36 @@ local function WireScripts(btn)
     if self.BagIndicator and self.BagIndicator.Hide then
       self.BagIndicator:Hide()
     end
-  local function AddHintLine(text, r, g, b)
-    if not GameTooltip or not text then
-      return
-    end
-    GameTooltip:AddLine(" ", 1, 1, 1, 0)
-    GameTooltip:AddLine(text, r, g, b, true)
-  end
     local Context = BetterBackpack.Modules.Context
     local ctx = Context and Context.SpecialRmbContext and Context.SpecialRmbContext()
+    GameTooltip:AddLine(" ", 1, 1, 1, 0)
     if ctx == "merchant" then
-      AddHintLine("RMB = sell to vendor", 0.2, 1, 0.4)
+      GameTooltip:AddLine("RMB = sell to vendor", 0.2, 1, 0.4, true)
     elseif ctx == "mail" then
-      AddHintLine("RMB = attach to mail", 0.2, 1, 0.4)
+      GameTooltip:AddLine("RMB = attach to mail", 0.2, 1, 0.4, true)
     elseif ctx == "bank" then
-      AddHintLine("RMB = deposit to bank", 0.2, 1, 0.4)
+      GameTooltip:AddLine("RMB = deposit to bank", 0.2, 1, 0.4, true)
     else
-      AddHintLine("RMB = use / learn", 0.6, 0.8, 1)
+      GameTooltip:AddLine("RMB = use / learn", 0.6, 0.8, 1, true)
     end
-    local BT = BetterBackpack.Modules.BulkTransfer
     if self._bbMergedStacks and self._bbMergedStacks > 1 then
       if ctx == "merchant" then
-        AddHintLine("RMB = sell all merged stacks", 0.2, 1, 0.4)
+        GameTooltip:AddLine("RMB = sell all merged stacks", 0.2, 1, 0.4, true)
       elseif ctx == "mail" then
-        AddHintLine("RMB = attach all merged stacks", 0.2, 1, 0.4)
+        GameTooltip:AddLine("RMB = attach all merged stacks", 0.2, 1, 0.4, true)
       end
     end
-    if GameTooltip.Show then
-      GameTooltip:Show()
-    end
-    if GameTooltip.GetFrameLevel and self.GetFrameLevel then
-      pcall(function()
-        local tl = (GameTooltip:GetFrameLevel() or 100) + 20
-        if tl > (self:GetFrameLevel() or 0) then
-          self:SetFrameLevel(tl - 10)
-        end
-      end)
-    end
+    GameTooltip:Show()
   end)
-  btn:SetScript("OnLeave", function()
-    if self.BagIndicator and self.BagIndicator.Show and Layout and Layout.GetBagFocus then
-      local focus = Layout.GetBagFocus()
-      if focus ~= nil and Slots.SlotOccupied and Slots.SlotOccupied(self._bbBag, self._bbSlot)
-          and BagsMatch and BagsMatch(focus, self._bbBag) then
-        self.BagIndicator:Show()
+  btn:SetScript("OnLeave", function(self)
+    GameTooltip:Hide()
+    local L = BetterBackpack.Modules.Layout
+    if L and L.GetBagFocus and L.SetBagFocus and L.IsShown and L.IsShown() then
+      local focus = L.GetBagFocus()
+      if focus ~= nil then
+        pcall(L.SetBagFocus, focus)
       end
     end
-    GameTooltip:Hide()
   end)
 end
 
