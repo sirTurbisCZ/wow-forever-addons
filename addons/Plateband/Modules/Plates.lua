@@ -48,6 +48,7 @@ local ApplyGapSticky
 local AuraCountsAsForeignGaps
 local AuraDedupeKey
 local AuraIconPresent
+local AuraIsOurPersonalOnly
 local AuraIsPlayerOwned
 local AuraLooksForeign
 local BindUnit
@@ -1628,6 +1629,17 @@ AuraIsPlayerOwned = function(data)
   return nil
 end
 
+--- Local player/pet harmful only — party DoTs must not land here (0.2.16 coexist).
+AuraIsOurPersonalOnly = function(data)
+  if AuraIsPlayerOwned(data) ~= true then
+    return false
+  end
+  if AuraLooksForeign(data) then
+    return false
+  end
+  return true
+end
+
 --- Public texture keys known to be player-owned (skip even if native keys are secret).
 CollectPlayerOwnedKeys = function(unitToken, into)
   if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
@@ -1641,10 +1653,14 @@ CollectPlayerOwnedKeys = function(unitToken, into)
     if not ok or not data then
       break
     end
-    if AuraIsPlayerOwned(data) == true then
-      local key = PublicTexKey(data.icon)
+    if AuraIsOurPersonalOnly(data) then
+      local key = AuraDedupeKey(data, data.icon)
       if key then
         into[key] = true
+      end
+      local ck = CanonicalGapKey({ icon = data.icon, spellId = data.spellId, auraInstanceID = data.auraInstanceID })
+      if ck then
+        into[ck] = true
       end
     end
   end
@@ -1690,19 +1706,12 @@ AuraLooksForeign = function(data)
   return true
 end
 
---- Foreign gap when not clearly personal-only (party DoTs may mis-flag owned on Forever).
+--- Gap paint candidate for foreign/API pass — anything except our personal-only row.
 AuraCountsAsForeignGaps = function(data)
   if not data then
     return true
   end
-  local owned = AuraIsPlayerOwned(data)
-  if owned == true then
-    return AuraLooksForeign(data) == true
-  end
-  if owned == false then
-    return true
-  end
-  return true
+  return not AuraIsOurPersonalOnly(data)
 end
 
 --- v0.2.4 P0 — 0.1.15 foreign API pass: skip owned==true (personal stays native-only).
@@ -1772,8 +1781,8 @@ CollectPersonalAuraGaps = function(unitToken, paintKeys, out, maxN, stats)
     if not ok or not data then
       break
     end
-    if AuraIsPlayerOwned(data) ~= true then
-      -- foreign handled elsewhere
+    if not AuraIsOurPersonalOnly(data) then
+      -- party / foreign / unknown — foreign+TF passes
     else
       local icon = data.icon
       local key = AuraDedupeKey(data, icon)
@@ -2730,19 +2739,13 @@ PaintMergeMissing = function(unit, plate)
     CollectTargetFramePersonalGaps(queueSkip, missing, maxN, stats)
 
     local foreignSkip = CopyKeySet(queueSkip)
-    CollectPlayerOwnedKeys("target", foreignSkip)
-    if type(unit) == "string" and unit ~= "target" then
-      CollectPlayerOwnedKeys(unit, foreignSkip)
-    end
     CollectForeignAuraGaps("target", foreignSkip, missing, maxN, allowSecret, stats)
     CollectAuraSlotsGaps("target", foreignSkip, missing, maxN, stats)
     if type(unit) == "string" and unit ~= "target" then
       CollectForeignAuraGaps(unit, foreignSkip, missing, maxN, allowSecret, stats)
     end
-    -- TF rows already harvested above — skip second full TF pass (was duplicating icons).
-    if harvN == 0 then
-      CollectTargetFrameMissing(queueSkip, missing, maxN, stats)
-    end
+    -- TF supplement: queueSkip + CanonicalGapKey dedupe; catches party harm TF/API missed in harv.
+    CollectTargetFrameMissing(queueSkip, missing, maxN, stats)
     if #missing == 0 then
       CollectUnitHarmfulMirror("target", queueSkip, missing, maxN, stats)
       if type(unit) == "string" and unit ~= "target" then

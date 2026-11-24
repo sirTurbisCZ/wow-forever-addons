@@ -1,5 +1,15 @@
 # Plateband changelog
 
+## 0.2.16 — personal + foreign coexist
+
+- **`AuraIsOurPersonalOnly`** — party DoTs no longer routed only to personal / blocked from foreign.
+- **Foreign pass:** `AuraCountsAsForeignGaps` = not our-personal-only; drop `CollectPlayerOwnedKeys` preload on `foreignSkip` (queue dedupe only).
+- **TF supplement** always runs (CanonicalGapKey dedupe) so TF foreign icons aren't dropped when own DoT paints first.
+
+### Playtest (0.2.16)
+
+1. `/reload` → `ver=0.2.16`; self DoT + party DoT on target → **both** on plate (PAINT `pers≥1 for≥1`).
+
 ## 0.2.15 — TF/plate harmful dedupe
 
 - **`CanonicalGapKey` / `tex:`** — one icon per public texture; TF harvest dedupes before paint.
