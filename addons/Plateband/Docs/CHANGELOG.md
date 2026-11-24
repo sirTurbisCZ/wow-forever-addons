@@ -1,5 +1,9 @@
 # Plateband changelog
 
+## Release 0.2.29 — nameplate harmful merge (Forever)
+
+Enemy target debuffs beside native nameplate row (TF/API parity, `SetAuraInstance` for secret icons). Party and friend nameplates use the same merge when `mergeFriendPlates` is on (default). Includes 0.2.24–0.2.28 coverage and prune fixes from Stockade playtest.
+
 ## 0.2.29 — party/friend nameplate merge
 
 - **`ResolvePartyTokenForPlate`:** `PlateFor(partyN)==plate` binding (Forever `SameUnit` miss).

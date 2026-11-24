@@ -1,5 +1,9 @@
 # BetterBackpack changelog
 
+## Release 1.2.10 — silent action trace
+
+Bag-key and layout diagnostics write to SavedVariables only; chat stays quiet unless you use `forceChat`. Pair with Forever silent trace for agent playtests.
+
 ## 1.2.10 — TraceAction never chats
 
 - **`TraceAction`:** always SessionLog only; chat **only** with `opts.forceChat` (not `/bb debug`, not `silentTrace off`).

@@ -4003,7 +4003,7 @@ PaintMergeMissing = function(unit, plate)
     local heldN = held and tonumber(held._painted) or 0
     if heldN > 0 and sticky and type(sticky.icons) == "table" and #sticky.icons > 0 then
       if type(sticky.at) == "number" and (now - sticky.at) <= GAP_STICKY_SEC then
-        local auraUnit = useTargetSrc and "target" or unit
+        local auraUnit = useTargetSrc and "target" or (partyAuraTok or unit)
         local heldCd = 0
         pcall(function()
           local n, cdn = RefreshHeldGapFallback(unit, plate, held, sticky.icons, auraUnit)
@@ -4038,7 +4038,7 @@ PaintMergeMissing = function(unit, plate)
   lastPaintDebug.parent = nativeN > 0 and "nativeRow" or "healthBar"
   local sz, pad = MergeRowIconSize(plate, fb)
   fb._pbPlate = plate
-  local auraUnit = useTargetSrc and "target" or unit
+  local auraUnit = useTargetSrc and "target" or (partyAuraTok or unit)
   local painted = 0
   local cdN = 0
   for i = 1, #missing do
