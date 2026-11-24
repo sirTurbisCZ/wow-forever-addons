@@ -11,9 +11,9 @@ MODE="${1:-scan}"
 INTERVAL="${2:-10}"
 
 pick_newest() {
-  local glob="$1"
+  local addon="$1"
   shopt -s nullglob
-  local files=($glob)
+  local files=("${WOW_ROOT}/WTF/Account/"*/SavedVariables/"${addon}".lua)
   shopt -u nullglob
   if [[ ${#files[@]} -eq 0 ]]; then
     return 1
@@ -41,17 +41,21 @@ extract_tail() {
 alert_check() {
   local alerts=0
   local pb
-  pb=$(pick_newest "${WOW_ROOT}/WTF/Account/*/SavedVariables/Plateband.lua" 2>/dev/null || true)
+  pb=$(pick_newest "Plateband" 2>/dev/null || true)
   if [[ -n "${pb:-}" && -f "$pb" ]]; then
-  if rg -q 'PAINT .*tf=[1-9][0-9]* .*painted=0' "$pb" 2>/dev/null || \
-     rg -q 'PAINT .*harv=[1-9][0-9]* .*painted=0' "$pb" 2>/dev/null; then
+    if rg -q 'ver=0\.1\.|PLATEBAND_CARD' "$pb" 2>/dev/null && ! rg -q 'PAINT ver=' "$pb" 2>/dev/null; then
+      echo "ALERT [Plateband] live SV still 0.1.x card trace — install 0.2.10+ (pb branch) + /reload"
+      alerts=$((alerts + 1))
+    fi
+    if rg -q 'PAINT .*tf=[1-9][0-9]* .*painted=0' "$pb" 2>/dev/null || \
+       rg -q 'PAINT .*harv=[1-9][0-9]* .*painted=0' "$pb" 2>/dev/null; then
       echo "ALERT [Plateband] TF/harv >0 but painted=0 — see PAINT lines in $pb"
       alerts=$((alerts + 1))
     fi
   fi
 
   local bb
-  bb=$(pick_newest "${WOW_ROOT}/WTF/Account/*/SavedVariables/BetterBackpack.lua" 2>/dev/null || true)
+  bb=$(pick_newest "BetterBackpack" 2>/dev/null || true)
   if [[ -n "${bb:-}" && -f "$bb" ]]; then
     if rg -q 'ACTION.*MISMATCH=1' "$bb" 2>/dev/null || \
        rg -q 'ACTION BULK done.*queued=([1-9][0-9]*) sold=0' "$bb" 2>/dev/null; then
@@ -61,7 +65,7 @@ alert_check() {
   fi
 
   local fel
-  fel=$(pick_newest "${WOW_ROOT}/WTF/Account/*/SavedVariables/ForeverErrorLog.lua" 2>/dev/null || true)
+  fel=$(pick_newest "ForeverErrorLog" 2>/dev/null || true)
   if [[ -n "${fel:-}" && -f "$fel" ]]; then
     if rg -q 'ERROR ' "$fel" 2>/dev/null; then
       local last
@@ -78,10 +82,10 @@ alert_check() {
 
 dump_section() {
   local name="$1"
-  local glob="$2"
+  local addon="$2"
   local pattern="$3"
   local file
-  file=$(pick_newest "$glob" 2>/dev/null || true)
+  file=$(pick_newest "$addon" 2>/dev/null || true)
   if [[ -z "${file:-}" ]]; then
     echo "=== $name — (no SV file) ==="
     return
@@ -92,12 +96,9 @@ dump_section() {
 }
 
 run_scan() {
-  dump_section "Plateband" "${WOW_ROOT}/WTF/Account/*/SavedVariables/Plateband.lua" \
-    'PAINT |PLATE |SESSION_START|PLATEBAND_CARD'
-  dump_section "BetterBackpack" "${WOW_ROOT}/WTF/Account/*/SavedVariables/BetterBackpack.lua" \
-    'ACTION |BAGKEY |SESSION_START|ERROR '
-  dump_section "ForeverErrorLog" "${WOW_ROOT}/WTF/Account/*/SavedVariables/ForeverErrorLog.lua" \
-    'SESSION_START|ERROR |INFO '
+  dump_section "Plateband" "Plateband" 'PAINT |PLATE |SESSION_START|PLATEBAND_CARD'
+  dump_section "BetterBackpack" "BetterBackpack" 'ACTION |BAGKEY |SESSION_START|ERROR '
+  dump_section "ForeverErrorLog" "ForeverErrorLog" 'SESSION_START|ERROR |INFO '
   echo "--- alerts ---"
   alert_check || true
 }

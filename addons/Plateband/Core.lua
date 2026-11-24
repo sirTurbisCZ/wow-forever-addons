@@ -165,6 +165,19 @@ local function DumpRing()
       end
     end
   end
+  local pt = db.paintTrace or {}
+  local ptN = type(pt.entries) == "table" and #pt.entries or 0
+  Print(string.format("paintTrace entries=%d (silent default)", ptN))
+  if ptN > 0 then
+    local from = math.max(1, ptN - 12)
+    print("|cff888888--- paintTrace tail ---|r")
+    for i = from, ptN do
+      print("|cff888888" .. tostring(pt.entries[i]) .. "|r")
+    end
+  end
+  if db.lastPaintTrace then
+    print("|cffaaaaaa lastPaintTrace: " .. tostring(db.lastPaintTrace) .. "|r")
+  end
   -- Tail of session log
   if nLines > 0 then
     local from = math.max(1, nLines - 7)

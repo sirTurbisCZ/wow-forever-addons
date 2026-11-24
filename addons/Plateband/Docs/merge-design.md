@@ -1,68 +1,59 @@
 # Plateband — safe merge design (no name mutation)
 
-**Status:** shipped under three-addon refactor · **default ON** (`mergeMissing=true`, schema 7+)  
-**Versions:** safe baseline **0.1.12+**; **`/pb merge off`** for native-only (**0.1.15+**)
+**Status:** v0.2.7 P0+P1 (`pb-old-vs-peers-dots.md` §5) · **default ON** (`mergeMissing=true`, schema 7+)  
+**Baseline:** `plateband-v0.1.15` data contract + **0.2** beside-native layout · HUD gate before main merge
 
-## Goal
+## Product rule (0.2.7)
 
-Append **only** party/nearby foreign harmful DoTs that native DebuffList omits, on the **same above-plate band**, without touching Blizzard name / DebuffList anchors.
+**One native-looking harmful row** on enemy **target** nameplates (e.g. Rake + timer left of health): Blizzard `DebuffList` / `auraPools` kids first; Plateband paints **personal gaps** (player DoTs missing from native) then **foreign gaps**. Dedupe **only** `NativeKeySet` for personal; `CollectPlayerOwnedKeys` applies to **foreign** skip set only. Gaps match **native kid size** (`NativeAuraMetrics`), appended **RIGHT of rightmost native** with **BOTTOM** band align. Gap icons are texture-only (timers on native). **No** AuraContainer overlay row.
 
 ## Hard rules (non-negotiable)
 
 | Rule | Why |
 |------|-----|
-| **Never** `ClearAllPoints` / `SetPoint` on `UnitFrame.name` | 0.1.8–0.1.11 broke Forever plates (Golm/Pichy / “completely broken”) |
-| **Never** `ClearAllPoints` / `SetPoint` / `Hide` / `SetAlpha(0)` on DebuffList | Forever FORBIDDEN / sacred native band |
-| **Never** paint player-owned harmful already on native | No duplicate personal icons |
-| **No CLEU** as core | Forever policy |
-| Bags stay in **BetterBackpack** | Three-addon split; Plateband plates-only |
+| **Never** `ClearAllPoints` / `SetPoint` on `UnitFrame.name` | 0.1.8–0.1.11 broke Forever plates |
+| **Never** `ClearAllPoints` / `SetPoint` / `Hide` / `SetAlpha(0)` on DebuffList | Forever FORBIDDEN |
+| **Never** parent plate band to `UIParent` / HUD | UI vanish incident |
+| **Never** mutate TargetFrame / TF buttons (read-only scrape OK) | Incident + taint |
+| **No CLEU** | Forever policy |
 
-## Data flow (`mergeMissing=true`, default since 0.1.15)
+## Data flow (`mergeMissing=true`)
 
 ```mermaid
 flowchart TD
   tick[UpdateOverlay] --> gate{mergeMissing?}
-  gate -->|false /pb merge off| nativeOnly[EnsureNativeVisible + clear Plateband chrome]
+  gate -->|false| nativeOnly[EnsureNativeVisible + clear Plateband chrome]
   gate -->|true| enemy{Friend/party plate?}
-  enemy -->|yes| skip[ClearFallback — no merge on friends]
-  enemy -->|no| collect[Collect missing HARMFUL]
-  collect --> src1[C_UnitAuras allowSecretUnknown]
-  collect --> src2[TF auraPools + Contextual brute + activeDebuffs]
-  collect --> skipKeys[skipKeys = native public tex + player-owned]
-  skipKeys --> paint[Fallback textures on Plateband frame]
-  paint --> layout[SetPoint mergeFb LEFT of native rightmost icon]
-  layout --> note[Name + DebuffList anchors untouched]
+  enemy -->|yes| skip[ClearFallback]
+  enemy -->|no| row{Debuff anchor exists?}
+  row -->|no| skip
+  row -->|yes| native[NativeKeySet pools + children]
+  native --> per[CollectPersonalAuraGaps + TF personal if not in native]
+  per --> api[CollectForeignAuraGaps + GetAuraSlots]
+  api --> tf[CollectTargetHarmfulRows Retinue TF mirror minus paintKeys]
+  tf --> sticky[Gap sticky TTL optional]
+  sticky --> paint[Fallback textures DebuffList parent]
+  paint --> metrics[NativeAuraMetrics]
+  metrics --> layout[LEFT+BOTTOM rightmost native]
 ```
 
-## Layout contract
+## Layout
 
-1. Native DebuffList stays where Blizzard put it (above bar / engine layout).
-2. Plateband fallback frame parents to plate `UnitFrame` (non-forbidden) with `EnableMouse(false)`.
-3. Anchor: `mergeFb LEFT → rightmost shown native aura RIGHT` (+ pad). Fallback: `BOTTOM` of health `TOP` if no native kids.
-4. **Name text:** leave alone. Overlap with native auras is an engine/CVar concern — not fixed by Plateband SetPoint.
+1. Native DebuffList untouched.
+2. Fallback parents to `DebuffList` / `AurasFrame` (`FallbackParent`), not `UIParent`.
+3. Anchor: rightmost native aura from **pools** or `DebuffListFrame`; health-bar fallback only if no kid.
+4. `pcall` on paint + layout; debounce `UNIT_AURA` on target.
 
-## Sources (target vs non-target)
+## Sources
 
-| Plate | Sources |
-|-------|---------|
-| Current **target** | `C_UnitAuras` HARMFUL on `target` + nameplate token; TargetFrame auraPools / Contextual brute / `activeDebuffs` |
-| Other **enemy** | `C_UnitAuras` on `nameplateN` only (no TF) |
+| Plate | Source |
+|-------|--------|
+| Target enemy | `NativeKeySet` → `C_UnitAuras` foreign (`owned~=true`, skip native keys) → **`CollectTargetFrameMissing`** → `nameplateN` token |
+| Other enemy | `C_UnitAuras` on `nameplateN` only (no TF) |
 | Friend / party | No merge |
 
-Skip: `AuraIsPlayerOwned == true`; native public texture keys.
+`CollectPlayerOwnedKeys` → `skipKeys` (secret dedupe only; **not** personal fallback paint).
 
-## Disable merge (native-only)
+## `/pb merge off`
 
-Default is **on** since 0.1.15 (schema 7 migrates prior opt-in off → on).
-
-```
-/pb merge off
-```
-
-Expect `/pb diagnose` `merge=1` by default; `fb>0` when TF/API shows foreign DoTs native omits; solo personal DoTs stay `fb=0`, `native>0`.
-
-## Coordination (BetterBackpack / ForeverErrorLog)
-
-- **No shared frames** with BB. Plateband ignores non-Plateband `ADDON_ACTION_BLOCKED` (BB strata spam must not drive Plateband diagnose).
-- OptionalDeps ForeverErrorLog only for error capture — no FELog UI coupling.
-- BB owns bags chrome (native templates); Plateband owns plates only.
+Native only; Plateband chrome cleared.

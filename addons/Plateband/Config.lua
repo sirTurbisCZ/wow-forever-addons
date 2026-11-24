@@ -2,7 +2,7 @@
 
 Plateband = Plateband or {}
 
-local CURRENT_SCHEMA = 7
+local CURRENT_SCHEMA = 8
 local MAX_ERRORS = 40
 local MAX_MSG = 2000
 
@@ -12,7 +12,7 @@ local Config = Plateband.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.1.15"
+Config.VERSION = "0.2.10"
 
 local function ProfileDefaults()
   return {
@@ -29,6 +29,9 @@ local function ProfileDefaults()
     watchInterval = 2,
     autoDiag = true,
     chatOnChange = false,
+    -- Silent always-on paint trace → PlatebandDB.sessionLog / paintTrace (no chat).
+    silentTrace = true,
+    paintTraceOn = true,
   }
 end
 
@@ -45,6 +48,12 @@ local function Defaults()
       fileOk = false,
       export = "",
     },
+    paintTrace = {
+      startedAt = 0,
+      entries = {},
+      export = "",
+    },
+    lastPaintTrace = nil,
   }
 end
 
@@ -146,10 +155,30 @@ function Config.EnsureDB()
     db.profile.paintOverlay = false
     db.profile.mergeMissing = true
     db.schemaVersion = 7
+    from = 7
+  end
+
+  if from < 8 then
+    EnsureProfile(db)
+    if db.profile.silentTrace == nil then
+      db.profile.silentTrace = true
+    end
+    if db.profile.paintTraceOn == nil then
+      db.profile.paintTraceOn = true
+    end
+    db.profile.chatOnChange = false
+    if type(db.paintTrace) ~= "table" then
+      db.paintTrace = { startedAt = 0, entries = {}, export = "" }
+    end
+    db.schemaVersion = 8
+    from = 8
   end
 
   EnsureProfile(db)
   EnsureSessionLog(db)
+  if type(db.paintTrace) ~= "table" then
+    db.paintTrace = { startedAt = 0, entries = {}, export = "" }
+  end
   if type(db.errors) ~= "table" then
     db.errors = {}
   end
