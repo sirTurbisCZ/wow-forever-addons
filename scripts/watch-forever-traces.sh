@@ -6,6 +6,7 @@
 set -euo pipefail
 
 WOW_ROOT="${WOW_FOREVER_ROOT:-/Applications/World of Warcraft/_forever_}"
+REPO_ROOT="${WOW_ADDONS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 MODE="${1:-scan}"
 INTERVAL="${2:-3}"
 STATE_FILE="${FOREVER_WATCH_STATE:-/tmp/forever-trace-watch.state}"
@@ -120,6 +121,11 @@ felog_live_new_errors() {
     fi
     return 1
   fi
+  if printf '%s' "$chunk" | rg -qi 'Plateband.*paint|attempt to call .* nil.*Plates\.lua'; then
+    emit_alert "[FElog LIVE] Plateband paint/nil — $log"
+    printf '%s\n' "$(printf '%s' "$chunk" | rg -i 'Plateband|paint|nil' | tail -6)"
+    return 1
+  fi
   if printf '%s' "$chunk" | rg -q 'ERROR'; then
     emit_alert "[FElog LIVE] new ERROR — $log"
     printf '%s\n' "$(printf '%s' "$chunk" | rg 'ERROR' | tail -3)"
@@ -152,6 +158,76 @@ felog_sv_new_errors() {
   return 0
 }
 
+plateband_expected_ver() {
+  local cfg="${REPO_ROOT}/addons/Plateband/Config.lua"
+  if [[ -f "$cfg" ]]; then
+    rg -m1 'VERSION = "([^"]+)"' "$cfg" 2>/dev/null | sed -n 's/.*VERSION = "\([^"]*\)".*/\1/p' || true
+  fi
+}
+
+plateband_sv_regressions() {
+  local pb="$1"
+  [[ -f "$pb" ]] || return 0
+  local alerts=0
+  local paint_tail
+  paint_tail=$(rg 'PAINT ' "$pb" 2>/dev/null | tail -40 || true)
+  [[ -n "$paint_tail" ]] || return 0
+  local exp
+  exp="$(plateband_expected_ver)"
+  if [[ -n "$exp" ]] && rg -q 'SESSION_START ver=' "$pb" 2>/dev/null; then
+    local live
+    live=$(rg -o 'SESSION_START ver=[0-9.]+' "$pb" 2>/dev/null | tail -1 | sed 's/.*ver=//')
+    if [[ -n "$live" && "$live" != "$exp" ]] && printf '%s\n%s' "$live" "$exp" | sort -V | head -1 | rg -q "^${live}$"; then
+      emit_alert "[Plateband] client ver=$live repo=$exp — /reload"
+      alerts=$((alerts + 1))
+    fi
+  fi
+  if rg -q 'SESSION_START ver=0\.2\.(10|11|12|13|14|15|16|17) ' "$pb" 2>/dev/null && [[ "${exp:-}" == "0.2.19" || "${exp:-}" == "0.2.18" ]]; then
+    if [[ -n "$exp" ]] && ! rg -q "SESSION_START ver=${exp}" "$pb" 2>/dev/null; then
+      emit_alert "[Plateband] SV session older than repo $exp — /reload"
+      alerts=$((alerts + 1))
+    fi
+  elif rg -q 'ver=0\.1\.|PLATEBAND_CARD' "$pb" 2>/dev/null && ! rg -q 'PAINT ver=' "$pb" 2>/dev/null; then
+    emit_alert "[Plateband] SV stale 0.1.x — need 0.2.18+ /reload"
+    alerts=$((alerts + 1))
+  fi
+  if printf '%s\n' "$paint_tail" | rg -q 'PAINT .*merge=1 .*tgt=1 .*tf=[1-9][0-9]* .*painted=0' || \
+     printf '%s\n' "$paint_tail" | rg -q 'PAINT .*merge=1 .*tgt=1 .*harv=[1-9][0-9]* .*painted=0'; then
+    emit_alert "[Plateband] TF/harv>0 painted=0 (merge on, target) — $pb"
+    alerts=$((alerts + 1))
+  fi
+  if printf '%s\n' "$paint_tail" | rg -q 'PAINT .*merge=1 .*tgt=1 .*miss=[1-9][0-9]* .*painted=0'; then
+    emit_alert "[Plateband] miss>0 painted=0 — foreign/personal not painted"
+    alerts=$((alerts + 1))
+  fi
+  if printf '%s\n' "$paint_tail" | rg -q 'PAINT .*merge=1 .*tgt=1 .*harv=[1-9].* for=0 ' && \
+     printf '%s\n' "$paint_tail" | rg -q 'PAINT .*painted=[1-9]'; then
+    emit_alert "[Plateband] harv>0 for=0 while painted — possible missing foreign"
+    alerts=$((alerts + 1))
+  fi
+  if printf '%s\n' "$paint_tail" | rg -q 'PAINT .*painted=[1-9].*cdN=0 '; then
+    emit_alert "[Plateband] painted>0 cdN=0 — dead gap timers (0.2.19+ PAINT)"
+    alerts=$((alerts + 1))
+  fi
+  local gap_line gap_sz
+  gap_line=$(printf '%s\n' "$paint_tail" | rg 'PAINT .*gapSz=[0-9]+' | tail -1 || true)
+  gap_sz=$(printf '%s' "$gap_line" | rg -o 'gapSz=[0-9]+' 2>/dev/null | tail -1 | cut -d= -f2 || true)
+  if [[ -n "${gap_sz:-}" ]]; then
+    local prev
+    prev="$(state_get pb_gap_sz)"
+    if [[ -n "$prev" && "$gap_sz" -gt $((prev + 3)) ]]; then
+      emit_alert "[Plateband] gapSz jump ${prev}→${gap_sz} — size regression"
+      alerts=$((alerts + 1))
+    fi
+    state_set pb_gap_sz "$gap_sz"
+  fi
+  if printf '%s\n' "$paint_tail" | rg -q 'PAINT .*gapSz=3[3-9] |PAINT .*gapSz=[4-9][0-9] '; then
+    emit_alert "[Plateband] gapSz>32 — oversized merge icons"
+    alerts=$((alerts + 1))
+  fi
+  return "$alerts"
+}
+
 alert_check() {
   local alerts=0
   if ! felog_live_new_errors; then
@@ -161,18 +237,7 @@ alert_check() {
   local pb
   pb=$(pick_newest "Plateband" 2>/dev/null || true)
   if [[ -n "${pb:-}" && -f "$pb" ]]; then
-    if rg -q 'SESSION_START ver=0\.2\.(10|11|12) ' "$pb" 2>/dev/null; then
-      emit_alert "[Plateband] SV session < 0.2.13 — /reload on latest Plateband"
-      alerts=$((alerts + 1))
-    elif rg -q 'ver=0\.1\.|PLATEBAND_CARD' "$pb" 2>/dev/null && ! rg -q 'PAINT ver=' "$pb" 2>/dev/null; then
-      emit_alert "[Plateband] SV stale 0.1.x — need 0.2.13+ /reload"
-      alerts=$((alerts + 1))
-    fi
-    if rg -q 'PAINT .*tf=[1-9][0-9]* .*painted=0' "$pb" 2>/dev/null || \
-       rg -q 'PAINT .*harv=[1-9][0-9]* .*painted=0' "$pb" 2>/dev/null; then
-      emit_alert "[Plateband] TF/harv >0 painted=0 — $pb"
-      alerts=$((alerts + 1))
-    fi
+    plateband_sv_regressions "$pb" || alerts=$((alerts + 1))
   fi
 
   local bb

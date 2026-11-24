@@ -1,5 +1,14 @@
 # Plateband changelog
 
+## 0.2.19 — PAINT regression telemetry + agent watch
+
+- **PAINT line:** `gapSz`, `lockSz`, `cdN` (merge icon size, per-plate lock, cooldowns applied) for `watch-forever-traces.sh` regression alerts.
+- **Agent policy:** 3s `watch-forever-traces.sh watch 3` + Plateband SV — fix/ship on alert before user screenshot (see repo `.cursor/rules/plateband-proactive-watch.mdc`).
+
+### Playtest (0.2.19)
+
+1. `/reload` → PAINT tail includes `gapSz=` `cdN=`; watch inbox stays quiet during normal DoT play.
+
 ## 0.2.18 — gap cooldown swipe + stable TF size
 
 - **`ApplyGapAuraVisual`:** aura rows carry `expirationTime`/`duration` (API + TF harvest); `Cooldown:SetCooldown` each paint tick; optional `SetUnit` + `SetAuraInstance`.

@@ -2721,7 +2721,7 @@ end
 
 ApplyGapAuraVisual = function(button, entry, unitToken)
   if not button then
-    return false
+    return false, false
   end
   local tex = button.icon or button.Icon
   if not tex then
@@ -2732,7 +2732,7 @@ ApplyGapAuraVisual = function(button, entry, unitToken)
     tex = button.icon or button.Icon
   end
   if not tex then
-    return false
+    return false, false
   end
   local ok = SetIconTexture(tex, entry)
   if type(entry) == "table" then
@@ -2772,6 +2772,7 @@ ApplyGapAuraVisual = function(button, entry, unitToken)
         if start and start >= 0 then
           cd:SetCooldown(start, dur)
           cd:Show()
+          entry._pbCd = true
         end
       elseif cd and cd.Clear then
         cd:Clear()
@@ -2786,7 +2787,8 @@ ApplyGapAuraVisual = function(button, entry, unitToken)
       end
     end)
   end
-  return ok
+  local cdSet = type(entry) == "table" and entry._pbCd == true
+  return ok, cdSet
 end
 
 TfSupplementSkipKeys = function(paintKeys, missing)
@@ -2840,7 +2842,7 @@ BuildPaintTraceLine = function(why, unit, plate)
   local bar = plate and HealthBar(plate)
   local barVis = bar and (SafeShown(bar) and 1 or 0) or 0
   return string.format(
-    "PAINT ver=%s why=%s unit=%s tgt=%s merge=%s native=%s pool=%s kids=%s tf=%s harv=%s miss=%s painted=%s fb=%s pers=%s for=%s tgtSrc=%s parent=%s natVis=%s barVis=%s active=%s safe=%s acFail=%s",
+    "PAINT ver=%s why=%s unit=%s tgt=%s merge=%s native=%s pool=%s kids=%s tf=%s harv=%s miss=%s painted=%s fb=%s pers=%s for=%s tgtSrc=%s parent=%s natVis=%s barVis=%s active=%s safe=%s acFail=%s gapSz=%s lockSz=%s cdN=%s",
     tostring(ns.Config.VERSION),
     tostring(why or "?"),
     tostring(unit),
@@ -2862,7 +2864,10 @@ BuildPaintTraceLine = function(why, unit, plate)
     tostring(barVis),
     ModuleActive() and "1" or "0",
     p.safeMode and "1" or "0",
-    acCreateFailed and "1" or "0"
+    acCreateFailed and "1" or "0",
+    tostring(lpd.gapSz or "?"),
+    tostring(lpd.lockSz or "?"),
+    tostring(lpd.cdN or "?")
   )
 end
 
@@ -3022,6 +3027,7 @@ PaintMergeMissing = function(unit, plate)
   fb._pbPlate = plate
   local auraUnit = useTargetSrc and "target" or unit
   local painted = 0
+  local cdN = 0
   for i = 1, #missing do
     if painted >= maxN then
       break
@@ -3044,11 +3050,17 @@ PaintMergeMissing = function(unit, plate)
     end)
     if not okLay then
       painted = painted - 1
-    elseif ApplyGapAuraVisual(slot, missing[i], auraUnit) then
-      pcall(slot.Show, slot)
     else
-      pcall(slot.Hide, slot)
-      painted = painted - 1
+      local okVis, cdSet = ApplyGapAuraVisual(slot, missing[i], auraUnit)
+      if cdSet then
+        cdN = cdN + 1
+      end
+      if okVis then
+        pcall(slot.Show, slot)
+      else
+        pcall(slot.Hide, slot)
+        painted = painted - 1
+      end
     end
   end
   for i = painted + 1, #fb.icons do
@@ -3104,6 +3116,9 @@ PaintMergeMissing = function(unit, plate)
   lastPaintDebug.painted = painted
   lastPaintDebug.personal = stats.personal
   lastPaintDebug.foreign = stats.foreign
+  lastPaintDebug.gapSz = sz
+  lastPaintDebug.lockSz = fb._pbLockedSz
+  lastPaintDebug.cdN = cdN
   SilentTracePaint("paint", unit, plate)
   return painted
 end

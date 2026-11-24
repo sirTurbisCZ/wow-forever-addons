@@ -51,8 +51,11 @@ Grep `PAINT`, `paintTrace`, `lastPaintTrace`, or `sessionLog.export`.
 **Developer on Mac** (while Ondřej tests — no screenshots needed):
 
 ```bash
-./scripts/watch-plateband-sv.sh   # tail PAINT lines from newest Account SV
+./scripts/watch-forever-traces.sh watch 3   # FElog LIVE + Plateband SV alerts every 3s (agent default)
+./scripts/watch-plateband-sv.sh             # PAINT tail only
 ```
+
+Alerts append to `/tmp/forever-trace-coordinator-inbox.txt`. Agents fix/ship on regression signals (size jump, `cdN=0`, missing foreign, FElog nil) **before** asking for screenshots.
 
 Optional: `WOW_FOREVER_ROOT=/path/to/_forever_ ./scripts/watch-plateband-sv.sh 80`
 
