@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 1.2.16 — char bag tooltip bleed + spacing.
+## Notes: 1.2.17 — char bag tooltip bleed + OnLeave hotfix.
 ## Author: tuma
 ## Version: 1.2.17
 ## SavedVariables: BetterBackpackDB
