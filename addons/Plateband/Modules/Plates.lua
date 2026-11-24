@@ -36,7 +36,7 @@ local platesSeen = 0
 local overlayUpdates = 0
 local lastAuraRefreshAt = 0
 local AURA_DEBOUNCE_SEC = 0.12
-local GAP_STICKY_SEC = 0.4 -- brief hold when UNIT_AURA/API flickers empty (Retinue lesson; no CLEU)
+local GAP_STICKY_SEC = 3.0 -- hold when UNIT_AURA/API flickers empty on target paint (melee refresh)
 local SILENT_SWEEP_SEC = 0.5
 local gapSticky = {} -- [unit] = { icons = {}, at = number }
 local lastPaintDebug = {} -- diagnose: last PaintMergeMissing / Refresh snapshot
@@ -66,6 +66,7 @@ local CollectTargetFrameButtons
 local CollectTargetFrameMissing
 local CollectTargetFramePersonalGaps
 local CollectTargetHarmfulRows
+local CollectUnitHarmfulMirror
 local CollectTfActiveDebuffs
 local CollectTfAuraSlots
 local CopyKeySet
@@ -1198,7 +1199,7 @@ ModuleActive = function()
   return p.enabled and not p.safeMode and p.showBand and not acCreateFailed
 end
 
-ClearFallback = function(unit)
+ClearFallback = function(unit, keepSticky)
   local fb = fallbacks[unit]
   if not fb then
     return
@@ -1210,7 +1211,10 @@ ClearFallback = function(unit)
   end
   fb:Hide()
   fb:ClearAllPoints()
-  gapSticky[unit] = nil
+  fb._painted = 0
+  if not keepSticky then
+    gapSticky[unit] = nil
+  end
 end
 
 PlateNameFS = function(plate)
@@ -2258,6 +2262,39 @@ ScrapeTargetFrameBrute = function(rows, maxN)
   if container then
     scan(container, 0)
   end
+  scan(TargetFrame, 0)
+  pcall(function()
+    local content = TargetFrame.TargetFrameContent
+    if content then
+      scan(content, 0)
+    end
+  end)
+end
+
+--- API mirror when TF scrape returns empty but target has HARMFUL (native plate empty).
+CollectUnitHarmfulMirror = function(unitToken, skipKeys, out, maxN, stats)
+  if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
+    return
+  end
+  for i = 1, 40 do
+    if #out >= maxN then
+      return
+    end
+    local data
+    local ok = pcall(function()
+      data = C_UnitAuras.GetAuraDataByIndex(unitToken, i, "HARMFUL")
+    end)
+    if not ok or not data then
+      break
+    end
+    local row = {
+      icon = data.icon,
+      spellId = data.spellId,
+      auraInstanceID = data.auraInstanceID,
+      fromUnitApi = true,
+    }
+    AppendGapRow(skipKeys, out, maxN, stats, row, true)
+  end
 end
 
 CollectTargetHarmfulRows = function(maxN)
@@ -2600,6 +2637,13 @@ PaintMergeMissing = function(unit, plate)
     if nativeN == 0 and #missing == 0 and HasTarget() then
       CollectTargetFrameMissing(CopyKeySet(paintKeys), missing, maxN, stats)
     end
+    if #missing == 0 then
+      local apiSkip = TfSupplementSkipKeys(paintKeys, missing)
+      CollectUnitHarmfulMirror("target", apiSkip, missing, maxN, stats)
+      if type(unit) == "string" and unit ~= "target" then
+        CollectUnitHarmfulMirror(unit, apiSkip, missing, maxN, stats)
+      end
+    end
   else
     if type(unit) == "string" then
       CollectPersonalAuraGaps(unit, paintKeys, missing, maxN, stats)
@@ -2616,8 +2660,20 @@ PaintMergeMissing = function(unit, plate)
   lastPaintDebug.nativeN = nativeN
 
   if #missing == 0 then
+    local held = fallbacks[unit]
+    local sticky = gapSticky[unit]
+    local now = GetTime and GetTime() or 0
+  local heldN = held and tonumber(held._painted) or 0
+    if heldN > 0 and sticky and type(sticky.icons) == "table" and #sticky.icons > 0 then
+      if type(sticky.at) == "number" and (now - sticky.at) <= GAP_STICKY_SEC then
+        lastPaintDebug.painted = heldN
+        lastPaintDebug.miss = 0
+        SilentTracePaint("paint_hold", unit, plate)
+        return heldN
+      end
+    end
     lastPaintDebug.painted = 0
-    ClearFallback(unit)
+    ClearFallback(unit, false)
     return 0
   end
 
@@ -2730,16 +2786,15 @@ UpdateOverlay = function(unit, plate)
   end
 
   local p = Profile()
-  -- mergeMissing=false (/pb merge off) → native DebuffList only, no chrome.
-  ClearFallback(unit)
   RestoreNameShift(unit, plate)
   if p.mergeMissing ~= true then
+    ClearFallback(unit)
     return
   end
 
   local okPaint, errPaint = pcall(PaintMergeMissing, unit, plate)
   if not okPaint then
-    ClearFallback(unit)
+    ClearFallback(unit, false)
     if ns.RecordError then
       ns.RecordError("paint", errPaint)
     end

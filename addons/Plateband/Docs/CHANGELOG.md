@@ -1,5 +1,17 @@
 # Plateband changelog
 
+## 0.2.14 — paint hold + TF/API mirror (Dragonmaw)
+
+- **Wipe on hit:** `UpdateOverlay` no longer `ClearFallback` before paint; sticky not cleared in routine hide; **3s gap hold** when API flickers empty after melee/`UNIT_AURA`.
+- **`paint_hold`:** keep visible fallback while sticky valid instead of one-frame wipe.
+- **Empty native:** `CollectUnitHarmfulMirror` + `ScrapeTargetFrameBrute` scans full `TargetFrame` when container nil.
+
+### Playtest (0.2.14)
+
+1. `/reload` → `ver=0.2.14`; target Dragonmaw Grunt with DoTs — 4 icons above plate.
+2. **Deal damage** — row stays; SV `PAINT … painted≥1` or `paint_hold`.
+3. `/reload` — PAINT lines in SV.
+
 ## 0.2.13 — systematic Lua forward decl (103 module fns)
 
 - **Root cause:** `local function` below caller compiles to **global** nil in Lua 5.1 (e.g. `CountPlateHarmfulShown` → `MaxIcons()` L536).
