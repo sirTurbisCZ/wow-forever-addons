@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.20** (paint_hold refreshes gap cd; native-row size sync)
+Version: **0.2.21** (instance dedupe + EnsureTargetHarmfulParity)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 

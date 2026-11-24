@@ -205,6 +205,11 @@ plateband_sv_regressions() {
     emit_alert "[Plateband] harv>0 for=0 while painted — possible missing foreign"
     alerts=$((alerts + 1))
   fi
+  if printf '%s\n' "$paint_tail" | rg -q 'PAINT .*tf=([4-9]|[1-9][0-9]+).*miss=([0-3]) ' && \
+     printf '%s\n' "$paint_tail" | rg -q 'PAINT .*native=[1-9]'; then
+    emit_alert "[Plateband] tf>3 miss low with native row — dropped DoTs?"
+    alerts=$((alerts + 1))
+  fi
   if printf '%s\n' "$paint_tail" | rg -q 'PAINT .*painted=[1-9].*cdN=0 '; then
     emit_alert "[Plateband] painted>0 cdN=0 — dead gap timers (0.2.19+ PAINT)"
     alerts=$((alerts + 1))

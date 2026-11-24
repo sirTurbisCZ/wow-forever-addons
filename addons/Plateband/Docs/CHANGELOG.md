@@ -1,5 +1,15 @@
 # Plateband changelog
 
+## 0.2.21 — no dropped DoTs (instance dedupe + TF parity)
+
+- **`GapAuraKey`:** dedupe **auraInstanceID → spellId → texture** (fixes same-icon party DoTs vanishing when own DoT joins).
+- **`NativeKeySet`:** native presence uses instance/spell keys, not texture-only.
+- **`EnsureTargetHarmfulParity`:** after harvest/API, re-sync **target harmful** vs TF + `C_UnitAuras` minus native plate.
+
+### Playtest (0.2.21)
+
+1. `/reload` → mix own + party DoTs; plate + gap row count matches TF harmful (no missing debuffs after own lands).
+
 ## 0.2.20 — foreign timers + size when own DoT on native
 
 - **`MergeRowIconSize`:** when native harmful row visible, gap size **tracks plate native kids** (lock may grow to match personal).

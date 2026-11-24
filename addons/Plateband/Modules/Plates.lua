@@ -81,6 +81,8 @@ local EnrichGapAuraEntry
 local CreateBandContainer
 local CreateGapAuraButton
 local CanonicalGapKey
+local EnsureTargetHarmfulParity
+local GapAuraKey
 local MergeRowIconSize
 local DedupeGapIcons
 local Defer
@@ -1454,7 +1456,7 @@ NativeKeySet = function(plate)
   for i = 1, #texes do
     local k = PublicTexKey(texes[i])
     if k then
-      keys[k] = true
+      keys["tex:" .. tostring(k)] = true
     end
   end
   local buttons = {}
@@ -1462,16 +1464,17 @@ NativeKeySet = function(plate)
   for i = 1, #buttons do
     local icon, _, gotIcon = ButtonAuraIcon(buttons[i])
     if gotIcon and icon then
-      local k = PublicTexKey(icon)
-      if not k then
-        pcall(function()
-          if buttons[i].GetAuraInstance then
-            local _, data = buttons[i]:GetAuraInstance()
-            if data then
-              k = AuraDedupeKey(data, icon)
-            end
+      local k
+      pcall(function()
+        if buttons[i].GetAuraInstance then
+          local _, data = buttons[i]:GetAuraInstance()
+          if data then
+            k = GapAuraKey(data, icon)
           end
-        end)
+        end
+      end)
+      if not k then
+        k = GapAuraKey(nil, icon)
       end
       if k then
         keys[k] = true
@@ -1817,25 +1820,30 @@ CollectPlayerOwnedKeys = function(unitToken, into)
   end
 end
 
---- Dedupe key: public texture, else public spellId, else nil (caller may still paint).
-AuraDedupeKey = function(data, icon)
-  local key = PublicTexKey(icon)
-  if key then
-    return key
-  end
-  if data then
-    local spellKey
-    pcall(function()
-      local id = data.spellId
-      if type(id) == "number" and not IsSecret(id) then
-        spellKey = "spell:" .. tostring(id)
-      end
-    end)
-    if spellKey then
-      return spellKey
+--- Instance → spellId → texture (never collapse unlike spells by icon file).
+GapAuraKey = function(data, icon)
+  if type(data) == "table" then
+    local aid = data.auraInstanceID
+    if aid ~= nil and not IsSecret(aid) then
+      return "inst:" .. tostring(aid)
+    end
+    local sid = data.spellId
+    if sid ~= nil and not IsSecret(sid) then
+      return "spell:" .. tostring(sid)
+    end
+    if data.icon ~= nil and icon == nil then
+      icon = data.icon
     end
   end
+  local tk = PublicTexKey(icon)
+  if tk then
+    return "tex:" .. tostring(tk)
+  end
   return nil
+end
+
+AuraDedupeKey = function(data, icon)
+  return GapAuraKey(data, icon)
 end
 
 --- Source looks like another unit (not local player/pet) — include foreign like "Ours".
@@ -2383,30 +2391,103 @@ TfRowKey = function(row)
   return nil
 end
 
---- One harmful aura = one plate icon — texture beats per-frame tf: keys.
+--- One harmful aura = one plate icon — instance/spell before texture.
 CanonicalGapKey = function(row)
   if type(row) == "table" then
-    local tk = PublicTexKey(row.icon)
-    if not tk and row.iconTex then
-      tk = PublicTexKey(row.iconTex)
-    end
-    if tk then
-      return "tex:" .. tk
-    end
-    local k = TfRowKey(row)
-    if k and not k:match("^tf:") then
-      return k
-    end
+    local k = GapAuraKey(row, row.icon)
     if k then
       return k
     end
-    return nil
   end
-  local tk = PublicTexKey(row)
-  if tk then
-    return "tex:" .. tk
+  return GapAuraKey(nil, row)
+end
+
+--- TF harmful minus native plate + gap queue — recovers drops when own DoT joins native.
+EnsureTargetHarmfulParity = function(plate, missing, skipKeys, maxN, stats)
+  if not plate or not missing or not skipKeys then
+    return
   end
-  return nil
+  local nativeKeys = NativeKeySet(plate)
+  local tfRows = CollectTargetHarmfulRows(maxN)
+  for i = 1, #tfRows do
+    if #missing >= maxN then
+      return
+    end
+    local row = tfRows[i]
+    local ck = CanonicalGapKey(row)
+    if not ck then
+      ck = TfRowKey(row)
+    end
+    if ck and nativeKeys[ck] then
+      -- Blizzard already shows on plate DebuffList
+    elseif ck and skipKeys[ck] then
+      -- already queued
+    else
+      local inMissing = false
+      for j = 1, #missing do
+        if CanonicalGapKey(missing[j]) == ck then
+          inMissing = true
+          break
+        end
+      end
+      if not inMissing then
+        local isPersonal = false
+        if row.spellId and C_UnitAuras and C_UnitAuras.GetAuraDataBySpellID then
+          pcall(function()
+            local data = C_UnitAuras.GetAuraDataBySpellID("target", row.spellId)
+            if data and AuraIsOurPersonalOnly(data) then
+              isPersonal = true
+            end
+          end)
+        end
+        AppendGapRow(skipKeys, missing, maxN, stats, row, not isPersonal)
+      end
+    end
+  end
+  if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
+    for idx = 1, 40 do
+      if #missing >= maxN then
+        return
+      end
+      local data
+      local ok = pcall(function()
+        data = C_UnitAuras.GetAuraDataByIndex("target", idx, "HARMFUL")
+      end)
+      if not ok or not data then
+        break
+      end
+      local ck = GapAuraKey(data, data.icon)
+      if ck and nativeKeys[ck] then
+        -- native
+      elseif ck and skipKeys[ck] then
+        -- queued
+      else
+        local inMissing = false
+        for j = 1, #missing do
+          if CanonicalGapKey(missing[j]) == ck then
+            inMissing = true
+            break
+          end
+        end
+        if not inMissing then
+          local row = {
+            icon = data.icon,
+            spellId = data.spellId,
+            auraInstanceID = data.auraInstanceID,
+            applications = data.applications,
+            expirationTime = data.expirationTime,
+            duration = data.duration,
+          }
+          local personal = AuraIsOurPersonalOnly(data)
+          if personal then
+            AppendGapRow(skipKeys, missing, maxN, stats, row, false)
+          elseif AuraCountsAsForeignGaps(data) then
+            AppendGapRow(skipKeys, missing, maxN, stats, row, true)
+          end
+        end
+      end
+    end
+  end
 end
 
 DedupeGapIcons = function(missing, maxN)
@@ -2931,10 +3012,7 @@ TfSupplementSkipKeys = function(paintKeys, missing)
   local skip = CopyKeySet(paintKeys)
   if type(missing) == "table" then
     for i = 1, #missing do
-      local k = PublicTexKey(missing[i])
-      if not k and type(missing[i]) == "table" then
-        k = TfRowKey(missing[i])
-      end
+      local k = CanonicalGapKey(missing[i]) or TfRowKey(missing[i])
       if k then
         skip[k] = true
       end
@@ -3118,6 +3196,7 @@ PaintMergeMissing = function(unit, plate)
         CollectUnitHarmfulMirror(unit, queueSkip, missing, maxN, stats)
       end
     end
+    EnsureTargetHarmfulParity(plate, missing, queueSkip, maxN, stats)
     DedupeGapIcons(missing, maxN)
   else
     if type(unit) == "string" then
