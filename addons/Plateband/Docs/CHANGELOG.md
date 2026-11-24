@@ -1,5 +1,16 @@
 # Plateband changelog
 
+## 0.2.24 — TF coverage parity (tfRows / cov)
+
+- **`NativeShownKeySet`:** gap skip uses **shown** native harmful only (pool hidden kids no longer drop TF rows).
+- **`ReconcileTfHarmfulCoverage`:** after dedupe/prune, force-append every TF/API harmful not on native or queue.
+- **PAINT:** `tfRows=` harmful harvest count, `cov=` native+painted, `friend=` — compare TF vs plate in SV/watch.
+- **AppendGapRow:** accept spell/instance rows without public icon (secret TF).
+
+### Playtest (0.2.24)
+
+1. `/reload` → `ver=0.2.24`; target with N TF harm → `tfRows=N`, `cov≥N` on tgtSrc plate.
+
 ## 0.2.23 — friendly nameplate harmful merge
 
 - **`mergeFriendPlates`** (default on, schema 9): party/friend/player nameplates use same gap row + native chrome as enemies (no early `ClearFallback`).

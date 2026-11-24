@@ -126,6 +126,8 @@ local NativeBuffList
 local NativeDebuffAnchorList
 local NativeDebuffList
 local NativeKeySet
+local NativeShownKeySet
+local ReconcileTfHarmfulCoverage
 local OnEvent
 local OverlayUnitKey
 local PaintMergeMissing
@@ -1497,6 +1499,40 @@ NativeKeySet = function(plate)
   return keys
 end
 
+--- Skip keys for gap paint — only **shown** native harmful (pooled kids were overskipping TF rows).
+NativeShownKeySet = function(plate)
+  local keys = {}
+  if not plate then
+    return keys
+  end
+  local buttons = {}
+  CollectPlateDebuffButtons(plate, buttons, MaxIcons())
+  for i = 1, #buttons do
+    local btn = buttons[i]
+    if btn and SafeShown(btn) then
+      local icon, _, gotIcon = ButtonAuraIcon(btn)
+      if gotIcon and icon then
+        local k
+        pcall(function()
+          if btn.GetAuraInstance then
+            local _, data = btn:GetAuraInstance()
+            if data then
+              k = GapAuraKey(data, icon)
+            end
+          end
+        end)
+        if not k then
+          k = GapAuraKey(nil, icon)
+        end
+        if k then
+          keys[k] = true
+        end
+      end
+    end
+  end
+  return keys
+end
+
 local function AuraChromeWidth(frame)
   if not frame then
     return nil
@@ -2548,11 +2584,86 @@ CanonicalGapKey = function(row)
 end
 
 --- TF harmful minus native plate + gap queue — recovers drops when own DoT joins native.
+ReconcileTfHarmfulCoverage = function(plate, missing, skipKeys, maxN, stats, unitToken)
+  if not plate or type(missing) ~= "table" or not skipKeys then
+    return 0
+  end
+  unitToken = unitToken or "target"
+  local nativeKeys = NativeShownKeySet(plate)
+  local added = 0
+  local function covered(ck)
+    if not ck then
+      return false
+    end
+    if nativeKeys[ck] then
+      return true
+    end
+    for j = 1, #missing do
+      if CanonicalGapKey(missing[j]) == ck then
+        return true
+      end
+    end
+    return false
+  end
+  local tfRows = CollectTargetHarmfulRows(maxN)
+  for i = 1, #tfRows do
+    if #missing >= maxN then
+      break
+    end
+    local row = tfRows[i]
+    EnrichGapAuraEntry(row, unitToken)
+    local ck = CanonicalGapKey(row) or TfRowKey(row)
+    if ck and not covered(ck) and GapAuraLive(row, unitToken) then
+      local before = #missing
+      AppendGapRow(skipKeys, missing, maxN, stats, row, true)
+      if #missing > before then
+        added = added + 1
+      end
+    end
+  end
+  if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
+    for idx = 1, 40 do
+      if #missing >= maxN then
+        break
+      end
+      local data
+      local ok = pcall(function()
+        data = C_UnitAuras.GetAuraDataByIndex(unitToken, idx, "HARMFUL")
+      end)
+      if not ok or not data then
+        break
+      end
+      local ck = GapAuraKey(data, data.icon)
+      if ck and not covered(ck) then
+        local row = {
+          icon = data.icon,
+          spellId = data.spellId,
+          auraInstanceID = data.auraInstanceID,
+          applications = data.applications,
+          expirationTime = data.expirationTime,
+          duration = data.duration,
+          fromUnitApi = true,
+        }
+        local before = #missing
+        if AuraIsOurPersonalOnly(data) then
+          AppendGapRow(skipKeys, missing, maxN, stats, row, false)
+        else
+          AppendGapRow(skipKeys, missing, maxN, stats, row, true)
+        end
+        if #missing > before then
+          added = added + 1
+        end
+      end
+    end
+  end
+  return added
+end
+
 EnsureTargetHarmfulParity = function(plate, missing, skipKeys, maxN, stats)
   if not plate or not missing or not skipKeys then
     return
   end
-  local nativeKeys = NativeKeySet(plate)
+  local nativeKeys = NativeShownKeySet(plate)
   local tfRows = CollectTargetHarmfulRows(maxN)
   for i = 1, #tfRows do
     if #missing >= maxN then
@@ -2643,7 +2754,7 @@ EnsureUnitHarmfulParity = function(unitToken, plate, missing, skipKeys, maxN, st
   if not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
     return
   end
-  local nativeKeys = NativeKeySet(plate)
+  local nativeKeys = NativeShownKeySet(plate)
   for idx = 1, 40 do
     if #missing >= maxN then
       return
@@ -3072,8 +3183,10 @@ AppendGapRow = function(skipKeys, out, maxN, stats, row, countForeign)
   if AuraIconPresent(icon) then
     row.icon = icon
     out[#out + 1] = row
-  elseif row.iconTex then
+  elseif row.iconTex and TextureHasArt(row.iconTex) then
     out[#out + 1] = { iconTex = row.iconTex, icon = icon, spellId = row.spellId, auraInstanceID = row.auraInstanceID }
+  elseif row.spellId ~= nil or row.auraInstanceID ~= nil then
+    out[#out + 1] = row
   else
     return
   end
@@ -3257,7 +3370,7 @@ BuildPaintTraceLine = function(why, unit, plate)
   local bar = plate and HealthBar(plate)
   local barVis = bar and (SafeShown(bar) and 1 or 0) or 0
   return string.format(
-    "PAINT ver=%s why=%s unit=%s tgt=%s merge=%s native=%s pool=%s kids=%s tf=%s harv=%s miss=%s painted=%s fb=%s pers=%s for=%s tgtSrc=%s parent=%s natVis=%s barVis=%s active=%s safe=%s acFail=%s gapSz=%s lockSz=%s cdN=%s",
+    "PAINT ver=%s why=%s unit=%s tgt=%s merge=%s native=%s pool=%s kids=%s tf=%s harv=%s miss=%s painted=%s fb=%s pers=%s for=%s tgtSrc=%s parent=%s natVis=%s barVis=%s active=%s safe=%s acFail=%s gapSz=%s lockSz=%s cdN=%s tfRows=%s cov=%s friend=%s",
     tostring(ns.Config.VERSION),
     tostring(why or "?"),
     tostring(unit),
@@ -3282,7 +3395,10 @@ BuildPaintTraceLine = function(why, unit, plate)
     acCreateFailed and "1" or "0",
     tostring(lpd.gapSz or "?"),
     tostring(lpd.lockSz or "?"),
-    tostring(lpd.cdN or "?")
+    tostring(lpd.cdN or "?"),
+    tostring(lpd.tfRows or "?"),
+    tostring((lpd.nativeN or nativeN) + (tonumber(lpd.painted) or tonumber(fb) or 0)),
+    tostring(lpd.friendPlate or "?")
   )
 end
 
@@ -3351,7 +3467,7 @@ PaintMergeMissing = function(unit, plate)
     return 0
   end
 
-  local paintKeys = NativeKeySet(plate)
+  local paintKeys = NativeShownKeySet(plate)
   local maxN = MaxIcons()
   local missing = {}
   local stats = { personal = 0, foreign = 0 }
@@ -3398,8 +3514,12 @@ PaintMergeMissing = function(unit, plate)
     end
     EnsureTargetHarmfulParity(plate, missing, queueSkip, maxN, stats)
     DedupeGapIcons(missing, maxN)
+    ReconcileTfHarmfulCoverage(plate, missing, queueSkip, maxN, stats, "target")
+    DedupeGapIcons(missing, maxN)
     local auraTok = "target"
     PruneInactiveGapRows(missing, auraTok, maxN)
+    ReconcileTfHarmfulCoverage(plate, missing, queueSkip, maxN, stats, "target")
+    DedupeGapIcons(missing, maxN)
   else
     if type(unit) == "string" then
       CollectPersonalAuraGaps(unit, paintKeys, missing, maxN, stats)
@@ -3408,6 +3528,11 @@ PaintMergeMissing = function(unit, plate)
       CollectForeignAuraGaps(unit, foreignSkip, missing, maxN, allowSecret, stats)
       CollectUnitHarmfulMirror(unit, foreignSkip, missing, maxN, stats)
       EnsureUnitHarmfulParity(unit, plate, missing, foreignSkip, maxN, stats)
+      if HasTarget() and IsTargetPlate(unit, plate) then
+        ReconcileTfHarmfulCoverage(plate, missing, foreignSkip, maxN, stats, "target")
+      else
+        ReconcileTfHarmfulCoverage(plate, missing, foreignSkip, maxN, stats, unit)
+      end
       DedupeGapIcons(missing, maxN)
       PruneInactiveGapRows(missing, unit, maxN)
     end
@@ -3424,6 +3549,11 @@ PaintMergeMissing = function(unit, plate)
   lastPaintDebug.unit = tostring(unit)
   lastPaintDebug.nativeN = nativeN
   lastPaintDebug.friendPlate = friendPlate and 1 or 0
+  if useTargetSrc and HasTarget() then
+    lastPaintDebug.tfRows = #CollectTargetHarmfulRows(maxN)
+  else
+    lastPaintDebug.tfRows = 0
+  end
 
   if #missing == 0 then
     local held = fallbacks[unit]

@@ -205,10 +205,16 @@ plateband_sv_regressions() {
     emit_alert "[Plateband] harv>0 for=0 while painted — possible missing foreign"
     alerts=$((alerts + 1))
   fi
-  if printf '%s\n' "$paint_tail" | rg -q 'PAINT .*tf=([4-9]|[1-9][0-9]+).*miss=([0-3]) ' && \
-     printf '%s\n' "$paint_tail" | rg -q 'PAINT .*native=[1-9]'; then
-    emit_alert "[Plateband] tf>3 miss low with native row — dropped DoTs?"
-    alerts=$((alerts + 1))
+  local cov_line
+  cov_line=$(printf '%s\n' "$paint_tail" | rg 'PAINT .*tgtSrc=1 .*tfRows=' | tail -1 || true)
+  if [[ -n "$cov_line" ]]; then
+    local tr cv
+    tr=$(printf '%s' "$cov_line" | rg -o 'tfRows=[0-9]+' 2>/dev/null | tail -1 | cut -d= -f2)
+    cv=$(printf '%s' "$cov_line" | rg -o 'cov=[0-9]+' 2>/dev/null | tail -1 | cut -d= -f2)
+    if [[ -n "${tr:-}" && -n "${cv:-}" && "$tr" -ge 2 && "$cv" -lt "$tr" ]]; then
+      emit_alert "[Plateband] cov=$cv < tfRows=$tr — TF harmful missing on plate"
+      alerts=$((alerts + 1))
+    fi
   fi
   if printf '%s\n' "$paint_tail" | rg -q 'PAINT .*painted=[1-9].*cdN=0 '; then
     emit_alert "[Plateband] painted>0 cdN=0 — dead gap timers (0.2.19+ PAINT)"

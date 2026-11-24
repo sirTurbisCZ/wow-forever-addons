@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.23** (mergeFriendPlates — harmful on friendly nameplates)
+Version: **0.2.24** (NativeShownKeySet + tfRows/cov PAINT)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 

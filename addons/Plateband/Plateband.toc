@@ -2,7 +2,7 @@
 ## Title: Plateband
 ## Notes: Native nameplate DebuffList companion — merges omitted party DoTs beside Blizzard's band.
 ## Author: tuma
-## Version: 0.2.23
+## Version: 0.2.24
 ## SavedVariables: PlatebandDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled
