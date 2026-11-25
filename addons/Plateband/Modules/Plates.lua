@@ -132,6 +132,8 @@ local InitAuraButton
 local IsCastOrSpellBarFrame
 local IsForbiddenPlate
 local IsLikelyBuffFrame
+local IsPlateHarmfulAuraButton
+local CollectPlateBuffButtons
 local IsPlayerOrFriendPlate
 local IsSecret
 local IsTargetPlate
@@ -148,6 +150,9 @@ local NativeDebuffAnchorList
 local NativeDebuffList
 local NativeKeySet
 local NativeShownKeySet
+local MarkAllAuraKeys
+local AuraKeysCovered
+local NativeCoversAura
 local ReconcileTfHarmfulCoverage
 local ReconcileTargetFrameUiButtons
 local IsTargetDebuffAuraFrame
@@ -1010,19 +1015,97 @@ PlateAuraPools = function(plate)
   return pools
 end
 
-CollectPlateDebuffButtons = function(plate, out, maxN)
+--- Forever plate auraPools can list buffs beside debuffs — gap row must count HARMFUL only.
+IsPlateHarmfulAuraButton = function(btn)
+  if not btn then
+    return false
+  end
+  if IsLikelyBuffFrame(btn) then
+    return false
+  end
+  local verdict
+  pcall(function()
+    if btn.GetAuraInstance then
+      local _, data = btn:GetAuraInstance()
+      if type(data) == "table" then
+        if data.isHelpful ~= nil and not IsSecret(data.isHelpful) then
+          if data.isHelpful then
+            verdict = false
+            return
+          end
+        end
+        if data.isHarmful ~= nil and not IsSecret(data.isHarmful) then
+          verdict = data.isHarmful and true or false
+          return
+        end
+      end
+    end
+  end)
+  if verdict ~= nil then
+    return verdict
+  end
+  pcall(function()
+    local p = btn
+    for _ = 1, 10 do
+      if not p then
+        break
+      end
+      local n
+      pcall(function()
+        n = p.GetName and p:GetName()
+      end)
+      if type(n) == "string" then
+        local l = n:lower()
+        if l:find("bufflist", 1, true) or (l:find("buff", 1, true) and not l:find("debuff", 1, true)) then
+          verdict = false
+          return
+        end
+        if l:find("debuff", 1, true) then
+          verdict = true
+          return
+        end
+      end
+      pcall(function()
+        p = p.GetParent and p:GetParent()
+      end)
+      if not p or p == UIParent then
+        break
+      end
+    end
+  end)
+  if verdict ~= nil then
+    return verdict
+  end
+  return true
+end
+
+local function FilterPlateHarmfulButtons(buttons, maxN)
+  if type(buttons) ~= "table" then
+    return
+  end
+  maxN = maxN or MaxIcons()
+  local j = 1
+  for i = 1, #buttons do
+    if j > maxN then
+      break
+    end
+    local btn = buttons[i]
+    if btn and IsPlateHarmfulAuraButton(btn) then
+      buttons[j] = btn
+      j = j + 1
+    end
+  end
+  for k = j, #buttons do
+    buttons[k] = nil
+  end
+end
+
+CollectPlateBuffButtons = function(plate, out, maxN)
   if not plate or not out then
     return
   end
   maxN = maxN or MaxIcons()
-  local pools = PlateAuraPools(plate)
-  if pools then
-    HarvestAuraPoolButtons(pools, out, maxN)
-  end
-  if #out >= maxN then
-    return
-  end
-  local list = NativeDebuffList(plate)
+  local list = NativeBuffList(plate)
   if not list then
     return
   end
@@ -1034,13 +1117,54 @@ CollectPlateDebuffButtons = function(plate, out, maxN)
   end
   for i = 1, #kids do
     if #out >= maxN then
-      return
+      break
+    end
+    local child = kids[i]
+    if child and SafeShown(child) and (child.Icon or child.icon or child.GetAuraInstance) then
+      if IsLikelyBuffFrame(child) then
+        out[#out + 1] = child
+      end
+    end
+  end
+end
+
+CollectPlateDebuffButtons = function(plate, out, maxN)
+  if not plate or not out then
+    return
+  end
+  maxN = maxN or MaxIcons()
+  local pools = PlateAuraPools(plate)
+  if pools then
+    HarvestAuraPoolButtons(pools, out, maxN)
+    FilterPlateHarmfulButtons(out, maxN)
+  end
+  if #out >= maxN then
+    return
+  end
+  local list = NativeDebuffList(plate)
+  if not list then
+    FilterPlateHarmfulButtons(out, maxN)
+    return
+  end
+  local ok, kids = pcall(function()
+    return { list:GetChildren() }
+  end)
+  if not ok or type(kids) ~= "table" then
+    FilterPlateHarmfulButtons(out, maxN)
+    return
+  end
+  for i = 1, #kids do
+    if #out >= maxN then
+      break
     end
     local child = kids[i]
     if child and (child.Icon or child.icon or child.GetAuraInstance) and SafeShown(child) then
-      out[#out + 1] = child
+      if IsPlateHarmfulAuraButton(child) then
+        out[#out + 1] = child
+      end
     end
   end
+  FilterPlateHarmfulButtons(out, maxN)
 end
 
 FallbackParent = function(plate)
@@ -1878,6 +2002,71 @@ PublicTexKey = function(t)
   return key
 end
 
+--- Mark inst + spell + tex variants so native/API/TF keys collide (0.2.40 dup Flame Shock fix).
+MarkAllAuraKeys = function(keys, data, icon)
+  if type(keys) ~= "table" then
+    return
+  end
+  if type(data) == "table" then
+    if icon == nil then
+      icon = data.icon
+    end
+    local aid = data.auraInstanceID
+    if aid ~= nil and not IsSecret(aid) then
+      keys["inst:" .. tostring(aid)] = true
+    end
+    local sid = data.spellId
+    if sid ~= nil and not IsSecret(sid) then
+      keys["spell:" .. tostring(sid)] = true
+    end
+  end
+  local primary = GapAuraKey(data, icon)
+  if primary then
+    keys[primary] = true
+  end
+  local tk = PublicTexKey(icon)
+  if tk then
+    keys["tex:" .. tostring(tk)] = true
+  end
+end
+
+--- True when skip/paint set already covers this aura under any key variant.
+AuraKeysCovered = function(keys, data, icon)
+  if type(keys) ~= "table" then
+    return false
+  end
+  if type(data) == "table" then
+    if icon == nil then
+      icon = data.icon
+    end
+    local aid = data.auraInstanceID
+    if aid ~= nil and not IsSecret(aid) and keys["inst:" .. tostring(aid)] then
+      return true
+    end
+    local sid = data.spellId
+    if sid ~= nil and not IsSecret(sid) and keys["spell:" .. tostring(sid)] then
+      return true
+    end
+  end
+  local primary = GapAuraKey(data, icon)
+  if primary and keys[primary] then
+    return true
+  end
+  local tk = PublicTexKey(icon)
+  if tk and keys["tex:" .. tostring(tk)] then
+    return true
+  end
+  return false
+end
+
+--- Native DebuffList already shows this harmful (spell / instance / texture).
+NativeCoversAura = function(plate, data, icon)
+  if not plate or type(data) ~= "table" then
+    return false
+  end
+  return AuraKeysCovered(NativeShownKeySet(plate), data, icon or data.icon)
+end
+
 NativeKeySet = function(plate)
   local keys = {}
   local texes = {}
@@ -1891,23 +2080,25 @@ NativeKeySet = function(plate)
   local buttons = {}
   CollectPlateDebuffButtons(plate, buttons, MaxIcons())
   for i = 1, #buttons do
-    local icon, _, gotIcon = ButtonAuraIcon(buttons[i])
-    if gotIcon and icon then
-      local k
-      pcall(function()
-        if buttons[i].GetAuraInstance then
-          local _, data = buttons[i]:GetAuraInstance()
-          if data then
-            k = GapAuraKey(data, icon)
+    local btn = buttons[i]
+    local icon, _, gotIcon = ButtonAuraIcon(btn)
+    local data
+    pcall(function()
+      if btn and btn.GetAuraInstance then
+        local _, d = btn:GetAuraInstance()
+        if type(d) == "table" then
+          data = d
+          if not gotIcon then
+            icon = d.icon
+            gotIcon = true
           end
         end
-      end)
-      if not k then
-        k = GapAuraKey(nil, icon)
       end
-      if k then
-        keys[k] = true
-      end
+    end)
+    if data then
+      MarkAllAuraKeys(keys, data, icon)
+    elseif gotIcon and icon then
+      MarkAllAuraKeys(keys, nil, icon)
     end
   end
   return keys
@@ -1925,22 +2116,23 @@ NativeShownKeySet = function(plate)
     local btn = buttons[i]
     if btn and SafeShown(btn) then
       local icon, _, gotIcon = ButtonAuraIcon(btn)
-      if gotIcon and icon then
-        local k
-        pcall(function()
-          if btn.GetAuraInstance then
-            local _, data = btn:GetAuraInstance()
-            if data then
-              k = GapAuraKey(data, icon)
+      local data
+      pcall(function()
+        if btn.GetAuraInstance then
+          local _, d = btn:GetAuraInstance()
+          if type(d) == "table" then
+            data = d
+            if not gotIcon then
+              icon = d.icon
+              gotIcon = true
             end
           end
-        end)
-        if not k then
-          k = GapAuraKey(nil, icon)
         end
-        if k then
-          keys[k] = true
-        end
+      end)
+      if data then
+        MarkAllAuraKeys(keys, data, icon)
+      elseif gotIcon and icon then
+        MarkAllAuraKeys(keys, nil, icon)
       end
     end
   end
@@ -2126,20 +2318,32 @@ end
 --- Rightmost shown native aura button (or DebuffListFrame) — merge anchors beside it.
 NativeBandRightAnchor = function(plate)
   local list = NativeDebuffList(plate)
-  if not list then
-    return nil
-  end
   local buttons = {}
   CollectPlateDebuffButtons(plate, buttons, MaxIcons())
   local rightmost = PickRightmostAuraFrame(buttons)
+  if not rightmost then
+    local buffs = {}
+    CollectPlateBuffButtons(plate, buffs, MaxIcons())
+    rightmost = PickRightmostAuraFrame(buffs)
+  end
   if rightmost then
     return rightmost
+  end
+  if not list then
+    return nil
   end
   local ok, kids = pcall(function()
     return { list:GetChildren() }
   end)
   if ok and type(kids) == "table" then
-    rightmost = PickRightmostAuraFrame(kids)
+    local harmfulKids = {}
+    for i = 1, #kids do
+      local child = kids[i]
+      if child and IsPlateHarmfulAuraButton(child) then
+        harmfulKids[#harmfulKids + 1] = child
+      end
+    end
+    rightmost = PickRightmostAuraFrame(harmfulKids)
   end
   if rightmost then
     return rightmost
@@ -2264,16 +2468,7 @@ CollectPlayerOwnedKeys = function(unitToken, into)
       break
     end
     if AuraIsOurPersonalOnly(data) then
-      local key = AuraDedupeKey(data, data.icon)
-      if key then
-        into[key] = true
-      end
-      if type(CanonicalGapKey) == "function" then
-        local ck = CanonicalGapKey({ icon = data.icon, spellId = data.spellId, auraInstanceID = data.auraInstanceID })
-        if ck then
-          into[ck] = true
-        end
-      end
+      MarkAllAuraKeys(into, data, data.icon)
     end
   end
 end
@@ -2409,28 +2604,28 @@ CollectPersonalAuraGaps = function(unitToken, paintKeys, out, maxN, stats)
       -- party / foreign / unknown — foreign+TF passes
     else
       local icon = data.icon
-      local key = AuraDedupeKey(data, icon)
-      if not key then
-        key = "per:" .. tostring(i) .. ":" .. tostring(unitToken)
-      end
-      local ck = CanonicalGapKey({ icon = icon, spellId = data.spellId, auraInstanceID = data.auraInstanceID })
-      if ck and paintKeys[ck] then
-        -- already queued (TF harvest / texture dedupe)
-      elseif key and not paintKeys[key] then
-        out[#out + 1] = {
-          icon = icon,
-          spellId = data.spellId,
-          auraInstanceID = data.auraInstanceID,
-          applications = data.applications,
-          expirationTime = data.expirationTime,
-          duration = data.duration,
-        }
-        paintKeys[key] = true
-        if ck then
-          paintKeys[ck] = true
+      -- Native DebuffList already has this personal DoT (inst≠spell key mismatch = dup).
+      if AuraKeysCovered(paintKeys, data, icon) then
+        MarkAllAuraKeys(paintKeys, data, icon)
+      else
+        local key = AuraDedupeKey(data, icon)
+        if not key then
+          key = "per:" .. tostring(i) .. ":" .. tostring(unitToken)
         end
-        if stats then
-          stats.personal = (stats.personal or 0) + 1
+        if key and not paintKeys[key] then
+          out[#out + 1] = {
+            icon = icon,
+            spellId = data.spellId,
+            auraInstanceID = data.auraInstanceID,
+            applications = data.applications,
+            expirationTime = data.expirationTime,
+            duration = data.duration,
+          }
+          MarkAllAuraKeys(paintKeys, data, icon)
+          paintKeys[key] = true
+          if stats then
+            stats.personal = (stats.personal or 0) + 1
+          end
         end
       end
     end
@@ -3333,22 +3528,22 @@ EnsureTargetHarmfulParity = function(plate, missing, skipKeys, maxN, stats)
       if not ok or not data then
         break
       end
-      local ck = GapAuraKey(data, data.icon)
-      if ck and nativeKeys[ck] then
-        -- native
-      elseif ck and skipKeys[ck] then
-        -- queued
+      local icon = data.icon
+      if AuraKeysCovered(nativeKeys, data, icon) or AuraKeysCovered(skipKeys, data, icon) then
+        MarkAllAuraKeys(skipKeys, data, icon)
       else
         local inMissing = false
         for j = 1, #missing do
-          if CanonicalGapKey(missing[j]) == ck then
+          local mk = {}
+          MarkAllAuraKeys(mk, missing[j], missing[j].icon)
+          if AuraKeysCovered(mk, data, icon) then
             inMissing = true
             break
           end
         end
         if not inMissing then
           local row = {
-            icon = data.icon,
+            icon = icon,
             spellId = data.spellId,
             auraInstanceID = data.auraInstanceID,
             applications = data.applications,
@@ -3357,7 +3552,11 @@ EnsureTargetHarmfulParity = function(plate, missing, skipKeys, maxN, stats)
           }
           local personal = AuraIsOurPersonalOnly(data)
           if personal then
-            AppendGapRow(skipKeys, missing, maxN, stats, row, false)
+            if not NativeCoversAura(plate, data, icon) then
+              AppendGapRow(skipKeys, missing, maxN, stats, row, false)
+            else
+              MarkAllAuraKeys(skipKeys, data, icon)
+            end
           elseif AuraCountsAsForeignGaps(data) then
             AppendGapRow(skipKeys, missing, maxN, stats, row, true)
           end
@@ -3797,18 +3996,23 @@ AppendGapRow = function(skipKeys, out, maxN, stats, row, countForeign)
   if #out >= maxN or type(row) ~= "table" then
     return
   end
-  local key = CanonicalGapKey(row)
-  if not key then
-    key = TfRowKey(row) or ("gap:" .. tostring(#out + 1))
-  end
-  if skipKeys[key] then
-    return
-  end
   local icon = row.icon
   if not AuraIconPresent(icon) and row.iconTex then
     pcall(function()
       icon = row.iconTex:GetTexture()
     end)
+  end
+  if AuraKeysCovered(skipKeys, row, icon) then
+    MarkAllAuraKeys(skipKeys, row, icon)
+    return
+  end
+  local key = CanonicalGapKey(row)
+  if not key then
+    key = TfRowKey(row) or ("gap:" .. tostring(#out + 1))
+  end
+  if skipKeys[key] then
+    MarkAllAuraKeys(skipKeys, row, icon)
+    return
   end
   if AuraIconPresent(icon) then
     row.icon = icon
@@ -3820,6 +4024,7 @@ AppendGapRow = function(skipKeys, out, maxN, stats, row, countForeign)
   else
     return
   end
+  MarkAllAuraKeys(skipKeys, row, icon)
   skipKeys[key] = true
   if stats and countForeign then
     stats.foreign = (stats.foreign or 0) + 1
@@ -4221,6 +4426,9 @@ PaintMergeMissing = function(unit, plate)
       CollectPlayerOwnedKeys(unit, foreignSkip)
       CollectForeignAuraGaps(unit, foreignSkip, missing, maxN, allowSecret, stats)
     end
+    CollectTargetFrameMissing(queueSkip, missing, maxN, stats)
+    EnsureTargetHarmfulParity(plate, missing, queueSkip, maxN, stats)
+    ReconcileTargetFrameUiButtons(plate, missing, queueSkip, maxN, stats)
     DedupeGapIcons(missing, maxN)
     PruneInactiveGapRows(missing, "target", maxN)
     end

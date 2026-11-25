@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.35** (no per-plate UNIT_AURA; combat-safe deferred paint)
+Version: **0.2.41** (friendly HARMFUL gap: plate pool buff/debuff filter; lean target TF parity)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 

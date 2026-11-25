@@ -1,11 +1,11 @@
 # Plateband — safe merge design (no name mutation)
 
-**Status:** v0.2.7 P0+P1 (`pb-old-vs-peers-dots.md` §5) · **default ON** (`mergeMissing=true`, schema 7+)  
+**Status:** v0.2.41 · **default ON** (`mergeMissing=true`, schema 7+)  
 **Baseline:** `plateband-v0.1.15` data contract + **0.2** beside-native layout · HUD gate before main merge
 
-## Product rule (0.2.7)
+## Product rule (0.2.7 → 0.2.41)
 
-**One native-looking harmful row** on enemy **target** nameplates (e.g. Rake + timer left of health): Blizzard `DebuffList` / `auraPools` kids first; Plateband paints **personal gaps** (player DoTs missing from native) then **foreign gaps**. Dedupe via **`GapAuraKey`** (instance → spell → tex); `EnsureTargetHarmfulParity` tops up TF/API vs native plate. **`NativeKeySet`** for on-plate only; `CollectPlayerOwnedKeys` applies to **foreign** skip set only. Gaps use **fixed** merge size (`iconSize` / `/pb size`, health-bar cap) — independent of native personal vs buff chrome. `paint_hold` still **refreshes cooldowns** on sticky foreign slots. Appended **RIGHT of rightmost native** with **BOTTOM** band align. Gap icons use **native debuff button chrome** (`CreateGapAuraButton`); `ApplyGapAuraVisual` sets icon + stack + **`Cooldown:SetCooldown`** from aura API/TF harvest. **No** AuraContainer overlay row.
+**One native-looking harmful row** on enemy **target** nameplates: Blizzard `DebuffList` first; Plateband paints **personal gaps only when native omitted** them, then **foreign gaps**. Dedupe via **`MarkAllAuraKeys`** (inst + spell + tex) so native `inst:` and API `spell:` cannot double-paint the same DoT (0.2.40 Flame Shock fix). **`IsPlateHarmfulAuraButton`** on plate harvest — friendly plates must not treat PW:S buffs as native harmful (0.2.41 Weakened Soul). `EnsureTargetHarmfulParity` tops up TF/API vs native (heavy + lean target paths). Gaps use **fixed** merge size. Appended **RIGHT of rightmost native** (or **BuffList** when DebuffList empty on friendlies). **No** AuraContainer overlay row.
 
 ## Hard rules (non-negotiable)
 

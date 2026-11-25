@@ -1,5 +1,26 @@
 # Plateband changelog
 
+## Release 0.2.41 — friendly harmful gaps (Weakened Soul)
+
+- **Bug:** priest **Weakened Soul** (and similar own HARMFUL on friendlies) missing on nameplate while target-frame debuff row shows it — PW:S on buff row only.
+- **Root cause:** plate `auraPools` harvested **HELPFUL** icons as “native harmful” → wrong `nativeN`, merge parented to hidden `DebuffList` (clipped).
+- **Fix:** `IsPlateHarmfulAuraButton` + buff/debuff filters on `CollectPlateDebuffButtons`; anchor gap row beside **buff** band when debuff row empty; lean **target** path runs `EnsureTargetHarmfulParity` + TF scrape.
+
+### Playtest (0.2.41)
+
+1. `/reload` → `v0.2.41`; party friend with **PW:S** + **Weakened Soul** — red ghost-hand on plate (beside PW:S or gap row).
+2. Enemy personal DoT still one icon (0.2.40 dedupe).
+
+## Release 0.2.40 — no duplicate personal DoTs (Flame Shock ×2)
+
+- **Bug:** own DoT (e.g. Flame Shock) painted twice — native DebuffList + Plateband gap (key mismatch `inst:` vs `spell:`).
+- **Fix:** `MarkAllAuraKeys` / `AuraKeysCovered` / `NativeCoversAura` — native + gap share inst+spell+tex; personal gap only when native omitted it.
+
+### Playtest (0.2.40)
+
+1. `/reload` → `v0.2.40`; Flame Shock solo on mob → **one** icon on plate (not two).
+2. Party DoT still appears beside native when merge on.
+
 ## Release 0.2.39 — native nameplate cooldown font
 
 - Gap timers sample **native** debuff / nameplate aura cooldown: `SetUseAuraDisplayTime`, `SetCountdownFont` (`LayoutFont_Bold_Small_Outline` fallback), font **path + px** from `GetCountdownFontString` or `Duration` (scaled to `/pb size`).
