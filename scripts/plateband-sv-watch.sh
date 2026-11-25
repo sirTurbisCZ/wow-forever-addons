@@ -12,6 +12,7 @@ LOG="${PLATEBAND_SV_WATCH_LOG:-$ROOT/addons/Plateband/Logs/sv-watch.log}"
 mkdir -p "$(dirname "$LOG")"
 
 echo "plateband-sv-watch interval=${INTERVAL}s log=$LOG" | tee -a "$LOG"
+echo "WATCH debuffs=HARMFUL+HELPFUL via CARD.tf PAINT.harv,miss,painted,friend,party sticky,foreign,WS,bleed" | tee -a "$LOG"
 while true; do
   TS="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
   if OUT="$("$GATE" 2>&1)"; then

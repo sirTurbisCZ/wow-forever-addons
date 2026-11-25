@@ -16,7 +16,20 @@ Checks: `luac`, version sync, **chunk locals ≤195**, invariant grep (friendly 
 
 Green when `SESSION_START ver` matches disk, `PLATES_LOAD ok=1`, no hostile `target=yes tf>0 painted=0`.
 
-## Background watch
+## Background watch (CARD + PAINT + party)
+
+`plateband-sv-watch.sh` every 15s: **gate → tail PAINT/CARD → anomaly → matrix** → `Logs/sv-watch.log`.
+
+**`plateband-sv-anomaly.sh`** watches reactions to **your + party** actions:
+
+| Signal | Source | Anomaly |
+|--------|--------|---------|
+| Own DoT (HARMFUL) | CARD `painted` / PAINT `painted` `tgtSrc=1` | `tf>0 painted=0` |
+| Foreign/party DoT | CARD `harv` `miss` / PAINT `harv` `miss` `tfRows` | `harv=0` when `tf≥2` |
+| Weakened Soul | PAINT/CARD `friend=1` | `tf>0 painted=0` |
+| Helpful bleed (PW:S on mob) | CARD `punit` vs plate, `friend=0` | unit mismatch + paint |
+| Sticky / expire | PAINT `paint_hold`, `paint_stale_cleared` | logged; stale = OK |
+| FElog paint nil | ForeverErrorLog | only if SESSION = disk version |
 
 ```bash
 ./scripts/plateband-sv-watch.sh   # logs to addons/Plateband/Logs/sv-watch.log
