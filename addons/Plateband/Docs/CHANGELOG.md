@@ -1,5 +1,9 @@
 # Plateband changelog
 
+## Release 0.2.93 — L1 = chat `Config.VERSION` only
+
+- **`ChatLoadedVersions`** / **`ResolveExportVersions`** — same source as **`loaded v%s`** chat line; no stamp/toc/metadata/`chatTruthLine` union.
+
 ## Release 0.2.92 — WriteExportL1Brute + SV→disk mirror
 
 - **`WriteExportL1Brute`** — `agent-live-export.log` w/wb + **`C_Timer.After(0)`** defer (io blocked in OnUpdate).

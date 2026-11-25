@@ -207,25 +207,21 @@ local function QueryAddonMetadataVersion(addon)
   return nil
 end
 
---- L1 export truth: chat Config (same reload) ∪ stamp ∪ disk toc ∪ metadata — highest semver wins.
-function Mod.ResolveExportVersions()
-  local pbChat = (ns.Config and ns.Config.VERSION) and tostring(ns.Config.VERSION) or nil
-  local feChat
+--- Same strings as chat `loaded v%s` — runtime `Config.VERSION` only (no stamp/toc/metadata/SV).
+function Mod.ChatLoadedVersions()
+  local pbVer = (ns.Config and ns.Config.VERSION) and tostring(ns.Config.VERSION) or "?"
+  local feVer = "?"
   pcall(function()
     if ForeverErrorLog and ForeverErrorLog.Config and ForeverErrorLog.Config.VERSION then
-      feChat = tostring(ForeverErrorLog.Config.VERSION)
+      feVer = tostring(ForeverErrorLog.Config.VERSION)
     end
   end)
-  local pbStamp, feStamp = ReadTocStampVersion()
-  local pbToc = ReadInterfaceAddonVersion({ PB_TOC_FILE, PB_TOC_BS, PB_CFG_FILE, PB_CFG_BS })
-  local feToc = ReadInterfaceAddonVersion({ FE_TOC_FILE, FE_TOC_BS, FE_CFG_FILE, FE_CFG_BS })
-  local pbMeta = QueryAddonMetadataVersion(PLATEBAND_TOC)
-  local feMeta = QueryAddonMetadataVersion(FELOG_TOC)
-  local pbVer = BestVersion(pbChat, pbStamp, pbToc, pbMeta)
-  local feVer = BestVersion(feChat, feStamp, feToc, feMeta)
-  pbMeta = pbMeta or pbVer
-  feMeta = feMeta or feVer
-  return pbVer, feVer, pbMeta, feMeta
+  return pbVer, feVer
+end
+
+function Mod.ResolveExportVersions()
+  local pbVer, feVer = Mod.ChatLoadedVersions()
+  return pbVer, feVer, pbVer, feVer
 end
 
 --- Line 1 only — mirror SV chatTruthLine to agent-live-export.log (≤2s).
@@ -584,22 +580,11 @@ local function DiscoverIoAllowlist(db)
   return "sv_only"
 end
 
-local function ParseTruthVersions(line)
-  if type(line) ~= "string" then
-    return nil, nil
-  end
-  return line:match("plateband_ver=([^%s]+)"), line:match("felog_ver=([^%s]+)")
-end
-
 function Mod.BuildChatTruthLine(src, load, seq)
   src = tostring(src or "CHAT_LOADED")
   load = tostring(load or "reload")
   seq = tonumber(seq) or 0
   local pbVer, feVer, pbMeta, feMeta = Mod.ResolveExportVersions()
-  local db = ns.Config.EnsureDB()
-  local svPb, svFe = ParseTruthVersions(db.chatTruthLine)
-  pbVer = BestVersion(pbVer, svPb)
-  feVer = BestVersion(feVer, svFe)
   pbMeta = pbMeta or pbVer
   feMeta = feMeta or feVer
   return string.format(

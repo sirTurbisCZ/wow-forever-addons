@@ -1,5 +1,9 @@
 # ForeverErrorLog changelog
 
+## Release 0.1.22 — export L1 = chat `Config.VERSION`
+
+- **`FelogChatLoadedVersions`** — matches **`loaded v%s`** / **`reloaded v%s`**; dropped stamp/toc/metadata **`FelogBestVersion`** for L1.
+
 ## Release 0.1.21 — disk L1 = Plateband chatTruthLine
 
 - **`PulseLiveHeadFile`** prefers **`PlatebandDB.chatTruthLine`**; **`WritePlatebandExportL1`** + deferred **`C_Timer`** io.

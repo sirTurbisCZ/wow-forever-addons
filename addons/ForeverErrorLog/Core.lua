@@ -499,23 +499,24 @@ local function FelogQueryMetadataVersion(addon)
   return nil
 end
 
-local function FelogResolveExportVersions()
+local function FelogChatLoadedVersions()
   FelogEnsurePlatebandForToc()
-  local feChat = Config and Config.VERSION and tostring(Config.VERSION) or nil
-  local pbChat
-  if Plateband and Plateband.Config and Plateband.Config.VERSION then
-    pbChat = tostring(Plateband.Config.VERSION)
+  local feVer = (Config and Config.VERSION) and tostring(Config.VERSION) or "?"
+  local pbVer = "?"
+  if Plateband and Plateband.SessionLog and Plateband.SessionLog.ChatLoadedVersions then
+    local ok, pb, fe = pcall(Plateband.SessionLog.ChatLoadedVersions)
+    if ok and pb and fe then
+      return pb, fe, pb, fe
+    end
   end
-  local pbStamp, feStamp = FelogReadPlatebandTocStamp()
-  local pbToc = FelogReadInterfaceVersion({ PB_TOC_FILE, PB_TOC_BS, PB_CFG_FILE, PB_CFG_BS })
-  local feToc = FelogReadInterfaceVersion({ FE_TOC_FILE, FE_TOC_BS, FE_CFG_FILE, FE_CFG_BS })
-  local pbMeta = FelogQueryMetadataVersion("Plateband")
-  local feMeta = FelogQueryMetadataVersion("ForeverErrorLog")
-  local pbVer = FelogBestVersion(pbChat, pbStamp, pbToc, pbMeta)
-  local feVer = FelogBestVersion(feChat, feStamp, feToc, feMeta)
-  pbMeta = pbMeta or pbVer
-  feMeta = feMeta or feVer
-  return pbVer, feVer, pbMeta, feMeta
+  if Plateband and Plateband.Config and Plateband.Config.VERSION then
+    pbVer = tostring(Plateband.Config.VERSION)
+  end
+  return pbVer, feVer, pbVer, feVer
+end
+
+local function FelogResolveExportVersions()
+  return FelogChatLoadedVersions()
 end
 
 local function FelogPlatebandExportLine()
@@ -535,19 +536,6 @@ local function FelogPlatebandExportLine()
     pbMeta,
     feMeta
   )
-end
-
-local function PickPlatebandChatTruthLine()
-  if Plateband and Plateband.Config and Plateband.Config.EnsureDB then
-    local ok, pdb = pcall(Plateband.Config.EnsureDB)
-    if ok and type(pdb) == "table" and type(pdb.chatTruthLine) == "string" then
-      local line = pdb.chatTruthLine
-      if line:sub(1, 9) == "live_ver=" then
-        return line
-      end
-    end
-  end
-  return nil
 end
 
 local function WritePlatebandExportLine(line)
@@ -635,7 +623,7 @@ local function EnsureFelogWorldIoPulse()
 end
 
 local function PulseLiveHeadFile()
-  local bridgeLine = PickPlatebandChatTruthLine() or FelogPlatebandExportLine()
+  local bridgeLine = FelogPlatebandExportLine()
   WritePlatebandExportLine(bridgeLine)
   local sl = Plateband and Plateband.SessionLog
   if sl and type(sl.PulseExportDisk) == "function" then
