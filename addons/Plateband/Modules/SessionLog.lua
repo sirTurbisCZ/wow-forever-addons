@@ -77,7 +77,10 @@ local sessionBegun = false
 local agentPulseTicker
 local exportTruthTicker
 local exportTruthArmed = false
-local exportTruthPulseFrame
+local ioPulseFrame
+local ioPulseLastGt = 0
+local EXPORT_PULSE_REL = "Interface/AddOns/Plateband/Logs/export-pulse.log"
+local EXPORT_PULSE_BS = [[Interface\AddOns\Plateband\Logs\export-pulse.log]]
 local felogPending = {}
 local FELG_PENDING_MAX = 80
 local felogHooked
@@ -334,13 +337,56 @@ function Mod.BuildChatTruthLine(src, load, seq)
   )
 end
 
---- Single write path: line 1 live_ver= + session tail in agent-live-export + SV export blob.
-function Mod.PulseExportTruth()
+--- Force disk mtime ≤2s — line 1 + optional tail; tries w then line-only w then append heartbeat.
+function Mod.PulseExportDisk()
   local db = ns.Config.EnsureDB()
   db.exportPulseSeq = (tonumber(db.exportPulseSeq) or 0) + 1
+  local seq = db.exportPulseSeq
   db.exportPulseAt = Now()
-  db.exportPulseN = db.exportPulseSeq
-  return Mod.SyncLiveExportFile("EXPORT_PULSE", "pulse", db.exportPulseSeq)
+  db.exportPulseN = seq
+  local line = Mod.BuildChatTruthLine("EXPORT_PULSE", "pulse", seq)
+  db.chatTruthLine = line
+  db.chatTruthAt = Now()
+  db.ioAllowName = nil
+  db.ioAllowLastProbe = 0
+
+  local log = EnsureLogTable()
+  local body = line
+  if type(log.lines) == "table" and #log.lines > 0 then
+    local start = math.max(1, #log.lines - LIVE_TAIL_LINES + 1)
+    body = line .. "\n" .. table.concat(log.lines, "\n", start, #log.lines)
+  end
+  log.export = body
+
+  local wrote = TryWriteWholeFile({ AGENT_EXPORT_REL, AGENT_EXPORT_BS }, body)
+  if not wrote then
+    wrote = WriteLineToPaths({ AGENT_EXPORT_REL, AGENT_EXPORT_BS }, line, "w")
+  end
+  if not wrote then
+    wrote = WriteLineToPaths({ EXPORT_PULSE_REL, EXPORT_PULSE_BS }, line, "a")
+  end
+  if wrote then
+    agentIoOk = true
+    db.ioAllowName = "export"
+    db.ioExportDiskAt = Now()
+    db.ioExportDiskOk = true
+  else
+    db.ioExportDiskOk = false
+    db.ioExportDiskFailAt = Now()
+    DiscoverIoAllowlist(db)
+  end
+  return wrote
+end
+
+--- SV + disk export (chat truth line 1 + session tail).
+function Mod.PulseExportTruth()
+  local ok = Mod.PulseExportDisk()
+  local db = ns.Config.EnsureDB()
+  local seq = tonumber(db.exportPulseSeq) or 0
+  if not ok then
+    ok = Mod.SyncLiveExportFile("EXPORT_PULSE", "pulse", seq)
+  end
+  return ok
 end
 
 local function StopExportTruthPulse()
@@ -349,7 +395,8 @@ local function StopExportTruthPulse()
     pcall(exportTruthTicker.Cancel, exportTruthTicker)
   end
   exportTruthTicker = nil
-  exportTruthPulseFrame = nil
+  ioPulseFrame = nil
+  ioPulseLastGt = 0
 end
 
 function Mod.SyncLiveExportFile(src, load, seq)
@@ -383,7 +430,7 @@ function Mod.SyncLiveExportFile(src, load, seq)
   return wrote
 end
 
---- Primary export pulse (2s). OnUpdate is authoritative — C_Timer may be nil on early ADDON_LOADED.
+--- Primary export pulse (2s). GetTime + OnUpdate on UIParent — C_Timer callbacks can stall on Forever.
 function Mod.ArmExportTruthPulse(force)
   if exportTruthArmed and not force then
     return
@@ -396,27 +443,31 @@ function Mod.ArmExportTruthPulse(force)
   exportTruthArmed = true
   local db = ns.Config.EnsureDB()
   db.exportPulseArmedAt = Now()
-  pcall(Mod.PulseExportTruth)
+  pcall(Mod.PulseExportDisk)
 
-  if not exportTruthPulseFrame and CreateFrame then
-    exportTruthPulseFrame = CreateFrame("Frame")
-    local acc = 0
-    exportTruthPulseFrame:SetScript("OnUpdate", function(_, elapsed)
-      acc = acc + (tonumber(elapsed) or 0)
-      if acc < AGENT_PULSE_SEC then
+  if not ioPulseFrame and CreateFrame then
+    local parent = UIParent
+    ioPulseFrame = CreateFrame("Frame", "PlatebandIoPulse", parent)
+  end
+  if ioPulseFrame then
+    ioPulseLastGt = (GetTime and GetTime()) or ioPulseLastGt
+    ioPulseFrame:SetScript("OnUpdate", function()
+      if not GetTime then
         return
       end
-      acc = acc - AGENT_PULSE_SEC
-      pcall(Mod.PulseExportTruth)
+      local gt = GetTime()
+      if (gt - ioPulseLastGt) < AGENT_PULSE_SEC then
+        return
+      end
+      ioPulseLastGt = gt
+      pcall(Mod.PulseExportDisk)
     end)
-  end
-  if exportTruthPulseFrame and exportTruthPulseFrame.Show then
-    pcall(exportTruthPulseFrame.Show, exportTruthPulseFrame)
+    pcall(ioPulseFrame.Show, ioPulseFrame)
   end
 
   if C_Timer and C_Timer.NewTicker and not exportTruthTicker then
     exportTruthTicker = C_Timer.NewTicker(AGENT_PULSE_SEC, function()
-      pcall(Mod.PulseExportTruth)
+      pcall(Mod.PulseExportDisk)
     end)
   end
 end
@@ -575,7 +626,7 @@ function Mod.RecordChatLoaded(src)
     pcall(ForeverErrorLog.NotifyRuntime, "Plateband", ver, src, "CHAT_LOADED")
   end
   pcall(Mod.PublishChatTruthHead, "CHAT_LOADED", src, 0)
-  pcall(Mod.SyncLiveExportFile, "CHAT_LOADED", src, 0)
+  pcall(Mod.PulseExportDisk)
   Mod.ArmExportTruthPulse(true)
   pcall(Mod.PulseAgentLive)
 end
@@ -740,11 +791,11 @@ function Mod.PulseAgentLive()
   if not TryAppendAgentLive(stamped) then
     MirrorToFelog(body)
   end
-  pcall(Mod.PublishChatTruthHead, "AGENT_LIVE", "pulse", al.seq)
   Mod.ScheduleLiveFlush()
 end
 
 function Mod.EnsureAgentPulseTicker()
+  Mod.ArmExportTruthPulse(false)
   if agentPulseTicker or not C_Timer or not C_Timer.NewTicker then
     return
   end
@@ -820,7 +871,7 @@ function Mod.BeginSession()
   pcall(Mod.PublishChatTruthHead, "SESSION_START", "addon", 0)
   Mod.Append(header)
   pcall(Mod.TryWriteRuntimeVerFile, ver)
-  pcall(Mod.SyncLiveExportFile, "SESSION_START", "addon", 0)
+  pcall(Mod.PulseExportDisk)
   Mod.EnsureLiveFlushTicker()
   Mod.EnsureAgentPulseTicker()
   Mod.ArmExportTruthPulse(true)

@@ -1,5 +1,10 @@
 # ForeverErrorLog changelog
 
+## Release 0.1.14 — direct Plateband export write + GetTime OnUpdate
+
+- **`WritePlatebandExportLine`** when **`PulseExportDisk`** fails; **`FelogPlatebandExportLine`** from TOC metadata.
+- OnUpdate uses **`GetTime`** on **UIParent** child frame.
+
 ## Release 0.1.13 — live pulse OnUpdate + PulseExportTruth bridge
 
 - **`ArmLivePulse`** OnUpdate 2s fallback; re-arm on `PLAYER_ENTERING_WORLD`; **`PulseLiveHeadFile`** → **`Plateband.SessionLog.PulseExportTruth`** when loaded.

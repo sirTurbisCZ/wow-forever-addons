@@ -48,12 +48,16 @@ local LIVE_HEAD_REL = "Interface/AddOns/ForeverErrorLog/Logs/live-head.log"
 local LIVE_HEAD_BS = [[Interface\AddOns\ForeverErrorLog\Logs\live-head.log]]
 local AGENT_EXPORT_REL = "Interface/AddOns/ForeverErrorLog/Logs/agent-live-export.log"
 local AGENT_EXPORT_BS = [[Interface\AddOns\ForeverErrorLog\Logs\agent-live-export.log]]
+local PB_EXPORT_REL = "Interface/AddOns/Plateband/Logs/agent-live-export.log"
+local PB_EXPORT_BS = [[Interface\AddOns\Plateband\Logs\agent-live-export.log]]
+local pbExportPulseSeq = 0
 local LIVE_STREAM_REL = "Interface/AddOns/ForeverErrorLog/Logs/live-stream.log"
 local LIVE_STREAM_BS = [[Interface\AddOns\ForeverErrorLog\Logs\live-stream.log]]
 local AGENT_TAIL_LINES = 160
 local livePulseTicker
 local livePulseArmed = false
 local livePulseFrame
+local livePulseLastGt = 0
 
 local WriteLiveHeadFile
 local FlushAgentExportFiles
@@ -346,10 +350,71 @@ UpdateLiveHeadFromAgent = function(source, payload)
   pcall(WriteLiveHeadFile, lh)
 end
 
+local function FelogPlatebandExportLine()
+  pbExportPulseSeq = pbExportPulseSeq + 1
+  local pbVer = "?"
+  local feVer = tostring(Config.VERSION or "?")
+  if type(GetAddOnMetadata) == "function" then
+    local ok, v = pcall(GetAddOnMetadata, "Plateband", "Version")
+    if ok and v and tostring(v) ~= "" then
+      pbVer = tostring(v)
+    end
+    ok, v = pcall(GetAddOnMetadata, "ForeverErrorLog", "Version")
+    if ok and v and tostring(v) ~= "" then
+      feVer = tostring(v)
+    end
+  end
+  if pbVer == "?" and Plateband and Plateband.Config and Plateband.Config.VERSION then
+    pbVer = tostring(Plateband.Config.VERSION)
+  end
+  return string.format(
+    "live_ver=%s plateband_ver=%s felog_ver=%s seq=%s src=EXPORT_PULSE load=pulse t=%s feed=pb_bridge",
+    pbVer,
+    pbVer,
+    feVer,
+    tostring(pbExportPulseSeq),
+    tostring(Now())
+  )
+end
+
+local function WritePlatebandExportLine(line)
+  line = tostring(line or "")
+  if line == "" or not (io and io.open) then
+    return false
+  end
+  for i = 1, 2 do
+    local path = i == 1 and PB_EXPORT_REL or PB_EXPORT_BS
+    local f = TryOpen(path, "w")
+    if f then
+      local ok = pcall(function()
+        f:write(line)
+        f:write("\n")
+        f:close()
+      end)
+      if ok then
+        return true
+      end
+    end
+  end
+  return false
+end
+
 local function PulseLiveHeadFile()
   local sl = Plateband and Plateband.SessionLog
+  if sl and type(sl.PulseExportDisk) == "function" then
+    local ok, wrote = pcall(sl.PulseExportDisk)
+    if ok and wrote then
+      return
+    end
+  end
   if sl and type(sl.PulseExportTruth) == "function" then
-    pcall(sl.PulseExportTruth)
+    local ok, wrote = pcall(sl.PulseExportTruth)
+    if ok and wrote then
+      return
+    end
+  end
+  local bridgeLine = FelogPlatebandExportLine()
+  if WritePlatebandExportLine(bridgeLine) then
     return
   end
   if sl and type(sl.PublishChatTruthHead) == "function" then
@@ -394,14 +459,20 @@ local function ArmLivePulse(force)
   pcall(PulseLiveHeadFile)
 
   if not livePulseFrame and CreateFrame then
-    livePulseFrame = CreateFrame("Frame")
-    local acc = 0
-    livePulseFrame:SetScript("OnUpdate", function(_, elapsed)
-      acc = acc + (tonumber(elapsed) or 0)
-      if acc < 2.0 then
+    local parent = UIParent
+    livePulseFrame = CreateFrame("Frame", "FelogIoPulse", parent)
+  end
+  if livePulseFrame then
+    livePulseLastGt = (GetTime and GetTime()) or livePulseLastGt
+    livePulseFrame:SetScript("OnUpdate", function()
+      if not GetTime then
         return
       end
-      acc = acc - 2.0
+      local gt = GetTime()
+      if (gt - livePulseLastGt) < 2.0 then
+        return
+      end
+      livePulseLastGt = gt
       pcall(PulseLiveHeadFile)
     end)
     pcall(livePulseFrame.Show, livePulseFrame)

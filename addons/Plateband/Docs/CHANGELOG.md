@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.2.85 — PulseExportDisk (GetTime OnUpdate → export mtime)
+
+- **`PulseExportDisk`** — dedicated 2s disk write (`agent-live-export.log`); `w` line-only fallback + append `export-pulse.log`.
+- **Io pulse frame** — `GetTime` + **UIParent** OnUpdate (not elapsed); clears `ioAllowName` each pulse.
+- **FElog 0.1.14** bridges **`PulseExportDisk`** or direct Plateband export write when PB unloaded.
+
 ## Release 0.2.84 — ArmExportTruthPulse (OnUpdate survives reload)
 
 - **Root cause:** `EnsureExportTruthTicker` set `exportTruthStarted` once on `ADDON_LOADED`; if `C_Timer` was nil or callbacks never ran, pulse stopped until next cold login.

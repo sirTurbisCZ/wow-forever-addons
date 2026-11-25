@@ -58,22 +58,68 @@ if [[ "$DISK_FEED" == host_toc_pulse ]]; then
   echo "FELOG_GATE note: disk L1 still host_toc_pulse (ignored; gate uses SV chatTruthLine only)"
 fi
 
-if [[ -n "$SV_PB" && "$SV_PB" != "$CHAT_TRUTH_PB" ]]; then
-  echo "FELOG_GATE fail: sv_chat_truth plateband_ver=$SV_PB != toc=$CHAT_TRUTH_PB"
-  echo "$SV_LINE"
-  exit 1
+DISK_PB="$(echo "$DISK_L1" | sed -n 's/.*live_ver=\([0-9.]*\).*/\1/p' | head -1)"
+DISK_FE="$(echo "$DISK_L1" | sed -n 's/.*felog_ver=\([0-9.]*\).*/\1/p' | head -1)"
+DISK_TRUTH=no
+if [[ -f "$DISK_EXP" ]] && [[ "$DISK_L1" == live_ver=* ]] && [[ "$DISK_FEED" == pb_bridge ]]; then
+  if [[ "$DISK_PB" == "$CHAT_TRUTH_PB" && "$DISK_FE" == "$CHAT_TRUTH_FE" ]] \
+     && [[ "$DISK_AGE" =~ ^[0-9]+$ ]] && [[ "$DISK_AGE" -le "$MAX_AGE" ]]; then
+    DISK_TRUTH=yes
+  fi
 fi
 
+SV_VER_OK=yes
+if [[ -n "$SV_PB" && "$SV_PB" != "$CHAT_TRUTH_PB" ]]; then
+  SV_VER_OK=no
+fi
 if [[ -n "$SV_FE" && "$SV_FE" != "$CHAT_TRUTH_FE" ]]; then
+  SV_VER_OK=no
+fi
+
+if [[ "$SV_VER_OK" == no ]]; then
+  if [[ "$DISK_TRUTH" == yes ]]; then
+    echo "FELOG_GATE note: SV still $SV_PB/$SV_FE (wtf flush); disk export fresh $DISK_PB/$DISK_FE age=${DISK_AGE}s"
+    SV_LINE="$DISK_L1"
+    SV_PB="$DISK_PB"
+    SV_FE="$DISK_FE"
+    SV_AGE="$DISK_AGE"
+    SV_SRC="disk_export"
+  else
+    echo "FELOG_GATE fail: sv_chat_truth plateband_ver=$SV_PB != toc=$CHAT_TRUTH_PB (disk_age=${DISK_AGE}s disk_pb=${DISK_PB:-?})"
+    echo "$SV_LINE"
+    exit 1
+  fi
+fi
+
+if [[ -n "$SV_FE" && "$SV_FE" != "$CHAT_TRUTH_FE" ]] && [[ "$DISK_TRUTH" != yes ]]; then
   echo "FELOG_GATE fail: sv_chat_truth felog_ver=$SV_FE != toc=$CHAT_TRUTH_FE"
   echo "$SV_LINE"
   exit 1
 fi
 
 if [[ ! "$SV_AGE" =~ ^[0-9]+$ ]] || [[ "$SV_AGE" -gt "$MAX_AGE" ]]; then
-  echo "FELOG_GATE fail: sv_chat_truth stale age=${SV_AGE:-?}s max=${MAX_AGE}s (client pulse lag; disk_age=${DISK_AGE}s)"
-  echo "$SV_LINE"
-  exit 1
+  if [[ "$DISK_TRUTH" == yes ]]; then
+    SV_LINE="$DISK_L1"
+    SV_AGE="$DISK_AGE"
+    SV_SRC="disk_export"
+  else
+    echo "FELOG_GATE fail: sv_chat_truth stale age=${SV_AGE:-?}s max=${MAX_AGE}s (client pulse lag; disk_age=${DISK_AGE}s disk_pb=${DISK_PB:-?})"
+    echo "$SV_LINE"
+    exit 1
+  fi
+fi
+
+if [[ -f "$DISK_EXP" ]] && [[ "$DISK_L1" == live_ver=* ]] && [[ "$DISK_FEED" == pb_bridge ]]; then
+  if [[ ! "$DISK_AGE" =~ ^[0-9]+$ ]] || [[ "$DISK_AGE" -gt "$MAX_AGE" ]]; then
+    echo "FELOG_GATE fail: export disk stale age=${DISK_AGE}s max=${MAX_AGE}s — PulseExportDisk not writing (need /reload 0.2.85+)"
+    [[ -n "$DISK_L1" ]] && echo "$DISK_L1"
+    exit 1
+  fi
+  if [[ "$DISK_PB" != "$CHAT_TRUTH_PB" || "$DISK_FE" != "$CHAT_TRUTH_FE" ]]; then
+    echo "FELOG_GATE fail: disk export ver ${DISK_PB:-?}/${DISK_FE:-?} != toc $CHAT_TRUTH_PB/$CHAT_TRUTH_FE"
+    [[ -n "$DISK_L1" ]] && echo "$DISK_L1"
+    exit 1
+  fi
 fi
 
 DISK_OK=no
