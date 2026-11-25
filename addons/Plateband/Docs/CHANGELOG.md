@@ -1,5 +1,17 @@
 # Plateband changelog
 
+## Release 0.2.49 — friendly WS + no party→mob aura bleed
+
+- **Bug:** Party PW:S/WS debuff appeared on **mob** plates — `ShouldUseTargetAuraSource` used stale `lastTargetPlateUnit` + sole-enemy `IsTargetPlate` heuristic → harvested **`target`** (party) onto wrong plate.
+- **Fix:** `useTargetSrc` only when `plate == PlateFor("target")`; `AuraUnitForPlate` binds gap apply token to plate owner; removed stale/sole-enemy target binds.
+- **Friendly harmful (WFA-45):** `PlateUsesFriendlyHarmfulFilter` — harmful-only pool harvest + buff-row anchor on friend/party plates only; lean target TF parity (`EnsureTargetHarmfulParity`, `ForceFill`). Hostile harvest unchanged.
+- **Locals:** friend helpers as nested `local function` (no forward decl bloat).
+
+### Playtest
+
+1. `/reload` → `ver=0.2.49`, own DoTs on mob still `painted>0`
+2. Party PW:S → **no** shield/WS on mob; friend target WS on plate `friend=1`
+
 ## Release 0.2.48 — Plates.lua must load (200 locals) + target own-DoT bind
 
 - **Root cause (SV/FElog):** 0.2.46 had **207** chunk `local`s → `main function has more than 200 local variables` → `PaintMergeMissing` nil → **zero own DoTs** (TF OK).

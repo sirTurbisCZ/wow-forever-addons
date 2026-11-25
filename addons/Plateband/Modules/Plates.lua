@@ -14,20 +14,20 @@ local Mod = {}
 ns.Modules.Plates = Mod
 
 local PB = {
-  PB.AC_GROUP = "platebandHarmful",
-  PB.OVERLAY_PAD = 2,
-  PB.OVERLAY_GAP_ABOVE = 2,
-  PB.GAP_CD_TICK_SEC = 3.5,
-  PB.FULL_REFRESH_DEBOUNCE = 0.75,
-  PB.PAINT_TARGET_SEC = 0.2,
-  PB.PAINT_PARTY_SEC = 0.5,
-  PB.PAINT_ENEMY_SEC = 0.55,
-  PB.PAINT_TRACE_MIN_SEC = 1.5,
-  PB.AUTO_DIAG_MIN = 0.5,
-  PB.WATCH_DEFAULT_SEC = 2,
-  PB.AURA_DEBOUNCE_SEC = 0.35,
-  PB.GAP_STICKY_SEC = 3.0,
-  PB.SILENT_SWEEP_SEC = 2.0,
+  AC_GROUP = "platebandHarmful",
+  OVERLAY_PAD = 2,
+  OVERLAY_GAP_ABOVE = 2,
+  GAP_CD_TICK_SEC = 3.5,
+  FULL_REFRESH_DEBOUNCE = 0.75,
+  PAINT_TARGET_SEC = 0.2,
+  PAINT_PARTY_SEC = 0.5,
+  PAINT_ENEMY_SEC = 0.55,
+  PAINT_TRACE_MIN_SEC = 1.5,
+  AUTO_DIAG_MIN = 0.5,
+  WATCH_DEFAULT_SEC = 2,
+  AURA_DEBOUNCE_SEC = 0.35,
+  GAP_STICKY_SEC = 3.0,
+  SILENT_SWEEP_SEC = 2.0,
 }
 local lastGapCdTickAt = 0
 local lastFullRefreshAt = 0
@@ -1012,19 +1012,118 @@ PlateAuraPools = function(plate)
   return pools
 end
 
-CollectPlateDebuffButtons = function(plate, out, maxN)
+--- Harmful pool harvest on friend/party plates only (Weakened Soul); never on hostiles.
+local function PlateUsesFriendlyHarmfulFilter(plate)
+  if not plate then
+    return false
+  end
+  if ResolvePartyTokenForPlate(plate) then
+    return true
+  end
+  if HasTarget() and PlateFor("target") == plate then
+    local friendly = false
+    pcall(function()
+      if UnitIsFriend and UnitIsFriend("player", "target") then
+        friendly = true
+      end
+    end)
+    if friendly then
+      return true
+    end
+  end
+  return false
+end
+
+local function PlateButtonHarmful(btn)
+  if not btn then
+    return false
+  end
+  if IsLikelyBuffFrame and IsLikelyBuffFrame(btn) then
+    return false
+  end
+  local verdict
+  pcall(function()
+    if btn.GetAuraInstance then
+      local _, data = btn:GetAuraInstance()
+      if type(data) == "table" then
+        if data.isHelpful ~= nil and not IsSecret(data.isHelpful) then
+          if data.isHelpful then
+            verdict = false
+            return
+          end
+        end
+        if data.isHarmful ~= nil and not IsSecret(data.isHarmful) then
+          verdict = data.isHarmful and true or false
+          return
+        end
+      end
+    end
+  end)
+  if verdict ~= nil then
+    return verdict
+  end
+  pcall(function()
+    local p = btn
+    for _ = 1, 8 do
+      if not p then
+        break
+      end
+      local n
+      pcall(function()
+        n = p.GetName and p:GetName()
+      end)
+      if type(n) == "string" then
+        local l = n:lower()
+        if l:find("bufflist", 1, true) or (l:find("buff", 1, true) and not l:find("debuff", 1, true)) then
+          verdict = false
+          return
+        end
+        if l:find("debuff", 1, true) then
+          verdict = true
+          return
+        end
+      end
+      pcall(function()
+        p = p.GetParent and p:GetParent()
+      end)
+      if not p or p == UIParent then
+        break
+      end
+    end
+  end)
+  if verdict ~= nil then
+    return verdict
+  end
+  return true
+end
+
+local function FilterPlateHarmfulButtons(buttons, maxN)
+  if type(buttons) ~= "table" then
+    return
+  end
+  maxN = maxN or MaxIcons()
+  local j = 1
+  for i = 1, #buttons do
+    if j > maxN then
+      break
+    end
+    local btn = buttons[i]
+    if btn and PlateButtonHarmful(btn) then
+      buttons[j] = btn
+      j = j + 1
+    end
+  end
+  for k = j, #buttons do
+    buttons[k] = nil
+  end
+end
+
+CollectPlateBuffButtons = function(plate, out, maxN)
   if not plate or not out then
     return
   end
   maxN = maxN or MaxIcons()
-  local pools = PlateAuraPools(plate)
-  if pools then
-    HarvestAuraPoolButtons(pools, out, maxN)
-  end
-  if #out >= maxN then
-    return
-  end
-  local list = NativeDebuffList(plate)
+  local list = NativeBuffList(plate)
   if not list then
     return
   end
@@ -1036,13 +1135,85 @@ CollectPlateDebuffButtons = function(plate, out, maxN)
   end
   for i = 1, #kids do
     if #out >= maxN then
-      return
+      break
+    end
+    local child = kids[i]
+    if child and SafeShown(child) and (child.Icon or child.icon or child.GetAuraInstance) then
+      if IsLikelyBuffFrame and IsLikelyBuffFrame(child) then
+        out[#out + 1] = child
+      end
+    end
+  end
+end
+
+CollectPlateDebuffButtons = function(plate, out, maxN)
+  if not plate or not out then
+    return
+  end
+  maxN = maxN or MaxIcons()
+  local friendFilter = PlateUsesFriendlyHarmfulFilter(plate)
+  local pools = PlateAuraPools(plate)
+  if pools then
+    HarvestAuraPoolButtons(pools, out, maxN)
+    if friendFilter then
+      FilterPlateHarmfulButtons(out, maxN)
+    end
+  end
+  if #out >= maxN then
+    return
+  end
+  local list = NativeDebuffList(plate)
+  if not list then
+    if friendFilter then
+      FilterPlateHarmfulButtons(out, maxN)
+    end
+    return
+  end
+  local ok, kids = pcall(function()
+    return { list:GetChildren() }
+  end)
+  if not ok or type(kids) ~= "table" then
+    if friendFilter then
+      FilterPlateHarmfulButtons(out, maxN)
+    end
+    return
+  end
+  for i = 1, #kids do
+    if #out >= maxN then
+      break
     end
     local child = kids[i]
     if child and (child.Icon or child.icon or child.GetAuraInstance) and SafeShown(child) then
-      out[#out + 1] = child
+      if friendFilter then
+        if PlateButtonHarmful(child) then
+          out[#out + 1] = child
+        end
+      else
+        out[#out + 1] = child
+      end
     end
   end
+  if friendFilter then
+    FilterPlateHarmfulButtons(out, maxN)
+  end
+end
+
+--- Aura token for gap apply — never bind target auras to a non-target plate.
+local function AuraUnitForPlate(unit, plate, useTargetSrc, partyAuraTok)
+  if useTargetSrc and HasTarget() and plate and PlateFor("target") == plate then
+    return "target"
+  end
+  if partyAuraTok and plate and PlateFor(partyAuraTok) == plate then
+    return partyAuraTok
+  end
+  if type(unit) == "string" and unit:match("^nameplate%d+") then
+    return unit
+  end
+  local fromPlate = UnitTokenFromPlate(plate)
+  if fromPlate then
+    return fromPlate
+  end
+  return unit
 end
 
 FallbackParent = function(plate)
@@ -2128,20 +2299,37 @@ end
 --- Rightmost shown native aura button (or DebuffListFrame) — merge anchors beside it.
 NativeBandRightAnchor = function(plate)
   local list = NativeDebuffList(plate)
-  if not list then
-    return nil
-  end
+  local friendFilter = PlateUsesFriendlyHarmfulFilter(plate)
   local buttons = {}
   CollectPlateDebuffButtons(plate, buttons, MaxIcons())
   local rightmost = PickRightmostAuraFrame(buttons)
+  if not rightmost and friendFilter then
+    local buffs = {}
+    CollectPlateBuffButtons(plate, buffs, MaxIcons())
+    rightmost = PickRightmostAuraFrame(buffs)
+  end
   if rightmost then
     return rightmost
+  end
+  if not list then
+    return nil
   end
   local ok, kids = pcall(function()
     return { list:GetChildren() }
   end)
   if ok and type(kids) == "table" then
-    rightmost = PickRightmostAuraFrame(kids)
+    if friendFilter then
+      local harmfulKids = {}
+      for i = 1, #kids do
+        local child = kids[i]
+        if child and PlateButtonHarmful(child) then
+          harmfulKids[#harmfulKids + 1] = child
+        end
+      end
+      rightmost = PickRightmostAuraFrame(harmfulKids)
+    else
+      rightmost = PickRightmostAuraFrame(kids)
+    end
   end
   if rightmost then
     return rightmost
@@ -2166,31 +2354,6 @@ IsTargetPlate = function(unit, plate)
   if plate and PlateFor("target") == plate then
     return true
   end
-  if plate and unit and HasTarget() then
-    local tp = PlateFor("target")
-    if tp and tp == plate then
-      return true
-    end
-    local live = EnumerateLivePlates()
-    local onlyU, onlyP, n = nil, nil, 0
-    for i = 1, #live do
-      local u = live[i].unit
-      local pl = live[i].plate
-      if u and pl and not SameUnit(u, "player") and not IsPlayerOrFriendPlate(u, pl) then
-        n = n + 1
-        onlyU = u
-        onlyP = pl
-        if n > 1 then
-          onlyU = nil
-          onlyP = nil
-          break
-        end
-      end
-    end
-    if n == 1 and onlyU == unit and onlyP == plate then
-      return true
-    end
-  end
   return false
 end
 
@@ -2198,17 +2361,21 @@ ShouldUseTargetAuraSource = function(unit, plate)
   if not HasTarget() then
     return false
   end
-  if IsTargetPlate(unit, plate) then
-    return true
-  end
   local tp = PlateFor("target")
-  if tp and plate and tp == plate then
-    return true
+  if not tp or not plate or tp ~= plate then
+    return false
   end
   if unit == "target" then
     return true
   end
-  if type(unit) == "string" and lastTargetPlateUnit and unit == lastTargetPlateUnit then
+  if SameUnit(unit, "target") then
+    return true
+  end
+  local tu = NameplateUnitFor("target")
+  if tu and tu == unit then
+    return true
+  end
+  if IsTargetPlate(unit, plate) then
     return true
   end
   return false
@@ -4161,15 +4328,26 @@ PaintMergeMissing = function(unit, plate)
   local stats = { personal = 0, foreign = 0 }
   local isTarget = IsTargetPlate(unit, plate)
   local useTargetSrc = ShouldUseTargetAuraSource(unit, plate)
-  if not useTargetSrc and HasTarget() and plate and PlateFor("target") == plate then
-    useTargetSrc = true
-    if type(unit) == "string" and unit:match("^pb:") then
-      local tu = NameplateUnitFor("target")
-      if tu then
-        unit = tu
-      end
+  if HasTarget() and plate and PlateFor("target") == plate then
+    if not useTargetSrc then
+      useTargetSrc = true
     end
+    local tu = NameplateUnitFor("target")
+    if tu then
+      unit = tu
+    end
+  elseif useTargetSrc then
+    useTargetSrc = false
   end
+
+  if not friendPlate and useTargetSrc then
+    pcall(function()
+      if UnitIsFriend and UnitIsFriend("player", "target") then
+        friendPlate = true
+      end
+    end)
+  end
+  lastPaintDebug.friendPlate = friendPlate and 1 or 0
 
   local nativeN = CountPlateHarmfulShown(plate)
   lastPaintDebug.nativeN = nativeN
@@ -4232,8 +4410,22 @@ PaintMergeMissing = function(unit, plate)
       CollectPlayerOwnedKeys(unit, foreignSkip)
       CollectForeignAuraGaps(unit, foreignSkip, missing, maxN, allowSecret, stats)
     end
-    DedupeGapIcons(missing, maxN)
-    PruneInactiveGapRows(missing, "target", maxN)
+    CollectTargetFrameMissing(queueSkip, missing, maxN, stats)
+    if friendPlate then
+      EnsureTargetHarmfulParity(plate, missing, queueSkip, maxN, stats)
+      ReconcileTargetFrameUiButtons(plate, missing, queueSkip, maxN, stats)
+      DedupeGapIcons(missing, maxN)
+      if #missing == 0 then
+        pcall(ForceFillTargetFrameGaps, missing, queueSkip, maxN, stats)
+        DedupeGapIcons(missing, maxN)
+      end
+    else
+      DedupeGapIcons(missing, maxN)
+      local tfHarm = CountTargetHarmfulApi("target")
+      if not (tfHarm > 0 and #missing > 0) then
+        PruneInactiveGapRows(missing, "target", maxN)
+      end
+    end
     end
   elseif partyMerge and type(unit) == "string" then
     lastPaintDebug.tgtSrc = 0
@@ -4275,7 +4467,6 @@ PaintMergeMissing = function(unit, plate)
   lastPaintDebug.tfBtn = (useTargetSrc and heavyTarget) and CountTargetFrameAuras() or 0
   lastPaintDebug.unit = tostring(unit)
   lastPaintDebug.nativeN = nativeN
-  lastPaintDebug.friendPlate = partyMerge and 1 or 0
   lastPaintDebug.partyTok = partyAuraTok or "-"
   if useTargetSrc and HasTarget() then
     lastPaintDebug.tfRows = CountTargetHarmfulExpected("target", lastPaintDebug.harv)
@@ -4292,7 +4483,7 @@ PaintMergeMissing = function(unit, plate)
     local heldN = held and tonumber(held._painted) or 0
     if heldN > 0 and sticky and type(sticky.icons) == "table" and #sticky.icons > 0 then
       if type(sticky.at) == "number" and (now - sticky.at) <= PB.GAP_STICKY_SEC then
-        local auraUnit = useTargetSrc and "target" or (partyAuraTok or unit)
+        local auraUnit = AuraUnitForPlate(unit, plate, useTargetSrc, partyAuraTok)
         local heldCd = 0
         pcall(function()
           local n, cdn = RefreshHeldGapFallback(unit, plate, held, sticky.icons, auraUnit)
@@ -4327,7 +4518,7 @@ PaintMergeMissing = function(unit, plate)
   lastPaintDebug.parent = nativeN > 0 and "nativeRow" or "healthBar"
   local sz, pad = MergeRowIconSize(plate, fb)
   fb._pbPlate = plate
-  local auraUnit = useTargetSrc and "target" or (partyAuraTok or unit)
+  local auraUnit = AuraUnitForPlate(unit, plate, useTargetSrc, partyAuraTok)
   local painted = 0
   local cdN = 0
   for i = 1, #missing do

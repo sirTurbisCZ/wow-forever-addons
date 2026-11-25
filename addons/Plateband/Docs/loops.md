@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.48** (0.2.39 paint baseline; **&lt;200** chunk locals; target `useTargetSrc` bind)
+Version: **0.2.49** (friendly harmful merge; strict `plate==PlateFor(target)`; `AuraUnitForPlate`)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 
