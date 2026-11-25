@@ -28,5 +28,14 @@ while true; do
     echo "[$TS] ANOMALY scan failed (see above)" >> "$LOG"
   fi
   bash "$MATRIX" >> "$LOG" 2>&1 || true
+  set +e
+  REP="$("$ROOT/scripts/plateband-sv-session-report.sh" 2>&1)"
+  REP_RC=$?
+  set -e
+  if [[ "$REP_RC" -eq 0 ]]; then
+    echo "[$TS] $REP" >> "$LOG"
+  elif [[ "$REP_RC" -ne 3 && -n "$REP" ]]; then
+    echo "[$TS] session-report rc=$REP_RC $REP" >> "$LOG"
+  fi
   sleep "$INTERVAL"
 done

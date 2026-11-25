@@ -26,7 +26,10 @@ WoW only flushes `Plateband.lua` on logout/reload — **do not treat `SESSION_ST
 
 ```bash
 PLATEBAND_LIVE_VER=0.2.51 ./scripts/plateband-sv-gate.sh
+./scripts/plateband-sv-session-report.sh   # SESSION_REPORT → coordinator on new reload
 ```
+
+Watch (`plateband-sv-watch.sh`) runs `session-report` every 15s; on new `SESSION_START` the agent **must** `SendToAgent` with `live_ver` for Ondřej.
 
 ## Background watch (CARD + PAINT + party)
 
