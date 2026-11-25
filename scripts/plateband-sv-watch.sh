@@ -11,6 +11,13 @@ LOG="${PLATEBAND_SV_WATCH_LOG:-$ROOT/addons/Plateband/Logs/sv-watch.log}"
 
 mkdir -p "$(dirname "$LOG")"
 
+SESSION_WATCH="$ROOT/scripts/plateband-sv-session-watch.sh"
+if [[ -x "$SESSION_WATCH" ]] && [[ -z "${PLATEBAND_SESSION_WATCH_CHILD:-}" ]]; then
+  export PLATEBAND_SESSION_WATCH_CHILD=1
+  nohup env PLATEBAND_LIVE_VER="${PLATEBAND_LIVE_VER:-}" bash "$SESSION_WATCH" >> "$ROOT/addons/Plateband/Logs/session-watch.log" 2>&1 &
+  echo "plateband-sv-watch session-poll child pid=$! interval=${PLATEBAND_SESSION_POLL_SEC:-2}s" | tee -a "$LOG"
+fi
+
 echo "plateband-sv-watch interval=${INTERVAL}s log=$LOG" | tee -a "$LOG"
 echo "WATCH debuffs=HARMFUL+HELPFUL via CARD.tf PAINT.harv,miss,painted,friend,party sticky,foreign,WS,bleed" | tee -a "$LOG"
 while true; do

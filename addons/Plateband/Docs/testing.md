@@ -29,7 +29,8 @@ PLATEBAND_LIVE_VER=0.2.51 ./scripts/plateband-sv-gate.sh
 ./scripts/plateband-sv-session-report.sh   # SESSION_REPORT → coordinator on new reload
 ```
 
-Watch (`plateband-sv-watch.sh`) runs `session-report` every 15s; on new `SESSION_START` the agent **must** `SendToAgent` with `live_ver` for Ondřej.
+- **`plateband-sv-session-watch.sh`:** polls every **2s**, writes `session-report-latest.txt` on new `t|flushed` key (spawned by main watch).
+- Agent **timer 5s** + every turn: `session-report` exit 0 → **immediate** `SendToAgent` parent (not 15s paint watch).
 
 ## Background watch (CARD + PAINT + party)
 
