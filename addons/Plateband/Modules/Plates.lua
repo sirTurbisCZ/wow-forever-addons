@@ -1436,8 +1436,12 @@ FallbackParent = function(plate)
   return NativeDebuffList(plate) or NativeDebuffAnchorList(plate) or SafeFallbackParent(plate)
 end
 
---- Gap row parent — AurasFrame/UF (not DebuffList pool); health bar clips above-row paint on Forever.
+--- Gap row parent — debuff row / AurasFrame / UF (never clip gap band in empty chrome).
 FallbackPaintParent = function(plate)
+  local deb = NativeDebuffList(plate)
+  if deb and not FrameIsGlobalChrome(deb) then
+    return deb
+  end
   local uf = plate and plate.UnitFrame
   local af = uf and uf.AurasFrame
   if af and not FrameIsGlobalChrome(af) then
@@ -2163,7 +2167,17 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
     pcall(function()
       mergeFb:SetPoint("BOTTOMLEFT", auraRow, "BOTTOMLEFT", offX, 0)
     end)
+    return
   end
+  pcall(function()
+    local anchored = false
+    pcall(function()
+      anchored = mergeFb:GetPoint(1) ~= nil
+    end)
+    if not anchored and bar then
+      mergeFb:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", offX, PB.OVERLAY_GAP_ABOVE)
+    end
+  end)
 end
 
 ClearOverlay = function(unit)
@@ -2239,6 +2253,11 @@ EnsureFallback = function(unit, plate)
   fb = CreateFrame("Frame", nil, parent)
   fb:EnableMouse(false)
   fb:Hide()
+  pcall(function()
+    if parent.SetClipsChildren then
+      parent:SetClipsChildren(false)
+    end
+  end)
   fb.icons = {}
   local maxN = MaxIcons()
   local sz = MergeRowIconSize(plate)
@@ -2379,9 +2398,9 @@ NativeShownKeySet = function(plate)
       end
     end
   end
-  if not PlateUsesFriendlyHarmfulFilter(plate) then
-    AugmentNativeKeysFromUnitApi(plate, keys)
-  elseif next(keys) == nil then
+  -- API augment only when harmful buttons are visible — never inflate skip keys on empty row
+  -- (hostile DoTs were phantom-skipped: painted in log, zero on plate).
+  if next(keys) ~= nil then
     AugmentNativeKeysFromUnitApi(plate, keys)
   end
   return keys

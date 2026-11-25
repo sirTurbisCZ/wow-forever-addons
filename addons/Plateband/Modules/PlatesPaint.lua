@@ -10,7 +10,7 @@ if not plate then
     D.ClearFallback(unit)
     return 0
   end
-  local parent = D.FallbackParent(plate)
+  local parent = (D.FallbackPaintParent and D.FallbackPaintParent(plate)) or D.FallbackParent(plate)
   if not parent then
     D.ClearFallback(unit)
     return 0
@@ -214,6 +214,7 @@ if not plate then
     D.CollectPlayerOwnedKeys(auraTok, foreignSkip)
     D.CollectForeignAuraGaps(auraTok, foreignSkip, missing, maxN, true, stats)
     D.CollectAuraSlotsGaps(auraTok, foreignSkip, missing, maxN, stats)
+    D.CollectUnitHarmfulMirror(auraTok, foreignSkip, missing, maxN, stats)
     D.EnsureUnitHarmfulParity(auraTok, plate, missing, foreignSkip, maxN, stats)
     D.DedupeGapIcons(missing, maxN)
     D.PruneInactiveGapRows(missing, auraTok, maxN)
@@ -225,9 +226,8 @@ if not plate then
     D.CollectPlayerOwnedKeys(unit, foreignSkip)
     D.CollectForeignAuraGaps(unit, foreignSkip, missing, maxN, allowSecret, stats)
     D.CollectAuraSlotsGaps(unit, foreignSkip, missing, maxN, stats)
-    if friendPlate or D.PlateUsesFriendlyHarmfulFilter(plate) then
-      D.EnsureUnitHarmfulParity(partyAuraTok or unit, plate, missing, foreignSkip, maxN, stats)
-    end
+    D.CollectUnitHarmfulMirror(unit, foreignSkip, missing, maxN, stats)
+    D.EnsureUnitHarmfulParity(partyAuraTok or unit, plate, missing, foreignSkip, maxN, stats)
     D.DedupeGapIcons(missing, maxN)
     D.PruneInactiveGapRows(missing, unit, maxN)
   end

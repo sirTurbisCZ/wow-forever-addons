@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.2.74 — hostile skip keys + WS/full harmful parity
+
+- **Root (0.2.72 screenshot):** hostile `NativeShownKeySet` always API-augmented skip keys on `nativeVis=0` → player DoTs treated as native → `miss`/`painted` in PAINT but icons missing / partial (Tarantula, Condor).
+- **Fix:** API augment **only when visible harmful buttons exist** (friend + hostile).
+- **Paint:** `EnsureUnitHarmfulParity` + `CollectUnitHarmfulMirror` on all nameplate unit paths; gap parent = `DebuffList` row first; unclip parent; layout fallback if unanchored.
+
 ## Release 0.2.73 — live feed + reload runtime truth
 
 - **Runtime:** `CHAT_LOADED` + `RUNTIME_VER` on **ADDON_LOADED** (`src=reload`), not only `PLAYER_LOGIN` — fixes stale `0.2.71` after `/reload` on deployed `0.2.72+`.
