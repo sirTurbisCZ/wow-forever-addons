@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# FElog live feed gate — file age ≤MAX_AGE (default 5s), session ver vs Plateband TOC.
+# FElog live feed gate — SV chatTruthLine (client pulse) is truth; disk is secondary.
 # Usage: ./scripts/felog-live-gate.sh [--max-age N]
+# Optional: FELIVE_HOST_PATCH=1 to allow pb_refresh (never counts as PASS).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -13,86 +14,77 @@ if [[ "${1:-}" == "--max-age" && -n "${2:-}" ]]; then
 fi
 
 felog_sync_repo_mirror 2>/dev/null || true
-pb_refresh_export_line1_from_toc "${MAX_AGE}" 2>/dev/null || true
-felog_materialize_agent_live_head_from_export 2>/dev/null || true
+if [[ "${FELIVE_HOST_PATCH:-0}" == "1" ]]; then
+  pb_refresh_export_line1_from_toc "${MAX_AGE}" 2>/dev/null || true
+fi
 
-# 0.2.78+: primary head is Plateband/Logs/agent-live-head.log (Forever io allowlist).
-HEAD="$(felog_pick_live_head_file 2>/dev/null || true)"
-[[ -n "$HEAD" ]] || HEAD="$(felog_agent_head_path)"
-EXPORT="$(felog_agent_export_path)"
-STREAM="$(felog_live_stream_path)"
 PB_IFACE="$(felog_plateband_interface_ver 2>/dev/null || echo "?")"
 FE_IFACE="$(felog_interface_ver 2>/dev/null || echo "?")"
-
-RES="$(felog_resolve_session_ver 2>/dev/null || true)"
-SESSION_VER="$(echo "$RES" | sed -n 's/.*session_ver=\([^ ]*\).*/\1/p')"
-SOURCE="$(echo "$RES" | sed -n 's/.*source=\([^ ]*\).*/\1/p')"
-AGE="$(echo "$RES" | sed -n 's/.*age_sec=\([^ ]*\).*/\1/p')"
-
-HEAD_LINE=""
-if [[ -f "$HEAD" ]]; then
-  HEAD_LINE="$(head -1 "$HEAD" 2>/dev/null || true)"
-fi
-if [[ -f "$HEAD" ]]; then
-  AGE="$(felog_head_age_sec "$HEAD" 2>/dev/null || echo "${AGE:-}")"
-fi
-HEAD_PB="$(sed -n 's/.*plateband_ver=\([0-9.]*\).*/\1/p' <<<"${HEAD_LINE}" | head -1)"
-HEAD_FE="$(sed -n 's/.*felog_ver=\([0-9.]*\).*/\1/p' <<<"${HEAD_LINE}" | head -1)"
-HEAD_LOAD="$(sed -n 's/.* load=\([^ ]*\).*/\1/p' <<<"${HEAD_LINE}" | head -1)"
-[[ -n "$HEAD_PB" ]] || HEAD_PB="$(sed -n 's/.*live_ver=\([0-9.]*\).*/\1/p' <<<"${HEAD_LINE}" | head -1)"
-
-# Chat / TOC interface is ground truth. Stale SV or load=prove head = reader/publish lag, not "need reload".
 CHAT_TRUTH_PB="$PB_IFACE"
 CHAT_TRUTH_FE="$FE_IFACE"
 
-if [[ ! -f "$HEAD" ]]; then
-  echo "FELOG_GATE fail: missing agent-live-head.log ($HEAD) — PublishChatTruthHead/WriteAgentLiveHead not on disk yet (chat truth pb=$CHAT_TRUTH_PB fe=$CHAT_TRUTH_FE)"
-  if [[ -f "$EXPORT" ]]; then
-    echo "FELOG_GATE note: agent-live-export exists age=$(felog_file_age_sec "$EXPORT" 2>/dev/null || echo ?)s"
-    tail -2 "$EXPORT" 2>/dev/null | sed 's/^/  /' || true
-  elif [[ -f "$STREAM" ]]; then
-    echo "FELOG_GATE note: live-stream.log exists (no head yet)"
-    tail -2 "$STREAM" 2>/dev/null | sed 's/^/  /' || true
+SV_TRUTH="$(felog_read_chat_truth_sv 2>/dev/null || true)"
+SV_LINE="$(echo "$SV_TRUTH" | sed -n 's/.*line=//p' | head -1)"
+SV_PB="$(echo "$SV_TRUTH" | sed -n 's/.*plateband_ver=\([^ ]*\).*/\1/p')"
+SV_FE="$(echo "$SV_TRUTH" | sed -n 's/.*felog_ver=\([^ ]*\).*/\1/p')"
+SV_AGE="$(echo "$SV_TRUTH" | sed -n 's/.*age_sec=\([^ ]*\).*/\1/p')"
+SV_SRC="$(echo "$SV_TRUTH" | sed -n 's/.* truth_src=\([^ ]*\).*/\1/p')"
+SV_FEED="$(echo "$SV_TRUTH" | sed -n 's/.* feed=\([^ ]*\).*/\1/p')"
+[[ -n "$SV_PB" ]] || SV_PB="$(echo "$SV_LINE" | sed -n 's/.*live_ver=\([0-9.]*\).*/\1/p')"
+
+DISK_EXP="$(felog_plateband_export_path)"
+DISK_L1=""
+DISK_FEED=""
+DISK_AGE=9999
+if [[ -f "$DISK_EXP" ]]; then
+  DISK_L1="$(head -1 "$DISK_EXP" 2>/dev/null || true)"
+  DISK_FEED="$(sed -n 's/.* feed=\([^ ]*\).*/\1/p' <<<"$DISK_L1" | head -1)"
+  DISK_AGE="$(felog_head_age_sec "$DISK_EXP" 2>/dev/null || echo 9999)"
+fi
+
+if [[ -z "$SV_LINE" ]]; then
+  echo "FELOG_GATE fail: no PlatebandDB.chatTruthLine in SV — client ExportTruthTicker not persisting (pb=$CHAT_TRUTH_PB fe=$CHAT_TRUTH_FE)"
+  [[ -f "$DISK_EXP" ]] && echo "FELOG_GATE note: disk L1=$(head -1 "$DISK_EXP" 2>/dev/null | cut -c1-80)"
+  exit 1
+fi
+
+if [[ "$SV_FEED" == host_toc_pulse ]] || [[ "$DISK_FEED" == host_toc_pulse ]]; then
+  echo "FELOG_GATE fail: host_toc_pulse on disk is not pass — need client feed=pb_bridge or fresh SV pulse"
+  echo "  sv_line=$(echo "$SV_LINE" | cut -c1-100)"
+  [[ -n "$DISK_L1" ]] && echo "  disk_l1=$(echo "$DISK_L1" | cut -c1-100)"
+  exit 1
+fi
+
+if [[ -n "$SV_PB" && "$SV_PB" != "$CHAT_TRUTH_PB" ]]; then
+  echo "FELOG_GATE fail: sv_chat_truth plateband_ver=$SV_PB != toc=$CHAT_TRUTH_PB"
+  echo "$SV_LINE"
+  exit 1
+fi
+
+if [[ -n "$SV_FE" && "$SV_FE" != "$CHAT_TRUTH_FE" ]]; then
+  echo "FELOG_GATE fail: sv_chat_truth felog_ver=$SV_FE != toc=$CHAT_TRUTH_FE"
+  echo "$SV_LINE"
+  exit 1
+fi
+
+if [[ ! "$SV_AGE" =~ ^[0-9]+$ ]] || [[ "$SV_AGE" -gt "$MAX_AGE" ]]; then
+  echo "FELOG_GATE fail: sv_chat_truth stale age=${SV_AGE:-?}s max=${MAX_AGE}s (client pulse lag; disk_age=${DISK_AGE}s)"
+  echo "$SV_LINE"
+  exit 1
+fi
+
+DISK_OK=no
+if [[ "$DISK_L1" == "$SV_LINE" ]] && [[ "$DISK_AGE" -le "$MAX_AGE" ]]; then
+  DISK_OK=yes
+fi
+
+if [[ "$DISK_OK" == yes ]]; then
+  echo "FELOG_GATE ok: pb=$SV_PB fe=$SV_FE chat_truth_pb=$CHAT_TRUTH_PB chat_truth_fe=$CHAT_TRUTH_FE source=sv_chat_truth+disk_sync age=${SV_AGE}s disk_age=${DISK_AGE}s truth_src=${SV_SRC:-?}"
+else
+  echo "FELOG_GATE ok: pb=$SV_PB fe=$SV_FE chat_truth_pb=$CHAT_TRUTH_PB chat_truth_fe=$CHAT_TRUTH_FE source=sv_chat_truth age=${SV_AGE}s disk_age=${DISK_AGE}s io_note=disk_lag truth_src=${SV_SRC:-?}"
+  if [[ -n "$DISK_L1" && "$DISK_L1" != live_ver=* ]]; then
+    echo "FELOG_GATE note: disk export L1 not live_ver= (watch reads SV truth; client io may be sv_only)"
   fi
-  echo "FELOG_GATE disk: chat_truth pb=$CHAT_TRUTH_PB fe=$CHAT_TRUTH_FE session_ver=${SESSION_VER:-?} (ignore lagging SV)"
-  exit 1
 fi
-
-if [[ "$HEAD_LOAD" == prove ]]; then
-  echo "FELOG_GATE fail: reject load=prove stub (not chat truth) — expect PublishChatTruthHead pb=$CHAT_TRUTH_PB fe=$CHAT_TRUTH_FE"
-  head -1 "$HEAD"
-  exit 1
-fi
-
-if [[ -n "$HEAD_PB" && -n "$CHAT_TRUTH_PB" && "$HEAD_PB" != "$CHAT_TRUTH_PB" ]]; then
-  echo "FELOG_GATE fail: head_lag plateband_ver=$HEAD_PB != chat_truth=$CHAT_TRUTH_PB (SV/head lagging chat)"
-  head -1 "$HEAD"
-  exit 1
-fi
-
-if [[ -n "$HEAD_FE" && -n "$CHAT_TRUTH_FE" && "$HEAD_FE" != "$CHAT_TRUTH_FE" ]]; then
-  echo "FELOG_GATE fail: head_lag felog_ver=$HEAD_FE != chat_truth=$CHAT_TRUTH_FE (SV/head lagging chat)"
-  head -1 "$HEAD"
-  exit 1
-fi
-
-if [[ ! "$AGE" =~ ^[0-9]+$ ]] || [[ "$AGE" -gt "$MAX_AGE" ]]; then
-  echo "FELOG_GATE fail: agent-live-head stale age=${AGE:-?}s max=${MAX_AGE}s — pulse/PublishChatTruthHead lag (chat truth pb=$CHAT_TRUTH_PB fe=$CHAT_TRUTH_FE)"
-  head -1 "$HEAD"
-  exit 1
-fi
-
-HEAD_LAG=no
-if [[ -n "$CHAT_TRUTH_PB" && -n "$SESSION_VER" && "$CHAT_TRUTH_PB" != "$SESSION_VER" && "$SESSION_VER" != "?" ]]; then
-  HEAD_LAG=yes
-fi
-
-if [[ "$HEAD_LAG" == yes ]]; then
-  echo "FELOG_GATE fail: head_lag session_ver=$SESSION_VER != chat_truth=$CHAT_TRUTH_PB (reader must not invent reload_pending)"
-  head -1 "$HEAD"
-  exit 1
-fi
-
-echo "FELOG_GATE ok: pb=$HEAD_PB fe=$HEAD_FE chat_truth_pb=$CHAT_TRUTH_PB chat_truth_fe=$CHAT_TRUTH_FE source=$SOURCE age=${AGE}s max_age=${MAX_AGE}s load=${HEAD_LOAD:-?} head=$HEAD"
-head -1 "$HEAD"
+echo "$SV_LINE"
 exit 0

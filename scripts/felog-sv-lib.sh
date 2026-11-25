@@ -141,6 +141,74 @@ felog_agent_export_path() {
   printf '%s' "$(felog_logs_dir)/agent-live-export.log"
 }
 
+felog_plateband_export_path() {
+  printf '%s' "$(felog_wow_root)/Interface/AddOns/Plateband/Logs/agent-live-export.log"
+}
+
+felog_plateband_sv_path() {
+  local wow pick f
+  wow="$(felog_wow_root)"
+  pick=""
+  while IFS= read -r f; do
+    [[ -z "$pick" || "$f" -nt "$pick" ]] && pick="$f"
+  done < <(find "${wow}/WTF/Account" -name 'Plateband.lua' -path '*/SavedVariables/*' 2>/dev/null)
+  [[ -n "$pick" ]] || return 1
+  printf '%s' "$pick"
+}
+
+# Client ExportTruthTicker truth (preferred over host-patched disk).
+felog_read_chat_truth_sv() {
+  local sv line at age now pb fe seq src load feed
+  sv="$(felog_plateband_sv_path 2>/dev/null || true)"
+  [[ -n "$sv" && -f "$sv" ]] || return 1
+  local out
+  out="$(python3 - "$sv" <<'PY' 2>/dev/null || true
+import re, pathlib, sys, time
+t = pathlib.Path(sys.argv[1]).read_text(errors="replace")
+
+def unescape(s):
+    try:
+        return s.encode("utf-8").decode("unicode_escape")
+    except Exception:
+        return s
+
+def grab(key, line, default="?"):
+    m = re.search(r"(?:^|\\s)" + key + r"=([^\\s]+)", line)
+    return m.group(1) if m else default
+
+line = ""
+m = re.search(r'\["chatTruthLine"\]\s*=\s*"((?:\\.|[^"\\])*)"', t, re.S)
+if m:
+    line = unescape(m.group(1)).strip()
+if not line:
+    sys.exit(1)
+at = 0
+am = re.search(r'\["chatTruthAt"\]\s*=\s*(\d+)', t)
+if am:
+    at = int(am.group(1))
+tm = re.search(r"t=(\d+)", line)
+ts = int(tm.group(1)) if tm else (at or 0)
+age = (int(time.time()) - ts) if ts > 0 else 9999
+if age < 0:
+    age = 9999
+print(
+    "plateband_ver={pb} felog_ver={fe} seq={seq} src={src} load={load} feed={feed} age_sec={age} truth_src=sv_chat_truth line={line}".format(
+        pb=grab("plateband_ver", line, grab("live_ver", line, "?")),
+        fe=grab("felog_ver", line, "?"),
+        seq=grab("seq", line, "0"),
+        src=grab("src", line, "?"),
+        load=grab("load", line, "?"),
+        feed=grab("feed", line, "?"),
+        age=age,
+        line=line,
+    )
+)
+PY
+)"
+  [[ -n "$out" ]] || return 1
+  printf '%s\n' "$out"
+}
+
 felog_live_stream_path() {
   printf '%s' "$(felog_logs_dir)/live-stream.log"
 }
@@ -251,8 +319,15 @@ felog_sync_repo_mirror() {
 }
 
 felog_resolve_session_ver() {
-  local head export line ver iface load pb
+  local head export line ver iface load pb sv_truth
   iface="$(felog_plateband_interface_ver 2>/dev/null || echo "?")"
+  if sv_truth="$(felog_read_chat_truth_sv 2>/dev/null)"; then
+    ver="$(echo "$sv_truth" | sed -n 's/.*plateband_ver=\([^ ]*\).*/\1/p')"
+    [[ -n "$ver" ]] || ver="$(sed -n 's/.*live_ver=\([0-9.]*\).*/\1/p' <<<"$(echo "$sv_truth" | sed -n 's/.*line=//p')")"
+    printf 'session_ver=%s interface_ver=%s source=sv_chat_truth age_sec=%s\n' \
+      "$ver" "$iface" "$(echo "$sv_truth" | sed -n 's/.*age_sec=\([^ ]*\).*/\1/p')"
+    return 0
+  fi
   if head="$(felog_read_live_head 2>/dev/null)"; then
     load="$(sed -n 's/.*load=\([^ ]*\).*/\1/p' <<<"$head" | head -1)"
     # Reject host prove stubs — chat/TOC is ground truth; prove is not live.

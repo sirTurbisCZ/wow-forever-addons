@@ -347,13 +347,18 @@ function Mod.SyncLiveExportFile(src, load, seq)
   log.export = body
   logDirty = false
   local wrote = false
-  DiscoverIoAllowlist(db)
+  -- Always attempt disk write every pulse (Forever may unlock export after first successful open).
+  db.ioAllowLastProbe = 0
   if TryWriteWholeFile({ AGENT_EXPORT_REL, AGENT_EXPORT_BS }, body) then
     agentIoOk = true
     wrote = true
+    db.ioAllowName = "export"
+    db.ioExportDiskAt = Now()
+  else
+    DiscoverIoAllowlist(db)
   end
-  if db.ioAllowName == "head" then
-    wrote = TryWriteWholeFile({ AGENT_HEAD_REL, AGENT_HEAD_BS }, line) or wrote
+  if TryWriteWholeFile({ AGENT_HEAD_REL, AGENT_HEAD_BS }, line) then
+    wrote = true
   end
   return wrote
 end

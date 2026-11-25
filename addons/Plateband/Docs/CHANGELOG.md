@@ -1,5 +1,9 @@
 # Plateband changelog
 
+## Release 0.2.82 — SV chatTruth gate + disk write retry
+
+- **`SyncLiveExportFile`** — export write every pulse (no sv_only skip); **`felog-live-gate`** reads **`PlatebandDB.chatTruthLine`** (rejects `host_toc_pulse` as PASS).
+
 ## Release 0.2.80 — SyncLiveExportFile (line1 live_ver + 2s pulse)
 
 - **`SyncLiveExportFile` / `BuildChatTruthLine`** — every publish/flush: line 1 `live_ver=` in export + SV `chatTruthLine`; **`EnsureExportTruthTicker`** 2s refresh.
