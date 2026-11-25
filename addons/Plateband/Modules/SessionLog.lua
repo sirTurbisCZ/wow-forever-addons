@@ -76,6 +76,8 @@ local agentIoOk = false
 local sessionBegun = false
 local agentPulseTicker
 local exportTruthTicker
+local exportTruthStarted = false
+local exportTruthWatchFrame
 local felogPending = {}
 local FELG_PENDING_MAX = 80
 local felogHooked
@@ -333,9 +335,16 @@ function Mod.BuildChatTruthLine(src, load, seq)
 end
 
 --- Single write path: line 1 live_ver= + session tail in agent-live-export + SV export blob.
+function Mod.PulseExportTruth()
+  local db = ns.Config.EnsureDB()
+  db.exportPulseSeq = (tonumber(db.exportPulseSeq) or 0) + 1
+  return Mod.SyncLiveExportFile("EXPORT_PULSE", "pulse", db.exportPulseSeq)
+end
+
 function Mod.SyncLiveExportFile(src, load, seq)
   local db = ns.Config.EnsureDB()
   local log = EnsureLogTable()
+  -- Fresh wall clock every call (ver may be unchanged; t= still moves).
   local line = Mod.BuildChatTruthLine(src, load, seq)
   db.chatTruthLine = line
   db.chatTruthAt = Now()
@@ -364,18 +373,33 @@ function Mod.SyncLiveExportFile(src, load, seq)
 end
 
 function Mod.EnsureExportTruthTicker()
-  if exportTruthTicker or not C_Timer or not C_Timer.NewTicker then
+  if exportTruthStarted then
     return
   end
-  pcall(Mod.SyncLiveExportFile, "EXPORT_PULSE", "pulse", 0)
-  exportTruthTicker = C_Timer.NewTicker(AGENT_PULSE_SEC, function()
-    local db = ns.Config.EnsureDB()
-    local seq = 0
-    if type(db.agentLive) == "table" then
-      seq = tonumber(db.agentLive.seq) or 0
-    end
-    pcall(Mod.SyncLiveExportFile, "EXPORT_PULSE", "pulse", seq)
-  end)
+  exportTruthStarted = true
+  pcall(Mod.PulseExportTruth)
+  if C_Timer and C_Timer.NewTicker then
+    exportTruthTicker = C_Timer.NewTicker(AGENT_PULSE_SEC, function()
+      pcall(Mod.PulseExportTruth)
+    end)
+  end
+  if CreateFrame and not exportTruthWatchFrame then
+    exportTruthWatchFrame = CreateFrame("Frame")
+    local acc = 0
+    exportTruthWatchFrame:SetScript("OnUpdate", function(_, elapsed)
+      acc = acc + (tonumber(elapsed) or 0)
+      if acc < AGENT_PULSE_SEC then
+        return
+      end
+      acc = 0
+      local db = ns.Config.EnsureDB()
+      local at = tonumber(db.chatTruthAt) or 0
+      local lag = Now() - at
+      if lag >= AGENT_PULSE_SEC then
+        pcall(Mod.PulseExportTruth)
+      end
+    end)
+  end
 end
 
 --- Primary chat-truth: line 1 of agent-live-export (+ optional head file when io allows).

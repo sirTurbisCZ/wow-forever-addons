@@ -212,6 +212,9 @@ bootFrame:SetScript("OnEvent", function(_, event, name)
         SessionLog.RecordChatLoaded("reload")
       end)
     end
+    if SessionLog and SessionLog.EnsureExportTruthTicker then
+      SafeCall("session:export_ticker", SessionLog.EnsureExportTruthTicker)
+    end
   elseif event == "PLAYER_LOGIN" then
     EnsureDB()
     if SessionLog and SessionLog.BeginSession then
@@ -221,6 +224,9 @@ bootFrame:SetScript("OnEvent", function(_, event, name)
       SafeCall("session:chat_loaded", function()
         SessionLog.RecordChatLoaded("login")
       end)
+    end
+    if SessionLog and SessionLog.EnsureExportTruthTicker then
+      SafeCall("session:export_ticker", SessionLog.EnsureExportTruthTicker)
     end
     ApplyModuleState()
     Print(string.format(L.LOADED or "loaded v%s · /pb", tostring(Config.VERSION)))

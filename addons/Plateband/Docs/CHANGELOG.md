@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.2.83 — EXPORT_PULSE every 2s (t= + mtime)
+
+- **`PulseExportTruth`** — bumps `exportPulseSeq`; **`BuildChatTruthLine`** always fresh **`t=`** even when ver unchanged.
+- **`EnsureExportTruthTicker`** — idempotent start on login/reload; C_Timer 2s + OnUpdate watchdog if `chatTruthAt` lags.
+- **`Core`** — calls **`EnsureExportTruthTicker`** on `ADDON_LOADED` + `PLAYER_LOGIN` (not only `BeginSession`).
+
 ## Release 0.2.82 — SV chatTruth gate + disk write retry
 
 - **`SyncLiveExportFile`** — export write every pulse (no sv_only skip); **`felog-live-gate`** reads **`PlatebandDB.chatTruthLine`** (rejects `host_toc_pulse` as PASS).

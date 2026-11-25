@@ -48,11 +48,14 @@ if [[ -z "$SV_LINE" ]]; then
   exit 1
 fi
 
-if [[ "$SV_FEED" == host_toc_pulse ]] || [[ "$DISK_FEED" == host_toc_pulse ]]; then
-  echo "FELOG_GATE fail: host_toc_pulse on disk is not pass — need client feed=pb_bridge or fresh SV pulse"
+# Host-patched disk must never count as truth. SV chatTruthLine is the only PASS source.
+if [[ "$SV_FEED" == host_toc_pulse ]]; then
+  echo "FELOG_GATE fail: SV chatTruthLine feed=host_toc_pulse — not client truth (pb=$CHAT_TRUTH_PB fe=$CHAT_TRUTH_FE)"
   echo "  sv_line=$(echo "$SV_LINE" | cut -c1-100)"
-  [[ -n "$DISK_L1" ]] && echo "  disk_l1=$(echo "$DISK_L1" | cut -c1-100)"
   exit 1
+fi
+if [[ "$DISK_FEED" == host_toc_pulse ]]; then
+  echo "FELOG_GATE note: disk L1 still host_toc_pulse (ignored; gate uses SV chatTruthLine only)"
 fi
 
 if [[ -n "$SV_PB" && "$SV_PB" != "$CHAT_TRUTH_PB" ]]; then

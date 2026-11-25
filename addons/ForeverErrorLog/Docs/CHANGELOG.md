@@ -1,5 +1,9 @@
 # ForeverErrorLog changelog
 
+## Release 0.1.12 — ship with Plateband 0.2.83 export pulse
+
+- Version bump only; 2s **`EXPORT_PULSE`** disk + `t=` refresh lives in **`Plateband.SessionLog.PulseExportTruth`**.
+
 ## Release 0.1.7 — watch reads agent-live-head.log
 
 - Forever blocks `*live-head*` filenames; chat truth now **`Plateband/Logs/agent-live-head.log`** (same io allowlist as `agent-live-export`).
