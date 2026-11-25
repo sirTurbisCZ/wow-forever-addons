@@ -52,6 +52,8 @@ local LIVE_STREAM_REL = "Interface/AddOns/ForeverErrorLog/Logs/live-stream.log"
 local LIVE_STREAM_BS = [[Interface\AddOns\ForeverErrorLog\Logs\live-stream.log]]
 local AGENT_TAIL_LINES = 160
 local livePulseTicker
+local livePulseArmed = false
+local livePulseFrame
 
 local WriteLiveHeadFile
 local FlushAgentExportFiles
@@ -346,6 +348,10 @@ end
 
 local function PulseLiveHeadFile()
   local sl = Plateband and Plateband.SessionLog
+  if sl and type(sl.PulseExportTruth) == "function" then
+    pcall(sl.PulseExportTruth)
+    return
+  end
   if sl and type(sl.PublishChatTruthHead) == "function" then
     local db = EnsureDB()
     local lh = EnsureLiveHeadTable(db)
@@ -366,14 +372,50 @@ local function PulseLiveHeadFile()
   pcall(WriteLiveHeadFile, lh)
 end
 
-local function EnsureLivePulseTicker()
-  if livePulseTicker or not C_Timer or not C_Timer.NewTicker then
+local function StopLivePulse()
+  livePulseArmed = false
+  if livePulseTicker and livePulseTicker.Cancel then
+    pcall(livePulseTicker.Cancel, livePulseTicker)
+  end
+  livePulseTicker = nil
+  livePulseFrame = nil
+end
+
+local function ArmLivePulse(force)
+  if livePulseArmed and not force then
     return
   end
+  if force then
+    StopLivePulse()
+  elseif livePulseArmed then
+    return
+  end
+  livePulseArmed = true
   pcall(PulseLiveHeadFile)
-  livePulseTicker = C_Timer.NewTicker(2.0, function()
-    pcall(PulseLiveHeadFile)
-  end)
+
+  if not livePulseFrame and CreateFrame then
+    livePulseFrame = CreateFrame("Frame")
+    local acc = 0
+    livePulseFrame:SetScript("OnUpdate", function(_, elapsed)
+      acc = acc + (tonumber(elapsed) or 0)
+      if acc < 2.0 then
+        return
+      end
+      acc = acc - 2.0
+      pcall(PulseLiveHeadFile)
+    end)
+    pcall(livePulseFrame.Show, livePulseFrame)
+  end
+
+  if C_Timer and C_Timer.NewTicker and not livePulseTicker then
+    livePulseTicker = C_Timer.NewTicker(2.0, function()
+      pcall(PulseLiveHeadFile)
+    end)
+  end
+end
+
+local function EnsureLivePulseTicker(force)
+  ArmLivePulse(force == true)
 end
 
 local function AppendLiveStream(stamped)
@@ -443,7 +485,7 @@ local function BeginSession()
   lh.load = "addon"
   lh.at = Now()
   db.liveHead = lh
-  EnsureLivePulseTicker()
+  EnsureLivePulseTicker(true)
 end
 
 local function AddonFromMessage(msg)
@@ -619,14 +661,30 @@ local function InstallHandler()
   end)
 end
 
+local function DeferArmLivePulse()
+  local function arm()
+    pcall(function()
+      EnsureLivePulseTicker(true)
+    end)
+  end
+  if C_Timer and C_Timer.After then
+    C_Timer.After(0, arm)
+    C_Timer.After(0.5, arm)
+  else
+    arm()
+  end
+end
+
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
+frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:SetScript("OnEvent", function(_, event, name)
   if event == "ADDON_LOADED" and name == addonName then
     EnsureDB()
     BeginSession()
     InstallHandler()
+    DeferArmLivePulse()
     local loggedIn = false
     pcall(function()
       if IsLoggedIn then
@@ -648,7 +706,10 @@ frame:SetScript("OnEvent", function(_, event, name)
     BeginSession()
     InstallHandler()
     SuppressScriptErrorsPopup()
+    DeferArmLivePulse()
     PrintLoadedLine(false)
+  elseif event == "PLAYER_ENTERING_WORLD" then
+    DeferArmLivePulse()
   end
 end)
 

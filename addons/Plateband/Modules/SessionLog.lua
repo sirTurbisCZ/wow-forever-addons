@@ -76,8 +76,8 @@ local agentIoOk = false
 local sessionBegun = false
 local agentPulseTicker
 local exportTruthTicker
-local exportTruthStarted = false
-local exportTruthWatchFrame
+local exportTruthArmed = false
+local exportTruthPulseFrame
 local felogPending = {}
 local FELG_PENDING_MAX = 80
 local felogHooked
@@ -338,7 +338,18 @@ end
 function Mod.PulseExportTruth()
   local db = ns.Config.EnsureDB()
   db.exportPulseSeq = (tonumber(db.exportPulseSeq) or 0) + 1
+  db.exportPulseAt = Now()
+  db.exportPulseN = db.exportPulseSeq
   return Mod.SyncLiveExportFile("EXPORT_PULSE", "pulse", db.exportPulseSeq)
+end
+
+local function StopExportTruthPulse()
+  exportTruthArmed = false
+  if exportTruthTicker and exportTruthTicker.Cancel then
+    pcall(exportTruthTicker.Cancel, exportTruthTicker)
+  end
+  exportTruthTicker = nil
+  exportTruthPulseFrame = nil
 end
 
 function Mod.SyncLiveExportFile(src, load, seq)
@@ -372,34 +383,46 @@ function Mod.SyncLiveExportFile(src, load, seq)
   return wrote
 end
 
-function Mod.EnsureExportTruthTicker()
-  if exportTruthStarted then
+--- Primary export pulse (2s). OnUpdate is authoritative — C_Timer may be nil on early ADDON_LOADED.
+function Mod.ArmExportTruthPulse(force)
+  if exportTruthArmed and not force then
     return
   end
-  exportTruthStarted = true
-  pcall(Mod.PulseExportTruth)
-  if C_Timer and C_Timer.NewTicker then
-    exportTruthTicker = C_Timer.NewTicker(AGENT_PULSE_SEC, function()
-      pcall(Mod.PulseExportTruth)
-    end)
+  if force then
+    StopExportTruthPulse()
+  elseif exportTruthArmed then
+    return
   end
-  if CreateFrame and not exportTruthWatchFrame then
-    exportTruthWatchFrame = CreateFrame("Frame")
+  exportTruthArmed = true
+  local db = ns.Config.EnsureDB()
+  db.exportPulseArmedAt = Now()
+  pcall(Mod.PulseExportTruth)
+
+  if not exportTruthPulseFrame and CreateFrame then
+    exportTruthPulseFrame = CreateFrame("Frame")
     local acc = 0
-    exportTruthWatchFrame:SetScript("OnUpdate", function(_, elapsed)
+    exportTruthPulseFrame:SetScript("OnUpdate", function(_, elapsed)
       acc = acc + (tonumber(elapsed) or 0)
       if acc < AGENT_PULSE_SEC then
         return
       end
-      acc = 0
-      local db = ns.Config.EnsureDB()
-      local at = tonumber(db.chatTruthAt) or 0
-      local lag = Now() - at
-      if lag >= AGENT_PULSE_SEC then
-        pcall(Mod.PulseExportTruth)
-      end
+      acc = acc - AGENT_PULSE_SEC
+      pcall(Mod.PulseExportTruth)
     end)
   end
+  if exportTruthPulseFrame and exportTruthPulseFrame.Show then
+    pcall(exportTruthPulseFrame.Show, exportTruthPulseFrame)
+  end
+
+  if C_Timer and C_Timer.NewTicker and not exportTruthTicker then
+    exportTruthTicker = C_Timer.NewTicker(AGENT_PULSE_SEC, function()
+      pcall(Mod.PulseExportTruth)
+    end)
+  end
+end
+
+function Mod.EnsureExportTruthTicker(force)
+  Mod.ArmExportTruthPulse(force == true)
 end
 
 --- Primary chat-truth: line 1 of agent-live-export (+ optional head file when io allows).
@@ -553,7 +576,7 @@ function Mod.RecordChatLoaded(src)
   end
   pcall(Mod.PublishChatTruthHead, "CHAT_LOADED", src, 0)
   pcall(Mod.SyncLiveExportFile, "CHAT_LOADED", src, 0)
-  Mod.EnsureExportTruthTicker()
+  Mod.ArmExportTruthPulse(true)
   pcall(Mod.PulseAgentLive)
 end
 
@@ -800,7 +823,7 @@ function Mod.BeginSession()
   pcall(Mod.SyncLiveExportFile, "SESSION_START", "addon", 0)
   Mod.EnsureLiveFlushTicker()
   Mod.EnsureAgentPulseTicker()
-  Mod.EnsureExportTruthTicker()
+  Mod.ArmExportTruthPulse(true)
   return log
 end
 
@@ -860,7 +883,35 @@ function Mod.Status()
     fileOk = log.fileOk and true or false,
     paintEntries = #(pt.entries or {}),
     agentIo = agentIoOk and true or false,
+    exportPulseAt = tonumber(db.exportPulseAt) or 0,
+    exportPulseN = tonumber(db.exportPulseN) or 0,
   }
+end
+
+local function DeferArmExportTruth(force)
+  local function arm()
+    pcall(Mod.ArmExportTruthPulse, force == true)
+  end
+  if C_Timer and C_Timer.After then
+    C_Timer.After(0, arm)
+    C_Timer.After(0.5, arm)
+  else
+    arm()
+  end
+end
+
+if CreateFrame then
+  local exportBoot = CreateFrame("Frame")
+  exportBoot:RegisterEvent("ADDON_LOADED")
+  exportBoot:RegisterEvent("PLAYER_ENTERING_WORLD")
+  exportBoot:SetScript("OnEvent", function(_, event, loadName)
+    if event == "ADDON_LOADED" and loadName ~= "Plateband" then
+      return
+    end
+    if event == "ADDON_LOADED" or event == "PLAYER_ENTERING_WORLD" then
+      DeferArmExportTruth(true)
+    end
+  end)
 end
 
 return Mod

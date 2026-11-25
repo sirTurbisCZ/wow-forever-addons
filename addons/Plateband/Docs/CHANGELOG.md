@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.2.84 — ArmExportTruthPulse (OnUpdate survives reload)
+
+- **Root cause:** `EnsureExportTruthTicker` set `exportTruthStarted` once on `ADDON_LOADED`; if `C_Timer` was nil or callbacks never ran, pulse stopped until next cold login.
+- **`ArmExportTruthPulse(force)`** — unconditional **OnUpdate** every 2s (shown frame) + optional `C_Timer`; **re-arm** on `ADDON_LOADED` / `PLAYER_ENTERING_WORLD` via SessionLog boot frame.
+- **`exportPulseAt` / `exportPulseN`** in SV for gate/debug; FElog pulse calls **`PulseExportTruth`** directly.
+
 ## Release 0.2.83 — EXPORT_PULSE every 2s (t= + mtime)
 
 - **`PulseExportTruth`** — bumps `exportPulseSeq`; **`BuildChatTruthLine`** always fresh **`t=`** even when ver unchanged.

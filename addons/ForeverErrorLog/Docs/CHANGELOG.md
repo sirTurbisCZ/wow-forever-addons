@@ -1,5 +1,9 @@
 # ForeverErrorLog changelog
 
+## Release 0.1.13 — live pulse OnUpdate + PulseExportTruth bridge
+
+- **`ArmLivePulse`** OnUpdate 2s fallback; re-arm on `PLAYER_ENTERING_WORLD`; **`PulseLiveHeadFile`** → **`Plateband.SessionLog.PulseExportTruth`** when loaded.
+
 ## Release 0.1.12 — ship with Plateband 0.2.83 export pulse
 
 - Version bump only; 2s **`EXPORT_PULSE`** disk + `t=` refresh lives in **`Plateband.SessionLog.PulseExportTruth`**.
