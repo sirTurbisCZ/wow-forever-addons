@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.41** (friendly HARMFUL gap: plate pool buff/debuff filter; lean target TF parity)
+Version: **0.2.43** (friendly OOC sticky + silent session PAINT; combat hold vs regen clear)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 

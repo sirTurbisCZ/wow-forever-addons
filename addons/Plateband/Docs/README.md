@@ -93,5 +93,6 @@ If Forever Error Log is installed, also send:
 | Weird / broken plates after older Plateband | `/reload` on **0.1.12+** (undoes prior name pins) |
 | Native-only debuffs | `/pb merge off`; `/pb diagnose` → `merge=0` |
 | Party DoTs missing on plate | default merge on; `/pb diagnose` → `merge=1`, `fb>0` when icons painted |
+| Own DoT shown twice (e.g. Flame Shock ×2) | update to **0.2.40+**; `/reload` — personal stays native-only when DebuffList already has it |
 | Errors / weird plates | `/pb safe`, then `/felog list` if Forever Error Log is installed |
 | Dual aura rows with an old Retinue install | Disable or unlink Retinue; Plateband owns plates only |

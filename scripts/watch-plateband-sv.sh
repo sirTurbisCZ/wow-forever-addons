@@ -3,6 +3,7 @@
 set -euo pipefail
 
 WOW_ROOT="${WOW_FOREVER_ROOT:-/Applications/World of Warcraft/_forever_}"
+WOW_ROOT="${WOW_ROOT%/}"
 SV_GLOB="${WOW_ROOT}/WTF/Account/*/SavedVariables/Plateband.lua"
 
 shopt -s nullglob

@@ -1,5 +1,28 @@
 # Plateband changelog
 
+## Release 0.2.43 — friendly gap telemetry + paint nil fix
+
+- **SV root cause (feed):** `paintTraceOn=false` silenced **all** session PAINT despite `silentTrace=true` — inbox empty; **`Plates.lua` paint nil** (early `IsLikelyBuffFrame` ref) aborted harvest OOC; **combat** `UpdateOverlay` held row without repaint; **`PLAYER_REGEN_ENABLED`** OOC repaint hit `miss=0` → clear.
+- **Fix:** session PAINT when **`silentTrace` only**; **`PlateButtonProbablyHelpful`** early helper; PAINT adds **`sticky=` `ooc=`**; regen refresh deferred 120ms; 0.2.42 sticky/backfill retained.
+
+### Playtest (0.2.43)
+
+1. `/reload` → `ver=0.2.43`; `/felog clear`; target friend PW:S+WS OOC — icon stable; SV `PAINT … ooc=1 sticky=1`.
+2. Enter combat — icon stays (no paint nil in FElog).
+
+## Release 0.2.42 — friendly harmful stable OOC (Weakened Soul)
+
+- **Bug:** Weakened Soul visible **in combat** only; **out of combat** gap cleared after `/reload` or `PLAYER_REGEN_ENABLED` repaints with empty harvest.
+- **Root cause:** combat `UpdateOverlay` held painted row; OOC paint got `miss=0` and **`ClearFallback`** after 3s sticky; TF buff buttons skewed lean harvest vs real debuff count.
+- **Fix:** **`GapStickyActive`** — hold while `GapAuraLive` (up to 30s); **`TargetFriendlyHarmfulGapExpected`** + TF backfill before clear; **`CountTargetFrameHarmfulShown`**; lean path TF-harmful prune skip; `paint_hold` relayout OOC.
+
+### Playtest (0.2.42)
+
+1. `/reload` → `v0.2.41` or newer **`ver=0.2.42`** in SV.
+2. OOC party friend **PW:S + Weakened Soul** — red hand stays full ~15s (not combat-only).
+3. Enter/leave combat — icon remains (`paint_hold` / `sticky=1` in trace).
+4. `/pb diagnose` → `miss≥1` or `painted≥1` / `sticky=1` OOC.
+
 ## Release 0.2.41 — friendly harmful gaps (Weakened Soul)
 
 - **Bug:** priest **Weakened Soul** (and similar own HARMFUL on friendlies) missing on nameplate while target-frame debuff row shows it — PW:S on buff row only.

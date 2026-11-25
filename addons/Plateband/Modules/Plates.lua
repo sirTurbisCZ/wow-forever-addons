@@ -43,7 +43,8 @@ local platesSeen = 0
 local overlayUpdates = 0
 local lastAuraRefreshAt = 0
 local AURA_DEBOUNCE_SEC = 0.35
-local GAP_STICKY_SEC = 3.0 -- hold when UNIT_AURA/API flickers empty on target paint (melee refresh)
+local GAP_STICKY_SEC = 3.0 -- short anti-flicker window before aura-live sticky (melee / API lag)
+local GAP_STICKY_AURA_SEC = 30.0 -- cap hold while GapAuraLive (Weakened Soul ~15s friendly plates)
 local SILENT_SWEEP_SEC = 2.0
 local gapSticky = {} -- [unit] = { icons = {}, at = number }
 local lastPaintDebug = {} -- diagnose: last PaintMergeMissing / Refresh snapshot
@@ -98,6 +99,9 @@ local CountNativeAuraRow
 local CountPlateHarmfulShown
 local CountShownAuraKids
 local CountTargetFrameAuras
+local CountTargetFrameHarmfulShown
+local TargetFriendlyHarmfulGapExpected
+local GapStickyActive
 local ApplyGapAuraVisual
 local EnrichGapAuraEntry
 local GapAuraLive
@@ -821,8 +825,15 @@ NeedsHeavyTargetHarvest = function(unit, plate, nativeN)
   if fb and (tonumber(fb._painted) or 0) > 0 then
     return true
   end
-  local tfUi = CountTargetFrameAuras()
+  local tfUi = CountTargetFrameHarmfulShown()
+  if tfUi == 0 then
+    tfUi = CountTargetFrameAuras()
+  end
   if tfUi > (nativeN or 0) then
+    return true
+  end
+  local apiH = CountTargetHarmfulApi("target")
+  if apiH > (nativeN or 0) then
     return true
   end
   return false
@@ -1015,12 +1026,48 @@ PlateAuraPools = function(plate)
   return pools
 end
 
+--- Early buff hint — must not call IsLikelyBuffFrame (assigned later in chunk).
+local function PlateButtonProbablyHelpful(btn)
+  if not btn then
+    return true
+  end
+  local buffish = false
+  pcall(function()
+    local flag = btn.isBuff
+    if flag ~= nil and not IsSecret(flag) and flag then
+      buffish = true
+    end
+  end)
+  if buffish then
+    return true
+  end
+  pcall(function()
+    local flag = btn.isHelpful
+    if flag ~= nil and not IsSecret(flag) and flag then
+      buffish = true
+    end
+  end)
+  if buffish then
+    return true
+  end
+  pcall(function()
+    local n = btn.GetName and btn:GetName()
+    if type(n) == "string" then
+      local l = n:lower()
+      if l:find("buff") and not l:find("debuff") then
+        buffish = true
+      end
+    end
+  end)
+  return buffish
+end
+
 --- Forever plate auraPools can list buffs beside debuffs — gap row must count HARMFUL only.
 IsPlateHarmfulAuraButton = function(btn)
   if not btn then
     return false
   end
-  if IsLikelyBuffFrame(btn) then
+  if PlateButtonProbablyHelpful(btn) then
     return false
   end
   local verdict
@@ -1121,7 +1168,7 @@ CollectPlateBuffButtons = function(plate, out, maxN)
     end
     local child = kids[i]
     if child and SafeShown(child) and (child.Icon or child.icon or child.GetAuraInstance) then
-      if IsLikelyBuffFrame(child) then
+      if PlateButtonProbablyHelpful(child) then
         out[#out + 1] = child
       end
     end
@@ -1274,6 +1321,79 @@ CountTargetFrameAuras = function()
     end
   end
   return n
+end
+
+--- TF debuff row only (friendly targets mix buffs into CollectTargetFrameButtons).
+CountTargetFrameHarmfulShown = function()
+  local n = 0
+  local container = GetTargetAuraContainer()
+  if container and container.debuffAuraGroup and container.debuffAuraGroup.GetFramesByIndex then
+    pcall(function()
+      local frames = container.debuffAuraGroup:GetFramesByIndex()
+      if type(frames) == "table" then
+        for i = 1, #frames do
+          local f = frames[i]
+          if f and (SafeShown(f) or f.Icon or f.icon or f.GetAuraInstance) then
+            if IsTargetDebuffAuraFrame(f) and not PlateButtonProbablyHelpful(f) then
+              n = n + 1
+            end
+          end
+        end
+      end
+    end)
+  end
+  if n > 0 then
+    return n
+  end
+  local buttons = {}
+  CollectTargetFrameButtons(buttons, MaxIcons())
+  for i = 1, #buttons do
+    local btn = buttons[i]
+    if btn and IsTargetDebuffAuraFrame(btn) and not PlateButtonProbablyHelpful(btn) then
+      n = n + 1
+    end
+  end
+  return n
+end
+
+TargetFriendlyHarmfulGapExpected = function(plate, useTargetSrc)
+  if not useTargetSrc or not HasTarget() then
+    return false
+  end
+  local friendly = false
+  pcall(function()
+    if UnitIsFriend and UnitIsFriend("player", "target") then
+      friendly = true
+    end
+  end)
+  if not friendly then
+    return false
+  end
+  local tfH = CountTargetHarmfulApi("target")
+  if tfH <= 0 then
+    tfH = CountTargetFrameHarmfulShown()
+  end
+  local plateH = CountPlateHarmfulShown(plate)
+  return tfH > plateH
+end
+
+GapStickyActive = function(sticky, auraUnit, now)
+  if not sticky or type(sticky.icons) ~= "table" or #sticky.icons == 0 then
+    return false
+  end
+  now = now or (GetTime and GetTime() or 0)
+  if type(sticky.at) == "number" and (now - sticky.at) <= GAP_STICKY_SEC then
+    return true
+  end
+  if type(sticky.at) == "number" and (now - sticky.at) > GAP_STICKY_AURA_SEC then
+    return false
+  end
+  for i = 1, #sticky.icons do
+    if GapAuraLive(sticky.icons[i], auraUnit) then
+      return true
+    end
+  end
+  return false
 end
 
 IconSize = function()
@@ -2668,8 +2788,8 @@ CollectTargetFramePersonalGaps = function(paintKeys, out, maxN, stats)
   end
 end
 
-ApplyGapSticky = function(unit, missing, isTarget, unitToken)
-  if not isTarget or not unit or #missing > 0 then
+ApplyGapSticky = function(unit, missing, wantSticky, unitToken)
+  if not wantSticky or not unit or #missing > 0 then
     return
   end
   local c = gapSticky[unit]
@@ -2677,22 +2797,24 @@ ApplyGapSticky = function(unit, missing, isTarget, unitToken)
     return
   end
   local now = GetTime and GetTime() or 0
-  if type(c.at) == "number" and (now - c.at) <= GAP_STICKY_SEC then
-    unitToken = unitToken or "target"
-    local live = {}
-    for i = 1, #c.icons do
-      if GapAuraLive(c.icons[i], unitToken) then
-        live[#live + 1] = c.icons[i]
-        missing[#missing + 1] = c.icons[i]
-      end
-    end
-    if #live == 0 then
-      gapSticky[unit] = nil
-      return
-    end
-    c.icons = live
-    DedupeGapIcons(missing, MaxIcons())
+  unitToken = unitToken or "target"
+  if not GapStickyActive(c, unitToken, now) then
+    return
   end
+  local live = {}
+  for i = 1, #c.icons do
+    if GapAuraLive(c.icons[i], unitToken) then
+      live[#live + 1] = c.icons[i]
+      missing[#missing + 1] = c.icons[i]
+    end
+  end
+  if #live == 0 then
+    gapSticky[unit] = nil
+    return
+  end
+  c.icons = live
+  c.at = now
+  DedupeGapIcons(missing, MaxIcons())
 end
 
 local function CopyGapRow(row)
@@ -2843,7 +2965,12 @@ RememberGapSticky = function(unit, icons, unitToken)
     return
   end
   DedupeGapIcons(copy, MaxIcons())
-  gapSticky[unit] = { icons = copy, at = GetTime and GetTime() or 0 }
+  local now = GetTime and GetTime() or 0
+  local prev = gapSticky[unit]
+  if prev and type(prev.at) == "number" and (now - prev.at) < GAP_STICKY_AURA_SEC then
+    now = prev.at
+  end
+  gapSticky[unit] = { icons = copy, at = now }
 end
 
 RefreshHeldGapFallback = function(unit, plate, fb, icons, auraUnit)
@@ -4210,7 +4337,7 @@ end
 
 SilentTraceEnabled = function()
   local p = Profile()
-  if p.silentTrace == false or p.paintTraceOn == false then
+  if p.silentTrace == false then
     return false
   end
   if p.paintTraceInCombat == false and PlayerInCombat() then
@@ -4232,7 +4359,7 @@ BuildPaintTraceLine = function(why, unit, plate)
   end
   local tgtSrc = ShouldUseTargetAuraSource(unit, plate) and 1 or 0
   return string.format(
-    "PAINT ver=%s why=%s unit=%s tgt=%s merge=%s native=%s harv=%s miss=%s painted=%s tgtSrc=%s tfRows=%s friend=%s party=%s",
+    "PAINT ver=%s why=%s unit=%s tgt=%s merge=%s native=%s harv=%s miss=%s painted=%s tgtSrc=%s tfRows=%s friend=%s party=%s sticky=%s ooc=%s",
     tostring(ns.Config.VERSION),
     tostring(why or "?"),
     tostring(unit),
@@ -4245,7 +4372,9 @@ BuildPaintTraceLine = function(why, unit, plate)
     tostring(tgtSrc),
     tostring(lpd.tfRows or "?"),
     tostring(lpd.friendPlate or "?"),
-    tostring(lpd.partyTok or "?")
+    tostring(lpd.partyTok or "?"),
+    tostring(lpd.sticky or "0"),
+    PlayerInCombat() and "0" or "1"
   )
 end
 
@@ -4430,7 +4559,15 @@ PaintMergeMissing = function(unit, plate)
     EnsureTargetHarmfulParity(plate, missing, queueSkip, maxN, stats)
     ReconcileTargetFrameUiButtons(plate, missing, queueSkip, maxN, stats)
     DedupeGapIcons(missing, maxN)
-    PruneInactiveGapRows(missing, "target", maxN)
+    local tfHarm = CountTargetHarmfulApi("target")
+    if not (tfHarm > 0 and #missing > 0) then
+      PruneInactiveGapRows(missing, "target", maxN)
+    end
+    if #missing == 0 and TargetFriendlyHarmfulGapExpected(plate, useTargetSrc) then
+      pcall(ForceFillTargetFrameGaps, missing, queueSkip, maxN, stats)
+      EnsureTargetHarmfulParity(plate, missing, queueSkip, maxN, stats)
+      DedupeGapIcons(missing, maxN)
+    end
     end
   elseif partyMerge and type(unit) == "string" then
     lastPaintDebug.tgtSrc = 0
@@ -4443,7 +4580,10 @@ PaintMergeMissing = function(unit, plate)
     CollectAuraSlotsGaps(auraTok, foreignSkip, missing, maxN, stats)
     EnsureUnitHarmfulParity(auraTok, plate, missing, foreignSkip, maxN, stats)
     DedupeGapIcons(missing, maxN)
-    PruneInactiveGapRows(missing, auraTok, maxN)
+    local apiH = CountTargetHarmfulApi(auraTok)
+    if not (apiH > 0 and #missing > 0) then
+      PruneInactiveGapRows(missing, auraTok, maxN)
+    end
   elseif type(unit) == "string" then
     lastPaintDebug.tgtSrc = 0
     lastPaintDebug.harv = 0
@@ -4456,7 +4596,8 @@ PaintMergeMissing = function(unit, plate)
     PruneInactiveGapRows(missing, unit, maxN)
   end
 
-  ApplyGapSticky(unit, missing, useTargetSrc, useTargetSrc and "target" or unit)
+  local wantSticky = useTargetSrc or partyMerge or friendPlate
+  ApplyGapSticky(unit, missing, wantSticky, useTargetSrc and "target" or (partyAuraTok or unit))
   if useTargetSrc and heavyTarget then
     local tfUiLate = CountTargetFrameAuras()
     if not (tfUiLate > 0 and #missing > 0) then
@@ -4472,7 +4613,7 @@ PaintMergeMissing = function(unit, plate)
   lastPaintDebug.tfBtn = (useTargetSrc and heavyTarget) and CountTargetFrameAuras() or 0
   lastPaintDebug.unit = tostring(unit)
   lastPaintDebug.nativeN = nativeN
-  lastPaintDebug.friendPlate = partyMerge and 1 or 0
+  lastPaintDebug.friendPlate = (friendPlate or IsPlayerOrFriendPlate(unit, plate)) and 1 or 0
   lastPaintDebug.partyTok = partyAuraTok or "-"
   if useTargetSrc and HasTarget() then
     lastPaintDebug.tfRows = CountTargetHarmfulExpected("target", lastPaintDebug.harv)
@@ -4482,35 +4623,51 @@ PaintMergeMissing = function(unit, plate)
     lastPaintDebug.tfRows = 0
   end
 
+  if #missing == 0 and TargetFriendlyHarmfulGapExpected(plate, useTargetSrc) then
+    pcall(ForceFillTargetFrameGaps, missing, queueSkip, maxN, stats)
+    EnsureTargetHarmfulParity(plate, missing, queueSkip, maxN, stats)
+    ReconcileTargetFrameUiButtons(plate, missing, queueSkip, maxN, stats)
+    DedupeGapIcons(missing, maxN)
+    if #missing == 0 and partyMerge and type(unit) == "string" then
+      local auraTok = partyAuraTok or unit
+      EnsureUnitHarmfulParity(auraTok, plate, missing, queueSkip, maxN, stats)
+      DedupeGapIcons(missing, maxN)
+    end
+  end
+
   if #missing == 0 then
     local held = fallbacks[unit]
     local sticky = gapSticky[unit]
     local now = GetTime and GetTime() or 0
     local heldN = held and tonumber(held._painted) or 0
-    if heldN > 0 and sticky and type(sticky.icons) == "table" and #sticky.icons > 0 then
-      if type(sticky.at) == "number" and (now - sticky.at) <= GAP_STICKY_SEC then
-        local auraUnit = useTargetSrc and "target" or (partyAuraTok or unit)
-        local heldCd = 0
-        pcall(function()
-          local n, cdn = RefreshHeldGapFallback(unit, plate, held, sticky.icons, auraUnit)
-          heldN = n or 0
-          heldCd = cdn or 0
-        end)
-        if heldN <= 0 then
-          gapSticky[unit] = nil
-          lastPaintDebug.painted = 0
-          ClearFallback(unit, false)
-          SilentTracePaint("paint_hold_expired", unit, plate)
-          return 0
-        end
-        lastPaintDebug.painted = heldN
-        lastPaintDebug.miss = 0
-        lastPaintDebug.cdN = heldCd
-        SilentTracePaint("paint_hold", unit, plate)
-        return heldN
+    local auraUnit = useTargetSrc and "target" or (partyAuraTok or unit)
+    if heldN > 0 and sticky and GapStickyActive(sticky, auraUnit, now) then
+      local heldCd = 0
+      pcall(function()
+        local n, cdn = RefreshHeldGapFallback(unit, plate, held, sticky.icons, auraUnit)
+        heldN = n or 0
+        heldCd = cdn or 0
+      end)
+      if heldN <= 0 then
+        gapSticky[unit] = nil
+        lastPaintDebug.painted = 0
+        ClearFallback(unit, false)
+        SilentTracePaint("paint_hold_expired", unit, plate)
+        return 0
       end
+      pcall(LayoutMergeBesideNative, unit, plate, held, heldN)
+      pcall(function()
+        held:Show()
+      end)
+      lastPaintDebug.painted = heldN
+      lastPaintDebug.miss = 0
+      lastPaintDebug.cdN = heldCd
+      lastPaintDebug.sticky = 1
+      SilentTracePaint("paint_hold", unit, plate)
+      return heldN
     end
     lastPaintDebug.painted = 0
+    lastPaintDebug.sticky = 0
     ClearFallback(unit, false)
     return 0
   end
@@ -4642,11 +4799,21 @@ UpdateOverlay = function(unit, plate)
   if PlayerInCombat() and InCombatLockdown() then
     EnsureNativeVisible(plate)
     local fb = fallbacks[unit]
+    local combatTgtSrc = ShouldUseTargetAuraSource(unit, plate)
+    local auraTok = combatTgtSrc and "target" or unit
     if fb and (tonumber(fb._painted) or 0) > 0 then
       local sticky = gapSticky[unit]
-      if sticky and type(sticky.icons) == "table" and #sticky.icons > 0 then
-        local auraTok = unit == "target" and "target" or unit
-        pcall(RefreshHeldGapFallback, unit, plate, fb, sticky.icons, auraTok)
+      if sticky and GapStickyActive(sticky, auraTok, GetTime and GetTime() or 0) then
+        local heldN
+        pcall(function()
+          heldN = select(1, RefreshHeldGapFallback(unit, plate, fb, sticky.icons, auraTok))
+        end)
+        if (heldN or 0) > 0 then
+          pcall(LayoutMergeBesideNative, unit, plate, fb, heldN)
+          pcall(function()
+            fb:Show()
+          end)
+        end
       end
     end
     return
@@ -5150,9 +5317,16 @@ OnEvent = function(_, event, arg1)
       MaybeAutoDiagnose("target", true)
     end)
   elseif event == "PLAYER_REGEN_ENABLED" then
-    Defer(function()
+    local function regenRefresh()
       RefreshActiveGapsOnly()
-    end)
+    end
+    if C_Timer and C_Timer.After then
+      C_Timer.After(0.12, function()
+        pcall(regenRefresh)
+      end)
+    else
+      Defer(regenRefresh)
+    end
   elseif event == "PLAYER_ENTERING_WORLD" or event == "GROUP_ROSTER_UPDATE" then
     InvalidatePartyTokenCache()
     Defer(function()
