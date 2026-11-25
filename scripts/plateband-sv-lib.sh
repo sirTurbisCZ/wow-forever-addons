@@ -188,6 +188,18 @@ pb_sv_context() {
   else
     PB_FLUSH_LAG=no
   fi
+  PB_CHAT_LIVE=no
+  if [[ -n "${PLATEBAND_LIVE_VER:-}" ]]; then
+    PB_LIVE_VER="$PLATEBAND_LIVE_VER"
+    PB_CLIENT_VER="$PLATEBAND_LIVE_VER"
+    PB_CHAT_LIVE=yes
+    if [[ -n "$PB_FLUSHED_VER" && "$PB_FLUSHED_VER" != "$PLATEBAND_LIVE_VER" ]]; then
+      PB_FLUSH_LAG=yes
+    fi
+    if [[ -n "$PB_RUNTIME_VER" ]] && [[ "$PB_RUNTIME_VER" == "$PLATEBAND_LIVE_VER" ]]; then
+      PB_RELOAD_PENDING=no
+    fi
+  fi
   return 0
 }
 
@@ -197,9 +209,9 @@ pb_live_ver_ok() {
 }
 
 pb_export_session_line() {
-  printf 'live_ver=%s client_ver=%s flushed_session=%s deployed_ver=%s disk_ver=%s reload_pending=%s flush_lag=%s sv=%s' \
+  printf 'live_ver=%s client_ver=%s flushed_session=%s deployed_ver=%s disk_ver=%s reload_pending=%s flush_lag=%s chat_live=%s sv=%s' \
     "${PB_LIVE_VER:-?}" "${PB_CLIENT_VER:-?}" "${PB_FLUSHED_VER:-?}" "${PB_RUNTIME_VER:-?}" \
-    "${PB_DISK_VER:-?}" "${PB_RELOAD_PENDING:-no}" "${PB_FLUSH_LAG:-?}" "${PB_SV:-none}"
+    "${PB_DISK_VER:-?}" "${PB_RELOAD_PENDING:-no}" "${PB_FLUSH_LAG:-?}" "${PB_CHAT_LIVE:-no}" "${PB_SV:-none}"
 }
 
 pb_best_card_lines() {
