@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.2.71 — friend WS paint (visible native keys)
+
+- **Friend:** stop inflating `nativeN` via unit API; `NativeShownKeySet` skips API augment when harmful buttons visible — fixes tf>0 painted=0 (phantom native skip).
+- **Friend target:** heavy TF harvest when `tfHarm > nativeVis`; lean path runs `EnsureUnitHarmfulParity`; fix `D.ForceFillTargetFrameGaps` in PlatesPaint.
+- **Matrix:** `tgt_bind` counts friend `PAINT tgtSrc=1`.
+
 ## Release 0.2.70 — PaintMergeMissing chunk split (60 upvalues)
 
 - **Root (live 0.2.69):** `PaintMergeMissing` exceeded Lua **60 upvalues** → compile/paint failure; `PLATES_LOAD` missing from export; auras invisible despite CHAT `0.2.69`.

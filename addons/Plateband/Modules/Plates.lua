@@ -853,11 +853,9 @@ CountPlateHarmfulShown = function(plate)
   end
   local rowKids = CountShownAuraKids(NativeDebuffList(plate))
   n = math.max(n, rowKids)
-  local unit = UnitTokenFromPlate(plate) or ResolvePartyTokenForPlate(plate)
-  if unit then
-    if PlateUsesFriendlyHarmfulFilter(plate) then
-      n = math.max(n, CountTargetHarmfulApi(unit))
-    else
+  if not PlateUsesFriendlyHarmfulFilter(plate) then
+    local unit = UnitTokenFromPlate(plate)
+    if unit then
       n = math.max(n, CountPersonalHarmfulOnUnit(unit))
     end
   end
@@ -2363,7 +2361,11 @@ NativeShownKeySet = function(plate)
       end
     end
   end
-  AugmentNativeKeysFromUnitApi(plate, keys)
+  if not PlateUsesFriendlyHarmfulFilter(plate) then
+    AugmentNativeKeysFromUnitApi(plate, keys)
+  elseif next(keys) == nil then
+    AugmentNativeKeysFromUnitApi(plate, keys)
+  end
   return keys
 end
 

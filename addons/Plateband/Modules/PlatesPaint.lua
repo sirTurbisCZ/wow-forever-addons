@@ -118,6 +118,12 @@ if not plate then
   local harvN = 0
   -- Hostile target plate: always TF harvest (0.2.54 — lean path left harv=0 / miss=0 live).
   local heavyTarget = useTargetSrc and (not friendPlate or D.NeedsHeavyTargetHarvest(unit, plate, nativeN))
+  if useTargetSrc and friendPlate then
+    local tfH = D.CountTargetHarmfulApi("target")
+    if (tfH or 0) > (visN or 0) then
+      heavyTarget = true
+    end
+  end
 
   if useTargetSrc then
     if heavyTarget or not friendPlate then
@@ -158,7 +164,7 @@ if not plate then
     D.ReconcileTargetFrameUiButtons(plate, missing, queueSkip, maxN, stats)
     D.DedupeGapIcons(missing, maxN)
     if #missing == 0 then
-      pcall(ForceFillTargetFrameGaps, missing, queueSkip, maxN, stats)
+      pcall(D.ForceFillTargetFrameGaps, missing, queueSkip, maxN, stats)
       D.DedupeGapIcons(missing, maxN)
     end
   else
@@ -179,9 +185,12 @@ if not plate then
     if friendPlate then
       D.EnsureTargetHarmfulParity(plate, missing, queueSkip, maxN, stats)
       D.ReconcileTargetFrameUiButtons(plate, missing, queueSkip, maxN, stats)
+      local harmTok = partyAuraTok or unit or "target"
+      D.EnsureUnitHarmfulParity(harmTok, plate, missing, queueSkip, maxN, stats)
       D.DedupeGapIcons(missing, maxN)
       if #missing == 0 then
-        pcall(ForceFillTargetFrameGaps, missing, queueSkip, maxN, stats)
+        pcall(D.ForceFillTargetFrameGaps, missing, queueSkip, maxN, stats)
+        D.EnsureUnitHarmfulParity(harmTok, plate, missing, queueSkip, maxN, stats)
         D.DedupeGapIcons(missing, maxN)
       end
     else
@@ -191,7 +200,7 @@ if not plate then
         D.PruneInactiveGapRows(missing, "target", maxN)
       end
       if #missing == 0 and tfHarm > 0 then
-        pcall(ForceFillTargetFrameGaps, missing, queueSkip, maxN, stats)
+        pcall(D.ForceFillTargetFrameGaps, missing, queueSkip, maxN, stats)
         D.DedupeGapIcons(missing, maxN)
       end
     end
@@ -232,7 +241,7 @@ if not plate then
       D.PruneInactiveGapRows(missing, paintAuraTok, maxN)
     end
     if #missing == 0 and tfUiLate > 0 then
-      pcall(ForceFillTargetFrameGaps, missing, queueSkip, maxN, stats)
+      pcall(D.ForceFillTargetFrameGaps, missing, queueSkip, maxN, stats)
       D.DedupeGapIcons(missing, maxN)
     end
   end

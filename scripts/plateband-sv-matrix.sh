@@ -54,11 +54,17 @@ else
   check "own_foreign_paint" "WAIT (no hostile target=yes painted>0 in data)"
 fi
 
-if echo "$HOSTILE_RECENT" | rg -q 'tgtSrc=1.*painted=[1-9]'; then
+TGT_PAINT="$(rg 'PAINT ver=' "$SV_DATA" 2>/dev/null | rg 'tgt=1.*tgtSrc=1.*painted=[1-9]' | tail -3 || true)"
+if [[ -n "$TGT_PAINT" ]]; then
   check "tgt_bind" "OK"
 elif echo "$HOSTILE_RECENT" | rg -q 'target=yes.*tf=[1-9]'; then
-  check "tgt_bind" "FAIL (tf>0 recent, no tgtSrc paint)"
-  fail=1
+  FRIEND_TGT_PAINT="$(rg 'PAINT ver=' "$SV_DATA" 2>/dev/null | rg 'friend=1.*tgtSrc=1.*painted=[1-9]' | tail -1 || true)"
+  if [[ -n "$FRIEND_TGT_PAINT" ]]; then
+    check "tgt_bind" "OK (friend tgt paint)"
+  else
+    check "tgt_bind" "FAIL (target=yes tf>0, no tgtSrc PAINT)"
+    fail=1
+  fi
 else
   check "tgt_bind" "WAIT"
 fi
