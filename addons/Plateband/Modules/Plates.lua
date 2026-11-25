@@ -657,6 +657,80 @@ CountNativeAuraRow = function(plate)
     + CountShownAuraKids(NativeBuffList(plate))
 end
 
+local function NativeAuraButtonLive(btn)
+  if not btn then
+    return false
+  end
+  if SafeShown(btn) then
+    return true
+  end
+  return not not (btn.Icon or btn.icon or btn.GetAuraInstance)
+end
+
+local function MergeAuraKeyInto(keys, data)
+  if type(keys) ~= "table" or type(data) ~= "table" then
+    return
+  end
+  local k = GapAuraKey(data, data.icon)
+  if k then
+    keys[k] = true
+  end
+  if type(CanonicalGapKey) == "function" then
+    local ck = CanonicalGapKey({
+      icon = data.icon,
+      spellId = data.spellId,
+      auraInstanceID = data.auraInstanceID,
+    })
+    if ck then
+      keys[ck] = true
+    end
+  end
+end
+
+--- Forever: pool buttons often fail SafeShown while still native — backfill unit API keys.
+local function AugmentNativeKeysFromUnitApi(plate, keys)
+  if type(keys) ~= "table" or not plate then
+    return
+  end
+  local unit = UnitTokenFromPlate(plate) or ResolvePartyTokenForPlate(plate)
+  if not unit or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
+    return
+  end
+  local friendPlate = PlateUsesFriendlyHarmfulFilter(plate)
+  for idx = 1, 40 do
+    local data
+    local ok = pcall(function()
+      data = C_UnitAuras.GetAuraDataByIndex(unit, idx, "HARMFUL")
+    end)
+    if not ok or not data then
+      break
+    end
+    if friendPlate or AuraIsOurPersonalOnly(data) then
+      MergeAuraKeyInto(keys, data)
+    end
+  end
+end
+
+local function CountPersonalHarmfulOnUnit(unit)
+  if not unit or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
+    return 0
+  end
+  local n = 0
+  for idx = 1, 40 do
+    local data
+    local ok = pcall(function()
+      data = C_UnitAuras.GetAuraDataByIndex(unit, idx, "HARMFUL")
+    end)
+    if not ok or not data then
+      break
+    end
+    if AuraIsOurPersonalOnly(data) then
+      n = n + 1
+    end
+  end
+  return n
+end
+
 --- Shown harmful on plate — pools enumerate what GetChildren misses on Forever.
 CountPlateHarmfulShown = function(plate)
   if not plate then
@@ -666,14 +740,21 @@ CountPlateHarmfulShown = function(plate)
   CollectPlateDebuffButtons(plate, buttons, MaxIcons())
   local n = 0
   for i = 1, #buttons do
-    if SafeShown(buttons[i]) then
+    if NativeAuraButtonLive(buttons[i]) then
       n = n + 1
     end
   end
-  if n > 0 then
-    return n
+  local rowKids = CountShownAuraKids(NativeDebuffList(plate))
+  n = math.max(n, rowKids)
+  local unit = UnitTokenFromPlate(plate) or ResolvePartyTokenForPlate(plate)
+  if unit then
+    if PlateUsesFriendlyHarmfulFilter(plate) then
+      n = math.max(n, CountTargetHarmfulApi(unit))
+    else
+      n = math.max(n, CountPersonalHarmfulOnUnit(unit))
+    end
   end
-  return CountShownAuraKids(NativeDebuffList(plate))
+  return n
 end
 
 CopyKeySet = function(src)
@@ -2112,7 +2193,7 @@ NativeShownKeySet = function(plate)
   CollectPlateDebuffButtons(plate, buttons, MaxIcons())
   for i = 1, #buttons do
     local btn = buttons[i]
-    if btn and SafeShown(btn) then
+    if btn and NativeAuraButtonLive(btn) then
       local icon, _, gotIcon = ButtonAuraIcon(btn)
       if gotIcon and icon then
         local k
@@ -2133,6 +2214,7 @@ NativeShownKeySet = function(plate)
       end
     end
   end
+  AugmentNativeKeysFromUnitApi(plate, keys)
   return keys
 end
 
@@ -5183,7 +5265,7 @@ SnapshotDiagnose = function(reason, opts)
     tostring(paintedDiag),
     tostring(tgtSrcLive ~= nil and tgtSrcLive or "?"),
     tostring(lpd.friendPlate or "?"),
-    tostring(lpd.unit or plateUnit or "?"),
+    tostring((plate and UnitTokenFromPlate(plate)) or plateUnit or lpd.unit or "?"),
     acCreateFailed and "1" or "0",
     tostring(Profile().enabled),
     tostring(Profile().safeMode),

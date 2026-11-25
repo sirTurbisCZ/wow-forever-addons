@@ -1,6 +1,6 @@
 # Plateband — safe merge design (no name mutation)
 
-**Status:** v0.2.41 · **default ON** (`mergeMissing=true`, schema 7+)  
+**Status:** v0.2.66 · **default ON** (`mergeMissing=true`, schema 7+)  
 **Baseline:** `plateband-v0.1.15` data contract + **0.2** beside-native layout · HUD gate before main merge
 
 ## Product rule (0.2.7 → 0.2.41)
@@ -38,7 +38,7 @@ flowchart TD
 
 1. Native DebuffList untouched.
 2. Fallback parents to `DebuffList` / `AurasFrame` (`FallbackParent`), not `UIParent`.
-3. Anchor: rightmost native aura from **pools** (debuff + hostile buff row); `AurasFrame` row fallback if no kid; **health-bar TOP only when fallback parents to health bar** (never when parent is aura list).
+3. Anchor: rightmost native aura from **pools** (debuff + hostile buff row); `AurasFrame` row fallback if no kid; **health-bar TOP only when fallback parents to health bar** (never when parent is aura list). When pool/`SafeShown` lies, **`NativeShownKeySet` backfills from `C_UnitAuras`** (personal on hostiles, all harmful on friends) so gaps do not stack on native row.
 4. `pcall` on paint + layout; debounce `UNIT_AURA` on target; **gap sticky** 3s hostile / **18s friend-party** (WS); refresh on hold; merge offset when no rightmost native anchor (no overlap).
 
 ## Sources

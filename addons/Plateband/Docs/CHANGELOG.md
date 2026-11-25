@@ -1,5 +1,12 @@
 # Plateband changelog
 
+## Release 0.2.66 — native API fallback (overlap / false gaps)
+
+- **Root (live 0.2.64):** `native=0` on every PAINT while `painted>0` — Forever pool buttons fail `SafeShown` → empty `NativeShownKeySet` → full-gap repaint on top of Blizzard row.
+- **Fix:** `NativeAuraButtonLive`, `AugmentNativeKeysFromUnitApi` (personal harmful / friend all harmful), relaxed `CountPlateHarmfulShown`.
+- **CARD:** `punit` = plate token (not stale `lastPaintDebug.unit`).
+- **Matrix:** `native_overlap_risk` + recent-only friend PAINT.
+
 ## Release 0.2.65 — WS sticky + merge overlap + matrix strict
 
 - **Sticky:** `GAP_STICKY_FRIEND_SEC=18` (hostile stays 3s); refresh `sticky.at` on hold/paint; friend re-inject sticky rows after budget; parity retry before friendly clear.

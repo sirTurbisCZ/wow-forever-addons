@@ -80,14 +80,27 @@ else
   check "friendly_ws" "WAIT (no friend=1 card)"
 fi
 
-PAINT_FRIEND="$(rg 'PAINT ver=.*friend=1' "$SV_DATA" 2>/dev/null | rg 'tfRows=[1-9].*painted=0' | tail -2 || true)"
-if [[ -n "$PAINT_FRIEND" ]]; then
-  check "friendly_ws_paint" "MISSING"
-  fail=1
+PAINT_FRIEND_RECENT="$(rg 'PAINT ver=.*friend=1' "$SV_DATA" 2>/dev/null | tail -12 || true)"
+PAINT_FRIEND_TF="$(echo "$PAINT_FRIEND_RECENT" | rg 'tfRows=[1-9]' | tail -5 || true)"
+if [[ -n "$PAINT_FRIEND_TF" ]]; then
+  if echo "$PAINT_FRIEND_TF" | tail -2 | rg -q 'painted=0'; then
+    check "friendly_ws_paint" "MISSING (recent friend tf, painted=0)"
+    fail=1
+  elif echo "$PAINT_FRIEND_TF" | rg -q 'painted=[1-9]'; then
+    check "friendly_ws_paint" "OK"
+  else
+    check "friendly_ws_paint" "WAIT"
+  fi
 elif rg -q 'PAINT ver=.*friend=1.*painted=[1-9]' "$SV_DATA" 2>/dev/null; then
-  check "friendly_ws_paint" "OK"
+  check "friendly_ws_paint" "OK (stale tail)"
 else
   check "friendly_ws_paint" "WAIT"
+fi
+if echo "$PAINT_FRIEND_RECENT" | rg -q 'native=0.*miss=[2-9].*painted=[2-9].*friend=0'; then
+  check "native_overlap_risk" "FAIL (native=0 full repaint — likely overlap)"
+  fail=1
+else
+  check "native_overlap_risk" "OK"
 fi
 
 STALE_SRC="$PB_SV"
