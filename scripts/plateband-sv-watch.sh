@@ -5,6 +5,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 INTERVAL="${PLATEBAND_SV_WATCH_SEC:-15}"
 GATE="$ROOT/scripts/plateband-sv-gate.sh"
+ANOM="$ROOT/scripts/plateband-sv-anomaly.sh"
+MATRIX="$ROOT/scripts/plateband-sv-matrix.sh"
 LOG="${PLATEBAND_SV_WATCH_LOG:-$ROOT/addons/Plateband/Logs/sv-watch.log}"
 
 mkdir -p "$(dirname "$LOG")"
@@ -19,5 +21,11 @@ while true; do
     echo "[$TS] CODE=$CODE $OUT" >> "$LOG"
   fi
   "$ROOT/scripts/watch-plateband-sv.sh" 5 >> "$LOG" 2>&1 || true
+  if bash "$ANOM" >> "$LOG" 2>&1; then
+    :
+  else
+    echo "[$TS] ANOMALY scan failed (see above)" >> "$LOG"
+  fi
+  bash "$MATRIX" >> "$LOG" 2>&1 || true
   sleep "$INTERVAL"
 done

@@ -32,6 +32,12 @@ rg -q 'GapAuraLive' "$PLATES" || fail "missing GapAuraLive"
 if awk '/ShouldUseTargetAuraSource = function/,/^end$/' "$PLATES" | rg -q 'lastTargetPlateUnit'; then
   fail "ShouldUseTargetAuraSource still binds lastTargetPlateUnit (mob bleed)"
 fi
+if rg -q 'Sole non-player live plate' "$PLATES"; then
+  fail "NameplateUnitFor sole-enemy heuristic still present"
+fi
+if awk '/NameplateUnitFor = function/,/^end$/' "$PLATES" | rg -q 'lastTargetPlateUnit and SafeUnitExists'; then
+  fail "NameplateUnitFor still returns stale lastTargetPlateUnit"
+fi
 
 rg -q 'CollectPlateDebuffButtons' "$PLATES" || fail "missing CollectPlateDebuffButtons"
 rg -q 'friendFilter' "$PLATES" || fail "missing friendFilter on debuff harvest"

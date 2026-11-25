@@ -524,40 +524,6 @@ NameplateUnitFor = function(token)
     end
   end
 
-  if token == "target" and lastTargetPlateUnit and SafeUnitExists(lastTargetPlateUnit) then
-    return lastTargetPlateUnit
-  end
-
-  -- Sole non-player live plate while we believe we have a target.
-  if token == "target" then
-    local live = EnumerateLivePlates()
-    local only, n = nil, 0
-    for i = 1, #live do
-      local u = live[i].unit
-      if u and not SameUnit(u, "player") then
-        local skipPlayer = false
-        pcall(function()
-          local okP, isPlayer = pcall(UnitIsPlayer, u)
-          if okP and not IsSecret(isPlayer) and isPlayer then
-            skipPlayer = true
-          end
-        end)
-        if not skipPlayer then
-          n = n + 1
-          only = u
-          if n > 1 then
-            only = nil
-            break
-          end
-        end
-      end
-    end
-    if only then
-      lastTargetPlateUnit = only
-      return only
-    end
-  end
-
   return nil
 end
 

@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## Release 0.2.52 — NameplateUnitFor strict + SV anomaly watch
+
+- **Bleed:** removed `NameplateUnitFor` stale `lastTargetPlateUnit` + sole-enemy fallback (party WS on mob).
+- **Agent:** `plateband-sv-anomaly.sh` in watch loop (own/foreign/WS/bleed/sticky + FElog paint).
+
 ## Release 0.2.51 — selftest + SV automation + target paint
 
 - **QA:** `plateband-selftest.sh`, `plateband-sv-gate.sh`, `plateband-sv-watch.sh`, `plateband-sv-matrix.sh`; `/pb selftest`.
