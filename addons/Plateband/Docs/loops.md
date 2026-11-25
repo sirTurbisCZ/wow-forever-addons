@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.44** (friendly-only harmful pool filter; enemy debuff harvest restored)
+Version: **0.2.47** (`Plates.lua` = **0.2.39** baseline; WS/friendly-harmful branch reverted)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 

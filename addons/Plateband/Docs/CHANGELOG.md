@@ -1,5 +1,18 @@
 # Plateband changelog
 
+## Release 0.2.47 — revert `Plates.lua` to 0.2.39 baseline (WS branch rolled back)
+
+- **Why:** Post-0.2.40 WS work regressed **own-cast DoTs on mobs** (`CollectPlayerOwnedKeys` / `foreignSkip` / `GapAuraKey` merge path — not a full plate wipe). Ondřej: „jen mé dotky.“
+- **Change:** **`Modules/Plates.lua`** restored to **`plateband-v0.2.39`** (`662eb57`). All 0.2.40–0.2.46 paint/harvest/sticky/friendly-filter commits **removed** from that file. Version bump only elsewhere.
+- **WS on friends:** deferred until mob **own DoTs** green in SV (`painted>0` on target mob).
+- **Symlink:** disk already `0.2.47`; requires **`/reload`** → `SESSION_START ver=0.2.47`.
+
+### Playtest (0.2.47)
+
+1. `/reload` → **`SESSION_START ver=0.2.47`**
+2. Target mob, apply **your** DoT → nameplate shows it; CARD/PAINT `painted>0` own spells.
+3. Do **not** expect friendly Weakened Soul yet.
+
 ## Release 0.2.46 — hostile paint restore + stable unit key
 
 - **Enemy DoTs:** legacy **unfiltered** `CollectPlateDebuffButtons` on hostiles (pre-0.2.41 parity); friendly filter opt-in only.
