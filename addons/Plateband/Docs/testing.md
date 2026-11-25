@@ -22,7 +22,7 @@ Green when `SESSION_START ver` matches disk, `PLATES_LOAD ok=1`, no hostile `tar
 
 WoW flushes `Plateband.lua` on logout/reload — treat WTF as archive; **watch reads Logs/ first**.
 
-- **`plateband-sv-lib.sh`:** `live_ver` = `client_ver` from `agentLive.ver` / export `AGENT_LIVE` / `SESSION_START` / `PLATES_LOAD` (never TOC). `deployed_ver` = symlinked TOC only. `feed=sv_export` + `Logs/agent-live-export.log` mirror when `io=sv_only`. `PLATEBAND_LIVE_VER` sets `rules_ver` for anomaly only.
+- **`plateband-sv-lib.sh`:** `live_ver` = `client_ver` from **`Logs/runtime-ver.log`** (chat login) → `runtimeVer` / export `CHAT_LOADED` / `RUNTIME_VER` → `agentLive` → `SESSION` (never TOC). `feed=runtime_ver_file` when fresh. `PLATEBAND_LIVE_VER` = `rules_ver` only.
 - **`agent-live.log`:** CARD/PAINT append each event (when client `io` works).
 - Gate/matrix **do not fail** on flush lag alone; paint rules still run on `agent-live.log` + SV.
 
