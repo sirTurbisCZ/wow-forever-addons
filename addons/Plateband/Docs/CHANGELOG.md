@@ -1,5 +1,9 @@
 # Plateband changelog
 
+## Release 0.2.68 — hotfix paint nil (forward decl)
+
+- **`PlateUsesFriendlyHarmfulFilter`** forward-declare — fixes `paint` nil at line 790 on 0.2.67 (native augment path).
+
 ## Release 0.2.67 — plate binding + watcher chat truth
 
 - **Plates:** `CanonicalPlateUnit` / `PlateMatchesTarget` — TF harvest only on real target plate; drop party paint on wrong plate; CARD `punit`/fb from target unit only (no bleed).

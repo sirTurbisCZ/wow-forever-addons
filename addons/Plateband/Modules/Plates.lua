@@ -169,6 +169,7 @@ local ReconcileTargetFrameUiButtons
 local IsTargetDebuffAuraFrame
 local ForceFillTargetFrameGaps
 local ResolvePartyTokenForPlate
+local PlateUsesFriendlyHarmfulFilter
 local InvalidatePartyTokenCache
 local IsPartyRaidMergePlate
 local ShouldPaintOverlayNow
@@ -1185,7 +1186,7 @@ PlateAuraPools = function(plate)
 end
 
 --- Harmful pool harvest on friend/party plates only (Weakened Soul); never on hostiles.
-local function PlateUsesFriendlyHarmfulFilter(plate)
+PlateUsesFriendlyHarmfulFilter = function(plate)
   if not plate then
     return false
   end
