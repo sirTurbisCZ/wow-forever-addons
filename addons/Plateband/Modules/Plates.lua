@@ -1218,6 +1218,9 @@ FallbackPaintParent = function(plate)
   if nativeN > 0 then
     return FallbackParent(plate)
   end
+  if CountNativeAuraRow(plate) > 0 then
+    return FallbackParent(plate)
+  end
   local bar = HealthBar(plate)
   if bar and not FrameIsGlobalChrome(bar) then
     return bar
@@ -1880,24 +1883,30 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
     return
   end
 
-  local native = NativeDebuffList(plate)
   local _, pad = MergeRowIconSize(plate)
   mergeFb:ClearAllPoints()
   local right = NativeBandRightAnchor(plate)
-  local anchor = right or native
-  if anchor then
+  if right then
     -- Same horizontal band as native (left-of-health row): continue after rightmost icon.
     pcall(function()
-      mergeFb:SetPoint("LEFT", anchor, "RIGHT", pad, 0)
-      mergeFb:SetPoint("BOTTOM", anchor, "BOTTOM", 0, 0)
+      mergeFb:SetPoint("LEFT", right, "RIGHT", pad, 0)
+      mergeFb:SetPoint("BOTTOM", right, "BOTTOM", 0, 0)
     end)
-  else
-    local bar = HealthBar(plate)
-    if bar then
-      pcall(function()
-        mergeFb:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", 0, PB.OVERLAY_GAP_ABOVE)
-      end)
-    end
+    return
+  end
+  local parent = mergeFb:GetParent()
+  local bar = HealthBar(plate)
+  if parent and bar and parent == bar then
+    pcall(function()
+      mergeFb:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", 0, PB.OVERLAY_GAP_ABOVE)
+    end)
+    return
+  end
+  local auraRow = NativeDebuffAnchorList(plate)
+  if auraRow then
+    pcall(function()
+      mergeFb:SetPoint("BOTTOMLEFT", auraRow, "BOTTOMLEFT", 0, 0)
+    end)
   end
 end
 
@@ -2304,6 +2313,9 @@ NativeBandRightAnchor = function(plate)
     local buffs = {}
     CollectPlateBuffButtons(plate, buffs, MaxIcons())
     rightmost = PickRightmostAuraFrame(buffs)
+  elseif not rightmost then
+    CollectPlateBuffButtons(plate, buttons, MaxIcons())
+    rightmost = PickRightmostAuraFrame(buttons)
   end
   if rightmost then
     return rightmost
@@ -2328,13 +2340,7 @@ NativeBandRightAnchor = function(plate)
       rightmost = PickRightmostAuraFrame(kids)
     end
   end
-  if rightmost then
-    return rightmost
-  end
-  if SafeShown(list) then
-    return list
-  end
-  return list
+  return rightmost
 end
 
 IsTargetPlate = function(unit, plate)

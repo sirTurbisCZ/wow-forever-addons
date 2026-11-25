@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.2.58 — merge row anchor fix (below-health overlap)
+
+- **Layout:** `LayoutMergeBesideNative` health-bar fallback only when fallback parents to **health bar**; otherwise anchor to `AurasFrame` / debuff row — fixes merge strip sitting under health overlapping cast/name chrome (Blackrock Grunt screenshot).
+- **Anchor:** `NativeBandRightAnchor` scans hostile buff row when debuff anchor missing; never use bare `DebuffListFrame` as spatial anchor.
+- **Parent:** `FallbackPaintParent` keeps aura-row parent when native buffs show but harmful count is zero.
+
 ## Release 0.2.57 — friend WS backfill + watch parse fix
 
 - **Friend:** `EnsureUnitHarmfulParity` backfill before clear when `miss=0`; sticky stale retries unit harmful before `paint_stale_cleared`; `tfRows` on all unit paints.
