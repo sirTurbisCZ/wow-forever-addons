@@ -170,46 +170,40 @@ local function QueryAddonMetadataVersion(addon)
   return nil
 end
 
---- Interface TOC every pulse: GetAddOnMetadata first, then loaded Config, stamp, disk (never "?").
-function Mod.LiveInterfaceVersions()
-  local db = ns.Config.EnsureDB()
-  local pbMeta = QueryAddonMetadataVersion(PLATEBAND_TOC)
-  local feMeta = QueryAddonMetadataVersion(FELOG_TOC)
-  local pbLoaded = (ns.Config and ns.Config.VERSION) and tostring(ns.Config.VERSION) or nil
-  local feLoaded
-  pcall(function()
-    if ForeverErrorLog and ForeverErrorLog.Config and ForeverErrorLog.Config.VERSION then
-      feLoaded = tostring(ForeverErrorLog.Config.VERSION)
-    end
-  end)
+--- L1 export truth: Logs stamp + disk Interface toc (gate truth), then metadata — no lastKnown / stale runtime Config.
+function Mod.ResolveExportVersions()
+  local pbStamp, feStamp = ReadTocStampVersion()
   local pbToc = ReadInterfaceAddonVersion({ PB_TOC_FILE, PB_TOC_BS, PB_CFG_FILE, PB_CFG_BS })
   local feToc = ReadInterfaceAddonVersion({ FE_TOC_FILE, FE_TOC_BS, FE_CFG_FILE, FE_CFG_BS })
-  local pbStamp, feStamp = ReadTocStampVersion()
-  local pbVer = PickVersion(pbMeta, pbLoaded, pbToc, pbStamp, db.lastKnownPbVer)
-  local feVer = PickVersion(feMeta, feLoaded, feToc, feStamp, db.lastKnownFeVer)
-  if not pbVer and pbLoaded then
-    pbVer = pbLoaded
-  end
+  local pbMeta = QueryAddonMetadataVersion(PLATEBAND_TOC)
+  local feMeta = QueryAddonMetadataVersion(FELOG_TOC)
+  local pbVer = PickVersion(pbStamp, pbToc, pbMeta)
+  local feVer = PickVersion(feStamp, feToc, feMeta)
   if not pbVer and ns.Config and ns.Config.VERSION then
     pbVer = tostring(ns.Config.VERSION)
   end
   if not feVer then
-    feVer = PickVersion(feMeta, feToc, feStamp, db.lastKnownFeVer)
-  end
-  if pbVer then
-    db.lastKnownPbVer = pbVer
-  end
-  if feVer then
-    db.lastKnownFeVer = feVer
+    pcall(function()
+      if ForeverErrorLog and ForeverErrorLog.Config and ForeverErrorLog.Config.VERSION then
+        feVer = tostring(ForeverErrorLog.Config.VERSION)
+      end
+    end)
   end
   pbMeta = pbMeta or pbVer
   feMeta = feMeta or feVer
-  return pbVer or pbMeta, feVer or feMeta, pbMeta, feMeta
+  return pbVer, feVer, pbMeta, feMeta
 end
 
---- Writable stamp when AddOns/ tree is read-only — same versions as chat on reload.
+function Mod.LiveInterfaceVersions()
+  return Mod.ResolveExportVersions()
+end
+
+--- Writable stamp when AddOns/ tree is read-only — refreshed from ResolveExportVersions each pulse.
 function Mod.PublishInterfaceTocStamp()
-  local pbVer, feVer = Mod.LiveInterfaceVersions()
+  local pbVer, feVer = Mod.ResolveExportVersions()
+  if not pbVer or not feVer then
+    return
+  end
   local line = string.format("pb=%s fe=%s t=%s", pbVer, feVer, tostring(Now()))
   WriteLineToPaths({ INTERFACE_TOC_STAMP, INTERFACE_TOC_STAMP_BS }, line, "w")
 end
@@ -421,6 +415,9 @@ local function WriteLineToPaths(paths, line, mode)
         if line:sub(-1) ~= "\n" then
           f:write("\n")
         end
+        if f.flush then
+          f:flush()
+        end
         f:close()
       end)
       if ok then
@@ -491,7 +488,7 @@ function Mod.BuildChatTruthLine(src, load, seq)
   src = tostring(src or "CHAT_LOADED")
   load = tostring(load or "reload")
   seq = tonumber(seq) or 0
-  local pbVer, feVer, pbMeta, feMeta = Mod.LiveInterfaceVersions()
+  local pbVer, feVer, pbMeta, feMeta = Mod.ResolveExportVersions()
   pbMeta = pbMeta or pbVer
   feMeta = feMeta or feVer
   return string.format(
@@ -520,11 +517,12 @@ function Mod.PulseExportDisk()
   local line = Mod.BuildChatTruthLine("EXPORT_PULSE", "pulse", seq)
   db.chatTruthLine = line
   db.chatTruthAt = Now()
-  local pbVer, feVer = Mod.LiveInterfaceVersions()
+  local pbVer, feVer = Mod.ResolveExportVersions()
   db.interfacePbVer = pbVer
   db.interfaceFeVer = feVer
   db.ioAllowName = nil
   db.ioAllowLastProbe = 0
+  pcall(Mod.PublishInterfaceTocStamp)
 
   local log = EnsureLogTable()
   local body = line
@@ -534,9 +532,9 @@ function Mod.PulseExportDisk()
   end
   log.export = body
 
-  local wrote = TryWriteWholeFile({ AGENT_EXPORT_REL, AGENT_EXPORT_BS }, body)
+  local wrote = WriteLineToPaths({ AGENT_EXPORT_REL, AGENT_EXPORT_BS }, line, "w")
   if not wrote then
-    wrote = WriteLineToPaths({ AGENT_EXPORT_REL, AGENT_EXPORT_BS }, line, "w")
+    wrote = TryWriteWholeFile({ AGENT_EXPORT_REL, AGENT_EXPORT_BS }, body)
   end
   if not wrote then
     wrote = WriteLineToPaths({ EXPORT_PULSE_REL, EXPORT_PULSE_BS }, line, "a")
@@ -836,6 +834,8 @@ function Mod.RecordChatLoaded(src)
   local ver = tostring(ns.Config and ns.Config.VERSION or "?")
   local db = ns.Config.EnsureDB()
   local at = Now()
+  db.lastKnownPbVer = nil
+  db.lastKnownFeVer = nil
   db.runtimeVer = { ver = ver, at = at, src = "chat", load = src }
   db.liveHead = string.format(
     "ver=%s seq=0 at=%s io=sv_only src=chat load=%s",

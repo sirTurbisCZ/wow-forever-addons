@@ -1,5 +1,9 @@
 # ForeverErrorLog changelog
 
+## Release 0.1.19 — FelogResolveExportVersions (stamp/toc, no lastKnown)
+
+- Matches Plateband **`ResolveExportVersions`**; stamp-first for **0.2.90 / 0.1.19** interface truth.
+
 ## Release 0.1.18 — fix export L1 live_ver=?
 
 - **`FelogLiveInterfaceVersions`** standalone (no Plateband delegate); **`Config.VERSION`** + metadata; never **`?`**.

@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## Release 0.2.90 — L1 from stamp/disk TOC (not lastKnown Config)
+
+- **`ResolveExportVersions`** — stamp + disk `.toc`/`Config.lua`, then metadata; **no `lastKnown*`**.
+- **`PulseExportDisk`** — **line-only `w` first** every pulse (mtime ≤2s); refresh **`interface-toc.ver`**.
+
 ## Release 0.2.89 — fix live_ver=? (metadata-first, no "?")
 
 - **`QueryAddonMetadataVersion`** — name + index + **`C_AddOns`**; **`PickVersion`** chain; **`lastKnownPbVer`** in SV; never emit **`?`** on export L1.

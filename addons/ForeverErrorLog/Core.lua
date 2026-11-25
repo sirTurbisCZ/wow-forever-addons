@@ -460,41 +460,29 @@ local function FelogQueryMetadataVersion(addon)
   return nil
 end
 
-local function FelogLiveInterfaceVersions()
+local function FelogResolveExportVersions()
   FelogEnsurePlatebandForToc()
-  local feLoaded = Config and Config.VERSION and tostring(Config.VERSION) or nil
-  local pbLoaded
-  if Plateband and Plateband.Config and Plateband.Config.VERSION then
-    pbLoaded = tostring(Plateband.Config.VERSION)
-  end
-  local pbMeta = FelogQueryMetadataVersion("Plateband")
-  local feMeta = FelogQueryMetadataVersion("ForeverErrorLog")
+  local pbStamp, feStamp = FelogReadPlatebandTocStamp()
   local pbToc = FelogReadInterfaceVersion({ PB_TOC_FILE, PB_TOC_BS, PB_CFG_FILE, PB_CFG_BS })
   local feToc = FelogReadInterfaceVersion({ FE_TOC_FILE, FE_TOC_BS, FE_CFG_FILE, FE_CFG_BS })
-  local pbStamp, feStamp = FelogReadPlatebandTocStamp()
-  local db = EnsureDB()
-  local pbVer = FelogPickVersion(pbMeta, pbLoaded, pbToc, pbStamp, db.lastKnownPbVer)
-  local feVer = FelogPickVersion(feMeta, feLoaded, feToc, feStamp, db.lastKnownFeVer)
-  if not feVer and feLoaded then
-    feVer = feLoaded
+  local pbMeta = FelogQueryMetadataVersion("Plateband")
+  local feMeta = FelogQueryMetadataVersion("ForeverErrorLog")
+  local pbVer = FelogPickVersion(pbStamp, pbToc, pbMeta)
+  local feVer = FelogPickVersion(feStamp, feToc, feMeta)
+  if not feVer and Config and Config.VERSION then
+    feVer = tostring(Config.VERSION)
   end
-  if not pbVer and pbLoaded then
-    pbVer = pbLoaded
-  end
-  if pbVer then
-    db.lastKnownPbVer = pbVer
-  end
-  if feVer then
-    db.lastKnownFeVer = feVer
+  if not pbVer and Plateband and Plateband.Config and Plateband.Config.VERSION then
+    pbVer = tostring(Plateband.Config.VERSION)
   end
   pbMeta = pbMeta or pbVer
   feMeta = feMeta or feVer
-  return pbVer or pbMeta or feLoaded, feVer or feMeta or feLoaded, pbMeta, feMeta
+  return pbVer, feVer, pbMeta, feMeta
 end
 
 local function FelogPlatebandExportLine()
   pbExportPulseSeq = pbExportPulseSeq + 1
-  local pbVer, feVer, pbMeta, feMeta = FelogLiveInterfaceVersions()
+  local pbVer, feVer, pbMeta, feMeta = FelogResolveExportVersions()
   pbMeta = pbMeta or pbVer
   feMeta = feMeta or feVer
   return string.format(
