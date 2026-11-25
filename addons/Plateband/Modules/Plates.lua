@@ -2116,22 +2116,41 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
     return
   end
   local offX = 0
+  local visN = 0
   if plate then
     local buttons = {}
     CollectPlateDebuffButtons(plate, buttons, MaxIcons())
-    local n = 0
     for i = 1, #buttons do
       if NativeAuraButtonLive(buttons[i]) then
-        n = n + 1
+        visN = visN + 1
       end
     end
+    local rowN = CountNativeAuraRow(plate)
+    local n = visN
     if n == 0 then
-      n = CountPlateHarmfulShown(plate)
+      n = rowN
     end
-    if n == 0 then
-      n = CountNativeAuraRow(plate)
+    if not IsPlayerOrFriendPlate(unit, plate) and not PlateUsesFriendlyHarmfulFilter(plate) then
+      if n == 0 then
+        n = CountPlateHarmfulShown(plate)
+      end
     end
     offX = n * (sz + pad)
+  end
+  local friendLayout = IsPlayerOrFriendPlate(unit, plate) or PlateUsesFriendlyHarmfulFilter(plate)
+  local auraRow = NativeDebuffAnchorList(plate)
+  if friendLayout and auraRow then
+    pcall(function()
+      mergeFb:SetPoint("BOTTOMLEFT", auraRow, "BOTTOMLEFT", offX, 0)
+    end)
+    return
+  end
+  local af = plate and plate.UnitFrame and plate.UnitFrame.AurasFrame
+  if friendLayout and af then
+    pcall(function()
+      mergeFb:SetPoint("TOPLEFT", af, "TOPLEFT", offX, 2)
+    end)
+    return
   end
   local bar = HealthBar(plate)
   if bar then
@@ -2140,7 +2159,6 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
     end)
     return
   end
-  local auraRow = NativeDebuffAnchorList(plate)
   if auraRow then
     pcall(function()
       mergeFb:SetPoint("BOTTOMLEFT", auraRow, "BOTTOMLEFT", offX, 0)
@@ -4622,6 +4640,8 @@ Plateband.PlatesPaintDeps = {
     LayoutMergeBesideNative = LayoutMergeBesideNative,
     RememberGapSticky = RememberGapSticky,
     PlateUsesFriendlyHarmfulFilter = PlateUsesFriendlyHarmfulFilter,
+    GapAuraLive = GapAuraLive,
+    RefreshHeldGapFallback = RefreshHeldGapFallback,
 }
 
 --- Thin delegate — body in Modules/PlatesPaint.lua.

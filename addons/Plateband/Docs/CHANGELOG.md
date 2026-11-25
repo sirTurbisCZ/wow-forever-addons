@@ -1,5 +1,13 @@
 # Plateband changelog
 
+## Release 0.2.72 — paint deps wire + friend gap layout
+
+- **Root (live 0.2.71):** `PlatesPaint.lua` called `LayoutMergeBesideNative`, `InitAuraButton`, `EnsureUnitHarmfulParity`, `GapAuraLive`, `RefreshHeldGapFallback` as globals (nil in split chunk) — PAINT logged `painted>0` but gap row never positioned / friend parity skipped → no visible DoT/WS on plates.
+- **Fix:** all paint-side calls via `Plateband.PlatesPaintDeps` (`D.*`); expose `GapAuraLive` + `RefreshHeldGapFallback` on deps table.
+- **Layout:** friend/party merge anchors to `AurasFrame` debuff row (not health TOP) — fixes `painted=2 nativeVis=0` overlap with cast/chrome on party plates.
+- **Layout:** horizontal offset from **visible** native buttons only on friends (no API inflate in spacing).
+- **Matrix:** `multi_icon_overlap` hostile-only FAIL; friend `nativeVis=0` multi-gap = expected merge band.
+
 ## Release 0.2.71 — friend WS paint + watch truth
 
 - **Friend:** stop inflating `nativeN` via unit API; `NativeShownKeySet` skips API augment when harmful buttons visible — fixes tf>0 painted=0 (phantom native skip).

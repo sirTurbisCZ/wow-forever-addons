@@ -262,7 +262,7 @@ if not plate then
   if #missing == 0 and (friendPlate or partyMerge) and type(paintAuraTok) == "string" then
     local retry = {}
     local skip = D.CopyKeySet(D.NativeShownKeySet(plate))
-    pcall(EnsureUnitHarmfulParity, paintAuraTok, plate, retry, skip, maxN, stats)
+    pcall(D.EnsureUnitHarmfulParity, paintAuraTok, plate, retry, skip, maxN, stats)
     if #retry > 0 then
       D.DedupeGapIcons(retry, maxN)
       for i = 1, #retry do
@@ -282,7 +282,7 @@ if not plate then
       local auraUnit = D.AuraUnitForPlate(unit, plate, useTargetSrc, partyAuraTok)
       local stickyLive = {}
       for si = 1, #sticky.icons do
-        if GapAuraLive(sticky.icons[si], auraUnit) then
+        if D.GapAuraLive(sticky.icons[si], auraUnit) then
           stickyLive[#stickyLive + 1] = sticky.icons[si]
         end
       end
@@ -290,7 +290,7 @@ if not plate then
         local retry = {}
         local skip = D.CopyKeySet(D.NativeShownKeySet(plate))
         if (friendPlate or partyMerge) and type(auraUnit) == "string" then
-          pcall(EnsureUnitHarmfulParity, auraUnit, plate, retry, skip, maxN, stats)
+          pcall(D.EnsureUnitHarmfulParity, auraUnit, plate, retry, skip, maxN, stats)
         end
         if #retry > 0 then
           D.gapSticky[unit] = nil
@@ -312,7 +312,7 @@ if not plate then
         if type(sticky.at) == "number" and (now - sticky.at) <= budget then
           local heldCd = 0
           pcall(function()
-            local n, cdn = RefreshHeldGapFallback(unit, plate, held, sticky.icons, auraUnit)
+            local n, cdn = D.RefreshHeldGapFallback(unit, plate, held, sticky.icons, auraUnit)
             heldN = n or 0
             heldCd = cdn or 0
           end)
@@ -338,9 +338,9 @@ if not plate then
       if (friendPlate or partyMerge) and type(auraUnit) == "string" then
         local retry = {}
         local skip = D.CopyKeySet(D.NativeShownKeySet(plate))
-        pcall(EnsureUnitHarmfulParity, auraUnit, plate, retry, skip, maxN, stats)
+        pcall(D.EnsureUnitHarmfulParity, auraUnit, plate, retry, skip, maxN, stats)
         if #retry == 0 and D.HasTarget() and D.PlateMatchesTarget(plate) then
-          pcall(EnsureTargetHarmfulParity, plate, retry, skip, maxN, stats)
+          pcall(D.EnsureTargetHarmfulParity, plate, retry, skip, maxN, stats)
         end
         if #retry > 0 then
           D.DedupeGapIcons(retry, maxN)
@@ -386,7 +386,7 @@ if not plate then
     end
     local okLay = pcall(function()
       if slot._pbSz ~= sz then
-        pcall(InitAuraButton, slot, sz)
+        pcall(D.InitAuraButton, slot, sz)
         slot._pbSz = sz
       end
       slot:ClearAllPoints()
@@ -451,7 +451,7 @@ if not plate then
   fb._gapPersonal = stats.personal or 0
   fb._gapForeign = stats.foreign or 0
 
-  pcall(LayoutMergeBesideNative, unit, plate, fb, painted)
+  pcall(D.LayoutMergeBesideNative, unit, plate, fb, painted)
   if painted > 0 then
     local kept = {}
     for i = 1, painted do
