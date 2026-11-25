@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.2.61 — in-play agent-live file feed (no SV wait)
+
+- **Io:** `ProbeAgentIo` append-only (`agent-live.log`) — decoupled from `session.log` truncate; pulse + PAINT flush `agent-live-export.log` every 2s when io works.
+- **Host:** `pb_sync_live_feed` copies client `agent-live*.log` to repo `Logs/` each 2s poll; watch **skips SV mirror** when live file is fresh (`feed=agent_live_file`).
+- **Forever:** `file=file` in `SESSION_START` when append io works; SV flush remains reload-only — live path is **disk logs**, not `Plateband.lua`.
+
 ## Release 0.2.60 — chat-first runtime ver (no SV lag)
 
 - **PLAYER_LOGIN:** `RecordChatLoaded` → `CHAT_LOADED` + `RUNTIME_VER` + `PlatebandDB.runtimeVer` + `Logs/runtime-ver.log` (prefer over stale `SESSION_START` until WTF flush).

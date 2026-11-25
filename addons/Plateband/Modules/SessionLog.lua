@@ -102,7 +102,28 @@ local function TryOpen(path, mode)
   return nil
 end
 
---- Attempt wipe/create session.log. Returns true if file IO works.
+--- Append-only probe — live feed must not depend on session.log truncate (Forever).
+function Mod.ProbeAgentIo()
+  if not (io and io.open) then
+    agentIoOk = false
+    return false
+  end
+  local paths = { AGENT_LIVE_REL, AGENT_LIVE_BS }
+  for i = 1, #paths do
+    local f = TryOpen(paths[i], "a")
+    if f then
+      pcall(function()
+        f:close()
+      end)
+      agentIoOk = true
+      return true
+    end
+  end
+  agentIoOk = false
+  return false
+end
+
+--- Optional session.log wipe (legacy); agent feed is independent.
 function Mod.ProbeFile()
   if fileOk == false then
     return false
@@ -211,6 +232,7 @@ function Mod.RecordChatLoaded()
   local ver = tostring(ns.Config and ns.Config.VERSION or "?")
   local db = ns.Config.EnsureDB()
   db.runtimeVer = { ver = ver, at = Now(), src = "chat" }
+  pcall(Mod.ProbeAgentIo)
   Mod.Append(string.format("CHAT_LOADED ver=%s src=login", ver))
   Mod.Append(string.format("RUNTIME_VER ver=%s src=chat", ver))
   pcall(Mod.TryWriteRuntimeVerFile, ver)
@@ -234,25 +256,16 @@ local function UpsertAgentLiveStamped(stamped)
 end
 
 local function MaybeReprobeIo()
-  if agentIoOk and fileOk then
-    return
-  end
   local now = Now()
   if (now - lastIoProbeAt) < IO_PROBE_SEC then
     return
   end
   lastIoProbeAt = now
-  if not fileOk then
-    Mod.ProbeFile()
+  if not agentIoOk then
+    pcall(Mod.ProbeAgentIo)
   end
-  if not agentIoOk and io and io.open then
-    local f = TryOpen(AGENT_LIVE_REL, "a")
-    if f then
-      pcall(function()
-        f:close()
-      end)
-      agentIoOk = true
-    end
+  if not fileOk then
+    pcall(Mod.ProbeFile)
   end
 end
 
@@ -352,6 +365,7 @@ function Mod.PulseAgentLive()
   pcall(Mod.TryWriteRuntimeVerFile, al.ver)
   TryAppendAgentLive(stamped)
   Mod.ScheduleLiveFlush()
+  pcall(Mod.FlushLiveExport)
 end
 
 function Mod.EnsureAgentPulseTicker()
@@ -405,13 +419,14 @@ function Mod.BeginSession()
   pt.entries = {}
   pt.export = ""
   db.lastPaintTrace = nil
-  local wroteFile = Mod.ProbeFile()
-  log.fileOk = wroteFile and true or false
+  local agentIo = Mod.ProbeAgentIo()
+  pcall(Mod.ProbeFile)
+  log.fileOk = (agentIo or fileOk) and true or false
   local header = string.format(
     "SESSION_START ver=%s t=%s file=%s silent=1",
     tostring(ns.Config.VERSION),
     tostring(log.startedAt),
-    wroteFile and "yes" or "sv_only"
+    agentIo and "file" or "sv_only"
   )
   Mod.Append(header)
   Mod.EnsureLiveFlushTicker()
@@ -439,7 +454,9 @@ function Mod.Append(line)
     table.remove(log.lines, 1)
   end
   MaybeReprobeIo()
-  log.fileOk = AppendFile(stamped) or log.fileOk
+  if fileOk then
+    log.fileOk = AppendFile(stamped) or log.fileOk
+  end
   log.export = table.concat(log.lines, "\n")
   logDirty = true
   if IsAgentLine(line) then

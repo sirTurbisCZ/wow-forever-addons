@@ -63,10 +63,63 @@ pb_flushed_plates_load() {
 }
 
 # Runtime truth from PlatebandDB.agentLive (2s pulse, works when io=sv_only).
+pb_plateband_logs_dir() {
+  printf '%s' "$(pb_wow_root)/Interface/AddOns/Plateband/Logs"
+}
+
+pb_repo_logs_dir() {
+  printf '%s' "$(pb_lib_root)/addons/Plateband/Logs"
+}
+
+pb_agent_live_log_path() {
+  printf '%s' "$(pb_plateband_logs_dir)/agent-live.log"
+}
+
+pb_sync_live_feed() {
+  local wow="$1" repo src
+  repo="$(pb_repo_logs_dir)"
+  mkdir -p "$repo"
+  src="$(pb_agent_live_log_path)"
+  if [[ -f "$src" ]]; then
+    tail -n 400 "$src" > "${repo}/agent-live.log" 2>/dev/null || cp -f "$src" "${repo}/agent-live.log" 2>/dev/null || true
+    PB_LIVE_SYNC="agent_live"
+    return 0
+  fi
+  src="$(pb_plateband_logs_dir)/agent-live-export.log"
+  if [[ -f "$src" ]]; then
+    tail -n 400 "$src" > "${repo}/agent-live-export.log" 2>/dev/null || true
+    PB_LIVE_SYNC="agent_export_client"
+    return 0
+  fi
+  PB_LIVE_SYNC="none"
+  return 1
+}
+
+pb_log_fresh_sec() {
+  local f="$1" max="${2:-25}"
+  [[ -f "$f" ]] || return 1
+  local lm now
+  lm="$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || echo 0)"
+  now="$(date +%s)"
+  [[ "$((now - lm))" -le "$max" ]]
+}
+
+pb_agent_live_tail_ver() {
+  local f="$1" line v
+  [[ -f "$f" ]] || return 1
+  line="$(grep -E 'AGENT_LIVE|CHAT_LOADED|RUNTIME_VER|SESSION_START' "$f" 2>/dev/null | tail -1 || true)"
+  v="$(echo "$line" | sed -n 's/.*AGENT_LIVE ver=\([0-9.]*\).*/\1/p')"
+  [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
+  v="$(echo "$line" | sed -n 's/.*CHAT_LOADED ver=\([0-9.]*\).*/\1/p')"
+  [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
+  v="$(echo "$line" | sed -n 's/.*RUNTIME_VER ver=\([0-9.]*\).*/\1/p')"
+  [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
+  v="$(echo "$line" | sed -n 's/.*SESSION_START ver=\([0-9.]*\).*/\1/p')"
+  [[ -n "$v" ]] && printf '%s' "$v"
+}
+
 pb_runtime_ver_log() {
-  local wow
-  wow="$(pb_wow_root)"
-  printf '%s' "$wow/Interface/AddOns/Plateband/Logs/runtime-ver.log"
+  printf '%s' "$(pb_plateband_logs_dir)/runtime-ver.log"
 }
 
 pb_runtime_file_ver() {
@@ -242,7 +295,14 @@ pb_agent_live_ver() {
 # What Lua actually runs — SESSION / PLATES_LOAD / agentLive / export; never TOC alone.
 pb_client_ver() {
   local sv="$1" agent_log="$2"
-  local v line rvf
+  local v line rvf alf
+
+  alf="$(pb_agent_live_log_path)"
+  pb_sync_live_feed 2>/dev/null || true
+  if pb_log_fresh_sec "$alf" 25; then
+    v="$(pb_agent_live_tail_ver "$alf" 2>/dev/null || true)"
+    [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
+  fi
 
   rvf="$(pb_runtime_ver_log)"
   if [[ -f "$rvf" ]] && pb_runtime_file_fresh "$rvf" "$sv"; then
@@ -334,11 +394,19 @@ pb_sv_context() {
   PB_RULES_VER="${PLATEBAND_LIVE_VER:-$PB_LIVE_VER}"
   PB_RUNTIME_FILE="$(pb_runtime_ver_log)"
   PB_RUNTIME_FILE_VER="$(pb_runtime_file_ver "$PB_RUNTIME_FILE" 2>/dev/null || true)"
+  PB_LIVE_SYNC=""
+  pb_sync_live_feed 2>/dev/null || true
   PB_FEED_SOURCE="sv_export"
-  if [[ -f "$PB_RUNTIME_FILE" ]] && pb_runtime_file_fresh "$PB_RUNTIME_FILE" "$PB_SV"; then
+  local alf
+  alf="$(pb_agent_live_log_path)"
+  if pb_log_fresh_sec "$alf" 25; then
+    PB_FEED_SOURCE="agent_live_file"
+  elif [[ -f "$PB_RUNTIME_FILE" ]] && pb_runtime_file_fresh "$PB_RUNTIME_FILE" "$PB_SV"; then
     PB_FEED_SOURCE="runtime_ver_file"
   elif [[ -n "${PB_AGENT_LOG:-}" ]] && pb_agent_log_fresh "$PB_AGENT_LOG" "$PB_SV"; then
     PB_FEED_SOURCE="agent_live_file"
+  elif [[ -n "$PB_LIVE_SYNC" && "$PB_LIVE_SYNC" != "none" ]]; then
+    PB_FEED_SOURCE="$PB_LIVE_SYNC"
   fi
 
   PB_RELOAD_PENDING=no
@@ -368,10 +436,10 @@ pb_live_ver_ok() {
 }
 
 pb_export_session_line() {
-  printf 'live_ver=%s client_ver=%s flushed_session=%s deployed_ver=%s disk_ver=%s reload_pending=%s flush_lag=%s feed=%s runtime_file=%s agent_seq=%s rules_ver=%s chat_override=%s sv=%s' \
+  printf 'live_ver=%s client_ver=%s flushed_session=%s deployed_ver=%s disk_ver=%s reload_pending=%s flush_lag=%s feed=%s live_sync=%s runtime_file=%s agent_seq=%s rules_ver=%s chat_override=%s sv=%s' \
     "${PB_LIVE_VER:-?}" "${PB_CLIENT_VER:-?}" "${PB_FLUSHED_VER:-?}" "${PB_RUNTIME_VER:-?}" \
     "${PB_DISK_VER:-?}" "${PB_RELOAD_PENDING:-no}" "${PB_FLUSH_LAG:-?}" "${PB_FEED_SOURCE:-?}" \
-    "${PB_RUNTIME_FILE_VER:-?}" "${PB_AGENT_SEQ:-?}" "${PB_RULES_VER:-?}" "${PB_CHAT_LIVE:-no}" "${PB_SV:-none}"
+    "${PB_LIVE_SYNC:-none}" "${PB_RUNTIME_FILE_VER:-?}" "${PB_AGENT_SEQ:-?}" "${PB_RULES_VER:-?}" "${PB_CHAT_LIVE:-no}" "${PB_SV:-none}"
 }
 
 pb_best_card_lines() {
