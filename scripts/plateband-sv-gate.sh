@@ -47,7 +47,7 @@ if [[ -f "${FELOG:-}" ]] && rg -q "200 local variables" "$FELOG" 2>/dev/null; th
   fi
 fi
 if [[ -f "${FELOG:-}" ]] && rg -q 'Plateband:paint.*nil value' "$FELOG" 2>/dev/null; then
-  if echo "$LOAD" | rg -q 'paint=true'; then
+  if echo "$LOAD" | rg -q 'PLATES_LOAD ok=1.*paint=true'; then
     echo "SV_GATE note: FElog paint-nil entries are historical when PLATES_LOAD paint=true (live $PB_LIVE_VER)"
   else
     echo "SV_GATE fail: FElog paint nil and no PLATES_LOAD paint=true"
