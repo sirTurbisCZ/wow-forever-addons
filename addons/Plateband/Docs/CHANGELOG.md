@@ -1,5 +1,18 @@
 # Plateband changelog
 
+## Release 0.2.46 — hostile paint restore + stable unit key
+
+- **Enemy DoTs:** legacy **unfiltered** `CollectPlateDebuffButtons` on hostiles (pre-0.2.41 parity); friendly filter opt-in only.
+- **Target plate:** `ResolvePaintUnit` — always `nameplateN` for current target plate (fixes `pb:` vs `nameplateN` fallback split).
+- **Heavy harvest:** force when TF API harmful > native (hostiles); TF harmful count on friend targets only.
+- **Includes 0.2.44–0.2.45** friendly filter scope + tgtSrc bind.
+
+### Playtest (0.2.46)
+
+1. `/reload` → **`SESSION_START ver=0.2.46`**
+2. Mob: **`tgtSrc=1` `painted>0`**
+3. Friend PW:S + Weakened Soul OOC + combat
+
 ## Release 0.2.45 — enemy target TF merge (tgtSrc=0)
 
 - **Bug:** Target mobs (e.g. Blackrock Outrunner) — TF shows debuffs, nameplate **none**; live SV `SESSION_START ver=0.2.43` (0.2.44 not loaded) and diag `target=yes tgtSrc=0` → no `CollectTargetHarmfulRows` / merge paint.

@@ -169,6 +169,7 @@ local ShouldPaintOverlayNow
 local NeedsHeavyTargetHarvest
 local OnEvent
 local OverlayUnitKey
+local ResolvePaintUnit
 local PaintMergeMissing
 local PickRightmostAuraFrame
 local PlateAuraPools
@@ -216,6 +217,29 @@ OverlayUnitKey = function(unit, plate)
     return "pb:" .. tostring(plate)
   end
   return nil
+end
+
+--- Stable fallback key for target plate (avoid pb: vs nameplateN split).
+ResolvePaintUnit = function(unit, plate)
+  if plate and HasTarget() then
+    local tp = PlateFor("target")
+    if tp and tp == plate then
+      local tu = NameplateUnitFor("target")
+      if not tu then
+        tu = UnitTokenFromPlate(plate)
+      end
+      if not tu and lastTargetPlateUnit and PlateFor(lastTargetPlateUnit) == plate then
+        tu = lastTargetPlateUnit
+      end
+      if type(tu) == "string" and not tu:match("^pb:") then
+        return tu
+      end
+    end
+  end
+  if type(unit) == "string" and unit ~= "" and not unit:match("^pb:") then
+    return unit
+  end
+  return OverlayUnitKey(unit, plate)
 end
 
 local GLOBAL_UI = {
@@ -826,8 +850,19 @@ NeedsHeavyTargetHarvest = function(unit, plate, nativeN)
   if fb and (tonumber(fb._painted) or 0) > 0 then
     return true
   end
-  local tfUi = CountTargetFrameHarmfulShown()
-  if tfUi == 0 then
+  local tfUi
+  local friendlyTgt = false
+  pcall(function()
+    if UnitIsFriend and UnitIsFriend("player", "target") then
+      friendlyTgt = true
+    end
+  end)
+  if friendlyTgt then
+    tfUi = CountTargetFrameHarmfulShown()
+    if tfUi == 0 then
+      tfUi = CountTargetFrameAuras()
+    end
+  else
     tfUi = CountTargetFrameAuras()
   end
   if tfUi > (nativeN or 0) then
@@ -1205,12 +1240,14 @@ CollectPlateBuffButtons = function(plate, out, maxN)
   end
 end
 
-CollectPlateDebuffButtons = function(plate, out, maxN)
+CollectPlateDebuffButtons = function(plate, out, maxN, friendFilter)
   if not plate or not out then
     return
   end
   maxN = maxN or MaxIcons()
-  local friendFilter = PlateUsesFriendlyHarmfulFilter(plate)
+  if friendFilter == nil then
+    friendFilter = PlateUsesFriendlyHarmfulFilter(plate)
+  end
   local pools = PlateAuraPools(plate)
   if pools then
     HarvestAuraPoolButtons(pools, out, maxN)
@@ -1243,7 +1280,11 @@ CollectPlateDebuffButtons = function(plate, out, maxN)
     end
     local child = kids[i]
     if child and (child.Icon or child.icon or child.GetAuraInstance) and SafeShown(child) then
-      if not friendFilter or IsPlateHarmfulAuraButton(child) then
+      if friendFilter then
+        if IsPlateHarmfulAuraButton(child) then
+          out[#out + 1] = child
+        end
+      else
         out[#out + 1] = child
       end
     end
@@ -2477,10 +2518,11 @@ end
 --- Rightmost shown native aura button (or DebuffListFrame) — merge anchors beside it.
 NativeBandRightAnchor = function(plate)
   local list = NativeDebuffList(plate)
+  local friendFilter = PlateUsesFriendlyHarmfulFilter(plate)
   local buttons = {}
-  CollectPlateDebuffButtons(plate, buttons, MaxIcons())
+  CollectPlateDebuffButtons(plate, buttons, MaxIcons(), friendFilter)
   local rightmost = PickRightmostAuraFrame(buttons)
-  if not rightmost then
+  if not rightmost and friendFilter then
     local buffs = {}
     CollectPlateBuffButtons(plate, buffs, MaxIcons())
     rightmost = PickRightmostAuraFrame(buffs)
@@ -4561,6 +4603,11 @@ PaintMergeMissing = function(unit, plate)
   local queueSkip = CopyKeySet(paintKeys)
   local harvN = 0
   local heavyTarget = useTargetSrc and NeedsHeavyTargetHarvest(unit, plate, nativeN)
+  if useTargetSrc and not heavyTarget and not TargetFriendlyHarmfulGapExpected(plate, useTargetSrc) then
+    if CountTargetHarmfulApi("target") > (nativeN or 0) then
+      heavyTarget = true
+    end
+  end
 
   if useTargetSrc then
     if heavyTarget then
@@ -4845,7 +4892,7 @@ end
 
 UpdateOverlay = function(unit, plate)
   plate = plate or (unit and PlateFor(unit))
-  unit = OverlayUnitKey(unit, plate)
+  unit = ResolvePaintUnit(unit, plate)
   if not ModuleActive() or not unit then
     return
   end
