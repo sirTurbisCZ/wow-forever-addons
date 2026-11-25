@@ -58,7 +58,36 @@ local AGENT_PULSE_SEC = 2.0
 local PLATEBAND_TOC = "Plateband"
 local FELOG_TOC = "ForeverErrorLog"
 
+--- Fresh Interface TOC every call (never cache); Config fallback when metadata missing.
+function Mod.LiveInterfaceVersions()
+  local pbVer, feVer = "?", "?"
+  if type(GetAddOnMetadata) == "function" then
+    local ok, v = pcall(GetAddOnMetadata, PLATEBAND_TOC, "Version")
+    if ok and v and tostring(v) ~= "" then
+      pbVer = tostring(v)
+    end
+    ok, v = pcall(GetAddOnMetadata, FELOG_TOC, "Version")
+    if ok and v and tostring(v) ~= "" then
+      feVer = tostring(v)
+    end
+  end
+  if pbVer == "?" and ns.Config and ns.Config.VERSION then
+    pbVer = tostring(ns.Config.VERSION)
+  end
+  if feVer == "?" and ForeverErrorLog and ForeverErrorLog.Config and ForeverErrorLog.Config.VERSION then
+    feVer = tostring(ForeverErrorLog.Config.VERSION)
+  end
+  return pbVer, feVer
+end
+
 local function TocVersion(addon, configFallback)
+  if addon == PLATEBAND_TOC or addon == FELOG_TOC then
+    local pb, fe = Mod.LiveInterfaceVersions()
+    if addon == PLATEBAND_TOC then
+      return pb
+    end
+    return fe
+  end
   if type(GetAddOnMetadata) == "function" then
     local ok, v = pcall(GetAddOnMetadata, addon, "Version")
     if ok and v and tostring(v) ~= "" then
@@ -79,6 +108,8 @@ local exportTruthTicker
 local exportTruthArmed = false
 local ioPulseFrame
 local ioPulseLastGt = 0
+local worldPulseHooked = false
+local exportBurstAt = 0
 local EXPORT_PULSE_REL = "Interface/AddOns/Plateband/Logs/export-pulse.log"
 local EXPORT_PULSE_BS = [[Interface\AddOns\Plateband\Logs\export-pulse.log]]
 local felogPending = {}
@@ -279,6 +310,9 @@ local function TryWriteWholeFile(paths, body)
         if body:sub(-1) ~= "\n" then
           f:write("\n")
         end
+        if f.flush then
+          f:flush()
+        end
         f:close()
       end)
       if ok then
@@ -323,17 +357,18 @@ function Mod.BuildChatTruthLine(src, load, seq)
   src = tostring(src or "CHAT_LOADED")
   load = tostring(load or "reload")
   seq = tonumber(seq) or 0
-  local pbVer = TocVersion(PLATEBAND_TOC, ns.Config and ns.Config.VERSION)
-  local feVer = TocVersion(FELOG_TOC, ForeverErrorLog and ForeverErrorLog.Config and ForeverErrorLog.Config.VERSION)
+  local pbVer, feVer = Mod.LiveInterfaceVersions()
   return string.format(
-    "live_ver=%s plateband_ver=%s felog_ver=%s seq=%s src=%s load=%s t=%s feed=pb_bridge",
+    "live_ver=%s plateband_ver=%s felog_ver=%s seq=%s src=%s load=%s t=%s feed=pb_bridge interface_pb=%s interface_fe=%s",
     pbVer,
     pbVer,
     feVer,
     tostring(seq),
     src,
     load,
-    tostring(Now())
+    tostring(Now()),
+    pbVer,
+    feVer
   )
 end
 
@@ -430,6 +465,53 @@ function Mod.SyncLiveExportFile(src, load, seq)
   return wrote
 end
 
+local function EnsureWorldIoPulse()
+  if worldPulseHooked or not WorldFrame or not GetTime then
+    return
+  end
+  worldPulseHooked = true
+  local lastGt = GetTime()
+  if WorldFrame.HookScript then
+    WorldFrame:HookScript("OnUpdate", function(_, _)
+      local gt = GetTime()
+      if (gt - lastGt) < AGENT_PULSE_SEC then
+        return
+      end
+      lastGt = gt
+      pcall(Mod.PulseExportDisk)
+    end)
+    return
+  end
+  local w = CreateFrame("Frame", nil, WorldFrame)
+  w:SetScript("OnUpdate", function()
+    local gt = GetTime()
+    if (gt - lastGt) < AGENT_PULSE_SEC then
+      return
+    end
+    lastGt = gt
+    pcall(Mod.PulseExportDisk)
+  end)
+  pcall(w.Show, w)
+end
+
+function Mod.ScheduleExportBurst()
+  local now = Now()
+  if (now - exportBurstAt) < 5 then
+    return
+  end
+  exportBurstAt = now
+  pcall(Mod.PulseExportDisk)
+  local delays = { 0.15, 0.35, 0.75, 1.5, 2, 4, 8 }
+  for i = 1, #delays do
+    local d = delays[i]
+    if C_Timer and C_Timer.After then
+      C_Timer.After(d, function()
+        pcall(Mod.PulseExportDisk)
+      end)
+    end
+  end
+end
+
 --- Primary export pulse (2s). GetTime + OnUpdate on UIParent — C_Timer callbacks can stall on Forever.
 function Mod.ArmExportTruthPulse(force)
   if exportTruthArmed and not force then
@@ -444,9 +526,11 @@ function Mod.ArmExportTruthPulse(force)
   local db = ns.Config.EnsureDB()
   db.exportPulseArmedAt = Now()
   pcall(Mod.PulseExportDisk)
+  Mod.ScheduleExportBurst()
+  EnsureWorldIoPulse()
 
   if not ioPulseFrame and CreateFrame then
-    local parent = UIParent
+    local parent = WorldFrame or UIParent
     ioPulseFrame = CreateFrame("Frame", "PlatebandIoPulse", parent)
   end
   if ioPulseFrame then
@@ -625,8 +709,9 @@ function Mod.RecordChatLoaded(src)
   if ForeverErrorLog and ForeverErrorLog.NotifyRuntime then
     pcall(ForeverErrorLog.NotifyRuntime, "Plateband", ver, src, "CHAT_LOADED")
   end
-  pcall(Mod.PublishChatTruthHead, "CHAT_LOADED", src, 0)
   pcall(Mod.PulseExportDisk)
+  Mod.ScheduleExportBurst()
+  pcall(Mod.PublishChatTruthHead, "CHAT_LOADED", src, 0)
   Mod.ArmExportTruthPulse(true)
   pcall(Mod.PulseAgentLive)
 end

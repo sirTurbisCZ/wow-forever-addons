@@ -58,6 +58,8 @@ local livePulseTicker
 local livePulseArmed = false
 local livePulseFrame
 local livePulseLastGt = 0
+local felogWorldPulseHooked = false
+local felogExportBurstAt = 0
 
 local WriteLiveHeadFile
 local FlushAgentExportFiles
@@ -368,12 +370,14 @@ local function FelogPlatebandExportLine()
     pbVer = tostring(Plateband.Config.VERSION)
   end
   return string.format(
-    "live_ver=%s plateband_ver=%s felog_ver=%s seq=%s src=EXPORT_PULSE load=pulse t=%s feed=pb_bridge",
+    "live_ver=%s plateband_ver=%s felog_ver=%s seq=%s src=EXPORT_PULSE load=pulse t=%s feed=pb_bridge interface_pb=%s interface_fe=%s",
     pbVer,
     pbVer,
     feVer,
     tostring(pbExportPulseSeq),
-    tostring(Now())
+    tostring(Now()),
+    pbVer,
+    feVer
   )
 end
 
@@ -389,6 +393,9 @@ local function WritePlatebandExportLine(line)
       local ok = pcall(function()
         f:write(line)
         f:write("\n")
+        if f.flush then
+          f:flush()
+        end
         f:close()
       end)
       if ok then
@@ -399,22 +406,56 @@ local function WritePlatebandExportLine(line)
   return false
 end
 
+local function ScheduleFelogExportBurst()
+  local now = Now()
+  if (now - felogExportBurstAt) < 5 then
+    return
+  end
+  felogExportBurstAt = now
+  pcall(function()
+    WritePlatebandExportLine(FelogPlatebandExportLine())
+  end)
+  local delays = { 0.15, 0.35, 0.75, 1.5, 2, 4, 8 }
+  for i = 1, #delays do
+  local d = delays[i]
+    if C_Timer and C_Timer.After then
+      C_Timer.After(d, function()
+        pcall(function()
+          WritePlatebandExportLine(FelogPlatebandExportLine())
+        end)
+      end)
+    end
+  end
+end
+
+local function EnsureFelogWorldIoPulse()
+  if felogWorldPulseHooked or not WorldFrame or not GetTime then
+    return
+  end
+  felogWorldPulseHooked = true
+  local lastGt = GetTime()
+  local w = CreateFrame("Frame", nil, WorldFrame)
+  w:SetScript("OnUpdate", function()
+    local gt = GetTime()
+    if (gt - lastGt) < 2.0 then
+      return
+    end
+    lastGt = gt
+    pcall(PulseLiveHeadFile)
+  end)
+  pcall(w.Show, w)
+end
+
 local function PulseLiveHeadFile()
+  local bridgeLine = FelogPlatebandExportLine()
+  WritePlatebandExportLine(bridgeLine)
   local sl = Plateband and Plateband.SessionLog
   if sl and type(sl.PulseExportDisk) == "function" then
-    local ok, wrote = pcall(sl.PulseExportDisk)
-    if ok and wrote then
-      return
-    end
+    pcall(sl.PulseExportDisk)
+    return
   end
   if sl and type(sl.PulseExportTruth) == "function" then
-    local ok, wrote = pcall(sl.PulseExportTruth)
-    if ok and wrote then
-      return
-    end
-  end
-  local bridgeLine = FelogPlatebandExportLine()
-  if WritePlatebandExportLine(bridgeLine) then
+    pcall(sl.PulseExportTruth)
     return
   end
   if sl and type(sl.PublishChatTruthHead) == "function" then
@@ -457,9 +498,11 @@ local function ArmLivePulse(force)
   end
   livePulseArmed = true
   pcall(PulseLiveHeadFile)
+  ScheduleFelogExportBurst()
+  EnsureFelogWorldIoPulse()
 
   if not livePulseFrame and CreateFrame then
-    local parent = UIParent
+    local parent = WorldFrame or UIParent
     livePulseFrame = CreateFrame("Frame", "FelogIoPulse", parent)
   end
   if livePulseFrame then
@@ -764,6 +807,7 @@ frame:SetScript("OnEvent", function(_, event, name)
     end)
     if loggedIn then
       pcall(StampFelogReload)
+      pcall(ScheduleFelogExportBurst)
       if C_Timer and C_Timer.After then
         C_Timer.After(0, function()
           PrintLoadedLine(true)

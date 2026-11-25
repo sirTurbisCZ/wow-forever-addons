@@ -1,5 +1,9 @@
 # ForeverErrorLog changelog
 
+## Release 0.1.15 — FElog always writes export L1 from TOC each tick
+
+- **`PulseLiveHeadFile`** always **`WritePlatebandExportLine`** (GetAddOnMetadata) then Plateband **`PulseExportDisk`**; burst on reload; WorldFrame OnUpdate.
+
 ## Release 0.1.14 — direct Plateband export write + GetTime OnUpdate
 
 - **`WritePlatebandExportLine`** when **`PulseExportDisk`** fails; **`FelogPlatebandExportLine`** from TOC metadata.

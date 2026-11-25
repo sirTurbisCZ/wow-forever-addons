@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## Release 0.2.86 — LiveInterfaceVersions + export burst ≤10s after reload
+
+- **`LiveInterfaceVersions()`** — fresh **`GetAddOnMetadata`** every **`PulseExportDisk`** tick; line adds **`interface_pb` / `interface_fe`**.
+- **`ScheduleExportBurst`** — writes at 0–8s post-reload; **WorldFrame** OnUpdate backup; host watch skips fresh client export (&lt;20s).
+
 ## Release 0.2.85 — PulseExportDisk (GetTime OnUpdate → export mtime)
 
 - **`PulseExportDisk`** — dedicated 2s disk write (`agent-live-export.log`); `w` line-only fallback + append `export-pulse.log`.

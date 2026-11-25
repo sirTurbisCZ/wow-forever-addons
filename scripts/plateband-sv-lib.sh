@@ -480,8 +480,12 @@ pb_sync_live_feed() {
     pb_mirror_sv_export "$sv" "${repo}/agent-live-sv-mirror.log" 2>/dev/null || true
     sv_ts="$(pb_stamped_ver_from_file "${repo}/agent-live-sv-mirror.log" 2>/dev/null | cut -f2 || echo 0)"
     if [[ "$sv_ts" -gt "$wow_ts" ]]; then
-      cp -f "${repo}/agent-live-sv-mirror.log" "$mirror" 2>/dev/null || true
-      [[ "$PB_LIVE_SYNC" == "none" ]] && PB_LIVE_SYNC="sv_mirror"
+      if [[ -f "$wow_exp" ]] && pb_log_fresh_sec "$wow_exp" 20; then
+        : # client export pulse is live — do not stomp with stale SV mirror
+      else
+        cp -f "${repo}/agent-live-sv-mirror.log" "$mirror" 2>/dev/null || true
+        [[ "$PB_LIVE_SYNC" == "none" ]] && PB_LIVE_SYNC="sv_mirror"
+      fi
     fi
     pb_publish_live_head "$sv" 2>/dev/null || true
   fi
@@ -668,6 +672,9 @@ pb_write_wow_export_with_chat_truth() {
   [[ -n "$sv" && -f "$sv" ]] || return 1
   local wow_exp
   wow_exp="$(pb_agent_live_export_path)"
+  if [[ -f "$wow_exp" ]] && pb_log_fresh_sec "$wow_exp" 20; then
+    return 0
+  fi
   mkdir -p "$(dirname "$wow_exp")"
   pb_mirror_sv_export "$sv" "$wow_exp" 2>/dev/null || return 1
   return 0
