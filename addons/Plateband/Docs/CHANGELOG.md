@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.2.53 — combat SetPoint taint + agent live log
+
+- **Combat:** `RefreshGapCooldownsOnly` — no `SetPoint`/`ClearAllPoints`/`LayoutMergeBesideNative` under `InCombatLockdown`; fixes *Akce rozhraní selhala kvůli addonu* from gap tick/target change.
+- Plate remove / clear deferred until `PLAYER_REGEN_ENABLED`.
+- **`agent-live.log`:** CARD/PAINT lines for agent watch when WTF flush lags (alongside `plateband-sv-lib.sh` live_ver).
+
 ## Release 0.2.52 — NameplateUnitFor strict + SV anomaly watch
 
 - **Bleed:** removed `NameplateUnitFor` stale `lastTargetPlateUnit` + sole-enemy fallback (party WS on mob).

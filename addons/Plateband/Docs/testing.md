@@ -16,6 +16,18 @@ Checks: `luac`, version sync, **chunk locals ≤195**, invariant grep (friendly 
 
 Green when `SESSION_START ver` matches disk, `PLATES_LOAD ok=1`, no hostile `target=yes tf>0 painted=0`.
 
+## Live vs flushed version
+
+WoW only flushes `Plateband.lua` on logout/reload — **do not treat `SESSION_START` in SV as live truth** while you play.
+
+- **`plateband-sv-lib.sh`:** `live_ver` = `PLATEBAND_LIVE_VER` or runtime `Interface/AddOns/Plateband/Config.lua`, not stale flush.
+- **`agent-live.log`:** CARD/PAINT append each event (when client `io` works).
+- Gate/matrix **do not fail** on flush lag alone; paint rules still run on `agent-live.log` + SV.
+
+```bash
+PLATEBAND_LIVE_VER=0.2.51 ./scripts/plateband-sv-gate.sh
+```
+
 ## Background watch (CARD + PAINT + party)
 
 `plateband-sv-watch.sh` every 15s: **gate → tail PAINT/CARD → anomaly → matrix** → `Logs/sv-watch.log`.

@@ -25,6 +25,8 @@ local paintExportDirty = false
 local paintExportAt = 0
 local FILE_REL = "Interface/AddOns/Plateband/Logs/session.log"
 local FILE_REL_BS = [[Interface\AddOns\Plateband\Logs\session.log]]
+local AGENT_LIVE_REL = "Interface/AddOns/Plateband/Logs/agent-live.log"
+local AGENT_LIVE_BS = [[Interface\AddOns\Plateband\Logs\agent-live.log]]
 
 local fileOk -- nil=untried, false=unavailable, true=works
 local sessionBegun = false
@@ -213,6 +215,21 @@ function Mod.Append(line)
   end
   log.fileOk = AppendFile(stamped) or log.fileOk
   log.export = table.concat(log.lines, "\n")
+  if line:find("PLATEBAND_CARD", 1, true) or line:find("SESSION_START", 1, true)
+    or line:find("PLATES_LOAD", 1, true) or line:sub(1, 6) == "PAINT " then
+    pcall(function()
+      local paths = { AGENT_LIVE_REL, AGENT_LIVE_BS }
+      for i = 1, #paths do
+        local f = TryOpen(paths[i], "a")
+        if f then
+          f:write(stamped)
+          f:write("\n")
+          f:close()
+          break
+        end
+      end
+    end)
+  end
 end
 
 --- Silent paint trace — PAINT / PLATE lines only (no chat).

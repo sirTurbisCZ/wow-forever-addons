@@ -56,8 +56,13 @@ local lastPaintTraceAt = {} -- [unit] = GetTime()
 local lastPaintTraceSig = {} -- [unit] = sig
 local refreshPass = 0
 local overlayPending = {}
+local combatDeferredClears = {} -- nameplate units to clear after regen (no SetPoint in combat)
 
 local function PlayerInCombat()
+  return InCombatLockdown and InCombatLockdown()
+end
+
+local function SecurePaintLocked()
   return InCombatLockdown and InCombatLockdown()
 end
 
@@ -1895,6 +1900,11 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
 end
 
 ClearOverlay = function(unit)
+  if SecurePaintLocked() then
+    combatDeferredClears[unit] = true
+    return
+  end
+  combatDeferredClears[unit] = nil
   local plate = unit and PlateFor(unit)
   if plate then
     EnsureNativeVisible(plate)
@@ -2809,7 +2819,40 @@ RememberGapSticky = function(unit, icons, unitToken)
   gapSticky[unit] = { icons = copy, at = GetTime and GetTime() or 0 }
 end
 
+--- Combat-safe: refresh cooldown stacks only — no SetPoint/ClearAllPoints/layout.
+RefreshGapCooldownsOnly = function(unit, plate, fb, auraUnit)
+  if not fb or not fb.icons then
+    return 0, 0
+  end
+  local painted = tonumber(fb._painted) or 0
+  if painted <= 0 then
+    return 0, 0
+  end
+  auraUnit = auraUnit or (unit == "target" and "target" or unit)
+  local sticky = gapSticky[unit]
+  local icons = sticky and sticky.icons
+  if type(icons) ~= "table" or #icons == 0 then
+    return painted, 0
+  end
+  local cdN = 0
+  for i = 1, math.min(painted, #icons) do
+    local slot = fb.icons[i]
+    local row = icons[i]
+    if slot and row and GapAuraLive(row, auraUnit) then
+      EnrichGapAuraEntry(row, auraUnit)
+      local _, cdSet = ApplyGapAuraVisual(slot, row, auraUnit)
+      if cdSet then
+        cdN = cdN + 1
+      end
+    end
+  end
+  return painted, cdN
+end
+
 RefreshHeldGapFallback = function(unit, plate, fb, icons, auraUnit)
+  if SecurePaintLocked() then
+    return RefreshGapCooldownsOnly(unit, plate, fb, auraUnit)
+  end
   if not fb or type(icons) ~= "table" or #icons == 0 then
     return 0, 0
   end
@@ -4646,15 +4689,12 @@ UpdateOverlay = function(unit, plate)
     return
   end
 
-  if PlayerInCombat() and InCombatLockdown() then
+  if SecurePaintLocked() then
     EnsureNativeVisible(plate)
     local fb = fallbacks[unit]
     if fb and (tonumber(fb._painted) or 0) > 0 then
-      local sticky = gapSticky[unit]
-      if sticky and type(sticky.icons) == "table" and #sticky.icons > 0 then
-        local auraTok = unit == "target" and "target" or unit
-        pcall(RefreshHeldGapFallback, unit, plate, fb, sticky.icons, auraTok)
-      end
+      local auraTok = AuraUnitForPlate(unit, plate, ShouldUseTargetAuraSource(unit, plate), nil)
+      pcall(RefreshGapCooldownsOnly, unit, plate, fb, auraTok)
     end
     return
   end
@@ -5150,10 +5190,14 @@ OnEvent = function(_, event, arg1)
     end
   elseif event == "NAME_PLATE_UNIT_REMOVED" then
     overlayPending[arg1] = nil
-    ClearOverlay(arg1)
-    overlays[arg1] = nil
-    nameShifts[arg1] = nil
-    lastOverlayPaintAt[arg1] = nil
+    if SecurePaintLocked() then
+      combatDeferredClears[arg1] = true
+    else
+      ClearOverlay(arg1)
+      overlays[arg1] = nil
+      nameShifts[arg1] = nil
+      lastOverlayPaintAt[arg1] = nil
+    end
     if lastTargetPlateUnit == arg1 then
       lastTargetPlateUnit = nil
     end
@@ -5174,11 +5218,23 @@ OnEvent = function(_, event, arg1)
     end)
   elseif event == "PLAYER_REGEN_ENABLED" then
     Defer(function()
+      for u in pairs(combatDeferredClears) do
+        combatDeferredClears[u] = nil
+        ClearOverlay(u)
+        overlays[u] = nil
+        nameShifts[u] = nil
+        lastOverlayPaintAt[u] = nil
+      end
+      RefreshAll()
       RefreshActiveGapsOnly()
+      MaybeAutoDiagnose("regen", true)
     end)
   elseif event == "PLAYER_ENTERING_WORLD" or event == "GROUP_ROSTER_UPDATE" then
     InvalidatePartyTokenCache()
     Defer(function()
+      if SecurePaintLocked() then
+        return
+      end
       RefreshAll()
       MaybeAutoDiagnose(event == "PLAYER_ENTERING_WORLD" and "pew" or "roster", true)
     end)
