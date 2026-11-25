@@ -47,14 +47,14 @@ else
   check "tgt_bind" "WAIT"
 fi
 
-FRIEND="$(rg 'PLATEBAND_CARD.*friend=1' "$SV_DATA" 2>/dev/null | tail -3 || true)"
-if [[ -n "$FRIEND" ]]; then
-  if echo "$FRIEND" | rg -q 'painted=[1-9]'; then
-    check "friendly_ws" "OK"
-  else
-    check "friendly_ws" "MISSING"
-    fail=1
-  fi
+FRIEND="$(rg 'PLATEBAND_CARD.*friend=1' "$SV_DATA" 2>/dev/null | tail -5 || true)"
+if echo "$FRIEND" | rg -q 'friend=1.*painted=[1-9]'; then
+  check "friendly_ws" "OK"
+elif echo "$FRIEND" | rg -q 'friend=1.*tf=[1-9].*painted=0'; then
+  check "friendly_ws" "MISSING"
+  fail=1
+elif [[ -n "$FRIEND" ]]; then
+  check "friendly_ws" "WAIT (friend plate, no TF debuff yet)"
 else
   check "friendly_ws" "WAIT (no friend=1 card)"
 fi
