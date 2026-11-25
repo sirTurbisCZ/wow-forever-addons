@@ -1,5 +1,9 @@
 # ForeverErrorLog changelog
 
+## Release 0.1.18 — fix export L1 live_ver=?
+
+- **`FelogLiveInterfaceVersions`** standalone (no Plateband delegate); **`Config.VERSION`** + metadata; never **`?`**.
+
 ## Release 0.1.17 — FElog chat TOC + LoadAddOn Plateband for pb ver
 
 - **`FelogLiveInterfaceVersions`** — **`Config.VERSION`** (chat) first; **`C_AddOns.LoadAddOn("Plateband")`** so pb matches deployed toc without separate `/reload`; stamp + immediate export on FElog reload.
