@@ -71,6 +71,6 @@ elif [[ "${PB_RELOAD_PENDING:-no}" == "behind" ]]; then
 fi
 
 echo "SESSION_REPORT new=1 live_ver=${REPORT_LIVE:-?} client_ver=${PB_CLIENT_VER:-?} deployed_ver=${PB_RUNTIME_VER:-?} disk_ver=${PB_DISK_VER:-?} reload_pending=${RELOAD} flushed_session=${SESSION_FLUSHED:-?} flush_lag=${PB_FLUSH_LAG:-?} agent_seq=${AGENT_SEQ} feed=${PB_FEED_SOURCE:-?} t=${SESSION_T:-?} chat_hint=\"${CHAT_HINT}\" source=${PB_FEED_SOURCE:-sv} mirror=${MIRROR}"
-[[ -n "$LOAD_LINE" ]] && echo "  PLATES_LOAD: $(echo "$LOAD_LINE" | tail -c 140)"
-[[ -n "$AGENT_LINE" ]] && echo "  AGENT_LIVE: $(echo "$AGENT_LINE" | tail -c 140)"
+[[ -n "$LOAD_LINE" ]] && echo "  PLATES_LOAD: $(echo "$LOAD_LINE" | rg -o '\[[0-9]+\] PLATES_LOAD[^\n]*' 2>/dev/null | tail -1 || echo "$LOAD_LINE" | tail -c 120)"
+[[ -n "$AGENT_LINE" ]] && echo "  AGENT_LIVE: $(echo "$AGENT_LINE" | rg -o '\[[0-9]+\] AGENT_LIVE[^\n]*' 2>/dev/null | tail -1 || echo "$AGENT_LINE" | tail -c 120)"
 exit 0
