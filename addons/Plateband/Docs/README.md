@@ -35,6 +35,7 @@ Developers (monorepo): `./scripts/link-addon.sh Plateband` then `/reload`.
 | `/pb reset` | Restore default settings (native-only) |
 | `/pb size <n>` | Icon size hint (12–32) |
 | `/pb merge on` / `/pb merge off` | Foreign DoT merge beside native (default **on** since 0.1.15) |
+| `/pb selftest` | Log `SELFTEST` cases to SavedVariables (agent gate) |
 
 Alias: `/plateband`.
 
@@ -51,9 +52,14 @@ Grep `PAINT`, `paintTrace`, `lastPaintTrace`, or `sessionLog.export`.
 **Developer on Mac** (while Ondřej tests — no screenshots needed):
 
 ```bash
+./scripts/plateband-selftest.sh             # offline: locals, luac, invariants
+./scripts/plateband-sv-gate.sh              # live SV green before asking /reload
+./scripts/plateband-sv-watch.sh             # background agent watch → Plateband/Logs/sv-watch.log
 ./scripts/watch-forever-traces.sh watch 3   # FElog LIVE + Plateband SV alerts every 3s (agent default)
 ./scripts/watch-plateband-sv.sh             # PAINT tail only
 ```
+
+See `Docs/testing.md`.
 
 Alerts append to `/tmp/forever-trace-coordinator-inbox.txt`. Agents fix/ship on regression signals (size jump, `cdN=0`, missing foreign, FElog nil) **before** asking for screenshots.
 

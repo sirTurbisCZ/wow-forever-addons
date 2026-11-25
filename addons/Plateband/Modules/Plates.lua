@@ -5042,8 +5042,19 @@ SnapshotDiagnose = function(reason, opts)
 
   local mergeOn = Profile().mergeMissing == true and "1" or "0"
   local lpd = lastPaintDebug or {}
+  local tgtSrcLive = lpd.tgtSrc
+  if targetYes and plate then
+    local tu = plateUnit or NameplateUnitFor("target")
+    if ShouldUseTargetAuraSource(tu, plate) then
+      tgtSrcLive = 1
+    else
+      tgtSrcLive = 0
+    end
+  elseif not targetYes then
+    tgtSrcLive = 0
+  end
   local card = string.format(
-    "PLATEBAND_CARD ver=%s reason=%s target=%s plate=%s plates=%s overlays=%s ac=%s fb=%s kids=%s tf=%s native=%s merge=%s harv=%s miss=%s painted=%s tgtSrc=%s punit=%s acFail=%s enabled=%s safe=%s watch=%s seen=%s upd=%s blocked=%s",
+    "PLATEBAND_CARD ver=%s reason=%s target=%s plate=%s plates=%s overlays=%s ac=%s fb=%s kids=%s tf=%s native=%s merge=%s harv=%s miss=%s painted=%s tgtSrc=%s friend=%s punit=%s acFail=%s enabled=%s safe=%s watch=%s seen=%s upd=%s blocked=%s",
     tostring(ns.Config.VERSION),
     tostring(reason or "manual"),
     targetYes and "yes" or "no",
@@ -5059,7 +5070,8 @@ SnapshotDiagnose = function(reason, opts)
     tostring(lpd.harv or "?"),
     tostring(lpd.miss or "?"),
     tostring(lpd.painted or "?"),
-    tostring(lpd.tgtSrc or "?"),
+    tostring(tgtSrcLive ~= nil and tgtSrcLive or "?"),
+    tostring(lpd.friendPlate or "?"),
     tostring(lpd.unit or plateUnit or "?"),
     acCreateFailed and "1" or "0",
     tostring(Profile().enabled),

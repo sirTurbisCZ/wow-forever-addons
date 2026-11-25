@@ -12,6 +12,7 @@ local L = Plateband.L or {}
 local Config = Plateband.Config
 local Plates = Plateband.Modules.Plates
 local SessionLog = Plateband.Modules.SessionLog
+local SelfTest = Plateband.Modules.SelfTest
 
 local function EnsureDB()
   return Config.EnsureDB()
@@ -293,6 +294,18 @@ SlashCmdList.PLATEBAND = function(msg)
       Print(L.WATCH_OFF or "watch off")
     else
       Print("usage: /pb watch on|off  (currently " .. tostring(p.watchOn) .. ")")
+    end
+    return
+  end
+
+  if cmd == "selftest" then
+    if not SelfTest or not SelfTest.Run then
+      Print("SelfTest module missing")
+      return
+    end
+    local pass, fail = SafeCall("selftest", SelfTest.Run)
+    if pass and fail then
+      Print(string.format("selftest pass=%s fail=%s (see sessionLog)", tostring(pass), tostring(fail)))
     end
     return
   end

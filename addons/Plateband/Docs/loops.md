@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.50** (hostile heavy harvest for party DoTs; `GapAuraLive` strict prune)
+Version: **0.2.51** (paint = 0.2.50; agent selftest + SV gate scripts)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 

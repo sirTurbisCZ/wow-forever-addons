@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.2.51 — selftest + SV automation (0.2.50 paint unchanged)
+
+- **QA:** `scripts/plateband-selftest.sh`, `plateband-sv-gate.sh`, `plateband-sv-watch.sh`; `/pb selftest` → `SELFTEST` in SV.
+- **CARD:** live `tgtSrc` from `ShouldUseTargetAuraSource`; `friend=` field for agent gates.
+- **Docs:** `Docs/testing.md` — no playtest ping-pong; agent runs gates before asking `/reload`.
+
 ## Release 0.2.50 — party DoTs on mobs + sticky expiry
 
 - **Foreign DoTs:** hostile targets always **heavy** harvest (`NeedsHeavyTargetHarvest` + `apiH`); skip `CollectPlayerOwnedKeys` on hostile lean (was overskip party rows).
