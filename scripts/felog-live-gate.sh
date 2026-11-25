@@ -34,8 +34,12 @@ HEAD_PB="$(sed -n 's/.*plateband_ver=\([0-9.]*\).*/\1/p' <<<"${HEAD_LINE}" | hea
 HEAD_FE="$(sed -n 's/.*felog_ver=\([0-9.]*\).*/\1/p' <<<"${HEAD_LINE}" | head -1)"
 HEAD_LOAD="$(sed -n 's/.* load=\([^ ]*\).*/\1/p' <<<"${HEAD_LINE}" | head -1)"
 
+# Chat / TOC interface is ground truth. Stale SV or load=prove head = reader/publish lag, not "need reload".
+CHAT_TRUTH_PB="$PB_IFACE"
+CHAT_TRUTH_FE="$FE_IFACE"
+
 if [[ ! -f "$HEAD" ]]; then
-  echo "FELOG_GATE fail: missing live-head.log ($HEAD) — need /reload on ForeverErrorLog 0.1.4+ (file feed, not WTF)"
+  echo "FELOG_GATE fail: missing live-head.log ($HEAD) — PublishChatTruthHead not on disk yet (chat truth pb=$CHAT_TRUTH_PB fe=$CHAT_TRUTH_FE)"
   if [[ -f "$EXPORT" ]]; then
     echo "FELOG_GATE note: agent-live-export exists age=$(felog_file_age_sec "$EXPORT" 2>/dev/null || echo ?)s"
     tail -2 "$EXPORT" 2>/dev/null | sed 's/^/  /' || true
@@ -43,44 +47,45 @@ if [[ ! -f "$HEAD" ]]; then
     echo "FELOG_GATE note: live-stream.log exists (no head yet)"
     tail -2 "$STREAM" 2>/dev/null | sed 's/^/  /' || true
   fi
-  echo "FELOG_GATE disk: pb_iface=$PB_IFACE fe_iface=$FE_IFACE session_ver=${SESSION_VER:-?} (SV may lag ~90s)"
+  echo "FELOG_GATE disk: chat_truth pb=$CHAT_TRUTH_PB fe=$CHAT_TRUTH_FE session_ver=${SESSION_VER:-?} (ignore lagging SV)"
   exit 1
 fi
 
 if [[ "$HEAD_LOAD" == prove ]]; then
-  echo "FELOG_GATE fail: stale host prove stub — delete live-head and /reload (need chat-truth publish)"
+  echo "FELOG_GATE fail: reject load=prove stub (not chat truth) — expect PublishChatTruthHead pb=$CHAT_TRUTH_PB fe=$CHAT_TRUTH_FE"
   head -1 "$HEAD"
   exit 1
 fi
 
-if [[ -n "$HEAD_PB" && -n "$PB_IFACE" && "$HEAD_PB" != "$PB_IFACE" ]]; then
-  echo "FELOG_GATE fail: head plateband_ver=$HEAD_PB != interface=$PB_IFACE (chat truth mismatch)"
+if [[ -n "$HEAD_PB" && -n "$CHAT_TRUTH_PB" && "$HEAD_PB" != "$CHAT_TRUTH_PB" ]]; then
+  echo "FELOG_GATE fail: head_lag plateband_ver=$HEAD_PB != chat_truth=$CHAT_TRUTH_PB (SV/head lagging chat)"
   head -1 "$HEAD"
   exit 1
 fi
 
-if [[ -n "$HEAD_FE" && -n "$FE_IFACE" && "$HEAD_FE" != "$FE_IFACE" ]]; then
-  echo "FELOG_GATE fail: head felog_ver=$HEAD_FE != interface=$FE_IFACE (chat truth mismatch)"
+if [[ -n "$HEAD_FE" && -n "$CHAT_TRUTH_FE" && "$HEAD_FE" != "$CHAT_TRUTH_FE" ]]; then
+  echo "FELOG_GATE fail: head_lag felog_ver=$HEAD_FE != chat_truth=$CHAT_TRUTH_FE (SV/head lagging chat)"
   head -1 "$HEAD"
   exit 1
 fi
 
 if [[ ! "$AGE" =~ ^[0-9]+$ ]] || [[ "$AGE" -gt "$MAX_AGE" ]]; then
-  echo "FELOG_GATE fail: live-head stale age=${AGE:-?}s max=${MAX_AGE}s — pulse broken or client not running"
+  echo "FELOG_GATE fail: live-head stale age=${AGE:-?}s max=${MAX_AGE}s — pulse/PublishChatTruthHead lag (chat truth pb=$CHAT_TRUTH_PB fe=$CHAT_TRUTH_FE)"
   head -1 "$HEAD"
   exit 1
 fi
 
-RELOAD=no
-if [[ -n "$PB_IFACE" && -n "$SESSION_VER" && "$PB_IFACE" != "$SESSION_VER" && "$SESSION_VER" != "?" ]]; then
-  RELOAD=yes
+HEAD_LAG=no
+if [[ -n "$CHAT_TRUTH_PB" && -n "$SESSION_VER" && "$CHAT_TRUTH_PB" != "$SESSION_VER" && "$SESSION_VER" != "?" ]]; then
+  HEAD_LAG=yes
 fi
 
-if [[ "$RELOAD" == yes ]]; then
-  echo "FELOG_GATE warn: reload_pending=yes session=$SESSION_VER pb_iface=$PB_IFACE fe_iface=$FE_IFACE source=$SOURCE age=${AGE}s"
-else
-  echo "FELOG_GATE ok: pb=$HEAD_PB fe=$HEAD_FE pb_iface=$PB_IFACE fe_iface=$FE_IFACE source=$SOURCE age=${AGE}s max_age=${MAX_AGE}s"
+if [[ "$HEAD_LAG" == yes ]]; then
+  echo "FELOG_GATE fail: head_lag session_ver=$SESSION_VER != chat_truth=$CHAT_TRUTH_PB (reader must not invent reload_pending)"
+  head -1 "$HEAD"
+  exit 1
 fi
 
+echo "FELOG_GATE ok: pb=$HEAD_PB fe=$HEAD_FE chat_truth_pb=$CHAT_TRUTH_PB chat_truth_fe=$CHAT_TRUTH_FE source=$SOURCE age=${AGE}s max_age=${MAX_AGE}s load=${HEAD_LOAD:-?}"
 head -1 "$HEAD"
 exit 0

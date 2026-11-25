@@ -38,6 +38,9 @@ local AGENT_LIVE_REL = "Interface/AddOns/Plateband/Logs/agent-live.log"
 local AGENT_LIVE_BS = [[Interface\AddOns\Plateband\Logs\agent-live.log]]
 local AGENT_EXPORT_REL = "Interface/AddOns/Plateband/Logs/agent-live-export.log"
 local AGENT_EXPORT_BS = [[Interface\AddOns\Plateband\Logs\agent-live-export.log]]
+-- Forever io allowlist: *agent-live*.log works; *live-head* / felog-live-head are blocked.
+local AGENT_HEAD_REL = "Interface/AddOns/Plateband/Logs/agent-live-head.log"
+local AGENT_HEAD_BS = [[Interface\AddOns\Plateband\Logs\agent-live-head.log]]
 local RUNTIME_VER_REL = "Interface/AddOns/Plateband/Logs/runtime-ver.log"
 local RUNTIME_VER_BS = [[Interface\AddOns\Plateband\Logs\runtime-ver.log]]
 local LIVE_HEAD_REL = "Interface/AddOns/Plateband/Logs/live-head.log"
@@ -243,6 +246,41 @@ local function WriteLineToPaths(paths, line, mode)
   return false
 end
 
+local function TryWriteWholeFile(paths, body)
+  if not body or body == "" or not (io and io.open) then
+    return false
+  end
+  for i = 1, #paths do
+    local f = TryOpen(paths[i], "w")
+    if f then
+      local ok = pcall(function()
+        f:write(body)
+        if body:sub(-1) ~= "\n" then
+          f:write("\n")
+        end
+        f:close()
+      end)
+      if ok then
+        agentIoOk = true
+        return true
+      end
+    end
+  end
+  return false
+end
+
+--- Primary chat-truth file (same io allowlist as agent-live-export).
+function Mod.WriteAgentLiveHead(line)
+  line = tostring(line or "")
+  if line == "" then
+    return false
+  end
+  local db = ns.Config.EnsureDB()
+  db.chatTruthLine = line
+  db.chatTruthAt = Now()
+  return TryWriteWholeFile({ AGENT_HEAD_REL, AGENT_HEAD_BS }, line)
+end
+
 --- Forever blocks io under ForeverErrorLog/; Plateband can write those paths.
 --- Unified head: chat truth (Plateband + FElog TOC versions), ≤2s on CHAT_LOADED + 2s pulse.
 function Mod.PublishChatTruthHead(src, load, seq)
@@ -265,8 +303,12 @@ function Mod.PublishChatTruthHead(src, load, seq)
     load,
     tostring(at)
   )
-  local ok = Mod.MirrorFelogLogs(line, nil, nil)
+  local ok = Mod.WriteAgentLiveHead(line)
+  if not ok then
+    ok = Mod.MirrorFelogLogs(line, nil, nil)
+  end
   pcall(Mod.WriteLiveHeadFile, pbVer, seq, src, load)
+  pcall(Mod.FlushLiveExport)
   if ForeverErrorLog and ForeverErrorLog.ApplyLiveHeadSnapshot then
     pcall(ForeverErrorLog.ApplyLiveHeadSnapshot, pbVer, feVer, src, load, seq)
   end
@@ -476,23 +518,14 @@ function Mod.FlushLiveExport()
   end
   local start = math.max(1, #log.lines - LIVE_TAIL_LINES + 1)
   local body = table.concat(log.lines, "\n", start, #log.lines)
-  local paths = { AGENT_EXPORT_REL, AGENT_EXPORT_BS }
-  for i = 1, #paths do
-    local f = TryOpen(paths[i], "w")
-    if f then
-      local ok = pcall(function()
-        f:write(body)
-        if body:sub(-1) ~= "\n" then
-          f:write("\n")
-        end
-        f:close()
-      end)
-      if ok then
-        agentIoOk = true
-        logDirty = false
-        return true
-      end
-    end
+  local db = ns.Config.EnsureDB()
+  local truth = type(db.chatTruthLine) == "string" and db.chatTruthLine or ""
+  if truth ~= "" then
+    body = truth .. "\n" .. body
+  end
+  if TryWriteWholeFile({ AGENT_EXPORT_REL, AGENT_EXPORT_BS }, body) then
+    logDirty = false
+    return true
   end
   return false
 end

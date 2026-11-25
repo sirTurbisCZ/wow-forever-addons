@@ -1,7 +1,7 @@
 # BetterBackpack — workflows and diagrams
 
 **Code:** `Core.lua`, `Modules/{Slots,Layout,Context,BulkTransfer,VendorJunk,OpenClose,Tidy,Settings,Search,Filter,CustomCategories,Trash,StackMerge,Pins,LayoutModes}.lua`  
-**Version reference:** 1.2.2 (merged stack Shift+RMB · Recipes lane · Ctrl+Shift+RMB lane bulk)  
+**Version reference:** 1.2.22 (post-sell Refresh not RefreshLight-only · InventoryOccupiedCount · AH RMB)  
 **CS-RMB:** path **B** — `SecureActionButtonTemplate` attrs OOC (never harvest CombinedBags items).
 
 ---
@@ -55,7 +55,7 @@ flowchart TD
 
 Optional feature modules: `Feat("Name")` lookups — Layout does not crash if a module is omitted from TOC.
 
-- **Bag events:** `QueueBagRefresh` → `RefreshLight` (sync + `StackMerge.RefreshMergedButtons`); full `DoLayout` when occupied count, **grid signature (incl. merge anchor bag.slot)**, or `VisibleRepaintNeeded` (empty merged cell on cursor), else explicit `Relayout`.
+- **Bag events:** `QueueBagRefresh` → `Layout.Refresh` on each debounce tick (`0.05 / 0.2 / 0.55`); `Refresh` chooses full `DoLayout` when occupied count, **grid signature (incl. merge anchor bag.slot)**, or `VisibleRepaintNeeded` changes, else `RefreshLight`. Merchant/mail sell invalidates `_bbLastOccupiedCount` / `_bbGridSig` then `Relayout`.
 - **`/bb selftest`:** layout secure slots + **`VisibleGridSignature`** + `StackMerge`/`BulkTransfer` wiring + **`OpenClose.RunOpenCloseSelfTest`** (open bags).
 
 - **Custom lanes:** `BetterBackpackDB.chars["Name-Realm"].customCategories` + char `itemRules` (custom_*). Built-in lane toggles remain on `profile`. `PLAYER_ENTERING_WORLD` → `CustomCategories.OnCharacterActive` refreshes layout on character switch.
@@ -82,12 +82,12 @@ sequenceDiagram
 
 ---
 
-## 4. Vendor / mail / bank
+## 4. Vendor / mail / auction / bank
 
 ```mermaid
 flowchart LR
-  Show[MERCHANT/MAIL SHOW] --> Clear[Clear type2 use attrs]
-  Clear --> RMB[RMB slot Pickup + Sell / ClickSendMail]
+  Show[MERCHANT/MAIL/AUCTION SHOW] --> Clear[Clear type2 use attrs]
+  Clear --> RMB[RMB Pickup + Sell / ClickSendMail / ClickAuctionSellItemButton]
   BankShow[BANKFRAME_OPENED] --> Keep[Keep type2=item]
   Keep --> Deposit[Secure UseContainerItem deposits]
   Close[CLOSED] --> Restore[ForceRestore type2=item]
@@ -104,11 +104,12 @@ flowchart TD
   RMB --> Ctx{Context open?}
   Ctx -->|merchant| Sell[sync/queue · Pickup+SellCursor / UseContainerItem]
   Ctx -->|mail| Mail[sync Pickup+ClickSendMail + empty subject → item name]
+  Ctx -->|auction| AH[Pickup + ClickAuctionSellItemButton]
   Ctx -->|bank| Bank[UseContainerItem per slot async]
 ```
 
 - **RMB** without modifiers = lane collapse only.
-- **Ctrl+Shift+RMB** lane header: full lane via `Layout.ListLaneSlots(unfiltered)` (vendor/mail/bank).
+- **Ctrl+Shift+RMB** lane header: full lane via `Layout.ListLaneSlots(unfiltered)` (vendor/mail/auction/bank).
 - **Auto-sell:** `MERCHANT_SHOW` → `VendorJunk` collects inventory slots → `BulkTransfer.TransferSlotList` (merchant queue). **Per character** (`BetterBackpackDB.chars`): grey toggle, optional Junk lane non-grey, optional **marked** itemIDs (Settings → Features drag row). Settings preview lists items in bags that will sell.
 
 ### 4c. Merged stack bulk (Shift+RMB slot, OOC)
@@ -120,10 +121,10 @@ flowchart TD
   Col --> Q{count > 1?}
   Q -->|yes| Queue[BulkTransfer.StartQueue]
   Q -->|no| One[TransferOne single stack]
-  Queue --> Sell[merchant/mail per slot]
+  Queue --> Sell[merchant/mail/auction per slot]
 ```
 
-- **RMB** on a **merged** icon at vendor/mail = all stacks in merge group (`CollectMergeGroup`; shift optional via latch).
+- **RMB** on a **merged** icon at vendor/mail = all stacks in merge group (`CollectMergeGroup`; shift optional via latch). Auction sell slot holds **one** item.
 - **Mail subject:** `BulkTransfer.MaybeFillMailSubject` — if `SendMailSubjectEditBox` is empty, first attach sets localized item display name (single RMB via `Context.TrySpecialRmb`, bulk via `TransferMail` queue).
 - Single-stack slot (not merged) = one physical stack on RMB.
 

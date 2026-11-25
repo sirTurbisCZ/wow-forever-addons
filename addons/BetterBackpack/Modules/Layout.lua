@@ -102,6 +102,7 @@ local EnsureTitleChrome
 local ApplyCombinedBagsChrome
 local SetBagMatchHighlight
 local ClearBagMatchGlows
+local InventoryOccupiedCount
 local VisibleGridSignature
 
 local function SafeNum(v, fallback)
@@ -3483,7 +3484,7 @@ function Layout.Relayout()
   end
 end
 
-local function InventoryOccupiedCount()
+InventoryOccupiedCount = function()
   local ranges = Slots.InventoryBagRanges and Slots.InventoryBagRanges()
   if type(ranges) ~= "table" then
     return 0
@@ -3714,7 +3715,12 @@ function Layout.RunSelfTest()
   ok(attrN >= 36 or (InCombatLockdown and InCombatLockdown()), "attrs < 36")
   local d = Layout.DebugState()
   ok(d.exists, "main frame missing")
+  ok(type(InventoryOccupiedCount) == "function", "InventoryOccupiedCount missing")
   ok(type(VisibleGridSignature) == "function", "VisibleGridSignature missing")
+  local occOk = pcall(function()
+    local _ = InventoryOccupiedCount()
+  end)
+  ok(occOk, "InventoryOccupiedCount call failed")
   local sigOk = pcall(function()
     local _ = VisibleGridSignature()
   end)

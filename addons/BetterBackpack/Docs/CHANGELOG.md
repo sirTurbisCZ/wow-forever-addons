@@ -1,5 +1,55 @@
 # BetterBackpack changelog
 
+## Release 1.2.22 — post-sell empty slot linger
+
+After vendor sell, emptied cells stayed lit until the last `QueueBagRefresh` tick (~1.5s) because early ticks only ran `RefreshLight` (no `DoLayout`).
+
+- **`QueueBagRefresh`:** every tick calls `Layout.Refresh` (already gates DoLayout vs light via occ/sig); delays `0.05 / 0.2 / 0.55`.
+- **BulkTransfer:** after merchant/mail pump or single RMB sell, invalidate grid sig + `Relayout`.
+- **Normalize:** empty slots keep icon + `IconBorder` hidden (no revive glow before repack).
+
+### Playtest (1.2.22)
+
+1. `/reload` → `v1.2.22`; vendor → RMB sell one item → empty cell clears / grid packs within ~0.2s (no long lit hole).
+2. Shift+RMB merged / Ctrl+Shift+RMB lane → same, no multi-second empty glow.
+
+## Release 1.2.21 — hotfix: bags open (InventoryOccupiedCount)
+
+**1.2.14+ regression:** `DoLayout` called `InventoryOccupiedCount()` before its `local function` (same Lua 5.1 scope bug as `VisibleGridSignature` in 1.2.13) → layout nil → bags crash/close.
+
+- Forward-declare `InventoryOccupiedCount`; assign as upvalue (same pattern as `VisibleGridSignature`).
+- `/bb selftest` asserts both helpers are callable.
+
+### Playtest (1.2.21)
+
+1. `/reload` → `v1.2.21`; **B** opens bags; loot/move item → grid stays up (no layout error).
+2. `/bb selftest` → pass on `InventoryOccupiedCount` + `VisibleGridSignature`.
+
+## Release 1.2.20 — auction house RMB
+
+- **Auction open:** RMB no longer `use`/equips gear — Pickup + `ClickAuctionSellItemButton` into create-auction slot (same pattern as vendor/mail).
+
+### Playtest (1.2.20)
+
+1. `/reload` → `v1.2.20`; open AH → Auctions tab → RMB green gear in BB → item in sell slot (not equipped).
+
+## Release 1.2.19 — white square after item use
+
+- **After RMB use / click:** `UI-Quickslot2` NormalTexture stayed on the icon (Hearthstone white frame). Occupied slots hide bevel (`SyncBevelChrome`); reset on `OnMouseUp`.
+
+### Playtest (1.2.19)
+
+1. `/reload` → `v1.2.19`; RMB use food/hearth → no white square on the slot after.
+
+## Release 1.2.18 — gear slot chrome / stale icons
+
+- **IconBorder:** Forever GrabTex left a small black inset square on some greens — border always `SetAllPoints` SLOT.
+- **Secret `iconFileID`:** `SetTexture` without reading; clear stale recycle so gloves don’t ghost onto the next cell; hide empty `IconOverlay*`.
+
+### Playtest (1.2.18)
+
+1. `/reload` → `v1.2.18`; open bags → **Výbava** greens — no black inset square; each slot shows its own item art.
+
 ## Release 1.2.17 — hotfix slot OnLeave tooltip
 
 - **Slots.OnLeave** used invalid `self` / `BagsMatch` refs (1.2.16) → fixed; glow restore via `SetBagFocus`.

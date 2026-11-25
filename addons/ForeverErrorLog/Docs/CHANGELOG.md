@@ -1,5 +1,9 @@
 # ForeverErrorLog changelog
 
+## Release 0.1.7 — watch reads agent-live-head.log
+
+- Forever blocks `*live-head*` filenames; chat truth now **`Plateband/Logs/agent-live-head.log`** (same io allowlist as `agent-live-export`).
+
 ## Release 0.1.6 — chat-truth head on CHAT_LOADED
 
 - No early head write before Plateband loads; **`PublishChatTruthHead`** on reload/login + 2s pulse (both TOC versions).

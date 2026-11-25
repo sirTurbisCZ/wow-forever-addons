@@ -184,7 +184,9 @@ local function QueueBagRefresh()
   end
   bagRefreshToken = bagRefreshToken + 1
   local token = bagRefreshToken
-  local delays = { 0.05, 0.25, 0.7, 1.5 }
+  -- Always Layout.Refresh (it already chooses DoLayout vs RefreshLight via occ/sig).
+  -- Early RefreshLight-only left emptied sell cells lit until the last tick (~1.5s).
+  local delays = { 0.05, 0.2, 0.55 }
   for i = 1, #delays do
     local d = delays[i]
     C_Timer.After(d, function()
@@ -200,10 +202,10 @@ local function QueueBagRefresh()
       if not (Layout.IsShown and Layout.IsShown()) then
         return
       end
-      if i < #delays and Layout.RefreshLight then
-        Layout.RefreshLight()
-      elseif Layout.Refresh then
+      if Layout.Refresh then
         Layout.Refresh()
+      elseif Layout.RefreshLight then
+        Layout.RefreshLight()
       end
     end)
   end
@@ -274,6 +276,8 @@ bootFrame:RegisterEvent("MERCHANT_SHOW")
 bootFrame:RegisterEvent("MERCHANT_CLOSED")
 bootFrame:RegisterEvent("MAIL_SHOW")
 bootFrame:RegisterEvent("MAIL_CLOSED")
+bootFrame:RegisterEvent("AUCTION_HOUSE_SHOW")
+bootFrame:RegisterEvent("AUCTION_HOUSE_CLOSED")
 bootFrame:RegisterEvent("BANKFRAME_OPENED")
 bootFrame:RegisterEvent("BANKFRAME_CLOSED")
 bootFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
@@ -447,7 +451,7 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
     return
   end
 
-  if event == "MERCHANT_CLOSED" or event == "MAIL_CLOSED" or event == "BANKFRAME_CLOSED" then
+  if event == "MERCHANT_CLOSED" or event == "MAIL_CLOSED" or event == "AUCTION_HOUSE_CLOSED" or event == "BANKFRAME_CLOSED" then
     if Context and Context.ForceRestoreDeferred then
       Context.ForceRestoreDeferred()
     end
@@ -460,7 +464,7 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
     return
   end
 
-  if event == "MAIL_SHOW" or event == "BANKFRAME_OPENED" then
+  if event == "MAIL_SHOW" or event == "AUCTION_HOUSE_SHOW" or event == "BANKFRAME_OPENED" then
     if Context then
       Context.SyncSpecialMode()
     end

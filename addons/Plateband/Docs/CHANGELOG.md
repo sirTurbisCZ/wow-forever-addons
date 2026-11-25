@@ -1,5 +1,9 @@
 # Plateband changelog
 
+## Release 0.2.78 — agent-live-head.log (Forever io allowlist)
+
+- **`WriteAgentLiveHead`** — `PublishChatTruthHead` writes `Logs/agent-live-head.log` first; export prepends `chatTruthLine`. Blocked paths: `live-head.log`, `felog-live-head.log`.
+
 ## Release 0.2.77 — PublishChatTruthHead (reload ≤2s)
 
 - **`PublishChatTruthHead`** on SESSION_START, CHAT_LOADED, AGENT_LIVE (2s) — unified `live_ver` + `felog_ver` from loaded Config (matches chat).

@@ -40,6 +40,10 @@ felog_logs_dir() {
   printf '%s' "$(felog_wow_root)/Interface/AddOns/ForeverErrorLog/Logs"
 }
 
+felog_agent_head_path() {
+  printf '%s' "$(felog_wow_root)/Interface/AddOns/Plateband/Logs/agent-live-head.log"
+}
+
 felog_bridge_head_path() {
   printf '%s' "$(felog_wow_root)/Interface/AddOns/Plateband/Logs/felog-live-head.log"
 }
@@ -49,17 +53,16 @@ felog_live_head_path() {
 }
 
 felog_pick_live_head_file() {
-  local a b
-  a="$(felog_live_head_path)"
-  b="$(felog_bridge_head_path)"
-  if [[ -f "$a" ]] && felog_file_age_sec "$a" >/dev/null 2>&1; then
-    printf '%s' "$a"
-    return 0
-  fi
-  if [[ -f "$b" ]]; then
-    printf '%s' "$b"
-    return 0
-  fi
+  local a b c
+  a="$(felog_agent_head_path)"
+  b="$(felog_live_head_path)"
+  c="$(felog_bridge_head_path)"
+  for f in "$a" "$b" "$c"; do
+    if [[ -f "$f" ]]; then
+      printf '%s' "$f"
+      return 0
+    fi
+  done
   return 1
 }
 
@@ -166,6 +169,8 @@ felog_sync_repo_mirror() {
   local repo
   repo="$(_felog_lib_root)/addons/ForeverErrorLog/Logs"
   mkdir -p "$repo"
+  local agent="$(felog_agent_head_path)"
+  [[ -f "$agent" ]] && cp -f "$agent" "$(felog_logs_dir)/live-head.log" 2>/dev/null || true
   for name in live-head.log agent-live-export.log live-stream.log session.log; do
     local src="$repo/../../../Interface/AddOns/ForeverErrorLog/Logs/$name"
     src="$(felog_logs_dir)/$name"
@@ -174,15 +179,19 @@ felog_sync_repo_mirror() {
 }
 
 felog_resolve_session_ver() {
-  local head export line ver iface
+  local head export line ver iface load pb
   iface="$(felog_plateband_interface_ver 2>/dev/null || echo "?")"
   if head="$(felog_read_live_head 2>/dev/null)"; then
-    ver="$(sed -n 's/.*live_ver=\([^ ]*\).*/\1/p' <<<"$head")"
-    pb="$(sed -n 's/.*plateband_ver=\([^ ]*\).*/\1/p' <<<"$head")"
-    [[ -n "$pb" && "$pb" != "" ]] && ver="$pb"
-    printf 'session_ver=%s interface_ver=%s source=live_head_file age_sec=%s\n' \
-      "$ver" "$iface" "$(sed -n 's/.*age_sec=\([^ ]*\).*/\1/p' <<<"$head")"
-    return 0
+    load="$(sed -n 's/.*load=\([^ ]*\).*/\1/p' <<<"$head" | head -1)"
+    # Reject host prove stubs — chat/TOC is ground truth; prove is not live.
+    if [[ "$load" != "prove" ]]; then
+      ver="$(sed -n 's/.*live_ver=\([^ ]*\).*/\1/p' <<<"$head")"
+      pb="$(sed -n 's/.*plateband_ver=\([^ ]*\).*/\1/p' <<<"$head")"
+      [[ -n "$pb" && "$pb" != "" ]] && ver="$pb"
+      printf 'session_ver=%s interface_ver=%s source=live_head_file age_sec=%s\n' \
+        "$ver" "$iface" "$(sed -n 's/.*age_sec=\([^ ]*\).*/\1/p' <<<"$head")"
+      return 0
+    fi
   fi
   line="$(felog_stamped_ver_from_export 2>/dev/null || true)"
   ver="$(echo "$line" | cut -f1)"
@@ -191,6 +200,7 @@ felog_resolve_session_ver() {
     printf 'session_ver=%s interface_ver=%s source=felog_agent_export age_sec=%s\n' "$ver" "$iface" "$age"
     return 0
   fi
-  printf 'session_ver=? interface_ver=%s source=none age_sec=?\n' "$iface"
-  return 1
+  # Fall back to chat-truth TOC (never invent reload_pending from SV lag).
+  printf 'session_ver=%s interface_ver=%s source=chat_truth_toc age_sec=?\n' "$iface" "$iface"
+  return 0
 }

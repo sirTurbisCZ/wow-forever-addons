@@ -420,6 +420,13 @@ pb_sync_live_feed() {
     local fel_head fel_bridge
     fel_head="$(felog_live_head_path)"
     fel_bridge="$(felog_bridge_head_path)"
+    fel_agent="$(felog_agent_head_path)"
+    if [[ -f "$fel_agent" ]]; then
+      mkdir -p "$(dirname "$fel_head")"
+      cp -f "$fel_agent" "$fel_head" 2>/dev/null || true
+      cp -f "$fel_agent" "${repo}/agent-live-head.log" 2>/dev/null || true
+      PB_LIVE_SYNC="agent_live_head"
+    fi
     if [[ -f "$fel_bridge" && ( ! -f "$fel_head" || "$fel_bridge" -nt "$fel_head" ) ]]; then
       mkdir -p "$(dirname "$fel_head")"
       cp -f "$fel_bridge" "$fel_head" 2>/dev/null || true
