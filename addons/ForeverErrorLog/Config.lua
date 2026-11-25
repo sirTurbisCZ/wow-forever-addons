@@ -2,7 +2,7 @@
 
 ForeverErrorLog = ForeverErrorLog or {}
 
-local CURRENT_SCHEMA = 2
+local CURRENT_SCHEMA = 3
 local MAX_ERRORS = 80
 local MAX_MSG = 4000
 local MAX_SESSION_LINES = 200
@@ -16,7 +16,7 @@ Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
 Config.MAX_SESSION_LINES = MAX_SESSION_LINES
 Config.MAX_AGENT_EXPORT_LINES = MAX_AGENT_EXPORT_LINES
-Config.VERSION = "0.1.3"
+Config.VERSION = "0.1.4"
 
 local function Defaults()
   return {
@@ -32,6 +32,17 @@ local function Defaults()
       fileOk = false,
       export = "",
       agentExport = "",
+    },
+    liveHead = {
+      platebandVer = "",
+      felogVer = Config.VERSION or "0.1.4",
+      seq = 0,
+      src = "",
+      load = "",
+      at = 0,
+      lastPaint = "",
+      lastCard = "",
+      feed = "sv_only",
     },
   }
 end
@@ -84,6 +95,22 @@ function Config.EnsureDB()
   if from < 2 then
     EnsureSessionLog(db)
     db.schemaVersion = 2
+    from = 2
+  end
+
+  if from < 3 then
+    if type(db.liveHead) ~= "table" then
+      db.liveHead = {
+        platebandVer = "",
+        seq = 0,
+        src = "",
+        load = "",
+        at = 0,
+        lastPaint = "",
+        lastCard = "",
+      }
+    end
+    db.schemaVersion = 3
   end
 
   if type(db.errors) ~= "table" then

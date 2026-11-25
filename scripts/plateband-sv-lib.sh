@@ -409,10 +409,19 @@ pb_publish_live_head() {
 
 pb_sync_live_feed() {
   local sv="${1:-}"
-  local repo mirror wow_exp repo_exp
+  local repo mirror wow_exp repo_exp fel_head
   repo="$(pb_repo_logs_dir)"
   mkdir -p "$repo"
   PB_LIVE_SYNC="none"
+  if [[ -x "$(pb_lib_root)/scripts/felog-sv-lib.sh" ]]; then
+    # shellcheck source=scripts/felog-sv-lib.sh
+    source "$(pb_lib_root)/scripts/felog-sv-lib.sh"
+    felog_sync_repo_mirror 2>/dev/null || true
+    if [[ -f "$(felog_live_head_path)" ]]; then
+      cp -f "$(felog_live_head_path)" "${repo}/felog-live-head.log" 2>/dev/null || true
+      PB_LIVE_SYNC="felog_live_head"
+    fi
+  fi
   local src
   src="$(pb_agent_live_log_path)"
   if [[ -f "$src" ]] && pb_log_fresh_sec "$src" 120; then
@@ -664,10 +673,27 @@ pb_agent_live_ver() {
   [[ -n "$v" ]] && printf '%s' "$v"
 }
 
+# Live runtime — FElog live-head → Plateband live-head → export → SV.
+pb_felog_live_head_path() {
+  printf '%s' "$(pb_wow_root)/Interface/AddOns/ForeverErrorLog/Logs/live-head.log"
+}
+
 # Live runtime — Logs/live-head.log → export → SV (never stale SV agentLive alone).
 pb_client_ver() {
   local sv="$1"
   local line v feed_ver feed_src feed_ts sv_ts
+  line="$(pb_read_live_head_file "$(pb_felog_live_head_path)" 2>/dev/null || true)"
+  if [[ -n "$line" ]]; then
+    PB_VER_SOURCE="felog_live_head"
+    PB_AGENT_SEQ="$(echo "$line" | cut -f2)"
+    PB_SESSION_LOAD="$(echo "$line" | cut -f4)"
+    v="$(echo "$line" | cut -f1)"
+    local pbv
+    pbv="$(sed -n 's/.*plateband_ver=\([^ ]*\).*/\1/p' <(head -1 "$(pb_felog_live_head_path)" 2>/dev/null) 2>/dev/null || true)"
+    [[ -n "$pbv" ]] && v="$pbv"
+    printf '%s' "$v"
+    return 0
+  fi
   line="$(pb_read_live_head_file "$(pb_live_head_log_path)" 2>/dev/null || true)"
   if [[ -n "$line" ]]; then
     PB_VER_SOURCE="live_head_file"

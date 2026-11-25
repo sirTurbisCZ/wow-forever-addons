@@ -283,6 +283,9 @@ function Mod.RecordChatLoaded(src)
   Mod.Append(string.format("RUNTIME_VER ver=%s src=chat load=%s", ver, src))
   pcall(Mod.TryWriteRuntimeVerFile, ver)
   pcall(Mod.WriteLiveHeadFile, ver, 0, "CHAT_LOADED", src)
+  if ForeverErrorLog and ForeverErrorLog.NotifyRuntime then
+    pcall(ForeverErrorLog.NotifyRuntime, "Plateband", ver, src, "CHAT_LOADED")
+  end
   pcall(Mod.FlushLiveExport)
   pcall(Mod.PulseAgentLive)
 end

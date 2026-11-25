@@ -44,6 +44,18 @@ end
 
 local FILE_REL = "Interface/AddOns/ForeverErrorLog/Logs/session.log"
 local FILE_REL_BS = [[Interface\AddOns\ForeverErrorLog\Logs\session.log]]
+local LIVE_HEAD_REL = "Interface/AddOns/ForeverErrorLog/Logs/live-head.log"
+local LIVE_HEAD_BS = [[Interface\AddOns\ForeverErrorLog\Logs\live-head.log]]
+local AGENT_EXPORT_REL = "Interface/AddOns/ForeverErrorLog/Logs/agent-live-export.log"
+local AGENT_EXPORT_BS = [[Interface\AddOns\ForeverErrorLog\Logs\agent-live-export.log]]
+local LIVE_STREAM_REL = "Interface/AddOns/ForeverErrorLog/Logs/live-stream.log"
+local LIVE_STREAM_BS = [[Interface\AddOns\ForeverErrorLog\Logs\live-stream.log]]
+local AGENT_TAIL_LINES = 160
+local livePulseTicker
+
+local WriteLiveHeadFile
+local FlushAgentExportFiles
+local UpdateLiveHeadFromAgent
 
 local function TryOpen(path, mode)
   if not (io and io.open) then
@@ -137,6 +149,198 @@ local function AppendSession(line)
     log.agentExport = table.concat(agentLines, "\n")
   end
   log.fileOk = AppendSessionFile(stamped) or log.fileOk
+  AppendLiveStream(stamped)
+  if stamped:find("AGENT[", 1, true) then
+    pcall(FlushAgentExportFiles, log)
+  end
+end
+
+local function EnsureLiveHeadTable(db)
+  if type(db.liveHead) ~= "table" then
+    db.liveHead = {
+      platebandVer = "",
+      felogVer = tostring(Config.VERSION or "?"),
+      seq = 0,
+      src = "",
+      load = "",
+      at = 0,
+      lastPaint = "",
+      lastCard = "",
+      feed = "sv_only",
+    }
+  end
+  return db.liveHead
+end
+
+local function AppendTextFile(relPaths, line)
+  if not (io and io.open) or not line or line == "" then
+    return false
+  end
+  for i = 1, #relPaths do
+    local f = TryOpen(relPaths[i], "a")
+    if f then
+      local ok = pcall(function()
+        f:write(line)
+        if line:sub(-1) ~= "\n" then
+          f:write("\n")
+        end
+        f:close()
+      end)
+      if ok then
+        fileOk = true
+        return true
+      end
+    end
+  end
+  return false
+end
+
+local function WriteTextFile(relPaths, body)
+  if not (io and io.open) then
+    return false
+  end
+  for i = 1, #relPaths do
+    local f = TryOpen(relPaths[i], "w")
+    if f then
+      local ok = pcall(function()
+        f:write(body)
+        if body:sub(-1) ~= "\n" then
+          f:write("\n")
+        end
+        f:close()
+      end)
+      if ok then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+FlushAgentExportFiles = function(log)
+  if not log then
+    return
+  end
+  local body = type(log.agentExport) == "string" and log.agentExport or ""
+  if body == "" then
+    return
+  end
+  local wrote = WriteTextFile({ AGENT_EXPORT_REL, AGENT_EXPORT_BS }, body)
+  local db = EnsureDB()
+  local lh = EnsureLiveHeadTable(db)
+  if wrote then
+    lh.feed = "file"
+  end
+  pcall(WriteLiveHeadFile, lh)
+end
+
+WriteLiveHeadFile = function(lh)
+  lh = lh or EnsureLiveHeadTable(EnsureDB())
+  local db = EnsureDB()
+  local at = tonumber(lh.at) or Now()
+  lh.felogVer = tostring(Config.VERSION or "?")
+  local line = string.format(
+    "live_ver=%s plateband_ver=%s felog_ver=%s seq=%s src=%s load=%s t=%s feed=%s",
+    tostring(lh.platebandVer ~= "" and lh.platebandVer or lh.felogVer or "?"),
+    tostring(lh.platebandVer or ""),
+    tostring(lh.felogVer or "?"),
+    tostring(lh.seq or 0),
+    tostring(lh.src or "felog"),
+    tostring(lh.load or "-"),
+    tostring(at),
+    tostring(lh.feed or "sv_only")
+  )
+  if type(lh.lastPaint) == "string" and lh.lastPaint ~= "" then
+    line = line .. " last_paint=" .. Trim(lh.lastPaint, 220)
+  end
+  if type(lh.lastCard) == "string" and lh.lastCard ~= "" then
+    line = line .. " last_card=" .. Trim(lh.lastCard, 220)
+  end
+  local wrote = WriteTextFile({ LIVE_HEAD_REL, LIVE_HEAD_BS }, line)
+  if wrote then
+    lh.feed = "file"
+    db.liveHead = lh
+  end
+  return wrote
+end
+
+UpdateLiveHeadFromAgent = function(source, payload)
+  source = tostring(source or "")
+  payload = tostring(payload or "")
+  if source ~= "Plateband" then
+    return
+  end
+  local db = EnsureDB()
+  local lh = EnsureLiveHeadTable(db)
+  local ver = payload:match("ver=([0-9%.]+)")
+  local seq = tonumber(payload:match("seq=([0-9]+)"))
+  local load = payload:match("load=([%w_]+)") or payload:match("src=([%w_]+)")
+  if payload:find("CHAT_LOADED", 1, true) then
+    lh.src = "CHAT_LOADED"
+    load = payload:match("src=([%w_]+)") or load
+  elseif payload:find("SESSION_START", 1, true) then
+    lh.src = "SESSION_START"
+    load = "addon"
+  elseif payload:find("AGENT_LIVE", 1, true) then
+    lh.src = "AGENT_LIVE"
+    load = load or "pulse"
+  elseif payload:sub(1, 6) == "PAINT " then
+    lh.lastPaint = Trim(payload, 220)
+    lh.src = lh.src ~= "" and lh.src or "PAINT"
+  elseif payload:find("PLATEBAND_CARD", 1, true) then
+    lh.lastCard = Trim(payload, 220)
+    lh.src = lh.src ~= "" and lh.src or "CARD"
+  elseif payload:find("RUNTIME_VER", 1, true) then
+    lh.src = "RUNTIME_VER"
+    load = payload:match("load=([%w_]+)") or load
+  end
+  if ver then
+    lh.platebandVer = ver
+  end
+  if seq then
+    lh.seq = seq
+  end
+  if load and load ~= "" then
+    lh.load = load
+  end
+  lh.at = Now()
+  db.liveHead = lh
+  pcall(WriteLiveHeadFile, lh)
+end
+
+local function PulseLiveHeadFile()
+  local db = EnsureDB()
+  local lh = EnsureLiveHeadTable(db)
+  if (tonumber(lh.at) or 0) <= 0 then
+    lh.at = Now()
+  end
+  pcall(WriteLiveHeadFile, lh)
+end
+
+local function EnsureLivePulseTicker()
+  if livePulseTicker or not C_Timer or not C_Timer.NewTicker then
+    return
+  end
+  pcall(PulseLiveHeadFile)
+  livePulseTicker = C_Timer.NewTicker(2.0, function()
+    pcall(PulseLiveHeadFile)
+  end)
+end
+
+local function AppendLiveStream(stamped)
+  AppendTextFile({ LIVE_STREAM_REL, LIVE_STREAM_BS }, stamped)
+end
+
+local function StampFelogReload()
+  local db = EnsureDB()
+  local lh = EnsureLiveHeadTable(db)
+  lh.src = "FELOG_LOAD"
+  lh.load = "reload"
+  lh.at = Now()
+  lh.felogVer = tostring(Config.VERSION or "?")
+  db.liveHead = lh
+  AppendSession(string.format("CHAT_LOADED ver=%s src=reload addon=ForeverErrorLog", lh.felogVer))
+  pcall(WriteLiveHeadFile, lh)
 end
 
 --- Wipe session log on cold load. Error ring is kept across sessions.
@@ -159,6 +363,15 @@ local function BeginSession()
     tostring(Config.VERSION or "?"),
     wrote and "yes" or "sv_only"
   ))
+  local db = EnsureDB()
+  local lh = EnsureLiveHeadTable(db)
+  lh.felogVer = tostring(Config.VERSION or "?")
+  lh.src = "SESSION_START"
+  lh.load = "addon"
+  lh.at = Now()
+  db.liveHead = lh
+  pcall(WriteLiveHeadFile, lh)
+  EnsureLivePulseTicker()
 end
 
 local function AddonFromMessage(msg)
@@ -342,6 +555,15 @@ frame:SetScript("OnEvent", function(_, event, name)
     EnsureDB()
     BeginSession()
     InstallHandler()
+    local loggedIn = false
+    pcall(function()
+      if IsLoggedIn then
+        loggedIn = IsLoggedIn()
+      end
+    end)
+    if loggedIn then
+      pcall(StampFelogReload)
+    end
   elseif event == "PLAYER_LOGIN" then
     EnsureDB()
     BeginSession()
@@ -382,10 +604,39 @@ ForeverErrorLog.AgentFeed = function(source, line)
     return
   end
   AppendSession(string.format("AGENT[%s] %s", source, line))
+  pcall(UpdateLiveHeadFromAgent, source, line)
 end
 
 ForeverErrorLog.AgentFeedReady = function()
   return sessionBegun and type(ForeverErrorLog.AgentFeed) == "function"
+end
+
+--- Explicit runtime stamp from bridge addons (Plateband SessionLog).
+ForeverErrorLog.NotifyRuntime = function(source, ver, loadKind, src)
+  if not sessionBegun then
+    BeginSession()
+  end
+  source = tostring(source or "addon")
+  ver = tostring(ver or "?")
+  loadKind = tostring(loadKind or "runtime")
+  src = tostring(src or "notify")
+  local db = EnsureDB()
+  local lh = EnsureLiveHeadTable(db)
+  if source == "Plateband" then
+    lh.platebandVer = ver
+  end
+  lh.src = src
+  lh.load = loadKind
+  lh.at = Now()
+  db.liveHead = lh
+  AppendSession(string.format(
+    "AGENT[%s] RUNTIME_VER ver=%s src=%s load=%s",
+    source,
+    ver,
+    src,
+    loadKind
+  ))
+  pcall(WriteLiveHeadFile, lh)
 end
 
 ForeverErrorLog.Count = function()
