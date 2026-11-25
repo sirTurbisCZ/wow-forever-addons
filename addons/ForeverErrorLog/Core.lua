@@ -537,30 +537,62 @@ local function FelogPlatebandExportLine()
   )
 end
 
+local function PickPlatebandChatTruthLine()
+  if Plateband and Plateband.Config and Plateband.Config.EnsureDB then
+    local ok, pdb = pcall(Plateband.Config.EnsureDB)
+    if ok and type(pdb) == "table" and type(pdb.chatTruthLine) == "string" then
+      local line = pdb.chatTruthLine
+      if line:sub(1, 9) == "live_ver=" then
+        return line
+      end
+    end
+  end
+  return nil
+end
+
 local function WritePlatebandExportLine(line)
   line = tostring(line or "")
-  if line == "" or not (io and io.open) then
+  if line == "" then
+    return false
+  end
+  local sl = Plateband and Plateband.SessionLog
+  if sl and type(sl.WriteExportL1Brute) == "function" then
+    local ok, wrote = pcall(sl.WriteExportL1Brute, line)
+    if ok and wrote then
+      return true
+    end
+  end
+  if not (io and io.open) then
     return false
   end
   for i = 1, 2 do
     local path = i == 1 and PB_EXPORT_REL or PB_EXPORT_BS
-    local f = TryOpen(path, "w")
-    if f then
-      local ok = pcall(function()
-        f:write(line)
-        f:write("\n")
-        if f.flush then
-          f:flush()
+    for _, mode in ipairs({ "w", "wb" }) do
+      local f = TryOpen(path, mode)
+      if f then
+        local ok = pcall(function()
+          f:write(line)
+          f:write("\n")
+          if f.flush then
+            f:flush()
+          end
+          f:close()
+        end)
+        if ok then
+          return true
         end
-        f:close()
-      end)
-      if ok then
-        return true
       end
     end
   end
+  if C_Timer and C_Timer.After then
+    C_Timer.After(0, function()
+      WritePlatebandExportLine(line)
+    end)
+  end
   return false
 end
+
+ForeverErrorLog.WritePlatebandExportL1 = WritePlatebandExportLine
 
 local function ScheduleFelogExportBurst()
   local now = Now()
@@ -603,7 +635,7 @@ local function EnsureFelogWorldIoPulse()
 end
 
 local function PulseLiveHeadFile()
-  local bridgeLine = FelogPlatebandExportLine()
+  local bridgeLine = PickPlatebandChatTruthLine() or FelogPlatebandExportLine()
   WritePlatebandExportLine(bridgeLine)
   local sl = Plateband and Plateband.SessionLog
   if sl and type(sl.PulseExportDisk) == "function" then

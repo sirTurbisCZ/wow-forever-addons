@@ -228,19 +228,24 @@ function Mod.ResolveExportVersions()
   return pbVer, feVer, pbMeta, feMeta
 end
 
---- Line 1 only — mtime truth for watch (≤2s).
+--- Line 1 only — mirror SV chatTruthLine to agent-live-export.log (≤2s).
 function Mod.ForceDiskExportL1()
   local db = ns.Config.EnsureDB()
   db.exportPulseSeq = (tonumber(db.exportPulseSeq) or 0) + 1
-  local line = Mod.BuildChatTruthLine("EXPORT_PULSE", "pulse", db.exportPulseSeq)
+  local line = db.chatTruthLine
+  if type(line) ~= "string" or line:sub(1, 9) ~= "live_ver=" then
+    line = Mod.BuildChatTruthLine("EXPORT_PULSE", "pulse", db.exportPulseSeq)
+  else
+  line = Mod.BuildChatTruthLine("EXPORT_PULSE", "pulse", db.exportPulseSeq)
+  end
   db.chatTruthLine = line
   db.chatTruthAt = Now()
   db.exportPulseAt = Now()
-  local wrote = WriteLineToPaths({ AGENT_EXPORT_REL, AGENT_EXPORT_BS }, line, "w")
+  local wrote = Mod.WriteExportL1Brute(line)
   if wrote then
-    db.ioExportDiskAt = Now()
-    db.ioExportDiskOk = true
     pcall(Mod.PublishInterfaceTocStamp)
+  else
+    QueueDeferredExportWrite(line)
   end
   return wrote
 end
@@ -482,6 +487,53 @@ local function WriteLineToPaths(paths, line, mode)
   return false
 end
 
+local function QueueDeferredExportWrite(line)
+  if not (C_Timer and C_Timer.After) then
+    return
+  end
+  local delays = { 0, 0.05, 0.2 }
+  for i = 1, #delays do
+    C_Timer.After(delays[i], function()
+      WriteLineToPaths({ AGENT_EXPORT_REL, AGENT_EXPORT_BS }, line, "w")
+    end)
+  end
+end
+
+--- Bruteforce agent-live-export L1 — Forever may block io in OnUpdate; defer + multi-path.
+function Mod.WriteExportL1Brute(line)
+  line = tostring(line or "")
+  if line == "" then
+    return false
+  end
+  local db = ns.Config.EnsureDB()
+  local paths = { AGENT_EXPORT_REL, AGENT_EXPORT_BS }
+  for i = 1, #paths do
+    for _, mode in ipairs({ "w", "wb" }) do
+      local f = TryOpen(paths[i], mode)
+      if f then
+        local ok = pcall(function()
+          f:write(line)
+          f:write("\n")
+          if f.flush then
+            f:flush()
+          end
+          f:close()
+        end)
+        if ok then
+          agentIoOk = true
+          db.ioAllowName = "export"
+          db.ioExportDiskAt = Now()
+          db.ioExportDiskOk = true
+          db.ioExportDiskLine = line
+          return true
+        end
+      end
+    end
+  end
+  QueueDeferredExportWrite(line)
+  return false
+end
+
 local function TryWriteWholeFile(paths, body)
   if not body or body == "" or not (io and io.open) then
     return false
@@ -585,7 +637,7 @@ function Mod.PulseExportDisk()
   end
   log.export = body
 
-  local wrote = WriteLineToPaths({ AGENT_EXPORT_REL, AGENT_EXPORT_BS }, line, "w")
+  local wrote = Mod.WriteExportL1Brute(line)
   if not wrote then
     wrote = TryWriteWholeFile({ AGENT_EXPORT_REL, AGENT_EXPORT_BS }, body)
   end

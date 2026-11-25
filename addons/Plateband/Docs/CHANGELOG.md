@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## Release 0.2.92 — WriteExportL1Brute + SV→disk mirror
+
+- **`WriteExportL1Brute`** — `agent-live-export.log` w/wb + **`C_Timer.After(0)`** defer (io blocked in OnUpdate).
+- **`ForceDiskExportL1`** rebuilds line matching **`chatTruthLine`** (SV pulse) every tick.
+
 ## Release 0.2.91 — BestVersion chat∪TOC + ExportDriver ≤2s
 
 - **`ResolveExportVersions`** — **`BestVersion`** of chat `Config`, stamp, disk toc, metadata (no lastKnown).
