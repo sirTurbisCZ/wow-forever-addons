@@ -206,6 +206,9 @@ bootFrame:SetScript("OnEvent", function(_, event, name)
     if SessionLog and SessionLog.BeginSession then
       SafeCall("session:begin", SessionLog.BeginSession)
     end
+    if SessionLog and SessionLog.RecordChatLoaded then
+      SafeCall("session:chat_loaded", SessionLog.RecordChatLoaded)
+    end
     ApplyModuleState()
     Print(string.format(L.LOADED or "loaded v%s · /pb", tostring(Config.VERSION)))
   end

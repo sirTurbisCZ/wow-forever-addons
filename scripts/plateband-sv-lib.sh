@@ -63,6 +63,53 @@ pb_flushed_plates_load() {
 }
 
 # Runtime truth from PlatebandDB.agentLive (2s pulse, works when io=sv_only).
+pb_runtime_ver_log() {
+  local wow
+  wow="$(pb_wow_root)"
+  printf '%s' "$wow/Interface/AddOns/Plateband/Logs/runtime-ver.log"
+}
+
+pb_runtime_file_ver() {
+  local f="$1" v
+  [[ -f "$f" ]] || return 1
+  v="$(grep 'RUNTIME_VER ver=' "$f" 2>/dev/null | tail -1 | sed -n 's/.*RUNTIME_VER ver=\([0-9.]*\).*/\1/p')"
+  [[ -n "$v" ]] && printf '%s' "$v"
+}
+
+pb_runtime_file_fresh() {
+  local f="$1" sv="$2"
+  [[ -f "$f" && -f "$sv" ]] || return 1
+  local lm sm
+  lm="$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || echo 0)"
+  sm="$(stat -f %m "$sv" 2>/dev/null || stat -c %Y "$sv" 2>/dev/null || echo 0)"
+  [[ "$lm" -ge "$((sm - 8))" ]]
+}
+
+pb_sv_runtime_table_ver() {
+  local sv="$1" v
+  [[ -f "$sv" ]] || return 1
+  v="$(python3 - "$sv" <<'PY' 2>/dev/null || true
+import re, pathlib, sys
+t = pathlib.Path(sys.argv[1]).read_text(errors="replace")
+m = re.search(r'\["runtimeVer"\]\s*=\s*\{', t)
+if not m:
+    sys.exit(0)
+chunk = t[m.start() : m.start() + 400]
+vm = re.search(r'\["ver"\]\s*=\s*"([0-9.]+)"', chunk)
+if vm:
+    print(vm.group(1))
+PY
+)"
+  [[ -n "$v" ]] && printf '%s' "$v"
+}
+
+pb_sv_chat_loaded_ver() {
+  local sv="$1" line v
+  line="$(pb_sv_export_grep_last "$sv" "CHAT_LOADED" 2>/dev/null || true)"
+  v="$(echo "$line" | sed -n 's/.*CHAT_LOADED ver=\([0-9.]*\).*/\1/p')"
+  [[ -n "$v" ]] && printf '%s' "$v"
+}
+
 pb_sv_agent_live_ver() {
   local sv="$1" v
   [[ -f "$sv" ]] || return 1
@@ -161,7 +208,7 @@ pb_find_agent_live_log() {
   local wow f pick name
   wow="$(pb_wow_root)"
   pick=""
-  for name in agent-live.log agent-live-export.log session.log; do
+  for name in runtime-ver.log agent-live.log agent-live-export.log session.log; do
     while IFS= read -r f; do
       [[ -z "$pick" || "$f" -nt "$pick" ]] && pick="$f"
     done < <(find "${wow}" -name "$name" -path '*/Plateband/Logs/*' 2>/dev/null)
@@ -195,7 +242,23 @@ pb_agent_live_ver() {
 # What Lua actually runs — SESSION / PLATES_LOAD / agentLive / export; never TOC alone.
 pb_client_ver() {
   local sv="$1" agent_log="$2"
-  local v line
+  local v line rvf
+
+  rvf="$(pb_runtime_ver_log)"
+  if [[ -f "$rvf" ]] && pb_runtime_file_fresh "$rvf" "$sv"; then
+    v="$(pb_runtime_file_ver "$rvf" 2>/dev/null || true)"
+    [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
+  fi
+
+  v="$(pb_sv_runtime_table_ver "$sv" 2>/dev/null || true)"
+  [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
+
+  v="$(pb_sv_chat_loaded_ver "$sv" 2>/dev/null || true)"
+  [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
+
+  line="$(pb_sv_export_grep_last "$sv" "RUNTIME_VER" 2>/dev/null || true)"
+  v="$(echo "$line" | sed -n 's/.*RUNTIME_VER ver=\([0-9.]*\).*/\1/p')"
+  [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
 
   v="$(pb_sv_agent_live_ver "$sv" 2>/dev/null || true)"
   [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
@@ -269,8 +332,12 @@ pb_sv_context() {
   PB_CLIENT_VER="$(pb_client_ver "$PB_SV" "$PB_AGENT_LOG")"
   PB_LIVE_VER="$(pb_resolve_live_ver "$PB_CLIENT_VER" "$PB_FLUSHED_VER" "$PB_AGENT_VER" "$PB_DIAG_VER")"
   PB_RULES_VER="${PLATEBAND_LIVE_VER:-$PB_LIVE_VER}"
+  PB_RUNTIME_FILE="$(pb_runtime_ver_log)"
+  PB_RUNTIME_FILE_VER="$(pb_runtime_file_ver "$PB_RUNTIME_FILE" 2>/dev/null || true)"
   PB_FEED_SOURCE="sv_export"
-  if [[ -n "${PB_AGENT_LOG:-}" ]] && pb_agent_log_fresh "$PB_AGENT_LOG" "$PB_SV"; then
+  if [[ -f "$PB_RUNTIME_FILE" ]] && pb_runtime_file_fresh "$PB_RUNTIME_FILE" "$PB_SV"; then
+    PB_FEED_SOURCE="runtime_ver_file"
+  elif [[ -n "${PB_AGENT_LOG:-}" ]] && pb_agent_log_fresh "$PB_AGENT_LOG" "$PB_SV"; then
     PB_FEED_SOURCE="agent_live_file"
   fi
 
@@ -301,10 +368,10 @@ pb_live_ver_ok() {
 }
 
 pb_export_session_line() {
-  printf 'live_ver=%s client_ver=%s flushed_session=%s deployed_ver=%s disk_ver=%s reload_pending=%s flush_lag=%s feed=%s agent_seq=%s rules_ver=%s chat_override=%s sv=%s' \
+  printf 'live_ver=%s client_ver=%s flushed_session=%s deployed_ver=%s disk_ver=%s reload_pending=%s flush_lag=%s feed=%s runtime_file=%s agent_seq=%s rules_ver=%s chat_override=%s sv=%s' \
     "${PB_LIVE_VER:-?}" "${PB_CLIENT_VER:-?}" "${PB_FLUSHED_VER:-?}" "${PB_RUNTIME_VER:-?}" \
     "${PB_DISK_VER:-?}" "${PB_RELOAD_PENDING:-no}" "${PB_FLUSH_LAG:-?}" "${PB_FEED_SOURCE:-?}" \
-    "${PB_AGENT_SEQ:-?}" "${PB_RULES_VER:-?}" "${PB_CHAT_LIVE:-no}" "${PB_SV:-none}"
+    "${PB_RUNTIME_FILE_VER:-?}" "${PB_AGENT_SEQ:-?}" "${PB_RULES_VER:-?}" "${PB_CHAT_LIVE:-no}" "${PB_SV:-none}"
 }
 
 pb_best_card_lines() {

@@ -38,6 +38,8 @@ local AGENT_LIVE_REL = "Interface/AddOns/Plateband/Logs/agent-live.log"
 local AGENT_LIVE_BS = [[Interface\AddOns\Plateband\Logs\agent-live.log]]
 local AGENT_EXPORT_REL = "Interface/AddOns/Plateband/Logs/agent-live-export.log"
 local AGENT_EXPORT_BS = [[Interface\AddOns\Plateband\Logs\agent-live-export.log]]
+local RUNTIME_VER_REL = "Interface/AddOns/Plateband/Logs/runtime-ver.log"
+local RUNTIME_VER_BS = [[Interface\AddOns\Plateband\Logs\runtime-ver.log]]
 local LIVE_TAIL_LINES = 120
 local AGENT_PULSE_SEC = 2.0
 
@@ -177,7 +179,42 @@ local function IsAgentLine(line)
   if line:find("AGENT_LIVE", 1, true) then
     return true
   end
+  if line:find("CHAT_LOADED", 1, true) or line:find("RUNTIME_VER", 1, true) then
+    return true
+  end
   return false
+end
+
+function Mod.TryWriteRuntimeVerFile(ver)
+  ver = tostring(ver or (ns.Config and ns.Config.VERSION) or "?")
+  local line = string.format("RUNTIME_VER ver=%s t=%s", ver, tostring(Now()))
+  local paths = { RUNTIME_VER_REL, RUNTIME_VER_BS }
+  for i = 1, #paths do
+    local f = TryOpen(paths[i], "w")
+    if f then
+      local ok = pcall(function()
+        f:write(line)
+        f:write("\n")
+        f:close()
+      end)
+      if ok then
+        agentIoOk = true
+        return true
+      end
+    end
+  end
+  return false
+end
+
+--- PLAYER_LOGIN chat line — truth before WTF flush; mirrors into export + runtime-ver.log.
+function Mod.RecordChatLoaded()
+  local ver = tostring(ns.Config and ns.Config.VERSION or "?")
+  local db = ns.Config.EnsureDB()
+  db.runtimeVer = { ver = ver, at = Now(), src = "chat" }
+  Mod.Append(string.format("CHAT_LOADED ver=%s src=login", ver))
+  Mod.Append(string.format("RUNTIME_VER ver=%s src=chat", ver))
+  pcall(Mod.TryWriteRuntimeVerFile, ver)
+  pcall(Mod.PulseAgentLive)
 end
 
 local function UpsertAgentLiveStamped(stamped)
@@ -312,10 +349,9 @@ function Mod.PulseAgentLive()
   log.export = table.concat(log.lines, "\n")
   logDirty = true
   MaybeReprobeIo()
-  if body:find("AGENT_LIVE", 1, true) then
-    TryAppendAgentLive(stamped)
-    Mod.ScheduleLiveFlush()
-  end
+  pcall(Mod.TryWriteRuntimeVerFile, al.ver)
+  TryAppendAgentLive(stamped)
+  Mod.ScheduleLiveFlush()
 end
 
 function Mod.EnsureAgentPulseTicker()

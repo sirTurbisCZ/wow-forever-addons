@@ -12,7 +12,7 @@ local Config = Plateband.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.2.59"
+Config.VERSION = "0.2.60"
 
 local function ProfileDefaults()
   return {
@@ -59,6 +59,7 @@ local function Defaults()
     },
     lastPaintTrace = nil,
     agentLive = { seq = 0, ver = "", at = 0, io = "sv_only", lines = 0 },
+    runtimeVer = { ver = "", at = 0, src = "" },
   }
 end
 

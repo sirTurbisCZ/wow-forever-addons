@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.2.60 — chat-first runtime ver (no SV lag)
+
+- **PLAYER_LOGIN:** `RecordChatLoaded` → `CHAT_LOADED` + `RUNTIME_VER` + `PlatebandDB.runtimeVer` + `Logs/runtime-ver.log` (prefer over stale `SESSION_START` until WTF flush).
+- **Watch:** `pb_client_ver` order runtime file → `runtimeVer` → `CHAT_LOADED` → export `RUNTIME_VER` → `agentLive` → `SESSION`.
+- **Pulse:** `AGENT_LIVE` also refreshes `runtime-ver.log` when io works.
+
 ## Release 0.2.59 — agent live_ver detection + SV feed mirror
 
 - **Agent pulse:** `AGENT_LIVE` every 2s → `PlatebandDB.agentLive` + rolling export line (`io=file|sv_only`); `live_ver` never inferred from TOC.
