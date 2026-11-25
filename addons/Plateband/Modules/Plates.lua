@@ -2537,14 +2537,18 @@ NativeBandRightAnchor = function(plate)
     return { list:GetChildren() }
   end)
   if ok and type(kids) == "table" then
-    local harmfulKids = {}
-    for i = 1, #kids do
-      local child = kids[i]
-      if child and IsPlateHarmfulAuraButton(child) then
-        harmfulKids[#harmfulKids + 1] = child
+    if friendFilter then
+      local harmfulKids = {}
+      for i = 1, #kids do
+        local child = kids[i]
+        if child and IsPlateHarmfulAuraButton(child) then
+          harmfulKids[#harmfulKids + 1] = child
+        end
       end
+      rightmost = PickRightmostAuraFrame(harmfulKids)
+    else
+      rightmost = PickRightmostAuraFrame(kids)
     end
-    rightmost = PickRightmostAuraFrame(harmfulKids)
   end
   if rightmost then
     return rightmost

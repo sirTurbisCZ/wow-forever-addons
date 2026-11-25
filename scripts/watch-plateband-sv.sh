@@ -7,7 +7,10 @@ WOW_ROOT="${WOW_ROOT%/}"
 SV_GLOB="${WOW_ROOT}/WTF/Account/*/SavedVariables/Plateband.lua"
 
 shopt -s nullglob
-files=($SV_GLOB)
+files=()
+while IFS= read -r -d '' f; do
+  files+=("$f")
+done < <(find "${WOW_ROOT}/WTF/Account" -name 'Plateband.lua' -path '*/SavedVariables/*' -print0 2>/dev/null)
 shopt -u nullglob
 
 if [[ ${#files[@]} -eq 0 ]]; then
