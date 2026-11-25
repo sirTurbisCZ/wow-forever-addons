@@ -22,7 +22,7 @@ Green when `SESSION_START ver` matches disk, `PLATES_LOAD ok=1`, no hostile `tar
 
 WoW flushes `Plateband.lua` on logout/reload — treat WTF as archive; **watch reads Logs/ first**.
 
-- **Live during play (Forever io off):** session-watch mirrors **SV export** when `Plateband.lua` mtime changes → repo `agent-live-export.log` + `live-head.txt` every 2s. Version = **`pb_unified_runtime_from_sv`** only (chat markers win over PAINT/mirror stale).
+- **Live during play:** prefer **ForeverErrorLog `session.log`** (`AGENT[Plateband]…`) via Plateband 0.2.63 bridge → `felog-plateband-live.log`; else SV mirror + `live-head.txt`.
 - **Never:** client `agent-live-export` or old PAINT lines for `live_ver`.
 - **`agent-live.log`:** CARD/PAINT append each event (when client `io` works).
 - Gate/matrix **do not fail** on flush lag alone; paint rules still run on `agent-live.log` + SV.

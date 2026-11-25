@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.2.63 — FElog live bridge (io sv_only fallback)
+
+- **SessionLog:** agent lines → `ForeverErrorLog.AgentFeed` when `agent-live.log` append fails.
+- **Watch:** `felog-plateband-live.log` sync + `pb_felog_plateband_ver` in unified client ver (`feed=felog_bridge`).
+- Requires **ForeverErrorLog 0.1.2+** loaded.
+
 ## Release 0.2.62 — unified runtime detection + sv live mirror
 
 - **Lua:** `PlatebandDB.liveHead` (ver/seq/at) updated every pulse — regex-fast for agents.

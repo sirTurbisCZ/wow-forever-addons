@@ -6,15 +6,19 @@ ForeverErrorLog.L = ForeverErrorLog.L or {}
 local L = ForeverErrorLog.L
 
 L.PREFIX = "|cffd94a4a[FElog]|r"
-L.LOADED_EMPTY = "loaded — capturing to log, popup off · /felog"
-L.LOADED_COUNT = "loaded — %d stored · /felog list (popup off)"
+L.LOADED_COUNT = "loaded — %d errors stored (historical) · session %s · /felog session"
+L.LOADED_EMPTY = "loaded — session %s · /felog session · popup off"
+L.SESSION_HEADER = "session lines=%d file=%s (LIVE this login)"
+L.SESSION_HINT = "historical errors: /felog list · agent LIVE: Logs/session.log or /felog session"
+L.NO_SESSION = "no session lines yet"
 L.NO_ERRORS = "no errors stored"
 L.LOG_CLEARED = "log cleared"
 L.CONFIG_RESET = "config reset to defaults (log cleared)"
 L.UNKNOWN_CMD = "unknown command — /felog help"
 L.HELP_LINES = {
   "/felog help — this help",
-  "/felog list — summary of stored errors",
+  "/felog list — stored errors (historical ring)",
+  "/felog session — live session tail (AGENT/ERROR this login)",
   "/felog dump — recent errors with stacks (chat)",
   "/felog clear — clear the error log",
   "/felog reset — reset config + clear log",

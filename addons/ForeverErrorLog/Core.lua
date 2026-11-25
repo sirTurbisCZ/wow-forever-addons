@@ -56,19 +56,15 @@ local function TryOpen(path, mode)
   return nil
 end
 
-local function ProbeSessionFile()
-  if fileOk == false then
-    return false
-  end
+local function ProbeSessionFileAppend()
   if not (io and io.open) then
     fileOk = false
     return false
   end
   for _, path in ipairs({ FILE_REL, FILE_REL_BS }) do
-    local f = TryOpen(path, "w")
+    local f = TryOpen(path, "a")
     if f then
       pcall(function()
-        f:write("")
         f:close()
       end)
       fileOk = true
@@ -133,7 +129,7 @@ local function BeginSession()
   end
   sessionBegun = true
   local db = EnsureDB()
-  local wrote = ProbeSessionFile()
+  local wrote = ProbeSessionFileAppend()
   db.sessionLog = {
     startedAt = Now(),
     lines = {},
@@ -335,10 +331,19 @@ frame:SetScript("OnEvent", function(_, event, name)
     SuppressScriptErrorsPopup()
     local db = ForeverErrorLogDB
     local n = #(db.errors or {})
+    local slog = db.sessionLog
+    local fileHint = (slog and slog.fileOk) and "file" or "sv_only"
     if n > 0 then
-      Print(string.format(L.LOADED_COUNT or "loaded — %d stored", n))
+      Print(string.format(
+        L.LOADED_COUNT or "loaded — %d errors stored (historical) · session %s · /felog session",
+        n,
+        fileHint
+      ))
     else
-      Print(L.LOADED_EMPTY or "loaded — capturing to log, popup off · /felog")
+      Print(string.format(
+        L.LOADED_EMPTY or "loaded — session %s · /felog session · popup off",
+        fileHint
+      ))
     end
   end
 end)
@@ -347,6 +352,20 @@ end)
 ForeverErrorLog.Record = function(msg, stack)
   Record(msg, stack)
 end
+
+--- Cross-addon live feed (append session.log — works when target addon io is blocked).
+ForeverErrorLog.AgentFeed = function(source, line)
+  if not sessionBegun then
+    BeginSession()
+  end
+  source = tostring(source or "?")
+  line = Trim(tostring(line or ""), 490)
+  if line == "" then
+    return
+  end
+  AppendSession(string.format("AGENT[%s] %s", source, line))
+end
+
 ForeverErrorLog.Count = function()
   return #(EnsureDB().errors or {})
 end
@@ -386,6 +405,23 @@ SlashCmdList.FOREVERERRORLOG = function(msg)
 
   if cmd == "dump" then
     DumpRecent()
+    return
+  end
+
+  if cmd == "session" then
+    local slog = db.sessionLog or {}
+    local lines = type(slog.lines) == "table" and slog.lines or {}
+    local n = #lines
+    Print(string.format(L.SESSION_HEADER or "session lines=%d file=%s (LIVE this login)", n, tostring(slog.fileOk)))
+    if n == 0 then
+      Print(L.NO_SESSION or "no session lines yet")
+      return
+    end
+    local from = math.max(1, n - 12)
+    for i = from, n do
+      print("|cff888888" .. tostring(lines[i]) .. "|r")
+    end
+    print("|cffaaaaaa" .. (L.SESSION_HINT or "agent tail: scripts/watch-forever-traces.sh watch 3") .. "|r")
     return
   end
 

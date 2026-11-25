@@ -107,6 +107,15 @@ felog_live_new_errors() {
   if [[ -z "$chunk" ]]; then
     return 0
   fi
+  if printf '%s' "$chunk" | rg -q 'AGENT\[Plateband\]'; then
+    local agent
+    agent=$(printf '%s' "$chunk" | grep 'AGENT\[Plateband\]' | tail -3 || true)
+    if [[ -n "$agent" ]]; then
+      emit_alert "[FElog LIVE] Plateband agent feed — $log"
+      printf '%s\n' "$agent"
+    fi
+    return 0
+  fi
   if ! printf '%s' "$chunk" | rg -q 'ERROR'; then
     return 0
   fi

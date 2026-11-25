@@ -270,6 +270,15 @@ local function MaybeReprobeIo()
   end
 end
 
+local function MirrorToFelog(line)
+  if agentIoOk then
+    return
+  end
+  if ForeverErrorLog and ForeverErrorLog.AgentFeed then
+    pcall(ForeverErrorLog.AgentFeed, "Plateband", line)
+  end
+end
+
 local function TryAppendAgentLive(stamped)
   local paths = { AGENT_LIVE_REL, AGENT_LIVE_BS }
   for i = 1, #paths do
@@ -371,7 +380,9 @@ function Mod.PulseAgentLive()
   logDirty = true
   MaybeReprobeIo()
   pcall(Mod.TryWriteRuntimeVerFile, al.ver)
-  TryAppendAgentLive(stamped)
+  if not TryAppendAgentLive(stamped) then
+    MirrorToFelog(body)
+  end
   Mod.ScheduleLiveFlush()
   pcall(Mod.FlushLiveExport)
 end
@@ -468,7 +479,9 @@ function Mod.Append(line)
   log.export = table.concat(log.lines, "\n")
   logDirty = true
   if IsAgentLine(line) then
-    TryAppendAgentLive(stamped)
+    if not TryAppendAgentLive(stamped) then
+      MirrorToFelog(line)
+    end
     Mod.ScheduleLiveFlush()
   end
 end

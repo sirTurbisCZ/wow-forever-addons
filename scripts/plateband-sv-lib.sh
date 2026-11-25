@@ -67,6 +67,41 @@ pb_plateband_logs_dir() {
   printf '%s' "$(pb_wow_root)/Interface/AddOns/Plateband/Logs"
 }
 
+pb_felog_session_log() {
+  local wow p
+  wow="$(pb_wow_root)"
+  p="${wow}/Interface/AddOns/ForeverErrorLog/Logs/session.log"
+  if [[ -f "$p" ]]; then
+    printf '%s' "$p"
+    return 0
+  fi
+  return 1
+}
+
+pb_felog_plateband_ver() {
+  local f="$1" line v
+  [[ -f "$f" ]] || return 1
+  line="$(grep 'AGENT\[Plateband\]' "$f" 2>/dev/null | grep -E 'CHAT_LOADED|RUNTIME_VER|AGENT_LIVE|SESSION_START' | tail -1 || true)"
+  v="$(echo "$line" | sed -n 's/.*CHAT_LOADED ver=\([0-9.]*\).*/\1/p')"
+  [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
+  v="$(echo "$line" | sed -n 's/.*RUNTIME_VER ver=\([0-9.]*\).*/\1/p')"
+  [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
+  v="$(echo "$line" | sed -n 's/.*AGENT_LIVE ver=\([0-9.]*\).*/\1/p')"
+  [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
+  v="$(echo "$line" | sed -n 's/.*SESSION_START ver=\([0-9.]*\).*/\1/p')"
+  [[ -n "$v" ]] && printf '%s' "$v"
+}
+
+pb_sync_felog_plateband() {
+  local repo fel
+  repo="$(pb_repo_logs_dir)"
+  mkdir -p "$repo"
+  fel="$(pb_felog_session_log 2>/dev/null || true)"
+  [[ -n "$fel" && -f "$fel" ]] || return 1
+  grep 'AGENT\[Plateband\]' "$fel" 2>/dev/null | tail -400 > "${repo}/felog-plateband-live.log" || true
+  PB_FELOG_SYNC="felog_bridge"
+}
+
 pb_repo_logs_dir() {
   printf '%s' "$(pb_lib_root)/addons/Plateband/Logs"
 }
@@ -181,6 +216,10 @@ pb_sync_live_feed() {
     pb_mirror_sv_export "$sv" "$mirror" 2>/dev/null || true
     pb_publish_live_head "$sv" 2>/dev/null || true
     [[ "$PB_LIVE_SYNC" == "none" ]] && PB_LIVE_SYNC="sv_mirror"
+  fi
+  pb_sync_felog_plateband 2>/dev/null || true
+  if [[ "${PB_FELOG_SYNC:-}" == "felog_bridge" ]]; then
+    [[ "$PB_LIVE_SYNC" == "none" ]] && PB_LIVE_SYNC="felog_bridge"
   fi
 }
 
@@ -350,7 +389,12 @@ pb_find_agent_live_log() {
   local wow f pick name
   wow="$(pb_wow_root)"
   pick=""
-  for name in runtime-ver.log agent-live.log session.log; do
+  fel="$(pb_felog_session_log 2>/dev/null || true)"
+  [[ -n "$fel" ]] && pick="$fel"
+  for name in session.log agent-live.log runtime-ver.log; do
+    while IFS= read -r f; do
+      [[ -z "$pick" || "$f" -nt "$pick" ]] && pick="$f"
+    done < <(find "${wow}" -name "$name" -path '*/ForeverErrorLog/Logs/*' 2>/dev/null)
     while IFS= read -r f; do
       [[ -z "$pick" || "$f" -nt "$pick" ]] && pick="$f"
     done < <(find "${wow}" -name "$name" -path '*/Plateband/Logs/*' 2>/dev/null)
@@ -388,6 +432,16 @@ pb_client_ver() {
   line="$(pb_unified_runtime_from_sv "$sv" 2>/dev/null || true)"
   v="$(echo "$line" | cut -f1)"
   [[ -n "$v" ]] && sv_v="$v" || sv_v=""
+
+  local fel
+  fel="$(pb_felog_session_log 2>/dev/null || true)"
+  if [[ -n "$fel" ]] && pb_log_fresh_sec "$fel" 300; then
+    v="$(pb_felog_plateband_ver "$fel" 2>/dev/null || true)"
+    if [[ -n "$v" ]] && [[ -z "$sv_v" || "$(printf '%s\n' "$sv_v" "$v" | sort -V | tail -1)" == "$v" ]]; then
+      printf '%s' "$v"
+      return 0
+    fi
+  fi
 
   rvf="$(pb_runtime_ver_log)"
   if [[ -f "$rvf" ]] && pb_runtime_file_fresh "$rvf" "$sv"; then
@@ -456,6 +510,8 @@ pb_sv_context() {
     PB_FEED_SOURCE="agent_live_file"
   elif [[ -f "$PB_RUNTIME_FILE" ]] && pb_runtime_file_fresh "$PB_RUNTIME_FILE" "$PB_SV"; then
     PB_FEED_SOURCE="runtime_ver_file"
+  elif [[ "${PB_FELOG_SYNC:-}" == "felog_bridge" ]]; then
+    PB_FEED_SOURCE="felog_bridge"
   elif [[ "${PB_LIVE_SYNC:-none}" != "none" ]]; then
     PB_FEED_SOURCE="$PB_LIVE_SYNC"
   fi

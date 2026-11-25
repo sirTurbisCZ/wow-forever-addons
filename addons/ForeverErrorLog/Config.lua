@@ -14,7 +14,7 @@ Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
 Config.MAX_SESSION_LINES = MAX_SESSION_LINES
-Config.VERSION = "0.1.1"
+Config.VERSION = "0.1.2"
 
 local function Defaults()
   return {
