@@ -790,14 +790,12 @@ ShouldPaintOverlayNow = function(unit, isTarget, useTargetSrc, partyMerge)
     return true
   end
   local now = GetTime and GetTime() or 0
-  local last = lastOverlayPaintAt[unit] or 0
-  local sec = PB.PAINT_ENEMY_SEC
-  if useTargetSrc or isTarget then
-    sec = PB.PAINT_TARGET_SEC
-  elseif partyMerge then
-    sec = PB.PAINT_PARTY_SEC
+  if isTarget or useTargetSrc or partyMerge then
+    lastOverlayPaintAt[unit] = now
+    return true
   end
-  if now - last < sec then
+  local last = lastOverlayPaintAt[unit] or 0
+  if now - last < PB.PAINT_ENEMY_SEC then
     return false
   end
   lastOverlayPaintAt[unit] = now
@@ -5196,7 +5194,15 @@ OnEvent = function(_, event, arg1)
     MaybeAutoDiagnose("plate_removed", false)
   elseif event == "PLAYER_TARGET_CHANGED" then
     lastTargetPlateUnit = nil
+    lastOverlayPaintAt = {}
     Defer(function()
+      if HasTarget() then
+        local tp = PlateFor("target")
+        local tu = NameplateUnitFor("target")
+        if tp and tu then
+          pcall(UpdateOverlay, tu, tp)
+        end
+      end
       RefreshActiveGapsOnly()
       MaybeAutoDiagnose("target", true)
     end)

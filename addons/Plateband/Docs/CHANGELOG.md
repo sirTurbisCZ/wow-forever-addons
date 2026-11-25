@@ -1,10 +1,10 @@
 # Plateband changelog
 
-## Release 0.2.51 — selftest + SV automation (0.2.50 paint unchanged)
+## Release 0.2.51 — selftest + SV automation + target paint
 
-- **QA:** `scripts/plateband-selftest.sh`, `plateband-sv-gate.sh`, `plateband-sv-watch.sh`; `/pb selftest` → `SELFTEST` in SV.
-- **CARD:** live `tgtSrc` from `ShouldUseTargetAuraSource`; `friend=` field for agent gates.
-- **Docs:** `Docs/testing.md` — no playtest ping-pong; agent runs gates before asking `/reload`.
+- **QA:** `plateband-selftest.sh`, `plateband-sv-gate.sh`, `plateband-sv-watch.sh`, `plateband-sv-matrix.sh`; `/pb selftest`.
+- **Paint:** target/party plates bypass overlay throttle; `PLAYER_TARGET_CHANGED` clears throttle + immediate `UpdateOverlay` on new target.
+- **CARD:** live `tgtSrc`; `friend=` for agent matrix.
 
 ## Release 0.2.50 — party DoTs on mobs + sticky expiry
 
