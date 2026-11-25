@@ -27,8 +27,16 @@ local PB = {
   WATCH_DEFAULT_SEC = 2,
   AURA_DEBOUNCE_SEC = 0.35,
   GAP_STICKY_SEC = 3.0,
+  GAP_STICKY_FRIEND_SEC = 18.0,
   SILENT_SWEEP_SEC = 2.0,
 }
+
+local function GapStickyBudget(friendPlate)
+  if friendPlate then
+    return PB.GAP_STICKY_FRIEND_SEC or 18.0
+  end
+  return PB.GAP_STICKY_SEC or 3.0
+end
 local lastGapCdTickAt = 0
 local lastFullRefreshAt = 0
 
@@ -1904,8 +1912,10 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
   end
   local auraRow = NativeDebuffAnchorList(plate)
   if auraRow then
+    local sz = select(1, MergeRowIconSize(plate, mergeFb)) or IconSize()
+    local offX = (CountPlateHarmfulShown(plate) or 0) * (sz + pad)
     pcall(function()
-      mergeFb:SetPoint("BOTTOMLEFT", auraRow, "BOTTOMLEFT", 0, 0)
+      mergeFb:SetPoint("BOTTOMLEFT", auraRow, "BOTTOMLEFT", offX, 0)
     end)
   end
 end
@@ -2645,7 +2655,7 @@ CollectTargetFramePersonalGaps = function(paintKeys, out, maxN, stats)
   end
 end
 
-ApplyGapSticky = function(unit, missing, isTarget, unitToken)
+ApplyGapSticky = function(unit, missing, isTarget, unitToken, friendPlate)
   if not isTarget or not unit or #missing > 0 then
     return
   end
@@ -2654,7 +2664,8 @@ ApplyGapSticky = function(unit, missing, isTarget, unitToken)
     return
   end
   local now = GetTime and GetTime() or 0
-  if type(c.at) == "number" and (now - c.at) <= PB.GAP_STICKY_SEC then
+  local budget = GapStickyBudget(friendPlate)
+  if type(c.at) == "number" and (now - c.at) <= budget then
     unitToken = unitToken or "target"
     local live = {}
     for i = 1, #c.icons do
@@ -2765,7 +2776,6 @@ GapAuraLive = function(entry, unitToken)
       end
       return true
     end
-    return false
   end
   if entry.spellId and unitToken and C_UnitAuras and C_UnitAuras.GetAuraDataBySpellID then
     local ok, data = pcall(C_UnitAuras.GetAuraDataBySpellID, unitToken, entry.spellId)
@@ -2911,6 +2921,9 @@ RefreshHeldGapFallback = function(unit, plate, fb, icons, auraUnit)
     fb:Show()
   end)
   fb._painted = painted
+  if painted > 0 and gapSticky[unit] then
+    gapSticky[unit].at = GetTime and GetTime() or 0
+  end
   pcall(LayoutMergeBesideNative, unit, plate, fb, painted)
   lastPaintDebug.gapSz = sz
   lastPaintDebug.lockSz = fb._pbLockedSz
@@ -4501,7 +4514,7 @@ PaintMergeMissing = function(unit, plate)
 
   local paintAuraTok = AuraUnitForPlate(unit, plate, useTargetSrc, partyAuraTok)
   PruneInactiveGapRows(missing, paintAuraTok, maxN)
-  ApplyGapSticky(unit, missing, useTargetSrc or friendPlate, paintAuraTok)
+  ApplyGapSticky(unit, missing, useTargetSrc or friendPlate, paintAuraTok, friendPlate)
   if useTargetSrc and heavyTarget then
     local tfUiLate = CountTargetFrameAuras()
     if not (tfUiLate > 0 and #missing > 0) then
@@ -4575,7 +4588,8 @@ PaintMergeMissing = function(unit, plate)
         end
       elseif #stickyLive > 0 then
         sticky.icons = stickyLive
-        if type(sticky.at) == "number" and (now - sticky.at) <= PB.GAP_STICKY_SEC then
+        local budget = GapStickyBudget(friendPlate or partyMerge)
+        if type(sticky.at) == "number" and (now - sticky.at) <= budget then
           local heldCd = 0
           pcall(function()
             local n, cdn = RefreshHeldGapFallback(unit, plate, held, sticky.icons, auraUnit)
@@ -4589,18 +4603,47 @@ PaintMergeMissing = function(unit, plate)
             SilentTracePaint("paint_hold_expired", unit, plate)
             return 0
           end
+          sticky.at = now
           lastPaintDebug.painted = heldN
           lastPaintDebug.miss = 0
           lastPaintDebug.cdN = heldCd
           SilentTracePaint("paint_hold", unit, plate)
           return heldN
+        elseif friendPlate or partyMerge then
+          sticky.at = now
+          for i = 1, #stickyLive do
+            missing[i] = stickyLive[i]
+          end
+          lastPaintDebug.miss = #missing
+        else
+          gapSticky[unit] = nil
         end
       end
     end
     if #missing == 0 then
-      lastPaintDebug.painted = 0
-      ClearFallback(unit, false)
-      return 0
+      if (friendPlate or partyMerge) and type(auraUnit) == "string" then
+        local retry = {}
+        local skip = CopyKeySet(NativeShownKeySet(plate))
+        pcall(EnsureUnitHarmfulParity, auraUnit, plate, retry, skip, maxN, stats)
+        if #retry == 0 and HasTarget() and plate == PlateFor("target") then
+          pcall(EnsureTargetHarmfulParity, plate, retry, skip, maxN, stats)
+        end
+        if #retry > 0 then
+          DedupeGapIcons(retry, maxN)
+          for i = 1, #retry do
+            missing[i] = retry[i]
+          end
+          lastPaintDebug.miss = #missing
+        else
+          lastPaintDebug.painted = 0
+          ClearFallback(unit, false)
+          return 0
+        end
+      else
+        lastPaintDebug.painted = 0
+        ClearFallback(unit, false)
+        return 0
+      end
     end
   end
 

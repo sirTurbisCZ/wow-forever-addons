@@ -35,28 +35,59 @@ else
 fi
 
 HOSTILE="$(rg 'PLATEBAND_CARD.*target=yes' "$SV_DATA" 2>/dev/null | rg -v 'friend=1' | tail -8 || true)"
-if echo "$HOSTILE" | rg -q 'painted=[1-9]'; then
+HOSTILE_RECENT="$(echo "$HOSTILE" | tail -3)"
+if echo "$HOSTILE_RECENT" | rg -q 'tgtSrc=1.*painted=[1-9]'; then
   check "own_foreign_paint" "OK"
+elif echo "$HOSTILE" | rg -q 'painted=[1-9]'; then
+  check "own_foreign_paint" "STALE (painted>0 but recent tgtSrc0?)"
+  fail=1
 else
   check "own_foreign_paint" "WAIT (no hostile target=yes painted>0 in data)"
 fi
 
-if echo "$HOSTILE" | rg -q 'tgtSrc=1.*painted=[1-9]'; then
+if echo "$HOSTILE_RECENT" | rg -q 'tgtSrc=1.*painted=[1-9]'; then
   check "tgt_bind" "OK"
+elif echo "$HOSTILE_RECENT" | rg -q 'target=yes.*tf=[1-9]'; then
+  check "tgt_bind" "FAIL (tf>0 recent, no tgtSrc paint)"
+  fail=1
 else
   check "tgt_bind" "WAIT"
 fi
 
-FRIEND="$(rg 'PLATEBAND_CARD.*friend=1' "$SV_DATA" 2>/dev/null | tail -5 || true)"
-if echo "$FRIEND" | rg -q 'friend=1.*painted=[1-9]'; then
-  check "friendly_ws" "OK"
-elif echo "$FRIEND" | rg -q 'friend=1.*tf=[1-9].*painted=0'; then
-  check "friendly_ws" "MISSING"
-  fail=1
+FRIEND="$(rg 'PLATEBAND_CARD.*friend=1' "$SV_DATA" 2>/dev/null | tail -8 || true)"
+FRIEND_TF="$(echo "$FRIEND" | rg 'friend=1.*tf=[1-9]' | tail -3 || true)"
+FRIEND_LAST="$(echo "$FRIEND" | tail -1)"
+if [[ -n "$FRIEND_TF" ]]; then
+  if echo "$FRIEND_TF" | rg -q 'painted=0'; then
+    if echo "$FRIEND_LAST" | rg -q 'friend=1.*tf=[1-9].*painted=0'; then
+      check "friendly_ws" "MISSING (recent tf>0 painted=0)"
+      fail=1
+    elif echo "$FRIEND_TF" | tail -1 | rg -q 'painted=[1-9]'; then
+      check "friendly_ws" "FLAKY (tf>0 streak with gaps)"
+      fail=1
+    else
+      check "friendly_ws" "MISSING"
+      fail=1
+    fi
+  elif echo "$FRIEND_LAST" | rg -q 'friend=1.*painted=[1-9]'; then
+    check "friendly_ws" "OK"
+  else
+    check "friendly_ws" "WAIT (friend tf, no recent paint)"
+  fi
 elif [[ -n "$FRIEND" ]]; then
   check "friendly_ws" "WAIT (friend plate, no TF debuff yet)"
 else
   check "friendly_ws" "WAIT (no friend=1 card)"
+fi
+
+PAINT_FRIEND="$(rg 'PAINT ver=.*friend=1' "$SV_DATA" 2>/dev/null | rg 'tfRows=[1-9].*painted=0' | tail -2 || true)"
+if [[ -n "$PAINT_FRIEND" ]]; then
+  check "friendly_ws_paint" "MISSING"
+  fail=1
+elif rg -q 'PAINT ver=.*friend=1.*painted=[1-9]' "$SV_DATA" 2>/dev/null; then
+  check "friendly_ws_paint" "OK"
+else
+  check "friendly_ws_paint" "WAIT"
 fi
 
 STALE_SRC="$PB_SV"

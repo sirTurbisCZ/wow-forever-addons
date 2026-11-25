@@ -1,5 +1,12 @@
 # Plateband changelog
 
+## Release 0.2.65 — WS sticky + merge overlap + matrix strict
+
+- **Sticky:** `GAP_STICKY_FRIEND_SEC=18` (hostile stays 3s); refresh `sticky.at` on hold/paint; friend re-inject sticky rows after budget; parity retry before friendly clear.
+- **GapAuraLive:** instance lookup miss no longer instant-dead (index/spell fallback).
+- **Layout:** merge row offset by `nativeN*(sz+pad)` when anchoring aura row (no DoT overlap).
+- **Watch:** matrix recent-tail rules for `friendly_ws` / `tgt_bind` (no stale OK).
+
 ## Release 0.2.64 — FElog bridge always + pending queue
 
 - **SessionLog:** always `MirrorToFelog` (not only when `agentIoOk`); flush pending on `ADDON_LOADED` ForeverErrorLog.

@@ -45,7 +45,7 @@ PLATEBAND_LIVE_VER=0.2.51 ./scripts/plateband-sv-gate.sh
 |--------|--------|---------|
 | Own DoT (HARMFUL) | CARD `painted` / PAINT `painted` `tgtSrc=1` | `tf>0 painted=0` |
 | Foreign/party DoT | CARD `harv` `miss` / PAINT `harv` `miss` `tfRows` | `harv=0` when `tf≥2` |
-| Weakened Soul | PAINT/CARD `friend=1` | `tf>0 painted=0` |
+| Weakened Soul | PAINT/CARD `friend=1` | `tf>0 painted=0` (matrix uses **last 3** friend cards + PAINT tail — stale OK blocked) |
 | Helpful bleed (PW:S on mob) | CARD `punit` vs plate, `friend=0` | unit mismatch + paint |
 | Sticky / expire | PAINT `paint_hold`, `paint_stale_cleared` | logged; stale = OK |
 | FElog paint nil | ForeverErrorLog | only if SESSION = disk version |
