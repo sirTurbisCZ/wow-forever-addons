@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## Release 0.2.50 — party DoTs on mobs + sticky expiry
+
+- **Foreign DoTs:** hostile targets always **heavy** harvest (`NeedsHeavyTargetHarvest` + `apiH`); skip `CollectPlayerOwnedKeys` on hostile lean (was overskip party rows).
+- **Sticky ghosts:** `GapAuraLive` returns false when spell/instance absent on `AuraUnitForPlate`; hold path prunes dead sticky before refresh; prune uses `paintAuraTok`.
+
 ## Release 0.2.49 — friendly WS + no party→mob aura bleed
 
 - **Bug:** Party PW:S/WS debuff appeared on **mob** plates — `ShouldUseTargetAuraSource` used stale `lastTargetPlateUnit` + sole-enemy `IsTargetPlate` heuristic → harvested **`target`** (party) onto wrong plate.

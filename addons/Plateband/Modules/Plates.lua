@@ -822,6 +822,27 @@ NeedsHeavyTargetHarvest = function(unit, plate, nativeN)
   if tfUi > (nativeN or 0) then
     return true
   end
+  local apiH = CountTargetHarmfulApi("target")
+  if apiH > (nativeN or 0) then
+    return true
+  end
+  local friendlyTgt = false
+  pcall(function()
+    if UnitIsFriend and UnitIsFriend("player", "target") then
+      friendlyTgt = true
+    end
+  end)
+  if not friendlyTgt then
+    local hostile = false
+    pcall(function()
+      if UnitCanAttack and UnitCanAttack("player", "target") then
+        hostile = true
+      end
+    end)
+    if hostile then
+      return true
+    end
+  end
   return false
 end
 
@@ -2762,7 +2783,7 @@ GapAuraLive = function(entry, unitToken)
       end
       return true
     end
-    -- Stale instance on TF row — keep until explicit expiry (Forever secrets).
+    return false
   end
   if entry.spellId and unitToken and C_UnitAuras and C_UnitAuras.GetAuraDataBySpellID then
     local ok, data = pcall(C_UnitAuras.GetAuraDataBySpellID, unitToken, entry.spellId)
@@ -2773,6 +2794,10 @@ GapAuraLive = function(entry, unitToken)
       end
       return true
     end
+    return false
+  end
+  if entry.spellId or entry.auraInstanceID then
+    return false
   end
   return true
 end
@@ -4403,7 +4428,9 @@ PaintMergeMissing = function(unit, plate)
     lastPaintDebug.harv = 0
     CollectPersonalAuraGaps("target", queueSkip, missing, maxN, stats)
     local foreignSkip = CopyKeySet(queueSkip)
-    CollectPlayerOwnedKeys("target", foreignSkip)
+    if friendPlate then
+      CollectPlayerOwnedKeys("target", foreignSkip)
+    end
     CollectForeignAuraGaps("target", foreignSkip, missing, maxN, allowSecret, stats)
     CollectAuraSlotsGaps("target", foreignSkip, missing, maxN, stats)
     if type(unit) == "string" and unit ~= "target" then
@@ -4451,11 +4478,13 @@ PaintMergeMissing = function(unit, plate)
     PruneInactiveGapRows(missing, unit, maxN)
   end
 
-  ApplyGapSticky(unit, missing, useTargetSrc, useTargetSrc and "target" or unit)
+  local paintAuraTok = AuraUnitForPlate(unit, plate, useTargetSrc, partyAuraTok)
+  PruneInactiveGapRows(missing, paintAuraTok, maxN)
+  ApplyGapSticky(unit, missing, useTargetSrc or friendPlate, paintAuraTok)
   if useTargetSrc and heavyTarget then
     local tfUiLate = CountTargetFrameAuras()
     if not (tfUiLate > 0 and #missing > 0) then
-      PruneInactiveGapRows(missing, "target", maxN)
+      PruneInactiveGapRows(missing, paintAuraTok, maxN)
     end
     if #missing == 0 and tfUiLate > 0 then
       pcall(ForceFillTargetFrameGaps, missing, queueSkip, maxN, stats)
@@ -4482,8 +4511,22 @@ PaintMergeMissing = function(unit, plate)
     local now = GetTime and GetTime() or 0
     local heldN = held and tonumber(held._painted) or 0
     if heldN > 0 and sticky and type(sticky.icons) == "table" and #sticky.icons > 0 then
+      local auraUnit = AuraUnitForPlate(unit, plate, useTargetSrc, partyAuraTok)
+      local stickyLive = {}
+      for si = 1, #sticky.icons do
+        if GapAuraLive(sticky.icons[si], auraUnit) then
+          stickyLive[#stickyLive + 1] = sticky.icons[si]
+        end
+      end
+      if #stickyLive == 0 then
+        gapSticky[unit] = nil
+        ClearFallback(unit, false)
+        lastPaintDebug.painted = 0
+        SilentTracePaint("paint_stale_cleared", unit, plate)
+        return 0
+      end
+      sticky.icons = stickyLive
       if type(sticky.at) == "number" and (now - sticky.at) <= PB.GAP_STICKY_SEC then
-        local auraUnit = AuraUnitForPlate(unit, plate, useTargetSrc, partyAuraTok)
         local heldCd = 0
         pcall(function()
           local n, cdn = RefreshHeldGapFallback(unit, plate, held, sticky.icons, auraUnit)

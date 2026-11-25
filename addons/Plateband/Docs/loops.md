@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.49** (friendly harmful merge; strict `plate==PlateFor(target)`; `AuraUnitForPlate`)
+Version: **0.2.50** (hostile heavy harvest for party DoTs; `GapAuraLive` strict prune)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 
