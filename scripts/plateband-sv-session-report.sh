@@ -16,7 +16,8 @@ pb_sv_context || {
   exit 2
 }
 
-pb_mirror_sv_export "$PB_SV" "$MIRROR" 2>/dev/null || true
+pb_sync_live_feed "$PB_SV" 2>/dev/null || true
+MIRROR="${PLATEBAND_SV_MIRROR:-$ROOT/addons/Plateband/Logs/agent-live-export.log}"
 
 SESSION_LINE=""
 SESSION_T=""

@@ -75,24 +75,113 @@ pb_agent_live_log_path() {
   printf '%s' "$(pb_plateband_logs_dir)/agent-live.log"
 }
 
-pb_sync_live_feed() {
-  local wow="$1" repo src
+# Single runtime truth from SV — chat markers before SESSION; never PAINT/mirror files.
+pb_unified_runtime_from_sv() {
+  local sv="$1"
+  [[ -f "$sv" ]] || return 1
+  python3 - "$sv" <<'PY'
+import re, pathlib, sys
+
+def vtuple(s):
+    return tuple(int(x) for x in s.split("."))
+
+path = pathlib.Path(sys.argv[1])
+t = path.read_text(errors="replace")
+ver, source, seq = None, None, None
+
+hm = re.search(r'\["liveHead"\]\s*=\s*"([^"]*)"', t)
+if hm:
+    vm = re.search(r'ver=([0-9.]+)', hm.group(1))
+    sm = re.search(r'seq=(\d+)', hm.group(1))
+    if vm:
+        ver, source = vm.group(1), "liveHead"
+    if sm:
+        seq = sm.group(1)
+
+def table_ver(name, key):
+    m = re.search(rf'\["{name}"\]\s*=\s*\{{', t)
+    if not m:
+        return None
+    chunk = t[m.start() : m.start() + 600]
+    vm = re.search(rf'\["{key}"\]\s*=\s*"([0-9.]+)"', chunk)
+    if vm:
+        return vm.group(1)
+    vm = re.search(rf'\["{key}"\]\s*=\s*(\d+)', chunk)
+    return vm.group(1) if vm else None
+
+for name, src in (("runtimeVer", "runtimeVer"), ("agentLive", "agentLive")):
+    tv = table_ver(name, "ver")
+    if tv and (ver is None or vtuple(tv) >= vtuple(ver)):
+        ver, source = tv, src
+
+em = re.search(r'\["export"\]\s*=\s*"((?:\\.|[^"\\])*)"', t, re.S)
+if em:
+    body = em.group(1).encode("utf-8").decode("unicode_escape")
+    for label, needle in (
+        ("CHAT_LOADED", "CHAT_LOADED"),
+        ("RUNTIME_VER", "RUNTIME_VER"),
+        ("AGENT_LIVE", "AGENT_LIVE"),
+        ("PLATES_LOAD", "PLATES_LOAD ok=1"),
+        ("SESSION_START", "SESSION_START"),
+    ):
+        hits = [ln for ln in body.split("\n") if needle in ln]
+        if not hits:
+            continue
+        last = hits[-1]
+        vm = re.search(r"ver=([0-9.]+)", last)
+        if vm and (ver is None or vtuple(vm.group(1)) >= vtuple(ver)):
+            ver, source = vm.group(1), label
+        if label == "AGENT_LIVE":
+            sm = re.search(r"seq=(\d+)", last)
+            if sm:
+                seq = sm.group(1)
+
+if seq is None:
+    sq = table_ver("agentLive", "seq")
+    if sq:
+        seq = sq
+
+if ver:
+    print("{}\t{}\t{}".format(ver, seq or "0", source or "?"))
+PY
+}
+
+pb_publish_live_head() {
+  local sv="$1" repo out ver seq src sm
+  [[ -f "$sv" ]] || return 1
   repo="$(pb_repo_logs_dir)"
   mkdir -p "$repo"
-  src="$(pb_agent_live_log_path)"
-  if [[ -f "$src" ]]; then
-    tail -n 400 "$src" > "${repo}/agent-live.log" 2>/dev/null || cp -f "$src" "${repo}/agent-live.log" 2>/dev/null || true
-    PB_LIVE_SYNC="agent_live"
-    return 0
-  fi
-  src="$(pb_plateband_logs_dir)/agent-live-export.log"
-  if [[ -f "$src" ]]; then
-    tail -n 400 "$src" > "${repo}/agent-live-export.log" 2>/dev/null || true
-    PB_LIVE_SYNC="agent_export_client"
-    return 0
-  fi
+  out="${repo}/live-head.txt"
+  local line
+  line="$(pb_unified_runtime_from_sv "$sv" 2>/dev/null || true)"
+  [[ -n "$line" ]] || return 1
+  ver="$(echo "$line" | cut -f1)"
+  seq="$(echo "$line" | cut -f2)"
+  src="$(echo "$line" | cut -f3)"
+  sm="$(stat -f %m "$sv" 2>/dev/null || stat -c %Y "$sv" 2>/dev/null || echo 0)"
+  printf 'live_ver=%s agent_seq=%s source=%s sv_mtime=%s feed=sv_live\n' \
+    "$ver" "$seq" "$src" "$sm" > "$out"
+  PB_LIVE_HEAD="$out"
+}
+
+pb_sync_live_feed() {
+  local sv="${1:-}"
+  local repo mirror
+  repo="$(pb_repo_logs_dir)"
+  mkdir -p "$repo"
   PB_LIVE_SYNC="none"
-  return 1
+  local src
+  src="$(pb_agent_live_log_path)"
+  if [[ -f "$src" ]] && pb_log_fresh_sec "$src" 120; then
+    tail -n 400 "$src" > "${repo}/agent-live.log" 2>/dev/null || true
+    PB_LIVE_SYNC="agent_live"
+  fi
+  if [[ -n "${sv:-}" && -f "$sv" ]]; then
+    mirror="${repo}/agent-live-export.log"
+    pb_mirror_sv_export "$sv" "$mirror" 2>/dev/null || true
+    pb_publish_live_head "$sv" 2>/dev/null || true
+    [[ "$PB_LIVE_SYNC" == "none" ]] && PB_LIVE_SYNC="sv_mirror"
+  fi
 }
 
 pb_log_fresh_sec() {
@@ -261,7 +350,7 @@ pb_find_agent_live_log() {
   local wow f pick name
   wow="$(pb_wow_root)"
   pick=""
-  for name in runtime-ver.log agent-live.log agent-live-export.log session.log; do
+  for name in runtime-ver.log agent-live.log session.log; do
     while IFS= read -r f; do
       [[ -z "$pick" || "$f" -nt "$pick" ]] && pick="$f"
     done < <(find "${wow}" -name "$name" -path '*/Plateband/Logs/*' 2>/dev/null)
@@ -292,77 +381,40 @@ pb_agent_live_ver() {
   [[ -n "$v" ]] && printf '%s' "$v"
 }
 
-# What Lua actually runs — SESSION / PLATES_LOAD / agentLive / export; never TOC alone.
+# Unified runtime — pb_unified_runtime_from_sv only; optional client log must match.
 pb_client_ver() {
-  local sv="$1" agent_log="$2"
-  local v line rvf alf
-
-  alf="$(pb_agent_live_log_path)"
-  pb_sync_live_feed 2>/dev/null || true
-  if pb_log_fresh_sec "$alf" 25; then
-    v="$(pb_agent_live_tail_ver "$alf" 2>/dev/null || true)"
-    [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
-  fi
+  local sv="$1" agent_log="${2:-}"
+  local line u v sv_v alf rvf
+  line="$(pb_unified_runtime_from_sv "$sv" 2>/dev/null || true)"
+  v="$(echo "$line" | cut -f1)"
+  [[ -n "$v" ]] && sv_v="$v" || sv_v=""
 
   rvf="$(pb_runtime_ver_log)"
   if [[ -f "$rvf" ]] && pb_runtime_file_fresh "$rvf" "$sv"; then
     v="$(pb_runtime_file_ver "$rvf" 2>/dev/null || true)"
-    [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
+    if [[ -n "$v" ]] && [[ -z "$sv_v" || "$(printf '%s\n' "$sv_v" "$v" | sort -V | tail -1)" == "$v" ]]; then
+      printf '%s' "$v"
+      return 0
+    fi
   fi
 
-  v="$(pb_sv_runtime_table_ver "$sv" 2>/dev/null || true)"
-  [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
-
-  v="$(pb_sv_chat_loaded_ver "$sv" 2>/dev/null || true)"
-  [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
-
-  line="$(pb_sv_export_grep_last "$sv" "RUNTIME_VER" 2>/dev/null || true)"
-  v="$(echo "$line" | sed -n 's/.*RUNTIME_VER ver=\([0-9.]*\).*/\1/p')"
-  [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
-
-  v="$(pb_sv_agent_live_ver "$sv" 2>/dev/null || true)"
-  [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
-
-  line="$(pb_sv_export_grep_last "$sv" "AGENT_LIVE" 2>/dev/null || true)"
-  v="$(echo "$line" | sed -n 's/.*AGENT_LIVE ver=\([0-9.]*\).*/\1/p')"
-  [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
-
-  if [[ -n "${agent_log:-}" ]] && pb_agent_log_fresh "$agent_log" "$sv"; then
-    v="$(pb_agent_live_ver "$agent_log" 2>/dev/null || true)"
-    [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
+  alf="$(pb_agent_live_log_path)"
+  if [[ -f "$alf" ]] && pb_log_fresh_sec "$alf" 120; then
+    v="$(pb_agent_live_tail_ver "$alf" 2>/dev/null || true)"
+    if [[ -n "$v" ]] && [[ -z "$sv_v" || "$(printf '%s\n' "$sv_v" "$v" | sort -V | tail -1)" == "$v" ]]; then
+      printf '%s' "$v"
+      return 0
+    fi
   fi
 
-  line="$(pb_sv_export_grep_last "$sv" "SESSION_START" 2>/dev/null || true)"
-  [[ -z "$line" ]] && line="$(rg -o '\[[0-9]+\] SESSION_START ver=[0-9.]+' "$sv" 2>/dev/null | tail -1 || true)"
-  v="$(echo "$line" | sed -n 's/.*SESSION_START ver=\([0-9.]*\).*/\1/p')"
-  [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
-
-  line="$(pb_sv_export_grep_last "$sv" "PLATES_LOAD ok=1" 2>/dev/null || true)"
-  [[ -z "$line" ]] && line="$(rg 'PLATES_LOAD ok=1 ver=' "$sv" 2>/dev/null | tail -1 || true)"
-  v="$(echo "$line" | sed -n 's/.*PLATES_LOAD ok=1 ver=\([0-9.]*\).*/\1/p')"
-  [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
-
+  [[ -n "$sv_v" ]] && { printf '%s' "$sv_v"; return 0; }
   v="$(pb_flushed_session_ver "$sv")"
-  [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
-
-  line="$(pb_sv_export_grep_last "$sv" "PLATEBAND_CARD" 2>/dev/null || true)"
-  v="$(pb_ver_from_card "$line")"
   [[ -n "$v" ]] && printf '%s' "$v"
 }
 
 pb_resolve_live_ver() {
-  local client_ver="$1" flushed="$2" agent_ver="${3:-}" diag_ver="${4:-}"
-  local live=""
-  if [[ -n "$client_ver" ]]; then
-    live="$client_ver"
-  elif [[ -n "$agent_ver" ]]; then
-    live="$agent_ver"
-  elif [[ -n "$flushed" ]]; then
-    live="$flushed"
-  elif [[ -n "$diag_ver" ]] && pb_ver_sort_ge "$diag_ver" "${PB_MIN_LIVE_VER:-0.2.51}"; then
-    live="$diag_ver"
-  fi
-  printf '%s' "$live"
+  local client_ver="$1"
+  printf '%s' "${client_ver:-}"
 }
 
 # Sets PB_* globals. Returns 0 when SV found.
@@ -385,27 +437,26 @@ pb_sv_context() {
   fi
   PB_FLUSHED_VER="$(pb_flushed_session_ver "$PB_SV")"
   PB_AGENT_LOG="$(pb_find_agent_live_log)"
-  PB_AGENT_VER="$(pb_agent_live_ver "$PB_AGENT_LOG" 2>/dev/null || true)"
-  PB_AGENT_SEQ="$(pb_sv_agent_seq "$PB_SV" 2>/dev/null || true)"
   PB_LAST_CARD="$(pb_last_diag_card "$PB_SV")"
   PB_DIAG_VER="$(pb_ver_from_card "$PB_LAST_CARD")"
+  local unified
+  unified="$(pb_unified_runtime_from_sv "$PB_SV" 2>/dev/null || true)"
+  PB_VER_SOURCE="$(echo "$unified" | cut -f3)"
+  PB_AGENT_SEQ="$(echo "$unified" | cut -f2)"
+  pb_sync_live_feed "$PB_SV" 2>/dev/null || true
   PB_CLIENT_VER="$(pb_client_ver "$PB_SV" "$PB_AGENT_LOG")"
-  PB_LIVE_VER="$(pb_resolve_live_ver "$PB_CLIENT_VER" "$PB_FLUSHED_VER" "$PB_AGENT_VER" "$PB_DIAG_VER")"
+  PB_LIVE_VER="$(pb_resolve_live_ver "$PB_CLIENT_VER")"
   PB_RULES_VER="${PLATEBAND_LIVE_VER:-$PB_LIVE_VER}"
   PB_RUNTIME_FILE="$(pb_runtime_ver_log)"
   PB_RUNTIME_FILE_VER="$(pb_runtime_file_ver "$PB_RUNTIME_FILE" 2>/dev/null || true)"
-  PB_LIVE_SYNC=""
-  pb_sync_live_feed 2>/dev/null || true
-  PB_FEED_SOURCE="sv_export"
+  PB_FEED_SOURCE="sv_unified"
   local alf
   alf="$(pb_agent_live_log_path)"
-  if pb_log_fresh_sec "$alf" 25; then
+  if pb_log_fresh_sec "$alf" 120; then
     PB_FEED_SOURCE="agent_live_file"
   elif [[ -f "$PB_RUNTIME_FILE" ]] && pb_runtime_file_fresh "$PB_RUNTIME_FILE" "$PB_SV"; then
     PB_FEED_SOURCE="runtime_ver_file"
-  elif [[ -n "${PB_AGENT_LOG:-}" ]] && pb_agent_log_fresh "$PB_AGENT_LOG" "$PB_SV"; then
-    PB_FEED_SOURCE="agent_live_file"
-  elif [[ -n "$PB_LIVE_SYNC" && "$PB_LIVE_SYNC" != "none" ]]; then
+  elif [[ "${PB_LIVE_SYNC:-none}" != "none" ]]; then
     PB_FEED_SOURCE="$PB_LIVE_SYNC"
   fi
 
@@ -436,8 +487,8 @@ pb_live_ver_ok() {
 }
 
 pb_export_session_line() {
-  printf 'live_ver=%s client_ver=%s flushed_session=%s deployed_ver=%s disk_ver=%s reload_pending=%s flush_lag=%s feed=%s live_sync=%s runtime_file=%s agent_seq=%s rules_ver=%s chat_override=%s sv=%s' \
-    "${PB_LIVE_VER:-?}" "${PB_CLIENT_VER:-?}" "${PB_FLUSHED_VER:-?}" "${PB_RUNTIME_VER:-?}" \
+  printf 'live_ver=%s client_ver=%s ver_source=%s flushed_session=%s deployed_ver=%s disk_ver=%s reload_pending=%s flush_lag=%s feed=%s live_sync=%s runtime_file=%s agent_seq=%s rules_ver=%s chat_override=%s sv=%s' \
+    "${PB_LIVE_VER:-?}" "${PB_CLIENT_VER:-?}" "${PB_VER_SOURCE:-?}" "${PB_FLUSHED_VER:-?}" "${PB_RUNTIME_VER:-?}" \
     "${PB_DISK_VER:-?}" "${PB_RELOAD_PENDING:-no}" "${PB_FLUSH_LAG:-?}" "${PB_FEED_SOURCE:-?}" \
     "${PB_LIVE_SYNC:-none}" "${PB_RUNTIME_FILE_VER:-?}" "${PB_AGENT_SEQ:-?}" "${PB_RULES_VER:-?}" "${PB_CHAT_LIVE:-no}" "${PB_SV:-none}"
 }

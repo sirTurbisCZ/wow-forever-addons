@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.2.62 — unified runtime detection + sv live mirror
+
+- **Lua:** `PlatebandDB.liveHead` (ver/seq/at) updated every pulse — regex-fast for agents.
+- **Watch:** single `pb_unified_runtime_from_sv` (chat → agentLive → export); **never** stale `agent-live-export` for version.
+- **Feed:** `pb_sync_live_feed` mirrors SV export + writes `Logs/live-head.txt` every 2s when SV mtime moves (in-play flush path).
+
 ## Release 0.2.61 — in-play agent-live file feed (no SV wait)
 
 - **Io:** `ProbeAgentIo` append-only (`agent-live.log`) — decoupled from `session.log` truncate; pulse + PAINT flush `agent-live-export.log` every 2s when io works.

@@ -232,6 +232,7 @@ function Mod.RecordChatLoaded()
   local ver = tostring(ns.Config and ns.Config.VERSION or "?")
   local db = ns.Config.EnsureDB()
   db.runtimeVer = { ver = ver, at = Now(), src = "chat" }
+  db.liveHead = string.format("ver=%s seq=0 at=%s io=sv_only src=chat", ver, tostring(Now()))
   pcall(Mod.ProbeAgentIo)
   Mod.Append(string.format("CHAT_LOADED ver=%s src=login", ver))
   Mod.Append(string.format("RUNTIME_VER ver=%s src=chat", ver))
@@ -356,6 +357,13 @@ function Mod.PulseAgentLive()
   al.at = Now()
   al.io = (agentIoOk or fileOk) and "file" or "sv_only"
   al.lines = #(log.lines or {})
+  db.liveHead = string.format(
+    "ver=%s seq=%s at=%s io=%s src=chat",
+    al.ver,
+    tostring(al.seq),
+    tostring(al.at),
+    al.io
+  )
   local body = string.format("AGENT_LIVE ver=%s seq=%s io=%s lines=%s", al.ver, tostring(al.seq), al.io, tostring(al.lines))
   local stamped = string.format("[%s] %s", tostring(Now()), body)
   UpsertAgentLiveStamped(stamped)

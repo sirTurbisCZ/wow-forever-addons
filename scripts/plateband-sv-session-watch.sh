@@ -16,11 +16,7 @@ while true; do
   # shellcheck source=scripts/plateband-sv-lib.sh
   source "$ROOT/scripts/plateband-sv-lib.sh"
   if pb_sv_context 2>/dev/null; then
-    pb_sync_live_feed 2>/dev/null || true
-    MIRROR="${PLATEBAND_SV_MIRROR:-$ROOT/addons/Plateband/Logs/agent-live-export.log}"
-    if [[ "${PB_LIVE_SYNC:-none}" == "none" && -n "${PB_SV:-}" ]]; then
-      pb_mirror_sv_export "$PB_SV" "$MIRROR" 2>/dev/null || true
-    fi
+    pb_sync_live_feed "${PB_SV:-}" 2>/dev/null || true
   fi
   set +e
   OUT="$("$REPORT" 2>&1)"
