@@ -29,8 +29,27 @@ felog_logs_dir() {
   printf '%s' "$(felog_wow_root)/Interface/AddOns/ForeverErrorLog/Logs"
 }
 
+felog_bridge_head_path() {
+  printf '%s' "$(felog_wow_root)/Interface/AddOns/Plateband/Logs/felog-live-head.log"
+}
+
 felog_live_head_path() {
   printf '%s' "$(felog_logs_dir)/live-head.log"
+}
+
+felog_pick_live_head_file() {
+  local a b
+  a="$(felog_live_head_path)"
+  b="$(felog_bridge_head_path)"
+  if [[ -f "$a" ]] && felog_file_age_sec "$a" >/dev/null 2>&1; then
+    printf '%s' "$a"
+    return 0
+  fi
+  if [[ -f "$b" ]]; then
+    printf '%s' "$b"
+    return 0
+  fi
+  return 1
 }
 
 felog_agent_export_path() {
@@ -56,7 +75,11 @@ felog_file_age_sec() {
 
 # Parse live-head.log one-liner (FElog 0.1.4+).
 felog_read_live_head() {
-  local f="${1:-$(felog_live_head_path)}"
+  local f="${1:-}"
+  if [[ -z "$f" ]]; then
+    f="$(felog_pick_live_head_file 2>/dev/null || true)"
+    [[ -n "$f" ]] || f="$(felog_live_head_path)"
+  fi
   [[ -f "$f" ]] || return 1
   local line
   line="$(head -1 "$f" 2>/dev/null || true)"

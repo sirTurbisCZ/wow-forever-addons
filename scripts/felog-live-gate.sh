@@ -14,7 +14,8 @@ fi
 
 felog_sync_repo_mirror 2>/dev/null || true
 
-HEAD="$(felog_live_head_path)"
+HEAD="$(felog_pick_live_head_file 2>/dev/null || true)"
+[[ -n "$HEAD" ]] || HEAD="$(felog_live_head_path)"
 EXPORT="$(felog_agent_export_path)"
 STREAM="$(felog_live_stream_path)"
 IFACE="$(felog_plateband_interface_ver 2>/dev/null || echo "?")"

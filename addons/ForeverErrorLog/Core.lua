@@ -56,6 +56,7 @@ local livePulseTicker
 local WriteLiveHeadFile
 local FlushAgentExportFiles
 local UpdateLiveHeadFromAgent
+local DiskBridge
 
 local function TryOpen(path, mode)
   if not (io and io.open) then
@@ -149,7 +150,9 @@ local function AppendSession(line)
     log.agentExport = table.concat(agentLines, "\n")
   end
   log.fileOk = AppendSessionFile(stamped) or log.fileOk
-  AppendLiveStream(stamped)
+  if not AppendLiveStream(stamped) then
+    DiskBridge(nil, nil, stamped)
+  end
   if stamped:find("AGENT[", 1, true) then
     pcall(FlushAgentExportFiles, log)
   end
@@ -226,24 +229,37 @@ FlushAgentExportFiles = function(log)
     return
   end
   local wrote = WriteTextFile({ AGENT_EXPORT_REL, AGENT_EXPORT_BS }, body)
+  local bridged = false
+  if not wrote then
+    bridged = DiskBridge(nil, body, nil)
+  end
   local db = EnsureDB()
   local lh = EnsureLiveHeadTable(db)
   if wrote then
     lh.feed = "file"
+  elseif bridged then
+    lh.feed = "pb_bridge"
   end
   pcall(WriteLiveHeadFile, lh)
 end
 
-WriteLiveHeadFile = function(lh)
-  lh = lh or EnsureLiveHeadTable(EnsureDB())
-  local db = EnsureDB()
+DiskBridge = function(headLine, exportBody, streamLine)
+  local sl = Plateband and Plateband.SessionLog
+  if not sl or type(sl.MirrorFelogLogs) ~= "function" then
+    return false
+  end
+  return sl.MirrorFelogLogs(headLine, exportBody, streamLine) and true or false
+end
+
+local function FormatLiveHeadLine(lh)
+  lh = lh or {}
   local at = tonumber(lh.at) or Now()
-  lh.felogVer = tostring(Config.VERSION or "?")
+  local felogVer = tostring(Config.VERSION or "?")
   local line = string.format(
     "live_ver=%s plateband_ver=%s felog_ver=%s seq=%s src=%s load=%s t=%s feed=%s",
-    tostring(lh.platebandVer ~= "" and lh.platebandVer or lh.felogVer or "?"),
+    tostring(lh.platebandVer ~= "" and lh.platebandVer or felogVer or "?"),
     tostring(lh.platebandVer or ""),
-    tostring(lh.felogVer or "?"),
+    tostring(felogVer),
     tostring(lh.seq or 0),
     tostring(lh.src or "felog"),
     tostring(lh.load or "-"),
@@ -256,12 +272,32 @@ WriteLiveHeadFile = function(lh)
   if type(lh.lastCard) == "string" and lh.lastCard ~= "" then
     line = line .. " last_card=" .. Trim(lh.lastCard, 220)
   end
+  return line
+end
+
+WriteLiveHeadFile = function(lh)
+  lh = lh or EnsureLiveHeadTable(EnsureDB())
+  local db = EnsureDB()
+  lh.felogVer = tostring(Config.VERSION or "?")
+  if (tonumber(lh.at) or 0) <= 0 then
+    lh.at = Now()
+  end
+  local line = FormatLiveHeadLine(lh)
   local wrote = WriteTextFile({ LIVE_HEAD_REL, LIVE_HEAD_BS }, line)
+  local bridged = false
+  if not wrote then
+    bridged = DiskBridge(line, nil, nil)
+  end
   if wrote then
     lh.feed = "file"
-    db.liveHead = lh
+  elseif bridged then
+    lh.feed = "pb_bridge"
   end
-  return wrote
+  db.liveHead = lh
+  if bridged and not wrote then
+    DiskBridge(nil, nil, string.format("[%s] LIVE_HEAD %s", tostring(Now()), line))
+  end
+  return wrote or bridged
 end
 
 UpdateLiveHeadFromAgent = function(source, payload)
@@ -329,6 +365,31 @@ end
 
 local function AppendLiveStream(stamped)
   AppendTextFile({ LIVE_STREAM_REL, LIVE_STREAM_BS }, stamped)
+end
+
+local function PrintLoadedLine(reload)
+  local db = EnsureDB()
+  local n = #(db.errors or {})
+  local ver = tostring(Config.VERSION or "?")
+  local slog = db.sessionLog
+  local feed = (slog and slog.fileOk) and "file" or ((db.liveHead and db.liveHead.feed) or "sv_only")
+  if n > 0 then
+    Print(string.format(
+      L.LOADED_COUNT or "loaded v%s — %d errors stored (historical) · session %s · /felog session",
+      ver,
+      n,
+      tostring(feed)
+    ))
+  else
+    Print(string.format(
+      L.LOADED_EMPTY or "loaded v%s — session %s · /felog session · popup off",
+      ver,
+      tostring(feed)
+    ))
+  end
+  if reload then
+    Print(string.format(L.RELOAD_LINE or "reloaded v%s · live-head via %s", ver, tostring(feed)))
+  end
 end
 
 local function StampFelogReload()
@@ -563,28 +624,14 @@ frame:SetScript("OnEvent", function(_, event, name)
     end)
     if loggedIn then
       pcall(StampFelogReload)
+      PrintLoadedLine(true)
     end
   elseif event == "PLAYER_LOGIN" then
     EnsureDB()
     BeginSession()
     InstallHandler()
     SuppressScriptErrorsPopup()
-    local db = ForeverErrorLogDB
-    local n = #(db.errors or {})
-    local slog = db.sessionLog
-    local fileHint = (slog and slog.fileOk) and "file" or "sv_only"
-    if n > 0 then
-      Print(string.format(
-        L.LOADED_COUNT or "loaded — %d errors stored (historical) · session %s · /felog session",
-        n,
-        fileHint
-      ))
-    else
-      Print(string.format(
-        L.LOADED_EMPTY or "loaded — session %s · /felog session · popup off",
-        fileHint
-      ))
-    end
+    PrintLoadedLine(false)
   end
 end)
 

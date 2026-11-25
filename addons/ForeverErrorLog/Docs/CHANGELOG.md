@@ -1,5 +1,11 @@
 # ForeverErrorLog changelog
 
+## Release 0.1.5 — Plateband disk bridge + chat version
+
+- **Forever io:** direct `ForeverErrorLog/Logs/*` writes stay `sv_only`; **`Plateband.SessionLog.MirrorFelogLogs`** writes `live-head` / export / stream from Plateband context (`feed=pb_bridge`).
+- **Chat:** `loaded v0.1.5` on login; **`reloaded v… · live feed`** on `/reload` (was version-less).
+- **Watch:** `felog_pick_live_head_file` — `ForeverErrorLog/Logs/live-head.log` or `Plateband/Logs/felog-live-head.log`.
+
 ## Release 0.1.4 — live-head + sub-2s agent stream
 
 - **`Logs/live-head.log`** — sync on SESSION_START, CHAT_LOADED, `AgentFeed`, 2s pulse (mtime stays fresh in play).

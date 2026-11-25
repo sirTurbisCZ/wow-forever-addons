@@ -22,7 +22,7 @@ Green when `SESSION_START ver` matches disk, `PLATES_LOAD ok=1`, no hostile `tar
 
 WoW flushes `Plateband.lua` on logout/reload — treat WTF as archive; **watch reads Logs/ first**.
 
-- **Live during play:** `ForeverErrorLog/Logs/session.log` when `file=yes`; else **`felog_bridge_sv`** (`sessionLog.agentExport` in `ForeverErrorLog.lua`, 0.1.3+) → repo `felog-plateband-live.log`; else Plateband SV mirror + `live-head.txt`.
+- **Live during play:** `ForeverErrorLog/Logs/live-head.log` when `feed=file` or **`feed=pb_bridge`** (Plateband `MirrorFelogLogs` when FElog io is sandboxed); else **`felog_bridge_sv`** → repo `felog-plateband-live.log`; else Plateband SV mirror + `live-head.txt`.
 - **Never:** client `agent-live-export` or old PAINT lines for `live_ver`.
 - **Live ver order:** `Interface/.../Logs/live-head.log` (sync on load, read by session-watch ≤2s) → `agent-live-export.log` → SV stamps. `interface_ver` = TOC; `live_ver` = running session; `reload_pending` when they differ.
 - **Reload:** expect `CHAT_LOADED ver=… src=reload` in export/logs without logout; `SESSION_REPORT` within ~2s of session-watch.

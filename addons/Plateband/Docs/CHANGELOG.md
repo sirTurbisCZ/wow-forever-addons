@@ -1,5 +1,9 @@
 # Plateband changelog
 
+## Release 0.2.76 — FElog disk bridge (Forever io sandbox)
+
+- **`SessionLog.MirrorFelogLogs`** — writes `ForeverErrorLog/Logs/live-head.log`, export, stream, and `Plateband/Logs/felog-live-head.log` when FElog’s own `io.open` is `sv_only`.
+
 ## Release 0.2.75 — live-head feed + reload stamp ≤2s
 
 - **Reload:** `RecordChatLoaded("reload")` only when `IsLoggedIn()` on `ADDON_LOADED`; cold login stamps once on `PLAYER_LOGIN` (no double reload+login).

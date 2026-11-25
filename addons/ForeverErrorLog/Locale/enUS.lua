@@ -6,8 +6,9 @@ ForeverErrorLog.L = ForeverErrorLog.L or {}
 local L = ForeverErrorLog.L
 
 L.PREFIX = "|cffd94a4a[FElog]|r"
-L.LOADED_COUNT = "loaded — %d errors stored (historical) · session %s · /felog session"
-L.LOADED_EMPTY = "loaded — session %s · /felog session · popup off"
+L.LOADED_COUNT = "loaded v%s — %d errors stored (historical) · session %s · /felog session"
+L.LOADED_EMPTY = "loaded v%s — session %s · /felog session · popup off"
+L.RELOAD_LINE = "reloaded v%s · live feed %s"
 L.SESSION_HEADER = "session lines=%d file=%s (LIVE this login)"
 L.SESSION_HINT = "historical errors: /felog list · agent LIVE: Logs/session.log or /felog session"
 L.NO_SESSION = "no session lines yet"

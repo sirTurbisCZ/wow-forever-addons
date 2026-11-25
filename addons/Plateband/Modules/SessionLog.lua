@@ -42,6 +42,14 @@ local RUNTIME_VER_REL = "Interface/AddOns/Plateband/Logs/runtime-ver.log"
 local RUNTIME_VER_BS = [[Interface\AddOns\Plateband\Logs\runtime-ver.log]]
 local LIVE_HEAD_REL = "Interface/AddOns/Plateband/Logs/live-head.log"
 local LIVE_HEAD_BS = [[Interface\AddOns\Plateband\Logs\live-head.log]]
+local FELOG_HEAD_REL = "Interface/AddOns/ForeverErrorLog/Logs/live-head.log"
+local FELOG_HEAD_BS = [[Interface\AddOns\ForeverErrorLog\Logs\live-head.log]]
+local FELOG_BRIDGE_REL = "Interface/AddOns/Plateband/Logs/felog-live-head.log"
+local FELOG_BRIDGE_BS = [[Interface\AddOns\Plateband\Logs\felog-live-head.log]]
+local FELOG_EXPORT_REL = "Interface/AddOns/ForeverErrorLog/Logs/agent-live-export.log"
+local FELOG_EXPORT_BS = [[Interface\AddOns\ForeverErrorLog\Logs\agent-live-export.log]]
+local FELOG_STREAM_REL = "Interface/AddOns/ForeverErrorLog/Logs/live-stream.log"
+local FELOG_STREAM_BS = [[Interface\AddOns\ForeverErrorLog\Logs\live-stream.log]]
 local LIVE_TAIL_LINES = 120
 local AGENT_PULSE_SEC = 2.0
 
@@ -209,6 +217,54 @@ local function IsAgentLine(line)
     return true
   end
   return false
+end
+
+local function WriteLineToPaths(paths, line, mode)
+  if not line or line == "" or not (io and io.open) then
+    return false
+  end
+  mode = mode or "w"
+  for i = 1, #paths do
+    local f = TryOpen(paths[i], mode)
+    if f then
+      local ok = pcall(function()
+        f:write(line)
+        if line:sub(-1) ~= "\n" then
+          f:write("\n")
+        end
+        f:close()
+      end)
+      if ok then
+        agentIoOk = true
+        return true
+      end
+    end
+  end
+  return false
+end
+
+--- Forever blocks io under ForeverErrorLog/; Plateband can write those paths.
+function Mod.MirrorFelogLogs(headLine, exportBody, streamLine)
+  local ok = false
+  if headLine and headLine ~= "" then
+    if WriteLineToPaths({ FELOG_HEAD_REL, FELOG_HEAD_BS }, headLine, "w") then
+      ok = true
+    end
+    if WriteLineToPaths({ FELOG_BRIDGE_REL, FELOG_BRIDGE_BS }, headLine, "w") then
+      ok = true
+    end
+  end
+  if type(exportBody) == "string" and exportBody ~= "" then
+    if WriteLineToPaths({ FELOG_EXPORT_REL, FELOG_EXPORT_BS }, exportBody, "w") then
+      ok = true
+    end
+  end
+  if type(streamLine) == "string" and streamLine ~= "" then
+    if WriteLineToPaths({ FELOG_STREAM_REL, FELOG_STREAM_BS }, streamLine, "a") then
+      ok = true
+    end
+  end
+  return ok
 end
 
 --- One-line live truth for agents (≤2s after /reload, no SV flush).

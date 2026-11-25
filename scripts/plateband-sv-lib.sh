@@ -417,10 +417,19 @@ pb_sync_live_feed() {
     # shellcheck source=scripts/felog-sv-lib.sh
     source "$(pb_lib_root)/scripts/felog-sv-lib.sh"
     felog_sync_repo_mirror 2>/dev/null || true
-    if [[ -f "$(felog_live_head_path)" ]]; then
-      cp -f "$(felog_live_head_path)" "${repo}/felog-live-head.log" 2>/dev/null || true
-      PB_LIVE_SYNC="felog_live_head"
+    local fel_head fel_bridge
+    fel_head="$(felog_live_head_path)"
+    fel_bridge="$(felog_bridge_head_path)"
+    if [[ -f "$fel_bridge" && ( ! -f "$fel_head" || "$fel_bridge" -nt "$fel_head" ) ]]; then
+      mkdir -p "$(dirname "$fel_head")"
+      cp -f "$fel_bridge" "$fel_head" 2>/dev/null || true
     fi
+  fel_pick="$(felog_pick_live_head_file 2>/dev/null || true)"
+  if [[ -n "$fel_pick" && -f "$fel_pick" ]]; then
+    cp -f "$fel_pick" "${repo}/felog-live-head.log" 2>/dev/null || true
+    cp -f "$fel_pick" "$fel_head" 2>/dev/null || true
+    PB_LIVE_SYNC="felog_live_head"
+  fi
   fi
   local src
   src="$(pb_agent_live_log_path)"
