@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## Release 0.2.64 — FElog bridge always + pending queue
+
+- **SessionLog:** always `MirrorToFelog` (not only when `agentIoOk`); flush pending on `ADDON_LOADED` ForeverErrorLog.
+- **Watch:** host reads `ForeverErrorLogDB.sessionLog.agentExport` when `session.log` missing (`felog_bridge_sv`).
+
 ## Release 0.2.63 — FElog live bridge (io sv_only fallback)
 
 - **SessionLog:** agent lines → `ForeverErrorLog.AgentFeed` when `agent-live.log` append fails.

@@ -143,9 +143,49 @@ felog_live_new_errors() {
   return 0
 }
 
+felog_sv_agent_feed() {
+  local fel="$1"
+  [[ -f "$fel" ]] || return 0
+  local blob agent
+  blob="$(python3 - "$fel" <<'PY' 2>/dev/null || true
+import re, pathlib, sys
+t = pathlib.Path(sys.argv[1]).read_text(errors="replace")
+
+def unescape(s):
+    try:
+        return s.encode("utf-8").decode("unicode_escape")
+    except Exception:
+        return s
+
+body = ""
+for key in ("agentExport", "export"):
+    m = re.search(rf'\["{key}"\]\s*=\s*"((?:\\.|[^"\\])*)"', t, re.S)
+    if m:
+        body = unescape(m.group(1))
+        break
+lines = [ln for ln in body.splitlines() if "AGENT[Plateband]" in ln]
+if not lines:
+    print("", end="")
+    sys.exit(0)
+print("|".join(lines[-8:]))
+PY
+)"
+  [[ -n "$blob" ]] || return 0
+  local prev
+  prev="$(state_get fel_sv_agent_hash)"
+  if [[ "$blob" != "$prev" ]]; then
+    agent="$(printf '%s' "$blob" | tr '|' '\n' | tail -3)"
+    emit_alert "[FElog SV] Plateband agent feed (io sv_only) — $fel"
+    printf '%s\n' "$agent"
+    state_set fel_sv_agent_hash "$blob"
+  fi
+  return 0
+}
+
 felog_sv_new_errors() {
   local fel="$1"
   [[ -f "$fel" ]] || return 0
+  felog_sv_agent_feed "$fel" || true
   local blob
   blob="$(rg -o 'SESSION_START|ERROR \[' "$fel" 2>/dev/null | tail -20 | tr '\n' '|' || true)"
   blob="${blob}$(rg -n '\["msg"\].*Plateband|Plateband/' "$fel" 2>/dev/null | tail -5 | tr '\n' '|' || true)"
@@ -315,7 +355,7 @@ run_scan() {
   dump_live_felog
   dump_section "Plateband" "Plateband" 'PAINT |PLATE |SESSION_START|PLATEBAND_CARD|ERROR '
   dump_section "BetterBackpack" "BetterBackpack" 'ACTION |BAGKEY |SESSION_START|ERROR '
-  dump_section "ForeverErrorLog" "ForeverErrorLog" 'SESSION_START|ERROR |Plateband'
+  dump_section "ForeverErrorLog" "ForeverErrorLog" 'SESSION_START|ERROR |AGENT\[Plateband\]|Plateband'
   echo "--- alerts ---"
   alert_check || true
 }

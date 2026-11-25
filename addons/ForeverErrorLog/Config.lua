@@ -6,6 +6,7 @@ local CURRENT_SCHEMA = 2
 local MAX_ERRORS = 80
 local MAX_MSG = 4000
 local MAX_SESSION_LINES = 200
+local MAX_AGENT_EXPORT_LINES = 120
 
 ForeverErrorLog.Config = ForeverErrorLog.Config or {}
 local Config = ForeverErrorLog.Config
@@ -14,7 +15,8 @@ Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
 Config.MAX_SESSION_LINES = MAX_SESSION_LINES
-Config.VERSION = "0.1.2"
+Config.MAX_AGENT_EXPORT_LINES = MAX_AGENT_EXPORT_LINES
+Config.VERSION = "0.1.3"
 
 local function Defaults()
   return {
@@ -29,6 +31,7 @@ local function Defaults()
       lines = {},
       fileOk = false,
       export = "",
+      agentExport = "",
     },
   }
 end
@@ -42,10 +45,14 @@ local function EnsureSessionLog(db)
       lines = {},
       fileOk = false,
       export = "",
+      agentExport = "",
     }
   end
   if type(db.sessionLog.lines) ~= "table" then
     db.sessionLog.lines = {}
+  end
+  if type(db.sessionLog.agentExport) ~= "string" then
+    db.sessionLog.agentExport = ""
   end
 end
 

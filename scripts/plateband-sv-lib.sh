@@ -78,6 +78,50 @@ pb_felog_session_log() {
   return 1
 }
 
+pb_find_felog_sv() {
+  local wow f
+  wow="$(pb_wow_root)"
+  PB_FELOG_SV=""
+  while IFS= read -r f; do
+    [[ -z "$f" ]] && continue
+    [[ -z "$PB_FELOG_SV" || "$f" -nt "$PB_FELOG_SV" ]] && PB_FELOG_SV="$f"
+  done < <(find "${wow}/WTF/Account" -name 'ForeverErrorLog.lua' -path '*/SavedVariables/*' 2>/dev/null)
+  [[ -n "$PB_FELOG_SV" && -f "$PB_FELOG_SV" ]]
+}
+
+# Agent feed tail when session.log missing (Forever io=sv_only).
+pb_mirror_felog_agent_sv() {
+  local fel_sv="$1" out="$2"
+  [[ -f "$fel_sv" && -n "$out" ]] || return 1
+  python3 - "$fel_sv" "$out" <<'PY'
+import re, pathlib, sys
+
+src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+t = src.read_text(errors="replace")
+
+def unescape_lua_string(s):
+    try:
+        return s.encode("utf-8").decode("unicode_escape")
+    except Exception:
+        return s
+
+body = ""
+am = re.search(r'\["agentExport"\]\s*=\s*"((?:\\.|[^"\\])*)"', t, re.S)
+if am:
+    body = unescape_lua_string(am.group(1))
+if not body.strip():
+    em = re.search(r'\["export"\]\s*=\s*"((?:\\.|[^"\\])*)"', t, re.S)
+    if em:
+        body = unescape_lua_string(em.group(1))
+
+lines = [ln for ln in body.splitlines() if "AGENT[Plateband]" in ln]
+if not lines:
+    sys.exit(1)
+dst.parent.mkdir(parents=True, exist_ok=True)
+dst.write_text("\n".join(lines[-400:]) + "\n", encoding="utf-8")
+PY
+}
+
 pb_felog_plateband_ver() {
   local f="$1" line v
   [[ -f "$f" ]] || return 1
@@ -93,13 +137,25 @@ pb_felog_plateband_ver() {
 }
 
 pb_sync_felog_plateband() {
-  local repo fel
+  local repo fel out
   repo="$(pb_repo_logs_dir)"
   mkdir -p "$repo"
+  out="${repo}/felog-plateband-live.log"
   fel="$(pb_felog_session_log 2>/dev/null || true)"
-  [[ -n "$fel" && -f "$fel" ]] || return 1
-  grep 'AGENT\[Plateband\]' "$fel" 2>/dev/null | tail -400 > "${repo}/felog-plateband-live.log" || true
-  PB_FELOG_SYNC="felog_bridge"
+  if [[ -n "$fel" && -f "$fel" ]]; then
+    grep 'AGENT\[Plateband\]' "$fel" 2>/dev/null | tail -400 > "$out" || true
+    if [[ -s "$out" ]]; then
+      PB_FELOG_SYNC="felog_bridge_file"
+      return 0
+    fi
+  fi
+  if pb_find_felog_sv; then
+    if pb_mirror_felog_agent_sv "$PB_FELOG_SV" "$out" 2>/dev/null; then
+      PB_FELOG_SYNC="felog_bridge_sv"
+      return 0
+    fi
+  fi
+  return 1
 }
 
 pb_repo_logs_dir() {
@@ -218,8 +274,8 @@ pb_sync_live_feed() {
     [[ "$PB_LIVE_SYNC" == "none" ]] && PB_LIVE_SYNC="sv_mirror"
   fi
   pb_sync_felog_plateband 2>/dev/null || true
-  if [[ "${PB_FELOG_SYNC:-}" == "felog_bridge" ]]; then
-    [[ "$PB_LIVE_SYNC" == "none" ]] && PB_LIVE_SYNC="felog_bridge"
+  if [[ "${PB_FELOG_SYNC:-}" == felog_bridge_* ]]; then
+    [[ "$PB_LIVE_SYNC" == "none" ]] && PB_LIVE_SYNC="${PB_FELOG_SYNC}"
   fi
 }
 
@@ -510,8 +566,8 @@ pb_sv_context() {
     PB_FEED_SOURCE="agent_live_file"
   elif [[ -f "$PB_RUNTIME_FILE" ]] && pb_runtime_file_fresh "$PB_RUNTIME_FILE" "$PB_SV"; then
     PB_FEED_SOURCE="runtime_ver_file"
-  elif [[ "${PB_FELOG_SYNC:-}" == "felog_bridge" ]]; then
-    PB_FEED_SOURCE="felog_bridge"
+  elif [[ "${PB_FELOG_SYNC:-}" == felog_bridge_* ]]; then
+    PB_FEED_SOURCE="${PB_FELOG_SYNC}"
   elif [[ "${PB_LIVE_SYNC:-none}" != "none" ]]; then
     PB_FEED_SOURCE="$PB_LIVE_SYNC"
   fi

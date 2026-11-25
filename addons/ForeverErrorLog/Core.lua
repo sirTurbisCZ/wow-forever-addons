@@ -80,7 +80,7 @@ local function AppendSessionFile(line)
     return false
   end
   if fileOk == nil then
-    ProbeSessionFile()
+    ProbeSessionFileAppend()
   end
   if not fileOk then
     return false
@@ -119,6 +119,23 @@ local function AppendSession(line)
     table.remove(log.lines, 1)
   end
   log.export = table.concat(log.lines, "\n")
+  if stamped:find("AGENT[", 1, true) then
+    if type(log.agentExport) ~= "string" then
+      log.agentExport = ""
+    end
+    local maxAgent = Config.MAX_AGENT_EXPORT_LINES or 120
+    local agentLines = {}
+    if log.agentExport ~= "" then
+      for agentLine in log.agentExport:gmatch("[^\n]+") do
+        agentLines[#agentLines + 1] = agentLine
+      end
+    end
+    agentLines[#agentLines + 1] = stamped
+    while #agentLines > maxAgent do
+      table.remove(agentLines, 1)
+    end
+    log.agentExport = table.concat(agentLines, "\n")
+  end
   log.fileOk = AppendSessionFile(stamped) or log.fileOk
 end
 
@@ -135,6 +152,7 @@ local function BeginSession()
     lines = {},
     fileOk = wrote and true or false,
     export = "",
+    agentExport = "",
   }
   AppendSession(string.format(
     "SESSION_START ver=%s file=%s",
@@ -364,6 +382,10 @@ ForeverErrorLog.AgentFeed = function(source, line)
     return
   end
   AppendSession(string.format("AGENT[%s] %s", source, line))
+end
+
+ForeverErrorLog.AgentFeedReady = function()
+  return sessionBegun and type(ForeverErrorLog.AgentFeed) == "function"
 end
 
 ForeverErrorLog.Count = function()

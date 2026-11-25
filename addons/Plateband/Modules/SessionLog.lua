@@ -47,6 +47,9 @@ local fileOk -- nil=untried, false=unavailable, true=works
 local agentIoOk = false
 local sessionBegun = false
 local agentPulseTicker
+local felogPending = {}
+local FELG_PENDING_MAX = 80
+local felogHooked
 
 local function Trim(s, maxLen)
   s = tostring(s or "")
@@ -270,12 +273,48 @@ local function MaybeReprobeIo()
   end
 end
 
-local function MirrorToFelog(line)
-  if agentIoOk then
+local function FlushFelogPending()
+  local feed = ForeverErrorLog and ForeverErrorLog.AgentFeed
+  if not feed then
     return
   end
+  for i = 1, #felogPending do
+    pcall(feed, "Plateband", felogPending[i])
+  end
+  felogPending = {}
+end
+
+local function EnsureFelogBridgeHook()
+  if felogHooked then
+    return
+  end
+  felogHooked = true
+  if not CreateFrame then
+    return
+  end
+  local f = CreateFrame("Frame")
+  f:RegisterEvent("ADDON_LOADED")
+  f:SetScript("OnEvent", function(_, event, name)
+    if event == "ADDON_LOADED" and name == "ForeverErrorLog" then
+      FlushFelogPending()
+    end
+  end)
   if ForeverErrorLog and ForeverErrorLog.AgentFeed then
-    pcall(ForeverErrorLog.AgentFeed, "Plateband", line)
+    FlushFelogPending()
+  end
+end
+
+--- Always mirror agent lines to FElog SV (sessionLog.agentExport) — not only when Plateband io fails.
+local function MirrorToFelog(line)
+  EnsureFelogBridgeHook()
+  local feed = ForeverErrorLog and ForeverErrorLog.AgentFeed
+  if feed then
+    pcall(feed, "Plateband", line)
+    return
+  end
+  felogPending[#felogPending + 1] = line
+  while #felogPending > FELG_PENDING_MAX do
+    table.remove(felogPending, 1)
   end
 end
 
