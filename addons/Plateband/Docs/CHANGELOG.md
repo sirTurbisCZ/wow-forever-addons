@@ -1,5 +1,9 @@
 # Plateband changelog
 
+## Release 0.2.77 — PublishChatTruthHead (reload ≤2s)
+
+- **`PublishChatTruthHead`** on SESSION_START, CHAT_LOADED, AGENT_LIVE (2s) — unified `live_ver` + `felog_ver` from loaded Config (matches chat).
+
 ## Release 0.2.76 — FElog disk bridge (Forever io sandbox)
 
 - **`SessionLog.MirrorFelogLogs`** — writes `ForeverErrorLog/Logs/live-head.log`, export, stream, and `Plateband/Logs/felog-live-head.log` when FElog’s own `io.open` is `sv_only`.

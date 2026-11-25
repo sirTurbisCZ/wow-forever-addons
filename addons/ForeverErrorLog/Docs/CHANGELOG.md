@@ -1,5 +1,10 @@
 # ForeverErrorLog changelog
 
+## Release 0.1.6 — chat-truth head on CHAT_LOADED
+
+- No early head write before Plateband loads; **`PublishChatTruthHead`** on reload/login + 2s pulse (both TOC versions).
+- **`ApplyLiveHeadSnapshot`**; pulse defers to Plateband publish when loaded.
+
 ## Release 0.1.5 — Plateband disk bridge + chat version
 
 - **Forever io:** direct `ForeverErrorLog/Logs/*` writes stay `sv_only`; **`Plateband.SessionLog.MirrorFelogLogs`** writes `live-head` / export / stream from Plateband context (`feed=pb_bridge`).

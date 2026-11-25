@@ -345,8 +345,21 @@ UpdateLiveHeadFromAgent = function(source, payload)
 end
 
 local function PulseLiveHeadFile()
+  local sl = Plateband and Plateband.SessionLog
+  if sl and type(sl.PublishChatTruthHead) == "function" then
+    local db = EnsureDB()
+    local lh = EnsureLiveHeadTable(db)
+    local seq = tonumber(lh.seq) or 0
+    pcall(sl.PublishChatTruthHead, "FELOG_PULSE", "pulse", seq)
+    return
+  end
   local db = EnsureDB()
   local lh = EnsureLiveHeadTable(db)
+  lh.felogVer = tostring(Config.VERSION or "?")
+  local pb = Plateband and Plateband.Config and Plateband.Config.VERSION
+  if pb then
+    lh.platebandVer = tostring(pb)
+  end
   if (tonumber(lh.at) or 0) <= 0 then
     lh.at = Now()
   end
@@ -401,7 +414,6 @@ local function StampFelogReload()
   lh.felogVer = tostring(Config.VERSION or "?")
   db.liveHead = lh
   AppendSession(string.format("CHAT_LOADED ver=%s src=reload addon=ForeverErrorLog", lh.felogVer))
-  pcall(WriteLiveHeadFile, lh)
 end
 
 --- Wipe session log on cold load. Error ring is kept across sessions.
@@ -431,7 +443,6 @@ local function BeginSession()
   lh.load = "addon"
   lh.at = Now()
   db.liveHead = lh
-  pcall(WriteLiveHeadFile, lh)
   EnsureLivePulseTicker()
 end
 
@@ -624,7 +635,13 @@ frame:SetScript("OnEvent", function(_, event, name)
     end)
     if loggedIn then
       pcall(StampFelogReload)
-      PrintLoadedLine(true)
+      if C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+          PrintLoadedLine(true)
+        end)
+      else
+        PrintLoadedLine(true)
+      end
     end
   elseif event == "PLAYER_LOGIN" then
     EnsureDB()
@@ -659,6 +676,23 @@ ForeverErrorLog.AgentFeedReady = function()
 end
 
 --- Explicit runtime stamp from bridge addons (Plateband SessionLog).
+ForeverErrorLog.ApplyLiveHeadSnapshot = function(plateVer, feVer, src, loadKind, seq)
+  local db = EnsureDB()
+  local lh = EnsureLiveHeadTable(db)
+  plateVer = tostring(plateVer or "")
+  feVer = tostring(feVer or Config.VERSION or "?")
+  if plateVer ~= "" then
+    lh.platebandVer = plateVer
+  end
+  lh.felogVer = feVer
+  lh.src = tostring(src or "CHAT_LOADED")
+  lh.load = tostring(loadKind or "reload")
+  lh.seq = tonumber(seq) or lh.seq or 0
+  lh.at = Now()
+  lh.feed = "pb_bridge"
+  db.liveHead = lh
+end
+
 ForeverErrorLog.NotifyRuntime = function(source, ver, loadKind, src)
   if not sessionBegun then
     BeginSession()

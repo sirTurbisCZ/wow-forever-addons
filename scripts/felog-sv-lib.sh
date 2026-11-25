@@ -14,6 +14,17 @@ felog_wow_root() {
   printf '%s' "$r"
 }
 
+felog_interface_ver() {
+  local wow cfg
+  wow="$(felog_wow_root)"
+  cfg="$wow/Interface/AddOns/ForeverErrorLog/Config.lua"
+  if [[ -f "$cfg" ]]; then
+    rg -o 'Config\.VERSION = "([^"]+)"' "$cfg" | sed 's/.*"\(.*\)".*/\1/' | head -1
+    return 0
+  fi
+  rg -o 'Config\.VERSION = "([^"]+)"' "$(_felog_lib_root)/addons/ForeverErrorLog/Config.lua" | sed 's/.*"\(.*\)".*/\1/' | head -1
+}
+
 felog_plateband_interface_ver() {
   local wow cfg
   wow="$(felog_wow_root)"
@@ -73,6 +84,26 @@ felog_file_age_sec() {
   echo $((now - lm))
 }
 
+# min(disk_mtime_age, now - t= on line) — chat/runtime truth over stale host copies
+felog_head_age_sec() {
+  local f="$1"
+  [[ -f "$f" ]] || return 1
+  local disk line t now logical
+  disk="$(felog_file_age_sec "$f" 2>/dev/null || echo 9999)"
+  line="$(head -1 "$f" 2>/dev/null || true)"
+  t="$(sed -n 's/.*[^0-9]t=\([0-9][0-9]*\).*/\1/p' <<<"$line" | head -1)"
+  now="$(date +%s)"
+  logical="$disk"
+  if [[ -n "$t" && "$t" -gt 0 ]]; then
+    logical=$((now - t))
+    [[ "$logical" -lt 0 ]] && logical="$disk"
+    if [[ "$logical" -lt "$disk" ]]; then
+      disk="$logical"
+    fi
+  fi
+  printf '%s' "$disk"
+}
+
 # Parse live-head.log one-liner (FElog 0.1.4+).
 felog_read_live_head() {
   local f="${1:-}"
@@ -84,17 +115,18 @@ felog_read_live_head() {
   local line
   line="$(head -1 "$f" 2>/dev/null || true)"
   [[ -n "$line" ]] || return 1
-  local live pb seq src load feed age
+  local live pb fe seq src load feed age
   live="$(sed -n 's/.*live_ver=\([0-9.]*\).*/\1/p' <<<"$line" | head -1)"
   pb="$(sed -n 's/.*plateband_ver=\([0-9.]*\).*/\1/p' <<<"$line" | head -1)"
+  fe="$(sed -n 's/.*felog_ver=\([0-9.]*\).*/\1/p' <<<"$line" | head -1)"
   seq="$(sed -n 's/.* seq=\([0-9]*\).*/\1/p' <<<"$line" | head -1)"
   src="$(sed -n 's/.* src=\([^ ]*\).*/\1/p' <<<"$line" | head -1)"
   load="$(sed -n 's/.* load=\([^ ]*\).*/\1/p' <<<"$line" | head -1)"
   feed="$(sed -n 's/.* feed=\([^ ]*\).*/\1/p' <<<"$line" | head -1)"
-  age="$(felog_file_age_sec "$f" 2>/dev/null || echo 9999)"
+  age="$(felog_head_age_sec "$f" 2>/dev/null || echo 9999)"
   [[ -n "$live" ]] || return 1
-  printf 'live_ver=%s plateband_ver=%s seq=%s src=%s load=%s feed=%s age_sec=%s path=%s\n' \
-    "$live" "${pb:-}" "${seq:-0}" "${src:-?}" "${load:-?}" "${feed:-?}" "$age" "$f"
+  printf 'live_ver=%s plateband_ver=%s felog_ver=%s seq=%s src=%s load=%s feed=%s age_sec=%s path=%s\n' \
+    "$live" "${pb:-}" "${fe:-}" "${seq:-0}" "${src:-?}" "${load:-?}" "${feed:-?}" "$age" "$f"
 }
 
 felog_stamped_ver_from_export() {

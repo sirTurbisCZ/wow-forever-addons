@@ -244,6 +244,35 @@ local function WriteLineToPaths(paths, line, mode)
 end
 
 --- Forever blocks io under ForeverErrorLog/; Plateband can write those paths.
+--- Unified head: chat truth (Plateband + FElog TOC versions), ≤2s on CHAT_LOADED + 2s pulse.
+function Mod.PublishChatTruthHead(src, load, seq)
+  src = tostring(src or "CHAT_LOADED")
+  load = tostring(load or "reload")
+  seq = tonumber(seq) or 0
+  local pbVer = tostring(ns.Config and ns.Config.VERSION or "?")
+  local feVer = "?"
+  if ForeverErrorLog and ForeverErrorLog.Config and ForeverErrorLog.Config.VERSION then
+    feVer = tostring(ForeverErrorLog.Config.VERSION)
+  end
+  local at = Now()
+  local line = string.format(
+    "live_ver=%s plateband_ver=%s felog_ver=%s seq=%s src=%s load=%s t=%s feed=pb_bridge",
+    pbVer,
+    pbVer,
+    feVer,
+    tostring(seq),
+    src,
+    load,
+    tostring(at)
+  )
+  local ok = Mod.MirrorFelogLogs(line, nil, nil)
+  pcall(Mod.WriteLiveHeadFile, pbVer, seq, src, load)
+  if ForeverErrorLog and ForeverErrorLog.ApplyLiveHeadSnapshot then
+    pcall(ForeverErrorLog.ApplyLiveHeadSnapshot, pbVer, feVer, src, load, seq)
+  end
+  return ok
+end
+
 function Mod.MirrorFelogLogs(headLine, exportBody, streamLine)
   local ok = false
   if headLine and headLine ~= "" then
@@ -338,10 +367,10 @@ function Mod.RecordChatLoaded(src)
   Mod.Append(string.format("CHAT_LOADED ver=%s src=%s", ver, src))
   Mod.Append(string.format("RUNTIME_VER ver=%s src=chat load=%s", ver, src))
   pcall(Mod.TryWriteRuntimeVerFile, ver)
-  pcall(Mod.WriteLiveHeadFile, ver, 0, "CHAT_LOADED", src)
   if ForeverErrorLog and ForeverErrorLog.NotifyRuntime then
     pcall(ForeverErrorLog.NotifyRuntime, "Plateband", ver, src, "CHAT_LOADED")
   end
+  pcall(Mod.PublishChatTruthHead, "CHAT_LOADED", src, 0)
   pcall(Mod.FlushLiveExport)
   pcall(Mod.PulseAgentLive)
 end
@@ -525,7 +554,7 @@ function Mod.PulseAgentLive()
   if not TryAppendAgentLive(stamped) then
     MirrorToFelog(body)
   end
-  pcall(Mod.WriteLiveHeadFile, al.ver, al.seq, "AGENT_LIVE", "pulse")
+  pcall(Mod.PublishChatTruthHead, "AGENT_LIVE", "pulse", al.seq)
   Mod.ScheduleLiveFlush()
   pcall(Mod.FlushLiveExport)
 end
@@ -605,7 +634,7 @@ function Mod.BeginSession()
   )
   Mod.Append(header)
   pcall(Mod.TryWriteRuntimeVerFile, ver)
-  pcall(Mod.WriteLiveHeadFile, ver, 0, "SESSION_START", "addon")
+  pcall(Mod.PublishChatTruthHead, "SESSION_START", "addon", 0)
   pcall(Mod.FlushLiveExport)
   Mod.EnsureLiveFlushTicker()
   Mod.EnsureAgentPulseTicker()
