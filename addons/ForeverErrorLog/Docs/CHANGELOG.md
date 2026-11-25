@@ -1,5 +1,9 @@
 # ForeverErrorLog changelog
 
+## Release 0.1.21 — disk L1 = Plateband chatTruthLine
+
+- **`PulseLiveHeadFile`** prefers **`PlatebandDB.chatTruthLine`**; **`WritePlatebandExportL1`** + deferred **`C_Timer`** io.
+
 ## Release 0.1.20 — FelogExportDriver + BestVersion chat FE
 
 - **`FelogExportDriver`** 1.95s; **`FelogBestVersion`** — chat `Config.VERSION` beats stale stamp.

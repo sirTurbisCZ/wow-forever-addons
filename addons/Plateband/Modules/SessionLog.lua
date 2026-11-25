@@ -232,12 +232,7 @@ end
 function Mod.ForceDiskExportL1()
   local db = ns.Config.EnsureDB()
   db.exportPulseSeq = (tonumber(db.exportPulseSeq) or 0) + 1
-  local line = db.chatTruthLine
-  if type(line) ~= "string" or line:sub(1, 9) ~= "live_ver=" then
-    line = Mod.BuildChatTruthLine("EXPORT_PULSE", "pulse", db.exportPulseSeq)
-  else
-  line = Mod.BuildChatTruthLine("EXPORT_PULSE", "pulse", db.exportPulseSeq)
-  end
+  local line = Mod.BuildChatTruthLine("EXPORT_PULSE", "pulse", db.exportPulseSeq)
   db.chatTruthLine = line
   db.chatTruthAt = Now()
   db.exportPulseAt = Now()
@@ -494,7 +489,7 @@ local function QueueDeferredExportWrite(line)
   local delays = { 0, 0.05, 0.2 }
   for i = 1, #delays do
     C_Timer.After(delays[i], function()
-      WriteLineToPaths({ AGENT_EXPORT_REL, AGENT_EXPORT_BS }, line, "w")
+      pcall(Mod.WriteExportL1Brute, line)
     end)
   end
 end
@@ -589,11 +584,22 @@ local function DiscoverIoAllowlist(db)
   return "sv_only"
 end
 
+local function ParseTruthVersions(line)
+  if type(line) ~= "string" then
+    return nil, nil
+  end
+  return line:match("plateband_ver=([^%s]+)"), line:match("felog_ver=([^%s]+)")
+end
+
 function Mod.BuildChatTruthLine(src, load, seq)
   src = tostring(src or "CHAT_LOADED")
   load = tostring(load or "reload")
   seq = tonumber(seq) or 0
   local pbVer, feVer, pbMeta, feMeta = Mod.ResolveExportVersions()
+  local db = ns.Config.EnsureDB()
+  local svPb, svFe = ParseTruthVersions(db.chatTruthLine)
+  pbVer = BestVersion(pbVer, svPb)
+  feVer = BestVersion(feVer, svFe)
   pbMeta = pbMeta or pbVer
   feMeta = feMeta or feVer
   return string.format(
