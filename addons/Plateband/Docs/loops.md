@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.43** (friendly OOC sticky + silent session PAINT; combat hold vs regen clear)
+Version: **0.2.44** (friendly-only harmful pool filter; enemy debuff harvest restored)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 

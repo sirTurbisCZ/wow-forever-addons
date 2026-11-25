@@ -138,6 +138,7 @@ local IsForbiddenPlate
 local IsLikelyBuffFrame
 local IsPlateHarmfulAuraButton
 local CollectPlateBuffButtons
+local PlateUsesFriendlyHarmfulFilter
 local IsPlayerOrFriendPlate
 local IsSecret
 local IsTargetPlate
@@ -1147,6 +1148,35 @@ local function FilterPlateHarmfulButtons(buttons, maxN)
   end
 end
 
+--- Buff/debuff pool filter is for friendly plates only — enemy native row must stay untouched.
+PlateUsesFriendlyHarmfulFilter = function(plate)
+  if not plate then
+    return false
+  end
+  if HasTarget() then
+    local tp = PlateFor("target")
+    if tp and tp == plate then
+      local friendly = false
+      pcall(function()
+        if UnitIsFriend and UnitIsFriend("player", "target") then
+          friendly = true
+        end
+      end)
+      if friendly then
+        return true
+      end
+      return false
+    end
+  end
+  for i = 1, 40 do
+    local u = "nameplate" .. i
+    if PlateFor(u) == plate then
+      return IsPlayerOrFriendPlate(u, plate) and true or false
+    end
+  end
+  return false
+end
+
 CollectPlateBuffButtons = function(plate, out, maxN)
   if not plate or not out then
     return
@@ -1180,24 +1210,31 @@ CollectPlateDebuffButtons = function(plate, out, maxN)
     return
   end
   maxN = maxN or MaxIcons()
+  local friendFilter = PlateUsesFriendlyHarmfulFilter(plate)
   local pools = PlateAuraPools(plate)
   if pools then
     HarvestAuraPoolButtons(pools, out, maxN)
-    FilterPlateHarmfulButtons(out, maxN)
+    if friendFilter then
+      FilterPlateHarmfulButtons(out, maxN)
+    end
   end
   if #out >= maxN then
     return
   end
   local list = NativeDebuffList(plate)
   if not list then
-    FilterPlateHarmfulButtons(out, maxN)
+    if friendFilter then
+      FilterPlateHarmfulButtons(out, maxN)
+    end
     return
   end
   local ok, kids = pcall(function()
     return { list:GetChildren() }
   end)
   if not ok or type(kids) ~= "table" then
-    FilterPlateHarmfulButtons(out, maxN)
+    if friendFilter then
+      FilterPlateHarmfulButtons(out, maxN)
+    end
     return
   end
   for i = 1, #kids do
@@ -1206,12 +1243,14 @@ CollectPlateDebuffButtons = function(plate, out, maxN)
     end
     local child = kids[i]
     if child and (child.Icon or child.icon or child.GetAuraInstance) and SafeShown(child) then
-      if IsPlateHarmfulAuraButton(child) then
+      if not friendFilter or IsPlateHarmfulAuraButton(child) then
         out[#out + 1] = child
       end
     end
   end
-  FilterPlateHarmfulButtons(out, maxN)
+  if friendFilter then
+    FilterPlateHarmfulButtons(out, maxN)
+  end
 end
 
 FallbackParent = function(plate)

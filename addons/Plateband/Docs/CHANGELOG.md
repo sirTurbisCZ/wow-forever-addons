@@ -1,5 +1,15 @@
 # Plateband changelog
 
+## Release 0.2.44 — enemy debuff regression (urgent)
+
+- **Bug:** 0.2.41+ **`IsPlateHarmfulAuraButton` on all plates** — enemy `auraPools` debuffs dropped → **no DoTs on mobs** (native merge/nativeN broken).
+- **Fix:** **`PlateUsesFriendlyHarmfulFilter`** — harmful/helpful split **only** on friend/party plates; enemy plates use legacy full debuff harvest.
+
+### Playtest (0.2.44)
+
+1. `/reload` → **`ver=0.2.44`** in SV/FElog.
+2. Mob DoTs on plate again; then friendly PW:S + Weakened Soul.
+
 ## Release 0.2.43 — friendly gap telemetry + paint nil fix
 
 - **SV root cause (feed):** `paintTraceOn=false` silenced **all** session PAINT despite `silentTrace=true` — inbox empty; **`Plates.lua` paint nil** (early `IsLikelyBuffFrame` ref) aborted harvest OOC; **combat** `UpdateOverlay` held row without repaint; **`PLAYER_REGEN_ENABLED`** OOC repaint hit `miss=0` → clear.
