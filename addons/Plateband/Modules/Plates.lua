@@ -212,6 +212,9 @@ local TextureHasArt
 local TfRowKey
 local TfSupplementSkipKeys
 local UnitTokenFromPlate
+local CanonicalPlateUnit
+local PlateMatchesTarget
+local PlateUnitBindingMatches
 local UpdateOverlay
 local WatchInterval
 
@@ -220,6 +223,10 @@ OverlayUnitKey = function(unit, plate)
     return unit
   end
   if plate then
+    local canon = CanonicalPlateUnit and CanonicalPlateUnit(plate, unit)
+    if canon then
+      return canon
+    end
     return "pb:" .. tostring(plate)
   end
   return nil
@@ -540,6 +547,90 @@ NameplateUnitFor = function(token)
   end
 
   return nil
+end
+
+PlateUnitBindingMatches = function(plate, unitToken)
+  if not plate or type(unitToken) ~= "string" or unitToken == "" then
+    return false
+  end
+  if unitToken:match("^pb:") then
+    return false
+  end
+  local fromPlate = UnitTokenFromPlate(plate)
+  if not fromPlate then
+    return PlateFor(unitToken) == plate
+  end
+  if fromPlate == unitToken then
+    return true
+  end
+  if PlateFor(fromPlate) ~= plate or PlateFor(unitToken) ~= plate then
+    return false
+  end
+  return SameUnit(fromPlate, unitToken)
+end
+
+--- Single nameplate token per plate frame — fixes nameplate slot recycle / plate≠punit bleed.
+CanonicalPlateUnit = function(plate, unitHint)
+  if not plate then
+    if type(unitHint) == "string" and unitHint:match("^nameplate%d+") then
+      return unitHint
+    end
+    return nil
+  end
+  local fromPlate = UnitTokenFromPlate(plate)
+  if HasTarget() and PlateFor("target") == plate then
+    local nu = NameplateUnitFor("target")
+    if fromPlate and nu then
+      if fromPlate == nu or SameUnit(fromPlate, nu) or SameUnit(fromPlate, "target") then
+        return nu
+      end
+      if SameUnit(nu, "target") then
+        return nu
+      end
+    end
+    if nu then
+      return nu
+    end
+  end
+  if fromPlate then
+    if type(unitHint) == "string" and unitHint:match("^nameplate%d+") and unitHint ~= fromPlate then
+      if PlateFor(unitHint) == plate and PlateUnitBindingMatches(plate, unitHint) then
+        return unitHint
+      end
+    end
+    return fromPlate
+  end
+  if type(unitHint) == "string" and unitHint:match("^nameplate%d+") then
+    return unitHint
+  end
+  return nil
+end
+
+PlateMatchesTarget = function(plate)
+  if not plate or not HasTarget() then
+    return false
+  end
+  if PlateFor("target") ~= plate then
+    return false
+  end
+  local canon = CanonicalPlateUnit(plate, NameplateUnitFor("target"))
+  if not canon then
+    return true
+  end
+  local nu = NameplateUnitFor("target")
+  if nu and canon == nu then
+    return true
+  end
+  if SameUnit(canon, "target") then
+    return true
+  end
+  if nu and SameUnit(nu, "target") then
+    return true
+  end
+  if canon and SameUnit(canon, "target") then
+    return true
+  end
+  return canon == nu
 end
 
 HasTarget = function()
@@ -4455,22 +4546,36 @@ PaintMergeMissing = function(unit, plate)
   lastPaintDebug.gapSz = nil
   lastPaintDebug.lockSz = nil
 
+  local plateUnit = CanonicalPlateUnit(plate, unit)
+  if plateUnit then
+    if type(unit) == "string" and unit:match("^nameplate%d+") and unit ~= plateUnit then
+      if not PlateUnitBindingMatches(plate, unit) then
+        if fallbacks[unit] then
+          ClearFallback(unit)
+        end
+      end
+    end
+    unit = plateUnit
+  end
+
   local paintKeys = NativeShownKeySet(plate)
   local maxN = MaxIcons()
   local missing = {}
   local stats = { personal = 0, foreign = 0 }
-  local isTarget = IsTargetPlate(unit, plate)
-  local useTargetSrc = ShouldUseTargetAuraSource(unit, plate)
-  if HasTarget() and plate and PlateFor("target") == plate then
-    if not useTargetSrc then
-      useTargetSrc = true
-    end
-    local tu = NameplateUnitFor("target")
-    if tu then
-      unit = tu
-    end
-  elseif useTargetSrc then
+  local isTarget = PlateMatchesTarget(plate)
+  local useTargetSrc = isTarget and ShouldUseTargetAuraSource(unit, plate)
+  if useTargetSrc and not PlateMatchesTarget(plate) then
     useTargetSrc = false
+  end
+  if not isTarget and HasTarget() then
+    useTargetSrc = false
+  end
+
+  if partyAuraTok and PlateFor(partyAuraTok) == plate then
+    friendPlate = true
+  elseif partyAuraTok and not isTarget and PlateFor(partyAuraTok) ~= plate then
+    ClearFallback(unit)
+    return 0
   end
 
   if not friendPlate and useTargetSrc then
@@ -4691,12 +4796,6 @@ PaintMergeMissing = function(unit, plate)
           lastPaintDebug.cdN = heldCd
           SilentTracePaint("paint_hold", unit, plate)
           return heldN
-        elseif friendPlate or partyMerge then
-          sticky.at = now
-          for i = 1, #stickyLive do
-            missing[i] = stickyLive[i]
-          end
-          lastPaintDebug.miss = #missing
         else
           gapSticky[unit] = nil
         end
@@ -4841,7 +4940,10 @@ end
 
 UpdateOverlay = function(unit, plate)
   plate = plate or (unit and PlateFor(unit))
-  if HasTarget() and plate and PlateFor("target") == plate then
+  local canon = plate and CanonicalPlateUnit(plate, unit)
+  if canon then
+    unit = canon
+  elseif HasTarget() and plate and PlateFor("target") == plate then
     local tu = NameplateUnitFor("target")
     if type(tu) == "string" and tu ~= "" then
       unit = tu
@@ -5162,11 +5264,10 @@ SnapshotDiagnose = function(reason, opts)
   local plateCount = #live
 
   if targetYes then
-    plateUnit = NameplateUnitFor("target")
-    if plateUnit then
-      plate = PlateFor(plateUnit) or PlateFor("target")
-    else
-      plate = PlateFor("target")
+    plate = PlateFor("target") or plate
+    plateUnit = CanonicalPlateUnit(plate, NameplateUnitFor("target"))
+    if not plateUnit and plate then
+      plateUnit = UnitTokenFromPlate(plate)
     end
   end
   if not plate and plateCount == 1 and live[1] then
@@ -5217,23 +5318,22 @@ SnapshotDiagnose = function(reason, opts)
   if plateUnit and overlays[plateUnit] then
     kids = RawChildCount(overlays[plateUnit])
   end
-  if plateUnit and fallbacks[plateUnit] then
-    fb = tonumber(fallbacks[plateUnit]._painted) or 0
+  local diagUnit = plateUnit
+  if plate then
+    diagUnit = CanonicalPlateUnit(plate, plateUnit) or diagUnit
   end
-  if fb == 0 then
-    for _, f in pairs(fallbacks) do
-      local n = tonumber(f._painted) or 0
-      if n > fb then
-        fb = n
-      end
-    end
+  if diagUnit and fallbacks[diagUnit] then
+    fb = tonumber(fallbacks[diagUnit]._painted) or 0
   end
 
   local mergeOn = Profile().mergeMissing == true and "1" or "0"
   local lpd = lastPaintDebug or {}
-  local paintedDiag = tonumber(lpd.painted) or 0
-  if paintedDiag < fb then
-    paintedDiag = fb
+  local paintedDiag = fb
+  if diagUnit and tostring(lpd.unit or "") == tostring(diagUnit) then
+    local lp = tonumber(lpd.painted) or 0
+    if lp > paintedDiag then
+      paintedDiag = lp
+    end
   end
   local tgtSrcLive = lpd.tgtSrc
   if targetYes and plate then
@@ -5251,7 +5351,7 @@ SnapshotDiagnose = function(reason, opts)
     tostring(ns.Config.VERSION),
     tostring(reason or "manual"),
     targetYes and "yes" or "no",
-    plateUnit or (plate and "yes" or "no"),
+    (plateUnit or (plate and UnitTokenFromPlate(plate)) or "no"),
     tostring(plateCount),
     tostring(overlayN),
     tostring(ac),

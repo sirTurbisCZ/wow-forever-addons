@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## Release 0.2.67 — plate binding + watcher chat truth
+
+- **Plates:** `CanonicalPlateUnit` / `PlateMatchesTarget` — TF harvest only on real target plate; drop party paint on wrong plate; CARD `punit`/fb from target unit only (no bleed).
+- **Watch:** `pb_unified_runtime_from_sv` priority `liveHead_chat` → `CHAT_LOADED` → `RUNTIME_VER` (not SESSION max); `chat_override` clears false `reload_pending`.
+
 ## Release 0.2.66 — native API fallback (overlap / false gaps)
 
 - **Root (live 0.2.64):** `native=0` on every PAINT while `painted>0` — Forever pool buttons fail `SafeShown` → empty `NativeShownKeySet` → full-gap repaint on top of Blizzard row.

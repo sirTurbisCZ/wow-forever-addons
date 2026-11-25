@@ -180,15 +180,6 @@ path = pathlib.Path(sys.argv[1])
 t = path.read_text(errors="replace")
 ver, source, seq = None, None, None
 
-hm = re.search(r'\["liveHead"\]\s*=\s*"([^"]*)"', t)
-if hm:
-    vm = re.search(r'ver=([0-9.]+)', hm.group(1))
-    sm = re.search(r'seq=(\d+)', hm.group(1))
-    if vm:
-        ver, source = vm.group(1), "liveHead"
-    if sm:
-        seq = sm.group(1)
-
 def table_ver(name, key):
     m = re.search(rf'\["{name}"\]\s*=\s*\{{', t)
     if not m:
@@ -200,37 +191,80 @@ def table_ver(name, key):
     vm = re.search(rf'\["{key}"\]\s*=\s*(\d+)', chunk)
     return vm.group(1) if vm else None
 
-for name, src in (("runtimeVer", "runtimeVer"), ("agentLive", "agentLive")):
-    tv = table_ver(name, "ver")
-    if tv and (ver is None or vtuple(tv) >= vtuple(ver)):
-        ver, source = tv, src
-
-em = re.search(r'\["export"\]\s*=\s*"((?:\\.|[^"\\])*)"', t, re.S)
-if em:
+def export_last(needle):
+    em = re.search(r'\["export"\]\s*=\s*"((?:\\.|[^"\\])*)"', t, re.S)
+    if not em:
+        return None
     body = em.group(1).encode("utf-8").decode("unicode_escape")
-    for label, needle in (
-        ("CHAT_LOADED", "CHAT_LOADED"),
-        ("RUNTIME_VER", "RUNTIME_VER"),
-        ("AGENT_LIVE", "AGENT_LIVE"),
-        ("PLATES_LOAD", "PLATES_LOAD ok=1"),
-        ("SESSION_START", "SESSION_START"),
-    ):
-        hits = [ln for ln in body.split("\n") if needle in ln]
-        if not hits:
-            continue
-        last = hits[-1]
+    hits = [ln for ln in body.split("\n") if needle in ln]
+    return hits[-1] if hits else None
+
+# Chat/login beats flushed SESSION — fixed priority, not max(version).
+hm = re.search(r'\["liveHead"\]\s*=\s*"([^"]*)"', t)
+if hm and "src=chat" in hm.group(1):
+    vm = re.search(r"ver=([0-9.]+)", hm.group(1))
+    sm = re.search(r"seq=(\d+)", hm.group(1))
+    if vm:
+        ver, source = vm.group(1), "liveHead_chat"
+    if sm:
+        seq = sm.group(1)
+
+if ver is None:
+    last = export_last("CHAT_LOADED")
+    if last:
         vm = re.search(r"ver=([0-9.]+)", last)
-        if vm and (ver is None or vtuple(vm.group(1)) >= vtuple(ver)):
-            ver, source = vm.group(1), label
-        if label == "AGENT_LIVE":
-            sm = re.search(r"seq=(\d+)", last)
-            if sm:
-                seq = sm.group(1)
+        if vm:
+            ver, source = vm.group(1), "CHAT_LOADED"
+
+if ver is None:
+    last = export_last("RUNTIME_VER")
+    if last:
+        vm = re.search(r"ver=([0-9.]+)", last)
+        if vm:
+            ver, source = vm.group(1), "RUNTIME_VER"
+
+if ver is None:
+    tv = table_ver("runtimeVer", "ver")
+    if tv:
+        ver, source = tv, "runtimeVer"
+
+if ver is None and hm:
+    vm = re.search(r"ver=([0-9.]+)", hm.group(1))
+    sm = re.search(r"seq=(\d+)", hm.group(1))
+    if vm:
+        ver, source = vm.group(1), "liveHead"
+    if sm:
+        seq = sm.group(1)
+
+if ver is None:
+    tv = table_ver("agentLive", "ver")
+    if tv:
+        ver, source = tv, "agentLive"
+
+for label, needle in (("AGENT_LIVE", "AGENT_LIVE"), ("PLATES_LOAD", "PLATES_LOAD ok=1"), ("SESSION_START", "SESSION_START")):
+    if ver is not None and label not in ("AGENT_LIVE",):
+        break
+    last = export_last(needle)
+    if not last:
+        continue
+    vm = re.search(r"ver=([0-9.]+)", last)
+    if vm and ver is None:
+        ver, source = vm.group(1), label
+    if label == "AGENT_LIVE":
+        sm = re.search(r"seq=(\d+)", last)
+        if sm:
+            seq = sm.group(1)
 
 if seq is None:
     sq = table_ver("agentLive", "seq")
     if sq:
         seq = sq
+if seq is None:
+    last = export_last("AGENT_LIVE")
+    if last:
+        sm = re.search(r"seq=(\d+)", last)
+        if sm:
+            seq = sm.group(1)
 
 if ver:
     print("{}\t{}\t{}".format(ver, seq or "0", source or "?"))
@@ -572,12 +606,24 @@ pb_sv_context() {
     PB_FEED_SOURCE="$PB_LIVE_SYNC"
   fi
 
+  PB_CHAT_OVERRIDE=no
+  case "${PB_VER_SOURCE:-}" in
+    CHAT_LOADED|RUNTIME_VER|liveHead_chat|runtimeVer)
+      PB_CHAT_OVERRIDE=yes
+      ;;
+  esac
+
   PB_RELOAD_PENDING=no
   if [[ -n "$PB_RUNTIME_VER" && -n "$PB_LIVE_VER" && "$PB_RUNTIME_VER" != "$PB_LIVE_VER" ]]; then
     if pb_ver_sort_ge "$PB_RUNTIME_VER" "$PB_LIVE_VER"; then
       PB_RELOAD_PENDING=yes
     else
       PB_RELOAD_PENDING=behind
+    fi
+  fi
+  if [[ "$PB_RELOAD_PENDING" == "yes" && "$PB_CHAT_OVERRIDE" == "yes" ]]; then
+    if [[ "$PB_LIVE_VER" == "$PB_RUNTIME_VER" ]] || pb_ver_sort_ge "$PB_LIVE_VER" "$PB_RUNTIME_VER"; then
+      PB_RELOAD_PENDING=no
     fi
   fi
 
@@ -588,6 +634,9 @@ pb_sv_context() {
   fi
   PB_CHAT_LIVE=no
   if [[ -n "${PLATEBAND_LIVE_VER:-}" ]]; then
+    PB_CHAT_LIVE=yes
+  fi
+  if [[ "${PB_CHAT_OVERRIDE:-}" == yes ]]; then
     PB_CHAT_LIVE=yes
   fi
   return 0

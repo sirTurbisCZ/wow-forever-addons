@@ -34,7 +34,11 @@ if [[ "$PB_FLUSH_LAG" == "yes" ]]; then
 fi
 
 if [[ "${PB_RELOAD_PENDING:-no}" == "yes" ]]; then
-  echo "SV_GATE note: reload_pending=yes — client ${PB_LIVE_VER} < deployed ${PB_RUNTIME_VER} (TOC); paint rules apply to client ver until /reload"
+  if [[ "${PB_CHAT_OVERRIDE:-}" == yes && "${PB_LIVE_VER:-}" == "${PB_RUNTIME_VER:-}" ]]; then
+    echo "SV_GATE note: reload_pending=no — chat/liveHead runtime matches deployed ${PB_RUNTIME_VER}"
+  else
+    echo "SV_GATE note: reload_pending=yes — client ${PB_LIVE_VER} < deployed ${PB_RUNTIME_VER} (TOC); paint rules apply to client ver until /reload"
+  fi
 fi
 
 FELOG=""
