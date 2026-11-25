@@ -1,5 +1,9 @@
 # ForeverErrorLog changelog
 
+## Release 0.1.17 — FElog chat TOC + LoadAddOn Plateband for pb ver
+
+- **`FelogLiveInterfaceVersions`** — **`Config.VERSION`** (chat) first; **`C_AddOns.LoadAddOn("Plateband")`** so pb matches deployed toc without separate `/reload`; stamp + immediate export on FElog reload.
+
 ## Release 0.1.16 — FElog TOC file read + metadata each WritePlatebandExportLine
 
 - Same **`FelogLiveInterfaceVersions`** as Plateband (disk .toc first, then **`GetAddOnMetadata`**); delegates to **`SessionLog.LiveInterfaceVersions`** when loaded.

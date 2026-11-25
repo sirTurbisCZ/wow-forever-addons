@@ -65,6 +65,8 @@ local PB_CFG_FILE = "Interface/AddOns/Plateband/Config.lua"
 local PB_CFG_BS = [[Interface\AddOns\Plateband\Config.lua]]
 local FE_CFG_FILE = "Interface/AddOns/ForeverErrorLog/Config.lua"
 local FE_CFG_BS = [[Interface\AddOns\ForeverErrorLog\Config.lua]]
+local INTERFACE_TOC_STAMP = "Interface/AddOns/Plateband/Logs/interface-toc.ver"
+local INTERFACE_TOC_STAMP_BS = [[Interface\AddOns\Plateband\Logs\interface-toc.ver]]
 
 local function ParseVersionFromText(text)
   if not text or text == "" then
@@ -105,10 +107,31 @@ local function ReadInterfaceAddonVersion(paths)
   return nil
 end
 
---- Fresh Interface TOC every pulse: disk .toc/.lua wins; GetAddOnMetadata fresh each call (never SV cache).
+local function ReadTocStampVersion()
+  if not (io and io.open) then
+    return nil, nil
+  end
+  for i = 1, 2 do
+    local path = i == 1 and INTERFACE_TOC_STAMP or INTERFACE_TOC_STAMP_BS
+    local f = TryOpen(path, "r")
+    if f then
+      local ok, line = pcall(function()
+        local l = f:read("*l") or ""
+        f:close()
+        return l
+      end)
+      if ok and line ~= "" then
+        local pb = line:match("pb=([%d%.]+)")
+        local fe = line:match("fe=([%d%.]+)")
+        return pb, fe
+      end
+    end
+  end
+  return nil, nil
+end
+
+--- Chat TOC first (loaded Config = reload banner), then disk/stamp, then GetAddOnMetadata (fresh, no SV cache).
 function Mod.LiveInterfaceVersions()
-  local pbToc = ReadInterfaceAddonVersion({ PB_TOC_FILE, PB_TOC_BS, PB_CFG_FILE, PB_CFG_BS })
-  local feToc = ReadInterfaceAddonVersion({ FE_TOC_FILE, FE_TOC_BS, FE_CFG_FILE, FE_CFG_BS })
   local pbMeta, feMeta
   if type(GetAddOnMetadata) == "function" then
     local ok, v = pcall(GetAddOnMetadata, PLATEBAND_TOC, "Version")
@@ -120,9 +143,27 @@ function Mod.LiveInterfaceVersions()
       feMeta = tostring(v)
     end
   end
-  local pbVer = (pbToc and pbToc ~= "") and pbToc or pbMeta or "?"
-  local feVer = (feToc and feToc ~= "") and feToc or feMeta or "?"
+  local pbLoaded
+  if ns.Config and ns.Config.VERSION and tostring(ns.Config.VERSION) ~= "" then
+    pbLoaded = tostring(ns.Config.VERSION)
+  end
+  local feLoaded
+  if ForeverErrorLog and ForeverErrorLog.Config and ForeverErrorLog.Config.VERSION then
+    feLoaded = tostring(ForeverErrorLog.Config.VERSION)
+  end
+  local pbToc = ReadInterfaceAddonVersion({ PB_TOC_FILE, PB_TOC_BS, PB_CFG_FILE, PB_CFG_BS })
+  local feToc = ReadInterfaceAddonVersion({ FE_TOC_FILE, FE_TOC_BS, FE_CFG_FILE, FE_CFG_BS })
+  local pbStamp, feStamp = ReadTocStampVersion()
+  local pbVer = pbLoaded or pbToc or pbStamp or pbMeta or "?"
+  local feVer = feLoaded or feToc or feStamp or feMeta or "?"
   return pbVer, feVer, pbMeta, feMeta
+end
+
+--- Writable stamp when AddOns/ tree is read-only — same versions as chat on reload.
+function Mod.PublishInterfaceTocStamp()
+  local pbVer, feVer = Mod.LiveInterfaceVersions()
+  local line = string.format("pb=%s fe=%s t=%s", pbVer, feVer, tostring(Now()))
+  WriteLineToPaths({ INTERFACE_TOC_STAMP, INTERFACE_TOC_STAMP_BS }, line, "w")
 end
 
 local function TocVersion(addon, configFallback)
@@ -431,6 +472,7 @@ function Mod.PulseExportDisk()
   local line = Mod.BuildChatTruthLine("EXPORT_PULSE", "pulse", seq)
   db.chatTruthLine = line
   db.chatTruthAt = Now()
+  local pbVer, feVer = Mod.LiveInterfaceVersions()
   db.interfacePbVer = pbVer
   db.interfaceFeVer = feVer
   db.ioAllowName = nil
@@ -760,6 +802,7 @@ function Mod.RecordChatLoaded(src)
   if ForeverErrorLog and ForeverErrorLog.NotifyRuntime then
     pcall(ForeverErrorLog.NotifyRuntime, "Plateband", ver, src, "CHAT_LOADED")
   end
+  pcall(Mod.PublishInterfaceTocStamp)
   pcall(Mod.PulseExportDisk)
   Mod.ScheduleExportBurst()
   pcall(Mod.PublishChatTruthHead, "CHAT_LOADED", src, 0)
@@ -1007,6 +1050,7 @@ function Mod.BeginSession()
   pcall(Mod.PublishChatTruthHead, "SESSION_START", "addon", 0)
   Mod.Append(header)
   pcall(Mod.TryWriteRuntimeVerFile, ver)
+  pcall(Mod.PublishInterfaceTocStamp)
   pcall(Mod.PulseExportDisk)
   Mod.EnsureLiveFlushTicker()
   Mod.EnsureAgentPulseTicker()

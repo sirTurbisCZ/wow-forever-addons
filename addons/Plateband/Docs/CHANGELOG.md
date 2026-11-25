@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## Release 0.2.88 — L1 matches chat TOC (Config) immediately
+
+- **`LiveInterfaceVersions`** — **loaded `Config.VERSION` first** (same as reload chat), then disk/stamp, then **`GetAddOnMetadata`**.
+- **`PublishInterfaceTocStamp`** → `Logs/interface-toc.ver` when AddOns tree is read-only.
+
 ## Release 0.2.87 — L1 from Interface .toc/.lua each pulse
 
 - **`LiveInterfaceVersions`** — re-reads **`Plateband.toc` / `Config.lua` on disk** every pulse; **`GetAddOnMetadata`** fresh (no runtime Config cache); **`meta_pb` / `meta_fe`** on line for debug vs TOC.

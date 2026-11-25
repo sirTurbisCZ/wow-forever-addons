@@ -399,13 +399,55 @@ local function FelogReadInterfaceVersion(paths)
   return nil
 end
 
+local PB_TOC_STAMP = "Interface/AddOns/Plateband/Logs/interface-toc.ver"
+local PB_TOC_STAMP_BS = [[Interface\AddOns\Plateband\Logs\interface-toc.ver]]
+
+local function FelogEnsurePlatebandForToc()
+  if Plateband and Plateband.Config and Plateband.Config.VERSION then
+    return
+  end
+  if C_AddOns and C_AddOns.LoadAddOn then
+    pcall(C_AddOns.LoadAddOn, "Plateband")
+  elseif LoadAddOn then
+    pcall(LoadAddOn, "Plateband")
+  end
+end
+
+local function FelogReadPlatebandTocStamp()
+  if not (io and io.open) then
+    return nil, nil
+  end
+  for i = 1, 2 do
+    local path = i == 1 and PB_TOC_STAMP or PB_TOC_STAMP_BS
+    local f = TryOpen(path, "r")
+    if f then
+      local ok, line = pcall(function()
+        local l = f:read("*l") or ""
+        f:close()
+        return l
+      end)
+      if ok and line ~= "" then
+        return line:match("pb=([%d%.]+)"), line:match("fe=([%d%.]+)")
+      end
+    end
+  end
+  return nil, nil
+end
+
 local function FelogLiveInterfaceVersions()
+  FelogEnsurePlatebandForToc()
   local sl = Plateband and Plateband.SessionLog
   if sl and type(sl.LiveInterfaceVersions) == "function" then
     return sl.LiveInterfaceVersions()
   end
+  local feLoaded = tostring(Config.VERSION or "?")
+  local pbLoaded
+  if Plateband and Plateband.Config and Plateband.Config.VERSION then
+    pbLoaded = tostring(Plateband.Config.VERSION)
+  end
   local pbToc = FelogReadInterfaceVersion({ PB_TOC_FILE, PB_TOC_BS, PB_CFG_FILE, PB_CFG_BS })
   local feToc = FelogReadInterfaceVersion({ FE_TOC_FILE, FE_TOC_BS, FE_CFG_FILE, FE_CFG_BS })
+  local pbStamp, feStamp = FelogReadPlatebandTocStamp()
   local pbMeta, feMeta
   if type(GetAddOnMetadata) == "function" then
     local ok, v = pcall(GetAddOnMetadata, "Plateband", "Version")
@@ -417,8 +459,8 @@ local function FelogLiveInterfaceVersions()
       feMeta = tostring(v)
     end
   end
-  local pbVer = (pbToc and pbToc ~= "") and pbToc or pbMeta or "?"
-  local feVer = (feToc and feToc ~= "") and feToc or feMeta or "?"
+  local pbVer = pbLoaded or pbStamp or pbToc or pbMeta or "?"
+  local feVer = feLoaded or feStamp or feToc or feMeta or "?"
   return pbVer, feVer, pbMeta, feMeta
 end
 
@@ -630,6 +672,9 @@ local function StampFelogReload()
   lh.felogVer = tostring(Config.VERSION or "?")
   db.liveHead = lh
   AppendSession(string.format("CHAT_LOADED ver=%s src=reload addon=ForeverErrorLog", lh.felogVer))
+  pcall(function()
+    WritePlatebandExportLine(FelogPlatebandExportLine())
+  end)
 end
 
 --- Wipe session log on cold load. Error ring is kept across sessions.
