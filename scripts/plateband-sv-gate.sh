@@ -19,7 +19,7 @@ if ! pb_sv_context; then
 fi
 
 if ! pb_live_ver_ok "$PB_LIVE_VER" "$PB_DISK_VER"; then
-  echo "SV_GATE fail: live_ver=$PB_LIVE_VER need>=${PB_MIN_LIVE_VER:-0.2.51} (runtime=$PB_RUNTIME_VER flushed=$PB_FLUSHED_VER)"
+  echo "SV_GATE fail: live_ver=$PB_LIVE_VER need>=${PB_MIN_LIVE_VER:-0.2.51} (deployed_toc=$PB_RUNTIME_VER flushed=$PB_FLUSHED_VER)"
   exit 1
 fi
 
@@ -30,7 +30,7 @@ if [[ -z "$LOAD" && "$PB_FLUSH_LAG" != "yes" ]]; then
 fi
 
 if [[ "$PB_FLUSH_LAG" == "yes" ]]; then
-  echo "SV_GATE note: flush_lag=yes — paint data from SV file may trail live ${PB_LIVE_VER}; use agent-live.log when present"
+  echo "SV_GATE note: flush_lag=yes — export may trail; feed=${PB_FEED_SOURCE:-?} agent_seq=${PB_AGENT_SEQ:-?}"
 fi
 
 if [[ "${PB_RELOAD_PENDING:-no}" == "yes" ]]; then

@@ -1,5 +1,12 @@
 # Plateband changelog
 
+## Release 0.2.59 — agent live_ver detection + SV feed mirror
+
+- **Agent pulse:** `AGENT_LIVE` every 2s → `PlatebandDB.agentLive` + rolling export line (`io=file|sv_only`); `live_ver` never inferred from TOC.
+- **SessionLog:** `EnsureAgentPulseTicker` on session start; CARD appended on silent `start`/`regen`/`target` (`forceSession`).
+- **Watch scripts:** `pb_client_ver` reads `agentLive` / export before stale `agent-live.log`; `pb_mirror_sv_export` → `Logs/agent-live-export.log` when io blocked.
+- **SESSION_REPORT:** key includes `agent_seq` + `reload_pending`; fires on reload transition; never treats `PLATEBAND_LIVE_VER` as runtime truth.
+
 ## Release 0.2.58 — merge row anchor fix (below-health overlap)
 
 - **Layout:** `LayoutMergeBesideNative` health-bar fallback only when fallback parents to **health bar**; otherwise anchor to `AurasFrame` / debuff row — fixes merge strip sitting under health overlapping cast/name chrome (Blackrock Grunt screenshot).

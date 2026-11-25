@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Emit SESSION_REPORT when a new Plateband SESSION_START appears (live feed > flushed SV).
-# Agent: on new report, message coordinator with live_ver (chat/runtime truth).
+# Emit SESSION_REPORT on new session, agentLive seq, or reload_pending transition.
+# live_ver = client/session truth only (never TOC).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -8,19 +8,25 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 source "$ROOT/scripts/plateband-sv-lib.sh"
 
 STATE="${PLATEBAND_SESSION_STATE:-$ROOT/addons/Plateband/Logs/last-session-start.key}"
+MIRROR="${PLATEBAND_SV_MIRROR:-$ROOT/addons/Plateband/Logs/agent-live-export.log}"
 mkdir -p "$(dirname "$STATE")"
 
 pb_sv_context || {
-  echo "SESSION_REPORT skip=no_sv live_ver=${PLATEBAND_LIVE_VER:-?}"
+  echo "SESSION_REPORT skip=no_sv deployed_ver=${PB_RUNTIME_VER:-?} disk_ver=${PB_DISK_VER:-?}"
   exit 2
 }
+
+pb_mirror_sv_export "$PB_SV" "$MIRROR" 2>/dev/null || true
 
 SESSION_LINE=""
 SESSION_T=""
 SESSION_FLUSHED=""
 
-if [[ -f "${PB_AGENT_LOG:-}" ]]; then
+if [[ -n "${PB_AGENT_LOG:-}" ]] && pb_agent_log_fresh "$PB_AGENT_LOG" "$PB_SV"; then
   SESSION_LINE="$(grep 'SESSION_START ver=' "$PB_AGENT_LOG" 2>/dev/null | tail -1 || true)"
+fi
+if [[ -z "$SESSION_LINE" ]]; then
+  SESSION_LINE="$(pb_sv_export_grep_last "$PB_SV" "SESSION_START" 2>/dev/null || true)"
 fi
 if [[ -z "$SESSION_LINE" ]]; then
   SESSION_LINE="$(rg 'SESSION_START ver=' "$PB_SV" 2>/dev/null | tail -1 || true)"
@@ -33,27 +39,38 @@ SESSION_FLUSHED="$(echo "$SESSION_LINE" | sed -n 's/.*SESSION_START ver=\([0-9.]
 SESSION_T="$(echo "$SESSION_LINE" | sed -n 's/.*\[\([0-9]*\)\].*/\1/p')"
 
 LOAD_LINE=""
-if [[ -f "${PB_AGENT_LOG:-}" ]]; then
+if [[ -n "${PB_AGENT_LOG:-}" ]] && pb_agent_log_fresh "$PB_AGENT_LOG" "$PB_SV"; then
   LOAD_LINE="$(grep 'PLATES_LOAD ok=1' "$PB_AGENT_LOG" 2>/dev/null | tail -1 || true)"
+fi
+if [[ -z "$LOAD_LINE" ]]; then
+  LOAD_LINE="$(pb_sv_export_grep_last "$PB_SV" "PLATES_LOAD ok=1" 2>/dev/null || true)"
 fi
 [[ -z "$LOAD_LINE" ]] && LOAD_LINE="$(rg 'PLATES_LOAD ok=1' "$PB_SV" 2>/dev/null | tail -1 || true)"
 
-# Key = session identity only (not live_ver env) so a new reload always fires within ~2s.
-KEY="${SESSION_T:-0}|${SESSION_FLUSHED:-?}"
-if [[ -f "$STATE" ]] && [[ "$(cat "$STATE")" == "$KEY" ]]; then
+AGENT_LINE="$(pb_sv_export_grep_last "$PB_SV" "AGENT_LIVE" 2>/dev/null || true)"
+AGENT_SEQ="${PB_AGENT_SEQ:-0}"
+RELOAD="${PB_RELOAD_PENDING:-no}"
+KEY="${SESSION_T:-0}|${SESSION_FLUSHED:-?}|${AGENT_SEQ:-0}|${RELOAD}"
+
+PREV_KEY="" PREV_RELOAD=""
+if [[ -f "$STATE" ]]; then
+  read -r PREV_KEY PREV_RELOAD < "$STATE" || true
+fi
+if [[ -n "$PREV_KEY" && "$KEY" == "$PREV_KEY" && "${RELOAD:-}" == "${PREV_RELOAD:-}" ]]; then
   exit 3
 fi
-printf '%s' "$KEY" > "$STATE"
+printf '%s %s\n' "$KEY" "${RELOAD:-no}" > "$STATE"
 
 REPORT_LIVE="${PB_LIVE_VER:-$PB_CLIENT_VER}"
 
-CHAT_HINT="[Plateband] client v${REPORT_LIVE}"
+CHAT_HINT="[Plateband] client v${REPORT_LIVE:-?}"
 if [[ "${PB_RELOAD_PENDING:-no}" == "yes" ]]; then
-  CHAT_HINT="[Plateband] client v${REPORT_LIVE} (TOC/deployed ${PB_RUNTIME_VER} — need /reload)"
+  CHAT_HINT="[Plateband] client v${REPORT_LIVE:-?} (TOC/deployed ${PB_RUNTIME_VER:-?} — need /reload)"
 elif [[ "${PB_RELOAD_PENDING:-no}" == "behind" ]]; then
-  CHAT_HINT="[Plateband] client v${REPORT_LIVE} (TOC ${PB_RUNTIME_VER} older than client)"
+  CHAT_HINT="[Plateband] client v${REPORT_LIVE:-?} (TOC ${PB_RUNTIME_VER:-?} older than client)"
 fi
 
-echo "SESSION_REPORT new=1 live_ver=${REPORT_LIVE} client_ver=${PB_CLIENT_VER:-?} deployed_ver=${PB_RUNTIME_VER} disk_ver=${PB_DISK_VER} reload_pending=${PB_RELOAD_PENDING:-no} flushed_session=${SESSION_FLUSHED:-?} flush_lag=${PB_FLUSH_LAG} t=${SESSION_T:-?} chat_hint=\"${CHAT_HINT}\" source=${PB_AGENT_LOG:-sv}"
-[[ -n "$LOAD_LINE" ]] && echo "  PLATES_LOAD: $(echo "$LOAD_LINE" | tail -c 120)"
+echo "SESSION_REPORT new=1 live_ver=${REPORT_LIVE:-?} client_ver=${PB_CLIENT_VER:-?} deployed_ver=${PB_RUNTIME_VER:-?} disk_ver=${PB_DISK_VER:-?} reload_pending=${RELOAD} flushed_session=${SESSION_FLUSHED:-?} flush_lag=${PB_FLUSH_LAG:-?} agent_seq=${AGENT_SEQ} feed=${PB_FEED_SOURCE:-?} t=${SESSION_T:-?} chat_hint=\"${CHAT_HINT}\" source=${PB_FEED_SOURCE:-sv} mirror=${MIRROR}"
+[[ -n "$LOAD_LINE" ]] && echo "  PLATES_LOAD: $(echo "$LOAD_LINE" | tail -c 140)"
+[[ -n "$AGENT_LINE" ]] && echo "  AGENT_LIVE: $(echo "$AGENT_LINE" | tail -c 140)"
 exit 0

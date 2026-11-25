@@ -39,10 +39,12 @@ local AGENT_LIVE_BS = [[Interface\AddOns\Plateband\Logs\agent-live.log]]
 local AGENT_EXPORT_REL = "Interface/AddOns/Plateband/Logs/agent-live-export.log"
 local AGENT_EXPORT_BS = [[Interface\AddOns\Plateband\Logs\agent-live-export.log]]
 local LIVE_TAIL_LINES = 120
+local AGENT_PULSE_SEC = 2.0
 
 local fileOk -- nil=untried, false=unavailable, true=works
 local agentIoOk = false
 local sessionBegun = false
+local agentPulseTicker
 
 local function Trim(s, maxLen)
   s = tostring(s or "")
@@ -68,6 +70,13 @@ local function EnsureLogTable()
     db.sessionLog.lines = {}
   end
   return db.sessionLog
+end
+
+local function EnsureAgentLive(db)
+  if type(db.agentLive) ~= "table" then
+    db.agentLive = { seq = 0, ver = "", at = 0, io = "sv_only", lines = 0 }
+  end
+  return db.agentLive
 end
 
 local function EnsurePaintTrace(db)
@@ -165,7 +174,26 @@ local function IsAgentLine(line)
   if line:find("PLATES_LOAD", 1, true) or line:sub(1, 6) == "PAINT " then
     return true
   end
+  if line:find("AGENT_LIVE", 1, true) then
+    return true
+  end
   return false
+end
+
+local function UpsertAgentLiveStamped(stamped)
+  local log = EnsureLogTable()
+  local n = #(log.lines or {})
+  if n > 0 then
+    local last = log.lines[n]
+    if type(last) == "string" and last:find("AGENT_LIVE", 1, true) then
+      log.lines[n] = stamped
+      return
+    end
+  end
+  log.lines[#log.lines + 1] = stamped
+  while #log.lines > MAX_LINES do
+    table.remove(log.lines, 1)
+  end
 end
 
 local function MaybeReprobeIo()
@@ -268,6 +296,38 @@ function Mod.EnsureLiveFlushTicker()
   end)
 end
 
+--- 2s runtime truth for agents — SV agentLive + rolling AGENT_LIVE in session export.
+function Mod.PulseAgentLive()
+  local db = ns.Config.EnsureDB()
+  local al = EnsureAgentLive(db)
+  local log = EnsureLogTable()
+  al.seq = (tonumber(al.seq) or 0) + 1
+  al.ver = tostring(ns.Config and ns.Config.VERSION or "?")
+  al.at = Now()
+  al.io = (agentIoOk or fileOk) and "file" or "sv_only"
+  al.lines = #(log.lines or {})
+  local body = string.format("AGENT_LIVE ver=%s seq=%s io=%s lines=%s", al.ver, tostring(al.seq), al.io, tostring(al.lines))
+  local stamped = string.format("[%s] %s", tostring(Now()), body)
+  UpsertAgentLiveStamped(stamped)
+  log.export = table.concat(log.lines, "\n")
+  logDirty = true
+  MaybeReprobeIo()
+  if body:find("AGENT_LIVE", 1, true) then
+    TryAppendAgentLive(stamped)
+    Mod.ScheduleLiveFlush()
+  end
+end
+
+function Mod.EnsureAgentPulseTicker()
+  if agentPulseTicker or not C_Timer or not C_Timer.NewTicker then
+    return
+  end
+  pcall(Mod.PulseAgentLive)
+  agentPulseTicker = C_Timer.NewTicker(AGENT_PULSE_SEC, function()
+    pcall(Mod.PulseAgentLive)
+  end)
+end
+
 local function PushPaintEntry(line)
   local db = ns.Config.EnsureDB()
   local pt = EnsurePaintTrace(db)
@@ -319,6 +379,7 @@ function Mod.BeginSession()
   )
   Mod.Append(header)
   Mod.EnsureLiveFlushTicker()
+  Mod.EnsureAgentPulseTicker()
   pcall(Mod.FlushLiveExport)
   return log
 end

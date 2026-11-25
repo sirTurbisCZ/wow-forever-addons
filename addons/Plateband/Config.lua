@@ -2,7 +2,7 @@
 
 Plateband = Plateband or {}
 
-local CURRENT_SCHEMA = 11
+local CURRENT_SCHEMA = 12
 local MAX_ERRORS = 40
 local MAX_MSG = 2000
 
@@ -12,7 +12,7 @@ local Config = Plateband.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.2.58"
+Config.VERSION = "0.2.59"
 
 local function ProfileDefaults()
   return {
@@ -58,6 +58,7 @@ local function Defaults()
       export = "",
     },
     lastPaintTrace = nil,
+    agentLive = { seq = 0, ver = "", at = 0, io = "sv_only", lines = 0 },
   }
 end
 
@@ -204,6 +205,14 @@ function Config.EnsureDB()
     end
     db.schemaVersion = 11
     from = 11
+  end
+
+  if from < 12 then
+    if type(db.agentLive) ~= "table" then
+      db.agentLive = { seq = 0, ver = "", at = 0, io = "sv_only", lines = 0 }
+    end
+    db.schemaVersion = 12
+    from = 12
   end
 
   EnsureProfile(db)

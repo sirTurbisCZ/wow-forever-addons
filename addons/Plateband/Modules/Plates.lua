@@ -5175,7 +5175,7 @@ SnapshotDiagnose = function(reason, opts)
   db.lastDiag = snap -- alias for older readers
 
   if ns.SessionLog and ns.SessionLog.Append then
-    if opts.forceChat or not SilentTraceEnabled() or reason == "manual" or reason == "watch" then
+    if opts.forceSession or opts.forceChat or not SilentTraceEnabled() or reason == "manual" or reason == "watch" then
       pcall(ns.SessionLog.Append, card)
     end
   end
@@ -5218,8 +5218,8 @@ MaybeAutoDiagnose = function(reason, force)
   end
   local now = GetTime and GetTime() or 0
   if SilentTraceEnabled() then
-    if reason == "manual" or reason == "watch" then
-      pcall(SnapshotDiagnose, reason or "auto", { silent = true })
+    if reason == "manual" or reason == "watch" or reason == "start" or reason == "regen" or reason == "target" then
+      pcall(SnapshotDiagnose, reason or "auto", { silent = true, forceSession = true })
     end
     return
   end

@@ -13,6 +13,12 @@ echo "plateband-sv-session-watch interval=${INTERVAL}s log=$LOG" | tee -a "$LOG"
 
 while true; do
   TS="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  # shellcheck source=scripts/plateband-sv-lib.sh
+  source "$ROOT/scripts/plateband-sv-lib.sh"
+  if pb_sv_context 2>/dev/null; then
+  MIRROR="${PLATEBAND_SV_MIRROR:-$ROOT/addons/Plateband/Logs/agent-live-export.log}"
+  pb_mirror_sv_export "$PB_SV" "$MIRROR" 2>/dev/null || true
+  fi
   set +e
   OUT="$("$REPORT" 2>&1)"
   RC=$?
