@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.2.73 — live feed + reload runtime truth
+
+- **Runtime:** `CHAT_LOADED` + `RUNTIME_VER` on **ADDON_LOADED** (`src=reload`), not only `PLAYER_LOGIN` — fixes stale `0.2.71` after `/reload` on deployed `0.2.72+`.
+- **Session:** `BeginSession` writes `runtimeVer` + `liveHead` + `runtime-ver.log` with `SESSION_START`.
+- **Watch:** `pb_client_ver` prefers fresh `Logs/agent-live-export.log` / `runtime-ver.log`; SV unified picks **newest stamp** across `runtimeVer`, `CHAT_LOADED`, `RUNTIME_VER`, `SESSION_START`, `liveHead`, `agentLive` (no stale `liveHead_chat` lock-in).
+
 ## Release 0.2.72 — paint deps wire + friend gap layout
 
 - **Root (live 0.2.71):** `PlatesPaint.lua` called `LayoutMergeBesideNative`, `InitAuraButton`, `EnsureUnitHarmfulParity`, `GapAuraLive`, `RefreshHeldGapFallback` as globals (nil in split chunk) — PAINT logged `painted>0` but gap row never positioned / friend parity skipped → no visible DoT/WS on plates.

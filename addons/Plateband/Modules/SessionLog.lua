@@ -230,16 +230,24 @@ function Mod.TryWriteRuntimeVerFile(ver)
   return false
 end
 
---- PLAYER_LOGIN chat line — truth before WTF flush; mirrors into export + runtime-ver.log.
-function Mod.RecordChatLoaded()
+--- Runtime stamp — every load (login + /reload); SV + Logs before WTF flush.
+function Mod.RecordChatLoaded(src)
+  src = tostring(src or "login")
   local ver = tostring(ns.Config and ns.Config.VERSION or "?")
   local db = ns.Config.EnsureDB()
-  db.runtimeVer = { ver = ver, at = Now(), src = "chat" }
-  db.liveHead = string.format("ver=%s seq=0 at=%s io=sv_only src=chat", ver, tostring(Now()))
+  local at = Now()
+  db.runtimeVer = { ver = ver, at = at, src = "chat", load = src }
+  db.liveHead = string.format(
+    "ver=%s seq=0 at=%s io=sv_only src=chat load=%s",
+    ver,
+    tostring(at),
+    src
+  )
   pcall(Mod.ProbeAgentIo)
-  Mod.Append(string.format("CHAT_LOADED ver=%s src=login", ver))
-  Mod.Append(string.format("RUNTIME_VER ver=%s src=chat", ver))
+  Mod.Append(string.format("CHAT_LOADED ver=%s src=%s", ver, src))
+  Mod.Append(string.format("RUNTIME_VER ver=%s src=chat load=%s", ver, src))
   pcall(Mod.TryWriteRuntimeVerFile, ver)
+  pcall(Mod.FlushLiveExport)
   pcall(Mod.PulseAgentLive)
 end
 
@@ -480,13 +488,27 @@ function Mod.BeginSession()
   local agentIo = Mod.ProbeAgentIo()
   pcall(Mod.ProbeFile)
   log.fileOk = (agentIo or fileOk) and true or false
+  local ver = tostring(ns.Config.VERSION)
   local header = string.format(
     "SESSION_START ver=%s t=%s file=%s silent=1",
-    tostring(ns.Config.VERSION),
+    ver,
+    tostring(log.startedAt),
+    agentIo and "file" or "sv_only"
+  )
+  db.runtimeVer = {
+    ver = ver,
+    at = log.startedAt,
+    src = "session",
+    load = "addon",
+  }
+  db.liveHead = string.format(
+    "ver=%s seq=0 at=%s io=%s src=session load=addon",
+    ver,
     tostring(log.startedAt),
     agentIo and "file" or "sv_only"
   )
   Mod.Append(header)
+  pcall(Mod.TryWriteRuntimeVerFile, ver)
   Mod.EnsureLiveFlushTicker()
   Mod.EnsureAgentPulseTicker()
   pcall(Mod.FlushLiveExport)

@@ -166,6 +166,80 @@ pb_agent_live_log_path() {
   printf '%s' "$(pb_plateband_logs_dir)/agent-live.log"
 }
 
+pb_agent_live_export_path() {
+  printf '%s' "$(pb_plateband_logs_dir)/agent-live-export.log"
+}
+
+# Newest stamped ver= from a log body (CHAT_LOADED / RUNTIME_VER / SESSION_START / AGENT_LIVE).
+pb_stamped_ver_from_file() {
+  local f="$1"
+  [[ -f "$f" ]] || return 1
+  python3 - "$f" <<'PY' 2>/dev/null || return 1
+import re, pathlib, sys
+t = pathlib.Path(sys.argv[1]).read_text(errors="replace")
+markers = (
+    "CHAT_LOADED",
+    "RUNTIME_VER",
+    "SESSION_START",
+    "PLATES_LOAD ok=1",
+    "AGENT_LIVE",
+)
+best_t, best_ver, best_src = -1, None, None
+pat = re.compile(r"\[(\d+)\][^\n]*")
+for line in t.splitlines():
+    if not any(m in line for m in markers):
+        continue
+    tm = pat.search(line)
+    if not tm:
+        continue
+    ts = int(tm.group(1))
+    vm = re.search(r"ver=([0-9.]+)", line)
+    if not vm:
+        continue
+    src = "live_file"
+    for m in ("CHAT_LOADED", "RUNTIME_VER", "SESSION_START", "PLATES_LOAD", "AGENT_LIVE"):
+        if m in line:
+            src = m.replace(" ok=1", "")
+            break
+    if ts >= best_t:
+        best_t, best_ver, best_src = ts, vm.group(1), src
+if best_ver:
+    print("{}\t{}\t{}".format(best_ver, best_t, best_src))
+PY
+}
+
+pb_live_feed_runtime() {
+  local f line ver seq src pick_ts pick_ver pick_src pick_seq
+  pick_ts=-1
+  for f in "$(pb_runtime_ver_log)" "$(pb_agent_live_export_path)" "$(pb_repo_logs_dir)/agent-live-export.log" "$(pb_agent_live_log_path)"; do
+    [[ -f "$f" ]] || continue
+    if [[ "$f" == *runtime-ver.log ]]; then
+      if ! pb_log_fresh_sec "$f" 600; then
+        continue
+      fi
+      ver="$(pb_runtime_file_ver "$f" 2>/dev/null || true)"
+      [[ -n "$ver" ]] || continue
+      pick_ver="$ver"
+      pick_src="runtime_ver_file"
+      pick_ts="$(date +%s)"
+      continue
+    fi
+    line="$(pb_stamped_ver_from_file "$f" 2>/dev/null || true)"
+    [[ -n "$line" ]] || continue
+    ver="$(echo "$line" | cut -f1)"
+    local ts
+    ts="$(echo "$line" | cut -f2)"
+    src="$(echo "$line" | cut -f3)"
+    [[ -n "$ver" && "$ts" -ge "$pick_ts" ]] || continue
+    pick_ts="$ts"
+    pick_ver="$ver"
+    pick_src="$src"
+  done
+  [[ -n "${pick_ver:-}" ]] || return 1
+  seq="0"
+  printf '%s\t%s\t%s' "$pick_ver" "$seq" "$pick_src"
+}
+
 # Single runtime truth from SV — chat markers before SESSION; never PAINT/mirror files.
 pb_unified_runtime_from_sv() {
   local sv="$1"
@@ -210,64 +284,54 @@ def newest_stamped(needle):
             best_t, best_ver, best_line = ts, vm.group(1), line
     return best_t, best_ver, best_line
 
+def table_at(name, key):
+    m = re.search(rf'\["{name}"\]\s*=\s*\{{', t)
+    if not m:
+        return -1
+    chunk = t[m.start() : m.start() + 600]
+    am = re.search(rf'\["{key}"\]\s*=\s*(\d+)', chunk)
+    return int(am.group(1)) if am else -1
+
+cands = []
+
+def add_cand(ts, v, src):
+    if v and ts >= 0:
+        cands.append((ts, v, src))
+
+rv = table_ver("runtimeVer", "ver")
+if rv:
+    add_cand(table_at("runtimeVer", "at"), rv, "runtimeVer")
+
+for needle, src in (
+    ("CHAT_LOADED", "CHAT_LOADED"),
+    ("RUNTIME_VER", "RUNTIME_VER"),
+    ("SESSION_START", "SESSION_START"),
+    ("PLATES_LOAD ok=1", "PLATES_LOAD"),
+):
+    at, cv, _ = newest_stamped(needle)
+    if cv:
+        add_cand(at, cv, src)
+
 hm = re.search(r'\["liveHead"\]\s*=\s*"([^"]*)"', t)
-lh_ver, lh_at, lh_seq, lh_chat = None, -1, None, False
 if hm:
     blob = hm.group(1)
     vm = re.search(r"ver=([0-9.]+)", blob)
     am = re.search(r"at=([0-9]+)", blob)
     sm = re.search(r"seq=(\d+)", blob)
-    lh_chat = "src=chat" in blob
     if vm:
-        lh_ver = vm.group(1)
-    if am:
-        lh_at = int(am.group(1))
-    if sm:
-        lh_seq = sm.group(1)
+        lh_at = int(am.group(1)) if am else 0
+        add_cand(lh_at, vm.group(1), "liveHead")
+        if sm:
+            seq = sm.group(1)
 
-chat_at, chat_ver, chat_line = newest_stamped("CHAT_LOADED")
+av = table_ver("agentLive", "ver")
+if av:
+    add_cand(table_at("agentLive", "at"), av, "agentLive")
 
-# liveHead_chat wins unless a newer CHAT_LOADED line exists (post-reload truth).
-if lh_chat and lh_ver:
-    if chat_ver and chat_at > lh_at:
-        ver, source = chat_ver, "CHAT_LOADED"
-    else:
-        ver, source = lh_ver, "liveHead_chat"
-    if lh_seq:
-        seq = lh_seq
-elif chat_ver:
-    ver, source = chat_ver, "CHAT_LOADED"
-    sm = re.search(r"seq=(\d+)", chat_line or "")
-    if sm:
-        seq = sm.group(1)
+if cands:
+    cands.sort(key=lambda x: x[0])
+    _, ver, source = cands[-1]
 
-if ver is None:
-    last = export_last("RUNTIME_VER")
-    if last:
-        vm = re.search(r"ver=([0-9.]+)", last)
-        if vm:
-            ver, source = vm.group(1), "RUNTIME_VER"
-
-if ver is None:
-    tv = table_ver("runtimeVer", "ver")
-    if tv:
-        ver, source = tv, "runtimeVer"
-
-if ver is None:
-    _, rv, _ = newest_stamped("RUNTIME_VER")
-    if rv:
-        ver, source = rv, "RUNTIME_VER"
-
-if ver is None and hm and lh_ver:
-    ver, source = lh_ver, "liveHead"
-    seq = lh_seq
-
-if ver is None:
-    tv = table_ver("agentLive", "ver")
-    if tv:
-        ver, source = tv, "agentLive"
-
-# Never SESSION_START for live runtime when export is stale — seq only.
 last = export_last("AGENT_LIVE")
 if last:
     sm = re.search(r"seq=(\d+)", last)
@@ -296,21 +360,19 @@ pb_publish_live_head() {
   repo="$(pb_repo_logs_dir)"
   mkdir -p "$repo"
   out="${repo}/live-head.txt"
-  local line
-  line="$(pb_unified_runtime_from_sv "$sv" 2>/dev/null || true)"
-  [[ -n "$line" ]] || return 1
-  ver="$(echo "$line" | cut -f1)"
-  seq="$(echo "$line" | cut -f2)"
-  src="$(echo "$line" | cut -f3)"
+  ver="$(pb_client_ver "$sv" 2>/dev/null || true)"
+  [[ -n "$ver" ]] || return 1
+  seq="${PB_AGENT_SEQ:-0}"
+  src="${PB_VER_SOURCE:-?}"
   sm="$(stat -f %m "$sv" 2>/dev/null || stat -c %Y "$sv" 2>/dev/null || echo 0)"
-  printf 'live_ver=%s agent_seq=%s source=%s sv_mtime=%s feed=sv_live\n' \
-    "$ver" "$seq" "$src" "$sm" > "$out"
+  printf 'live_ver=%s agent_seq=%s source=%s sv_mtime=%s feed=%s\n' \
+    "$ver" "$seq" "$src" "$sm" "${PB_FEED_SOURCE:-sv_live}" > "$out"
   PB_LIVE_HEAD="$out"
 }
 
 pb_sync_live_feed() {
   local sv="${1:-}"
-  local repo mirror
+  local repo mirror wow_exp repo_exp
   repo="$(pb_repo_logs_dir)"
   mkdir -p "$repo"
   PB_LIVE_SYNC="none"
@@ -320,11 +382,34 @@ pb_sync_live_feed() {
     tail -n 400 "$src" > "${repo}/agent-live.log" 2>/dev/null || true
     PB_LIVE_SYNC="agent_live"
   fi
+  wow_exp="$(pb_agent_live_export_path)"
+  repo_exp="${repo}/agent-live-export.log"
+  if [[ -f "$wow_exp" ]]; then
+    if [[ ! -f "$repo_exp" || "$wow_exp" -nt "$repo_exp" ]]; then
+      cp -f "$wow_exp" "$repo_exp" 2>/dev/null || true
+    fi
+    PB_LIVE_SYNC="agent_live_export"
+  fi
+  local rv
+  rv="$(pb_runtime_ver_log)"
+  if [[ -f "$rv" ]] && pb_log_fresh_sec "$rv" 600; then
+    cp -f "$rv" "${repo}/runtime-ver.log" 2>/dev/null || true
+  fi
   if [[ -n "${sv:-}" && -f "$sv" ]]; then
-    mirror="${repo}/agent-live-export.log"
-    pb_mirror_sv_export "$sv" "$mirror" 2>/dev/null || true
+    mirror="$repo_exp"
+    local sv_ts wow_ts
+    if [[ -f "$mirror" ]]; then
+      wow_ts="$(pb_stamped_ver_from_file "$mirror" 2>/dev/null | cut -f2 || echo 0)"
+    else
+      wow_ts=0
+    fi
+    pb_mirror_sv_export "$sv" "${repo}/agent-live-sv-mirror.log" 2>/dev/null || true
+    sv_ts="$(pb_stamped_ver_from_file "${repo}/agent-live-sv-mirror.log" 2>/dev/null | cut -f2 || echo 0)"
+    if [[ "$sv_ts" -gt "$wow_ts" ]]; then
+      cp -f "${repo}/agent-live-sv-mirror.log" "$mirror" 2>/dev/null || true
+      [[ "$PB_LIVE_SYNC" == "none" ]] && PB_LIVE_SYNC="sv_mirror"
+    fi
     pb_publish_live_head "$sv" 2>/dev/null || true
-    [[ "$PB_LIVE_SYNC" == "none" ]] && PB_LIVE_SYNC="sv_mirror"
   fi
   pb_sync_felog_plateband 2>/dev/null || true
   if [[ "${PB_FELOG_SYNC:-}" == felog_bridge_* ]]; then
@@ -534,13 +619,44 @@ pb_agent_live_ver() {
   [[ -n "$v" ]] && printf '%s' "$v"
 }
 
-# Live runtime — pb_unified_runtime_from_sv only (no felog/agent mirror overrides).
+# Live runtime — fresh Logs/export feed first, then SV unified (newest stamp wins).
 pb_client_ver() {
   local sv="$1"
-  local line v
+  local line v feed_ver feed_src feed_ts sv_ts
+  local wow_exp="${PB_AGENT_EXPORT:-}"
+  [[ -n "$wow_exp" ]] || wow_exp="$(pb_agent_live_export_path)"
+  if [[ -f "$wow_exp" ]] && pb_log_fresh_sec "$wow_exp" 300; then
+    line="$(pb_stamped_ver_from_file "$wow_exp" 2>/dev/null || true)"
+    feed_ver="$(echo "$line" | cut -f1)"
+    feed_ts="$(echo "$line" | cut -f2)"
+    feed_src="$(echo "$line" | cut -f3)"
+  fi
+  if [[ -z "$feed_ver" ]]; then
+    line="$(pb_live_feed_runtime 2>/dev/null || true)"
+    feed_ver="$(echo "$line" | cut -f1)"
+    feed_src="$(echo "$line" | cut -f3)"
+  fi
   line="$(pb_unified_runtime_from_sv "$sv" 2>/dev/null || true)"
   v="$(echo "$line" | cut -f1)"
+  local sv_src
+  sv_src="$(echo "$line" | cut -f3)"
+  sv_ts="$(python3 - "$sv" <<'PY' 2>/dev/null || echo 0
+import re, pathlib, sys
+t = pathlib.Path(sys.argv[1]).read_text(errors="replace")
+best = -1
+for m in re.finditer(r"\[(\d+)\][^\n\"]*(CHAT_LOADED|RUNTIME_VER|SESSION_START)", t):
+    best = max(best, int(m.group(1)))
+print(best if best >= 0 else 0)
+PY
+)"
+  if [[ -n "$feed_ver" && ( -z "$v" || "${feed_ts:-0}" -ge "${sv_ts:-0}" ) ]]; then
+    PB_VER_SOURCE="${feed_src:-live_feed}"
+    PB_CLIENT_FEED_VER="$feed_ver"
+    printf '%s' "$feed_ver"
+    return 0
+  fi
   if [[ -n "$v" ]]; then
+    PB_VER_SOURCE="$sv_src"
     printf '%s' "$v"
     return 0
   fi
@@ -576,12 +692,12 @@ pb_sv_context() {
   PB_LAST_CARD="$(pb_last_diag_card "$PB_SV")"
   PB_DIAG_VER="$(pb_ver_from_card "$PB_LAST_CARD")"
   local unified
-  unified="$(pb_unified_runtime_from_sv "$PB_SV" 2>/dev/null || true)"
-  PB_VER_SOURCE="$(echo "$unified" | cut -f3)"
-  PB_AGENT_SEQ="$(echo "$unified" | cut -f2)"
   pb_sync_live_feed "$PB_SV" 2>/dev/null || true
+  unified="$(pb_unified_runtime_from_sv "$PB_SV" 2>/dev/null || true)"
   PB_UNIFIED_VER="$(echo "$unified" | cut -f1)"
+  PB_AGENT_SEQ="$(echo "$unified" | cut -f2)"
   PB_CLIENT_VER="$(pb_client_ver "$PB_SV")"
+  PB_VER_SOURCE="${PB_VER_SOURCE:-$(echo "$unified" | cut -f3)}"
   PB_LIVE_VER="$(pb_resolve_live_ver "$PB_CLIENT_VER")"
   PB_RULES_VER="${PLATEBAND_LIVE_VER:-$PB_LIVE_VER}"
   PB_RUNTIME_FILE="$(pb_runtime_ver_log)"
@@ -601,7 +717,7 @@ pb_sv_context() {
 
   PB_CHAT_PRIMARY=no
   case "${PB_VER_SOURCE:-}" in
-    liveHead_chat|CHAT_LOADED)
+    liveHead|liveHead_chat|CHAT_LOADED|RUNTIME_VER|SESSION_START|runtimeVer|runtime_ver_file|PLATES_LOAD)
       PB_CHAT_PRIMARY=yes
       ;;
   esac

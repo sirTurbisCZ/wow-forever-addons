@@ -201,13 +201,20 @@ bootFrame:SetScript("OnEvent", function(_, event, name)
     if SessionLog and SessionLog.BeginSession then
       SafeCall("session:begin", SessionLog.BeginSession)
     end
+    if SessionLog and SessionLog.RecordChatLoaded then
+      SafeCall("session:chat_loaded", function()
+        SessionLog.RecordChatLoaded("reload")
+      end)
+    end
   elseif event == "PLAYER_LOGIN" then
     EnsureDB()
     if SessionLog and SessionLog.BeginSession then
       SafeCall("session:begin", SessionLog.BeginSession)
     end
     if SessionLog and SessionLog.RecordChatLoaded then
-      SafeCall("session:chat_loaded", SessionLog.RecordChatLoaded)
+      SafeCall("session:chat_loaded", function()
+        SessionLog.RecordChatLoaded("login")
+      end)
     end
     ApplyModuleState()
     Print(string.format(L.LOADED or "loaded v%s · /pb", tostring(Config.VERSION)))
