@@ -24,8 +24,17 @@ if ! pb_live_ver_ok "$PB_LIVE_VER" "$PB_DISK_VER"; then
 fi
 
 LOAD="$(pb_flushed_plates_load "$PB_SV")"
+if [[ -z "$LOAD" ]]; then
+  LOAD="$(rg 'PLATES_LOAD ok=1' "$PB_SV" 2>/dev/null | tail -1 || true)"
+fi
+EXPORT_LOAD="$(rg -o 'PLATES_LOAD ok=1[^\\n]*' "$PB_SV" 2>/dev/null | tail -1 || true)"
 if [[ -z "$LOAD" && "$PB_FLUSH_LAG" != "yes" ]]; then
-  echo "SV_GATE fail: no PLATES_LOAD ok=1 in SV"
+  echo "SV_GATE fail: no PLATES_LOAD ok=1 in SV/export (paint path may not have started)"
+  exit 1
+fi
+if echo "$LOAD" | rg -q 'paint=false'; then
+  echo "SV_GATE fail: PLATES_LOAD paint=false — PaintMergeMissing not loaded"
+  echo "  $LOAD"
   exit 1
 fi
 
@@ -48,6 +57,14 @@ done < <(find "$(pb_wow_root)/WTF/Account" -name 'ForeverErrorLog.lua' -path '*/
 if [[ -f "${FELOG:-}" ]] && rg -q "200 local variables" "$FELOG" 2>/dev/null; then
   if pb_ver_sort_ge "$PB_LIVE_VER" "0.2.47"; then
     echo "SV_GATE warn: FElog has historical 200-local errors (ignoring for live $PB_LIVE_VER)"
+  fi
+fi
+if [[ -f "${FELOG:-}" ]] && rg -q 'more than 60 upvalues' "$FELOG" 2>/dev/null; then
+  if rg 'more than 60 upvalues' "$FELOG" 2>/dev/null | tail -1 | rg -q "Plates"; then
+    if ! echo "$LOAD" | rg -q 'PLATES_LOAD ok=1.*paint=true'; then
+      echo "SV_GATE fail: PaintMergeMissing over 60 upvalues (Plates.lua) — split PlatesPaint required"
+      exit 1
+    fi
   fi
 fi
 if [[ -f "${FELOG:-}" ]] && rg -q 'Plateband:paint.*nil value' "$FELOG" 2>/dev/null; then

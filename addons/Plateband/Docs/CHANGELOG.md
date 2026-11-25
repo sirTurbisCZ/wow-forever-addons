@@ -1,5 +1,12 @@
 # Plateband changelog
 
+## Release 0.2.70 — PaintMergeMissing chunk split (60 upvalues)
+
+- **Root (live 0.2.69):** `PaintMergeMissing` exceeded Lua **60 upvalues** → compile/paint failure; `PLATES_LOAD` missing from export; auras invisible despite CHAT `0.2.69`.
+- **Fix:** `Modules/PlatesPaint.lua` owns paint merge; `Plates.lua` injects `Plateband.PlatesPaintDeps` + thin delegate.
+- **Paint:** `AurasFrame` parent, `PlateMatchesTarget` / party GUID resolve (from 0.2.69 WIP).
+- **Watch:** gate/anomaly flag missing `PLATES_LOAD`, `paint=false`, FElog `more than 60 upvalues`.
+
 ## Release 0.2.69 — gap parent + party WS + overlap watch
 
 - **Layout:** `FallbackPaintParent` always parents gap row to health/UF (never `DebuffList`) — fixes Tarantula-class DoT stack when pool lies `native=0` but icons show (`nativeVis>0`).

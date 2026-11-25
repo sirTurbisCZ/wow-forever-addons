@@ -11,7 +11,16 @@ pb_sv_context || { echo "WATCH_COVERAGE idle (no SV file)"; exit 0; }
 ANOM=0
 note() { echo "ANOMALY $1"; ANOM=1; }
 
-echo "WATCH_COVERAGE harmful=CARD.tf+miss,painted+PAINT.harv,miss,painted friendly=PAINT/CARD.friend ws=friend+tf sticky=paint_hold|paint_stale_cleared foreign=harv+miss>1 bleed=punit≠plate tgtSrc $(pb_export_session_line)"
+echo "WATCH_COVERAGE harmful=CARD.tf+miss,painted+PAINT.harv,miss,painted friendly=PAINT/CARD.friend ws=friend+tf sticky=paint_hold|paint_stale_cleared foreign=harv+miss>1 bleed=punit≠plate tgtSrc PLATES_LOAD+upvalues $(pb_export_session_line)"
+
+LOAD="$(pb_flushed_plates_load "$PB_SV" 2>/dev/null || rg 'PLATES_LOAD ok=1' "$PB_SV" 2>/dev/null | tail -1 || true)"
+if [[ -n "${PB_FLUSHED_VER:-}" && pb_ver_sort_ge "${PB_FLUSHED_VER}" "0.2.69" ]]; then
+  if ! echo "$LOAD" | rg -q 'PLATES_LOAD ok=1'; then
+    note "PLATES_LOAD_missing: session=${PB_FLUSHED_VER} export has no paint start line"
+  elif echo "$LOAD" | rg -q 'paint=false'; then
+    note "PLATES_LOAD_paint_false: $LOAD"
+  fi
+fi
 
 SRC="$(mktemp)"
 trap 'rm -f "$SRC"' EXIT
@@ -27,8 +36,11 @@ trap 'rm -f "$SRC"' EXIT
   rg '^\["export"\]' "$PB_SV" 2>/dev/null | python3 -c 'import sys,re; s=sys.stdin.read(); s=s.replace("\\n","\n"); [print(x) for x in s.split("\n") if "PAINT ver=" in x or "PLATEBAND_CARD ver=" in x]' 2>/dev/null || true
 } > "$SRC"
 
-TGT_CARDS="$(rg 'PLATEBAND_CARD.*target=yes' "$SRC" 2>/dev/null | tail -12 || true)"
-PAINT_LINES="$(rg 'PAINT ver=' "$SRC" 2>/dev/null | tail -20 || true)"
+TGT_CARDS="$(rg 'PLATEBAND_CARD.*target=yes' "$SRC" 2>/dev/null | tail -40 || true)"
+FRIEND_CARDS="$(rg 'PLATEBAND_CARD.*friend=1' "$SRC" 2>/dev/null | tail -40 || true)"
+ALL_CARDS="$(rg 'PLATEBAND_CARD ver=' "$SRC" 2>/dev/null | tail -80 || true)"
+# Full paint tail — short window previously missed Tarantula-class multi-icon bursts.
+PAINT_LINES="$(rg 'PAINT ver=' "$SRC" 2>/dev/null | tail -200 || true)"
 
 while IFS= read -r line; do
   [[ -z "$line" ]] && continue
@@ -42,21 +54,46 @@ while IFS= read -r line; do
   if echo "$line" | rg -q 'target=yes' && echo "$line" | rg -q 'harv=0' && echo "$line" | rg -q 'tf=[2-9]'; then
     note "foreign_PARTY_harv_skipped: $line"
   fi
-  if echo "$line" | rg -q 'friend=1' && echo "$line" | rg -q 'tf=[1-9]' && echo "$line" | rg -q 'painted=0'; then
-    note "friendly_WS_missing: $line"
-  fi
 done <<< "$TGT_CARDS"
+
+# Friend WS — never skip friend=1 cards (prior bug short-circuited this).
+while IFS= read -r line; do
+  [[ -z "$line" ]] && continue
+  if echo "$line" | rg -q 'friend=1' && echo "$line" | rg -q 'painted=0'; then
+    if echo "$line" | rg -q 'tf=[1-9]|harv=[1-9]|miss=[1-9]'; then
+      if echo "$line" | rg -q 'party=(party|raid)[0-9]'; then
+        note "friendly_party_WS_no_paint: $line"
+      else
+        note "friendly_WS_missing: $line"
+      fi
+    fi
+  fi
+done <<< "$FRIEND_CARDS"
 
 while IFS= read -r line; do
   [[ -z "$line" ]] && continue
+  # Never match the raw SV ["export"] blob (contains many PAINT substrings).
+  echo "$line" | rg -q '^\["export"\]' && continue
+  echo "$line" | rg -q 'PAINT ver=' || continue
+  # native=0 + nativeVis≥1 + multi-paint (0.2.69+ telemetry)
   if echo "$line" | rg -q 'native=0' && echo "$line" | rg -q 'nativeVis=[1-9]' && echo "$line" | rg -q 'painted=[2-9]'; then
     note "OVERLAP_nativeVis_multi_paint: $line"
   fi
   if echo "$line" | rg -q 'native=0' && echo "$line" | rg -q 'nativeVis=[1-9]' && echo "$line" | rg -q 'miss=[2-9]' && echo "$line" | rg -q 'painted=[2-9]'; then
     note "OVERLAP_parent_on_native_row: $line"
   fi
-  if echo "$line" | rg -q 'friend=1' && echo "$line" | rg -q 'party=(party|raid)[0-9]' && echo "$line" | rg -q 'tfRows=[1-9]' && echo "$line" | rg -q 'painted=0'; then
-    note "friendly_party_WS_no_paint: $line"
+  # Layout overlap without nativeVis field (0.2.68 and gaps): painted≥2 native=0
+  if echo "$line" | rg -q 'native=0' && echo "$line" | rg -q 'painted=[2-9]'; then
+    if echo "$line" | rg -q 'friend=1'; then
+      note "friend_multi_icon_overlap: $line"
+    else
+      note "enemy_multi_icon_overlap: $line"
+    fi
+  fi
+  if echo "$line" | rg -q 'friend=1' && echo "$line" | rg -q 'party=(party|raid)[0-9]' && echo "$line" | rg -q 'painted=0'; then
+    if echo "$line" | rg -q 'tfRows=[1-9]|miss=[1-9]|harv=[1-9]'; then
+      note "friendly_party_WS_no_paint: $line"
+    fi
   fi
   echo "$line" | rg -q 'why=paint_stale_cleared|why=paint_hold' && continue
   echo "$line" | rg -q 'why=paint ' || continue
@@ -65,7 +102,7 @@ while IFS= read -r line; do
       note "PAINT_foreign_lost: $line"
     fi
   fi
-  if echo "$line" | rg -q 'friend=1' && echo "$line" | rg -q 'miss=0' && echo "$line" | rg -q 'painted=0' && echo "$line" | rg -q 'tfRows=[1-9]'; then
+  if echo "$line" | rg -q 'friend=1' && echo "$line" | rg -q 'painted=0' && echo "$line" | rg -q 'tfRows=[1-9]|miss=[1-9]|harv=[1-9]'; then
     note "PAINT_WS_helpful_gap: $line"
   fi
   if echo "$line" | rg -q 'why=paint_stale_cleared'; then
@@ -78,16 +115,19 @@ done <<< "$PAINT_LINES"
 
 while IFS= read -r line; do
   [[ -z "$line" ]] && continue
+  plate="$(echo "$line" | sed -n 's/.*plate=\([^ ]*\).*/\1/p')"
+  punit="$(echo "$line" | sed -n 's/.*punit=\([^ ]*\).*/\1/p')"
+  if [[ -n "$plate" && -n "$punit" && "$plate" != "$punit" && "$plate" != "no" && "$punit" != "?" && "$punit" != "no" ]]; then
+    note "bleed_plate_ne_punit: plate=$plate punit=$punit $line"
+  fi
   if echo "$line" | rg -q 'target=yes' && echo "$line" | rg -q 'painted=[1-9]' && echo "$line" | rg -q 'friend=0'; then
-    plate="$(echo "$line" | sed -n 's/.*plate=\([^ ]*\).*/\1/p')"
-    punit="$(echo "$line" | sed -n 's/.*punit=\([^ ]*\).*/\1/p')"
     if [[ -n "$plate" && -n "$punit" && "$plate" != "$punit" && "$plate" != "no" && "$punit" != "?" ]]; then
       if echo "$line" | rg -q 'tgtSrc=0'; then
         note "HELPful_bleed_shield_on_mob?: plate=$plate punit=$punit"
       fi
     fi
   fi
-done <<< "$TGT_CARDS"
+done <<< "$ALL_CARDS"
 
 SESSION_CARDS="$(rg 'PLATEBAND_CARD ver=' "$SRC" 2>/dev/null | tail -200 || true)"
 if echo "$SESSION_CARDS" | rg -q '.'; then

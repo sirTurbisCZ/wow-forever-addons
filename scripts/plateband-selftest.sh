@@ -5,6 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ADDON="$ROOT/addons/Plateband"
 PLATES="$ADDON/Modules/Plates.lua"
+PAINT="$ADDON/Modules/PlatesPaint.lua"
 CONFIG="$ADDON/Config.lua"
 TOC="$ADDON/Plateband.toc"
 LOCALS_MAX="${PLATEBAND_LOCALS_MAX:-195}"
@@ -13,6 +14,7 @@ fail() { echo "SELFTEST FAIL: $*" >&2; exit 1; }
 pass() { echo "SELFTEST OK: $*"; }
 
 [[ -f "$PLATES" ]] || fail "missing Plates.lua"
+[[ -f "$PAINT" ]] || fail "missing PlatesPaint.lua"
 [[ -f "$CONFIG" ]] || fail "missing Config.lua"
 
 VER="$(rg -o 'Config\.VERSION = "([^"]+)"' "$CONFIG" | head -1 | sed 's/.*"\(.*\)".*/\1/')"
@@ -21,6 +23,8 @@ TOC_VER="$(rg -o '## Version: (.+)' "$TOC" | awk '{print $3}')"
 
 command -v luac >/dev/null || fail "luac not installed"
 luac -p "$PLATES" || fail "luac syntax"
+luac -p "$PAINT" || fail "luac PlatesPaint syntax"
+rg -q 'PlatesPaintDeps' "$PLATES" "$PAINT" || fail "PlatesPaint deps wire missing"
 
 LOCALS="$(grep -c '^local ' "$PLATES" || true)"
 [[ "$LOCALS" -le "$LOCALS_MAX" ]] || fail "chunk locals $LOCALS > budget $LOCALS_MAX"

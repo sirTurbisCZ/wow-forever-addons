@@ -611,7 +611,22 @@ PlateMatchesTarget = function(plate)
   if not plate or not HasTarget() then
     return false
   end
-  if PlateFor("target") ~= plate then
+  local tp = PlateFor("target")
+  if tp == plate then
+    return true
+  end
+  if PlateUnitBindingMatches(plate, "target") then
+    return true
+  end
+  local nu = NameplateUnitFor("target")
+  local fromPl = UnitTokenFromPlate(plate)
+  if nu and fromPl and (fromPl == nu or SameUnit(fromPl, "target") or SameUnit(fromPl, nu)) then
+    return true
+  end
+  if nu and SameUnit(nu, "target") and tp == plate then
+    return true
+  end
+  if tp and tp ~= plate then
     return false
   end
   local canon = CanonicalPlateUnit(plate, NameplateUnitFor("target"))
@@ -903,6 +918,34 @@ ResolvePartyTokenForPlate = function(plate)
         if pl and pl == plate then
           tok = rt
           break
+        end
+      end
+    end
+  end
+  if not tok then
+    local plateUnit = UnitTokenFromPlate(plate)
+    local plateGuid
+    if plateUnit and SafeUnitExists(plateUnit) then
+      pcall(function()
+        plateGuid = UnitGUID(plateUnit)
+      end)
+    end
+    for i = 1, 4 do
+      local pt = "party" .. i
+      if SafeUnitExists(pt) then
+        if plateUnit and SameUnit(plateUnit, pt) then
+          tok = pt
+          break
+        end
+        if plateGuid and not IsSecret(plateGuid) then
+          local g
+          pcall(function()
+            g = UnitGUID(pt)
+          end)
+          if g and not IsSecret(g) and g == plateGuid then
+            tok = pt
+            break
+          end
         end
       end
     end
@@ -1373,11 +1416,13 @@ end
 
 --- Aura token for gap apply — never bind target auras to a non-target plate.
 local function AuraUnitForPlate(unit, plate, useTargetSrc, partyAuraTok)
-  if useTargetSrc and HasTarget() and plate and PlateFor("target") == plate then
+  if useTargetSrc and HasTarget() and plate and PlateMatchesTarget(plate) then
     return "target"
   end
-  if partyAuraTok and plate and PlateFor(partyAuraTok) == plate then
-    return partyAuraTok
+  if partyAuraTok and plate then
+    if PlateFor(partyAuraTok) == plate or PlateUnitBindingMatches(plate, partyAuraTok) or ResolvePartyTokenForPlate(plate) == partyAuraTok then
+      return partyAuraTok
+    end
   end
   if type(unit) == "string" and unit:match("^nameplate%d+") then
     return unit
@@ -1393,15 +1438,19 @@ FallbackParent = function(plate)
   return NativeDebuffList(plate) or NativeDebuffAnchorList(plate) or SafeFallbackParent(plate)
 end
 
---- Gap row parent — always health/UF, never DebuffList (sibling overlap with native icons).
+--- Gap row parent — AurasFrame/UF (not DebuffList pool); health bar clips above-row paint on Forever.
 FallbackPaintParent = function(plate)
+  local uf = plate and plate.UnitFrame
+  local af = uf and uf.AurasFrame
+  if af and not FrameIsGlobalChrome(af) then
+    return af
+  end
+  if uf and not FrameIsGlobalChrome(uf) then
+    return uf
+  end
   local bar = HealthBar(plate)
   if bar and not FrameIsGlobalChrome(bar) then
     return bar
-  end
-  local uf = plate and plate.UnitFrame
-  if uf and not FrameIsGlobalChrome(uf) then
-    return uf
   end
   return SafeFallbackParent(plate)
 end
@@ -2542,6 +2591,9 @@ IsTargetPlate = function(unit, plate)
   if not HasTarget() then
     return false
   end
+  if plate and PlateMatchesTarget(plate) then
+    return true
+  end
   if SameUnit(unit, "target") then
     return true
   end
@@ -2549,34 +2601,17 @@ IsTargetPlate = function(unit, plate)
   if tu and tu == unit then
     return true
   end
-  if plate and PlateFor("target") == plate then
+  if plate and PlateUnitBindingMatches(plate, "target") then
     return true
   end
   return false
 end
 
 ShouldUseTargetAuraSource = function(unit, plate)
-  if not HasTarget() then
+  if not HasTarget() or not plate then
     return false
   end
-  local tp = PlateFor("target")
-  if not tp or not plate or tp ~= plate then
-    return false
-  end
-  if unit == "target" then
-    return true
-  end
-  if SameUnit(unit, "target") then
-    return true
-  end
-  local tu = NameplateUnitFor("target")
-  if tu and tu == unit then
-    return true
-  end
-  if IsTargetPlate(unit, plate) then
-    return true
-  end
-  return false
+  return PlateMatchesTarget(plate) or IsTargetPlate(unit, plate)
 end
 
 --- True when aura data is publicly player/pet-owned (nil = unknown/secret).
@@ -4522,453 +4557,78 @@ SilentTraceSweep = function(why)
   end
 end
 
---- Paint personal + foreign gaps beside native — 0.1.15 sources + 0.2 layout (§5 P0/P1).
+--- Paint deps for PlatesPaint.lua (separate chunk — PaintMergeMissing 60 upvalue cap).
+Plateband.PlatesPaintDeps = {
+    lastPaintDebug = lastPaintDebug,
+    fallbacks = fallbacks,
+    gapSticky = gapSticky,
+    ClearFallback = ClearFallback,
+    FallbackParent = FallbackParent,
+    FallbackPaintParent = FallbackPaintParent,
+    NativeDebuffAnchorList = NativeDebuffAnchorList,
+    EnsureNativeVisible = EnsureNativeVisible,
+    RestoreNameShift = RestoreNameShift,
+    ResolvePartyTokenForPlate = ResolvePartyTokenForPlate,
+    SafeUnitExists = SafeUnitExists,
+    SameUnit = SameUnit,
+    PlateUnitBindingMatches = PlateUnitBindingMatches,
+    PlateFor = PlateFor,
+    IsPartyRaidMergePlate = IsPartyRaidMergePlate,
+    MergeFriendPlatesEnabled = MergeFriendPlatesEnabled,
+    IsPlayerOrFriendPlate = IsPlayerOrFriendPlate,
+    CanonicalPlateUnit = CanonicalPlateUnit,
+    NativeShownKeySet = NativeShownKeySet,
+    MaxIcons = MaxIcons,
+    PlateMatchesTarget = PlateMatchesTarget,
+    ShouldUseTargetAuraSource = ShouldUseTargetAuraSource,
+    HasTarget = HasTarget,
+    UnitTokenFromPlate = UnitTokenFromPlate,
+    CountPlateHarmfulShown = CountPlateHarmfulShown,
+    CollectPlateDebuffButtons = CollectPlateDebuffButtons,
+    NativeAuraButtonLive = NativeAuraButtonLive,
+    CopyKeySet = CopyKeySet,
+    NeedsHeavyTargetHarvest = NeedsHeavyTargetHarvest,
+    CollectTargetHarmfulRows = CollectTargetHarmfulRows,
+    AppendGapRow = AppendGapRow,
+    CollectPersonalAuraGaps = CollectPersonalAuraGaps,
+    CollectTargetFramePersonalGaps = CollectTargetFramePersonalGaps,
+    CollectForeignAuraGaps = CollectForeignAuraGaps,
+    CollectAuraSlotsGaps = CollectAuraSlotsGaps,
+    CollectTargetFrameMissing = CollectTargetFrameMissing,
+    CollectUnitHarmfulMirror = CollectUnitHarmfulMirror,
+    EnsureTargetHarmfulParity = EnsureTargetHarmfulParity,
+    DedupeGapIcons = DedupeGapIcons,
+    ReconcileTfHarmfulCoverage = ReconcileTfHarmfulCoverage,
+    CountTargetFrameAuras = CountTargetFrameAuras,
+    PruneInactiveGapRows = PruneInactiveGapRows,
+    ReconcileTargetFrameUiButtons = ReconcileTargetFrameUiButtons,
+    ForceFillTargetFrameGaps = ForceFillTargetFrameGaps,
+    CountTargetHarmfulApi = CountTargetHarmfulApi,
+    CollectPlayerOwnedKeys = CollectPlayerOwnedKeys,
+    EnsureUnitHarmfulParity = EnsureUnitHarmfulParity,
+    AuraUnitForPlate = AuraUnitForPlate,
+    ApplyGapSticky = ApplyGapSticky,
+    CountTargetHarmfulExpected = CountTargetHarmfulExpected,
+    GapStickyBudget = GapStickyBudget,
+    SilentTracePaint = SilentTracePaint,
+    EnsureFallback = EnsureFallback,
+    MergeRowIconSize = MergeRowIconSize,
+    CreateGapAuraButton = CreateGapAuraButton,
+    InitAuraButton = InitAuraButton,
+    EnrichGapAuraEntry = EnrichGapAuraEntry,
+    ApplyGapAuraVisual = ApplyGapAuraVisual,
+    LayoutMergeBesideNative = LayoutMergeBesideNative,
+    RememberGapSticky = RememberGapSticky,
+    PlateUsesFriendlyHarmfulFilter = PlateUsesFriendlyHarmfulFilter,
+}
+
+--- Thin delegate — body in Modules/PlatesPaint.lua.
 PaintMergeMissing = function(unit, plate)
-  if not plate then
-    ClearFallback(unit)
+  local fn = Plateband.PlatesPaintDeps and Plateband.PlatesPaintDeps.PaintMergeMissing
+  if type(fn) ~= "function" then
     return 0
   end
-  local parent = FallbackParent(plate)
-  if not parent then
-    ClearFallback(unit)
-    return 0
-  end
-  local nativeList = NativeDebuffAnchorList(plate) or parent
-
-  EnsureNativeVisible(plate)
-  RestoreNameShift(unit, plate)
-
-  local partyAuraTok = ResolvePartyTokenForPlate(plate)
-  local partyMerge = IsPartyRaidMergePlate(unit, plate)
-  local friendPlate = partyMerge
-  if partyMerge or MergeFriendPlatesEnabled() then
-    friendPlate = IsPlayerOrFriendPlate(unit, plate) or partyMerge
-  end
-  if partyMerge then
-    friendPlate = true
-  end
-
-  lastPaintDebug.harv = 0
-  lastPaintDebug.tgtSrc = 0
-  lastPaintDebug.miss = 0
-  lastPaintDebug.painted = 0
-  lastPaintDebug.personal = 0
-  lastPaintDebug.foreign = 0
-  lastPaintDebug.cdN = 0
-  lastPaintDebug.tfRows = 0
-  lastPaintDebug.gapSz = nil
-  lastPaintDebug.lockSz = nil
-
-  local plateUnit = CanonicalPlateUnit(plate, unit)
-  if plateUnit then
-    if type(unit) == "string" and unit:match("^nameplate%d+") and unit ~= plateUnit then
-      if not PlateUnitBindingMatches(plate, unit) then
-        if fallbacks[unit] then
-          ClearFallback(unit)
-        end
-      end
-    end
-    unit = plateUnit
-  end
-
-  local paintKeys = NativeShownKeySet(plate)
-  local maxN = MaxIcons()
-  local missing = {}
-  local stats = { personal = 0, foreign = 0 }
-  local isTarget = PlateMatchesTarget(plate)
-  local useTargetSrc = isTarget and ShouldUseTargetAuraSource(unit, plate)
-  if useTargetSrc and not PlateMatchesTarget(plate) then
-    useTargetSrc = false
-  end
-  if not isTarget and HasTarget() then
-    useTargetSrc = false
-  end
-
-  if partyAuraTok then
-    friendPlate = true
-    partyMerge = true
-    local partyPlate = PlateFor(partyAuraTok)
-    if partyPlate and partyPlate ~= plate and not isTarget then
-      if not PlateUnitBindingMatches(plate, partyAuraTok) then
-        local bound = UnitTokenFromPlate(plate)
-        if not (bound and SameUnit(bound, partyAuraTok)) and not SameUnit(unit, partyAuraTok) then
-          ClearFallback(unit)
-          return 0
-        end
-      end
-    end
-  end
-
-  if not friendPlate and useTargetSrc then
-    pcall(function()
-      if UnitIsFriend and UnitIsFriend("player", "target") then
-        friendPlate = true
-      end
-    end)
-  end
-  lastPaintDebug.friendPlate = friendPlate and 1 or 0
-
-  local nativeN = CountPlateHarmfulShown(plate)
-  local visBtns = {}
-  CollectPlateDebuffButtons(plate, visBtns, maxN)
-  local visN = 0
-  for vi = 1, #visBtns do
-    if NativeAuraButtonLive(visBtns[vi]) then
-      visN = visN + 1
-    end
-  end
-  if visN > nativeN then
-    nativeN = visN
-  end
-  lastPaintDebug.nativeN = nativeN
-  lastPaintDebug.nativeVis = visN
-  local allowSecret = useTargetSrc or nativeN == 0
-  local queueSkip = CopyKeySet(paintKeys)
-  local harvN = 0
-  -- Hostile target plate: always TF harvest (0.2.54 — lean path left harv=0 / miss=0 live).
-  local heavyTarget = useTargetSrc and (not friendPlate or NeedsHeavyTargetHarvest(unit, plate, nativeN))
-
-  if useTargetSrc then
-    if heavyTarget or not friendPlate then
-    local harv = {}
-    pcall(function()
-      harv = CollectTargetHarmfulRows(maxN) or {}
-    end)
-    harvN = #harv
-    lastPaintDebug.harv = harvN
-    lastPaintDebug.tgtSrc = 1
-    for i = 1, #harv do
-      AppendGapRow(queueSkip, missing, maxN, stats, harv[i], false)
-    end
-    CollectPersonalAuraGaps("target", queueSkip, missing, maxN, stats)
-    if type(unit) == "string" and unit ~= "target" then
-      CollectPersonalAuraGaps(unit, queueSkip, missing, maxN, stats)
-    end
-    CollectTargetFramePersonalGaps(queueSkip, missing, maxN, stats)
-    local foreignSkip = CopyKeySet(queueSkip)
-    CollectForeignAuraGaps("target", foreignSkip, missing, maxN, allowSecret, stats)
-    CollectAuraSlotsGaps("target", foreignSkip, missing, maxN, stats)
-    if type(unit) == "string" and unit ~= "target" then
-      CollectForeignAuraGaps(unit, foreignSkip, missing, maxN, allowSecret, stats)
-    end
-    CollectTargetFrameMissing(queueSkip, missing, maxN, stats)
-    CollectUnitHarmfulMirror("target", queueSkip, missing, maxN, stats)
-    if type(unit) == "string" and unit ~= "target" then
-      CollectUnitHarmfulMirror(unit, queueSkip, missing, maxN, stats)
-    end
-    EnsureTargetHarmfulParity(plate, missing, queueSkip, maxN, stats)
-    DedupeGapIcons(missing, maxN)
-    ReconcileTfHarmfulCoverage(plate, missing, queueSkip, maxN, stats, "target")
-    DedupeGapIcons(missing, maxN)
-    local tfUiN = CountTargetFrameAuras()
-    if not (tfUiN > 0 and #missing > 0) then
-      PruneInactiveGapRows(missing, "target", maxN)
-    end
-    ReconcileTargetFrameUiButtons(plate, missing, queueSkip, maxN, stats)
-    DedupeGapIcons(missing, maxN)
-    if #missing == 0 then
-      pcall(ForceFillTargetFrameGaps, missing, queueSkip, maxN, stats)
-      DedupeGapIcons(missing, maxN)
-    end
-  else
-    lastPaintDebug.tgtSrc = 1
-    lastPaintDebug.harv = 0
-    CollectPersonalAuraGaps("target", queueSkip, missing, maxN, stats)
-    local foreignSkip = CopyKeySet(queueSkip)
-    if friendPlate then
-      CollectPlayerOwnedKeys("target", foreignSkip)
-    end
-    CollectForeignAuraGaps("target", foreignSkip, missing, maxN, allowSecret, stats)
-    CollectAuraSlotsGaps("target", foreignSkip, missing, maxN, stats)
-    if type(unit) == "string" and unit ~= "target" then
-      CollectPlayerOwnedKeys(unit, foreignSkip)
-      CollectForeignAuraGaps(unit, foreignSkip, missing, maxN, allowSecret, stats)
-    end
-    CollectTargetFrameMissing(queueSkip, missing, maxN, stats)
-    if friendPlate then
-      EnsureTargetHarmfulParity(plate, missing, queueSkip, maxN, stats)
-      ReconcileTargetFrameUiButtons(plate, missing, queueSkip, maxN, stats)
-      DedupeGapIcons(missing, maxN)
-      if #missing == 0 then
-        pcall(ForceFillTargetFrameGaps, missing, queueSkip, maxN, stats)
-        DedupeGapIcons(missing, maxN)
-      end
-    else
-      DedupeGapIcons(missing, maxN)
-      local tfHarm = CountTargetHarmfulApi("target")
-      if not (tfHarm > 0 and #missing > 0) then
-        PruneInactiveGapRows(missing, "target", maxN)
-      end
-      if #missing == 0 and tfHarm > 0 then
-        pcall(ForceFillTargetFrameGaps, missing, queueSkip, maxN, stats)
-        DedupeGapIcons(missing, maxN)
-      end
-    end
-    end
-  elseif partyMerge and type(unit) == "string" then
-    lastPaintDebug.tgtSrc = 0
-    lastPaintDebug.harv = 0
-    local auraTok = partyAuraTok or unit
-    local foreignSkip = CopyKeySet(paintKeys)
-    CollectPersonalAuraGaps(auraTok, foreignSkip, missing, maxN, stats)
-    CollectPlayerOwnedKeys(auraTok, foreignSkip)
-    CollectForeignAuraGaps(auraTok, foreignSkip, missing, maxN, true, stats)
-    CollectAuraSlotsGaps(auraTok, foreignSkip, missing, maxN, stats)
-    EnsureUnitHarmfulParity(auraTok, plate, missing, foreignSkip, maxN, stats)
-    DedupeGapIcons(missing, maxN)
-    PruneInactiveGapRows(missing, auraTok, maxN)
-  elseif type(unit) == "string" then
-    lastPaintDebug.tgtSrc = 0
-    lastPaintDebug.harv = 0
-    CollectPersonalAuraGaps(unit, paintKeys, missing, maxN, stats)
-    local foreignSkip = CopyKeySet(paintKeys)
-    CollectPlayerOwnedKeys(unit, foreignSkip)
-    CollectForeignAuraGaps(unit, foreignSkip, missing, maxN, allowSecret, stats)
-    CollectAuraSlotsGaps(unit, foreignSkip, missing, maxN, stats)
-    if friendPlate or PlateUsesFriendlyHarmfulFilter(plate) then
-      EnsureUnitHarmfulParity(partyAuraTok or unit, plate, missing, foreignSkip, maxN, stats)
-    end
-    DedupeGapIcons(missing, maxN)
-    PruneInactiveGapRows(missing, unit, maxN)
-  end
-
-  local paintAuraTok = AuraUnitForPlate(unit, plate, useTargetSrc, partyAuraTok)
-  PruneInactiveGapRows(missing, paintAuraTok, maxN)
-  ApplyGapSticky(unit, missing, useTargetSrc or friendPlate, paintAuraTok, friendPlate)
-  if useTargetSrc and heavyTarget then
-    local tfUiLate = CountTargetFrameAuras()
-    if not (tfUiLate > 0 and #missing > 0) then
-      PruneInactiveGapRows(missing, paintAuraTok, maxN)
-    end
-    if #missing == 0 and tfUiLate > 0 then
-      pcall(ForceFillTargetFrameGaps, missing, queueSkip, maxN, stats)
-      DedupeGapIcons(missing, maxN)
-    end
-  end
-
-  lastPaintDebug.miss = #missing
-  lastPaintDebug.tfBtn = (useTargetSrc and heavyTarget) and CountTargetFrameAuras() or 0
-  lastPaintDebug.unit = tostring(unit)
-  lastPaintDebug.nativeN = nativeN
-  lastPaintDebug.partyTok = partyAuraTok or "-"
-  if useTargetSrc and HasTarget() then
-    lastPaintDebug.tfRows = CountTargetHarmfulExpected("target", lastPaintDebug.harv)
-  elseif type(unit) == "string" then
-    lastPaintDebug.tfRows = CountTargetHarmfulExpected(partyAuraTok or unit, math.max(lastPaintDebug.harv or 0, #missing))
-  else
-    lastPaintDebug.tfRows = 0
-  end
-
-  if #missing == 0 and (friendPlate or partyMerge) and type(paintAuraTok) == "string" then
-    local retry = {}
-    local skip = CopyKeySet(NativeShownKeySet(plate))
-    pcall(EnsureUnitHarmfulParity, paintAuraTok, plate, retry, skip, maxN, stats)
-    if #retry > 0 then
-      DedupeGapIcons(retry, maxN)
-      for i = 1, #retry do
-        missing[i] = retry[i]
-      end
-      lastPaintDebug.miss = #missing
-      lastPaintDebug.tfRows = CountTargetHarmfulExpected(paintAuraTok, #missing)
-    end
-  end
-
-  if #missing == 0 then
-    local held = fallbacks[unit]
-    local sticky = gapSticky[unit]
-    local now = GetTime and GetTime() or 0
-    local heldN = held and tonumber(held._painted) or 0
-    if heldN > 0 and sticky and type(sticky.icons) == "table" and #sticky.icons > 0 then
-      local auraUnit = AuraUnitForPlate(unit, plate, useTargetSrc, partyAuraTok)
-      local stickyLive = {}
-      for si = 1, #sticky.icons do
-        if GapAuraLive(sticky.icons[si], auraUnit) then
-          stickyLive[#stickyLive + 1] = sticky.icons[si]
-        end
-      end
-      if #stickyLive == 0 then
-        local retry = {}
-        local skip = CopyKeySet(NativeShownKeySet(plate))
-        if (friendPlate or partyMerge) and type(auraUnit) == "string" then
-          pcall(EnsureUnitHarmfulParity, auraUnit, plate, retry, skip, maxN, stats)
-        end
-        if #retry > 0 then
-          gapSticky[unit] = nil
-          for i = 1, #retry do
-            missing[i] = retry[i]
-          end
-          lastPaintDebug.miss = #missing
-          lastPaintDebug.tfRows = CountTargetHarmfulExpected(auraUnit, #missing)
-        else
-          gapSticky[unit] = nil
-          ClearFallback(unit, false)
-          lastPaintDebug.painted = 0
-          SilentTracePaint("paint_stale_cleared", unit, plate)
-          return 0
-        end
-      elseif #stickyLive > 0 then
-        sticky.icons = stickyLive
-        local budget = GapStickyBudget(friendPlate or partyMerge)
-        if type(sticky.at) == "number" and (now - sticky.at) <= budget then
-          local heldCd = 0
-          pcall(function()
-            local n, cdn = RefreshHeldGapFallback(unit, plate, held, sticky.icons, auraUnit)
-            heldN = n or 0
-            heldCd = cdn or 0
-          end)
-          if heldN <= 0 then
-            gapSticky[unit] = nil
-            lastPaintDebug.painted = 0
-            ClearFallback(unit, false)
-            SilentTracePaint("paint_hold_expired", unit, plate)
-            return 0
-          end
-          sticky.at = now
-          lastPaintDebug.painted = heldN
-          lastPaintDebug.miss = 0
-          lastPaintDebug.cdN = heldCd
-          SilentTracePaint("paint_hold", unit, plate)
-          return heldN
-        else
-          gapSticky[unit] = nil
-        end
-      end
-    end
-    if #missing == 0 then
-      if (friendPlate or partyMerge) and type(auraUnit) == "string" then
-        local retry = {}
-        local skip = CopyKeySet(NativeShownKeySet(plate))
-        pcall(EnsureUnitHarmfulParity, auraUnit, plate, retry, skip, maxN, stats)
-        if #retry == 0 and HasTarget() and plate == PlateFor("target") then
-          pcall(EnsureTargetHarmfulParity, plate, retry, skip, maxN, stats)
-        end
-        if #retry > 0 then
-          DedupeGapIcons(retry, maxN)
-          for i = 1, #retry do
-            missing[i] = retry[i]
-          end
-          lastPaintDebug.miss = #missing
-        else
-          lastPaintDebug.painted = 0
-          ClearFallback(unit, false)
-          return 0
-        end
-      else
-        lastPaintDebug.painted = 0
-        ClearFallback(unit, false)
-        return 0
-      end
-    end
-  end
-
-  local fb = EnsureFallback(unit, plate)
-  if not fb then
-    lastPaintDebug.painted = 0
-    lastPaintDebug.parent = "nil"
-    return 0
-  end
-  lastPaintDebug.parent = "healthBar"
-  local sz, pad = MergeRowIconSize(plate, fb)
-  fb._pbPlate = plate
-  local auraUnit = AuraUnitForPlate(unit, plate, useTargetSrc, partyAuraTok)
-  local painted = 0
-  local cdN = 0
-  for i = 1, #missing do
-    if painted >= maxN then
-      break
-    end
-    painted = painted + 1
-    local slot = fb.icons[painted]
-    if not slot or not slot.SetSize then
-      slot = CreateGapAuraButton(fb, sz)
-      slot._pbPlate = plate
-      fb.icons[painted] = slot
-    end
-    local okLay = pcall(function()
-      if slot._pbSz ~= sz then
-        pcall(InitAuraButton, slot, sz)
-        slot._pbSz = sz
-      end
-      slot:ClearAllPoints()
-      slot:SetSize(sz, sz)
-      slot:SetPoint("LEFT", fb, "LEFT", (painted - 1) * (sz + pad), 0)
-    end)
-    if not okLay then
-      painted = painted - 1
-    else
-      EnrichGapAuraEntry(missing[i], auraUnit)
-      local okVis, cdSet = ApplyGapAuraVisual(slot, missing[i], auraUnit)
-      if cdSet then
-        cdN = cdN + 1
-      end
-      if okVis then
-        pcall(slot.Show, slot)
-      else
-        pcall(slot.Hide, slot)
-        painted = painted - 1
-      end
-    end
-  end
-  for i = painted + 1, #fb.icons do
-    local slot = fb.icons[i]
-    if slot then
-      pcall(slot.Hide, slot)
-    end
-  end
-
-  if painted == 0 then
-    pcall(fb.Hide, fb)
-    fb._painted = 0
-    return 0
-  end
-
-  pcall(function()
-    fb:SetSize(math.max(1, painted * (sz + pad)), sz)
-    local strata = "MEDIUM"
-    pcall(function()
-      if nativeList.GetFrameStrata then
-        strata = nativeList:GetFrameStrata() or strata
-      end
-    end)
-    fb:SetFrameStrata(strata)
-    local lvl = 50
-    pcall(function()
-      if nativeList.GetFrameLevel then
-        lvl = (nativeList:GetFrameLevel() or 1) + 3
-      elseif parent then
-        lvl = (parent:GetFrameLevel() or 1) + 15
-      end
-    end)
-    fb:SetFrameLevel(lvl)
-    pcall(function()
-      if fb.SetClipsChildren then
-        fb:SetClipsChildren(false)
-      end
-    end)
-    fb:Show()
-  end)
-  fb._painted = painted
-  fb._gapPersonal = stats.personal or 0
-  fb._gapForeign = stats.foreign or 0
-
-  pcall(LayoutMergeBesideNative, unit, plate, fb, painted)
-  if painted > 0 then
-    local kept = {}
-    for i = 1, painted do
-      kept[i] = missing[i]
-    end
-    RememberGapSticky(unit, kept, auraUnit)
-  end
-  lastPaintDebug.painted = painted
-  lastPaintDebug.personal = stats.personal
-  lastPaintDebug.foreign = stats.foreign
-  lastPaintDebug.gapSz = sz
-  lastPaintDebug.lockSz = fb._pbLockedSz
-  lastPaintDebug.cdN = cdN
-  if painted > 0 or (lastPaintDebug.miss or 0) > 0 then
-    SilentTracePaint("paint", unit, plate)
-  end
-  return painted
+  return fn(unit, plate)
 end
 
 UpdateOverlay = function(unit, plate)

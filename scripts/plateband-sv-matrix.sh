@@ -17,7 +17,16 @@ if ! pb_live_ver_ok "$PB_LIVE_VER" "$PB_DISK_VER"; then
 fi
 
 if [[ "$PB_FLUSH_LAG" != "yes" ]]; then
-  rg -q 'PLATES_LOAD ok=1' "$PB_SV" || { echo "MATRIX fail: PLATES_LOAD"; exit 1; }
+  LOAD="$(rg 'PLATES_LOAD ok=1' "$PB_SV" 2>/dev/null | tail -1 || true)"
+  if [[ -z "$LOAD" ]]; then
+    echo "MATRIX fail: PLATES_LOAD missing (paint chunk likely failed — check FElog 60 upvalues)"
+    exit 1
+  fi
+  if echo "$LOAD" | rg -q 'paint=false'; then
+    echo "MATRIX fail: PLATES_LOAD paint=false"
+    echo "  $LOAD"
+    exit 1
+  fi
 fi
 
 fail=0
@@ -107,19 +116,30 @@ elif [[ -n "$OVERLAP_HOSTILE" ]]; then
 elif rg -q 'PAINT ver=.*native=0.*miss=[2-9].*painted=[2-9]' "$SV_DATA" 2>/dev/null; then
   check "native_overlap_risk" "WARN (native=0 stacked gaps — check layout)"
   fail=1
+elif rg -q 'PAINT ver=.*native=0.*painted=[2-9]' "$SV_DATA" 2>/dev/null; then
+  check "native_overlap_risk" "FAIL (native=0 multi-paint)"
+  fail=1
 else
-  check "native_overlap_risk" "OK"
+  check "native_overlap_risk" "WAIT (no multi-paint sample)"
 fi
 
-MULTI_SLOT="$(rg 'PAINT ver=' "$SV_DATA" 2>/dev/null | rg 'painted=[3-9]' | rg 'native=0' | tail -3 || true)"
-if [[ -n "$MULTI_SLOT" ]] && echo "$MULTI_SLOT" | rg -q 'nativeVis=0'; then
-  check "multi_icon_overlap" "FAIL (painted≥3 nativeVis=0 — Tarantula-class stack)"
+MULTI_SLOT="$(rg 'PAINT ver=' "$SV_DATA" 2>/dev/null | rg 'painted=[2-9]' | rg 'native=0' | tail -5 || true)"
+NATIVEVIS_GAP="$(rg 'PAINT ver=' "$SV_DATA" 2>/dev/null | rg 'native=0' | rg 'nativeVis=[1-9]' | rg 'painted=[2-9]' | tail -5 || true)"
+if [[ -n "$NATIVEVIS_GAP" ]]; then
+  check "multi_icon_overlap" "FAIL (native=0 nativeVis≥1 multi-paint)"
+  fail=1
+elif [[ -n "$MULTI_SLOT" ]] && echo "$MULTI_SLOT" | rg -q 'nativeVis=0'; then
+  check "multi_icon_overlap" "FAIL (painted≥2 nativeVis=0 — Tarantula-class stack)"
+  fail=1
+elif [[ -n "$MULTI_SLOT" ]]; then
+  # nativeVis absent (pre-0.2.69) still means layout overlap risk — never OK
+  check "multi_icon_overlap" "FAIL (painted≥2 native=0 — spacing telemetry pending)"
   fail=1
 elif rg -q 'PAINT ver=.*painted=[2-9].*nativeVis=0.*miss=[2-9]' "$SV_DATA" 2>/dev/null; then
   check "multi_icon_overlap" "FAIL (painted≥2 no native spacing)"
   fail=1
 else
-  check "multi_icon_overlap" "OK"
+  check "multi_icon_overlap" "WAIT (no multi-paint sample)"
 fi
 
 STALE_SRC="$PB_SV"

@@ -6,7 +6,7 @@
 ./scripts/plateband-selftest.sh
 ```
 
-Checks: `luac`, version sync, **chunk locals ≤195**, invariant grep (friendly filter, `AuraUnitForPlate`, no mob-bleed bind).
+Checks: `luac` on `Plates.lua` + `PlatesPaint.lua`, version sync, **chunk locals ≤195**, `PlatesPaintDeps` wire, invariant grep (friendly filter, `AuraUnitForPlate`, no mob-bleed bind).
 
 ## Live SV gate (before asking player)
 

@@ -1,6 +1,6 @@
 # Plateband — safe merge design (no name mutation)
 
-**Status:** v0.2.69 · **default ON** (`mergeMissing=true`, schema 7+)  
+**Status:** v0.2.70 · **default ON** (`mergeMissing=true`, schema 7+)  
 **Baseline:** `plateband-v0.1.15` data contract + **0.2** beside-native layout · HUD gate before main merge
 
 ## Product rule (0.2.7 → 0.2.41)
