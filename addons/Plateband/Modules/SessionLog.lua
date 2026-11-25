@@ -40,6 +40,8 @@ local AGENT_EXPORT_REL = "Interface/AddOns/Plateband/Logs/agent-live-export.log"
 local AGENT_EXPORT_BS = [[Interface\AddOns\Plateband\Logs\agent-live-export.log]]
 local RUNTIME_VER_REL = "Interface/AddOns/Plateband/Logs/runtime-ver.log"
 local RUNTIME_VER_BS = [[Interface\AddOns\Plateband\Logs\runtime-ver.log]]
+local LIVE_HEAD_REL = "Interface/AddOns/Plateband/Logs/live-head.log"
+local LIVE_HEAD_BS = [[Interface\AddOns\Plateband\Logs\live-head.log]]
 local LIVE_TAIL_LINES = 120
 local AGENT_PULSE_SEC = 2.0
 
@@ -209,6 +211,39 @@ local function IsAgentLine(line)
   return false
 end
 
+--- One-line live truth for agents (≤2s after /reload, no SV flush).
+function Mod.WriteLiveHeadFile(ver, seq, src, load)
+  ver = tostring(ver or (ns.Config and ns.Config.VERSION) or "?")
+  seq = tostring(seq or "0")
+  src = tostring(src or "chat")
+  load = tostring(load or "-")
+  local line = string.format(
+    "live_ver=%s seq=%s src=%s load=%s t=%s deployed=%s",
+    ver,
+    seq,
+    src,
+    load,
+    tostring(Now()),
+    ver
+  )
+  local paths = { LIVE_HEAD_REL, LIVE_HEAD_BS }
+  for i = 1, #paths do
+    local f = TryOpen(paths[i], "w")
+    if f then
+      local ok = pcall(function()
+        f:write(line)
+        f:write("\n")
+        f:close()
+      end)
+      if ok then
+        agentIoOk = true
+        return true
+      end
+    end
+  end
+  return false
+end
+
 function Mod.TryWriteRuntimeVerFile(ver)
   ver = tostring(ver or (ns.Config and ns.Config.VERSION) or "?")
   local line = string.format("RUNTIME_VER ver=%s t=%s", ver, tostring(Now()))
@@ -247,6 +282,7 @@ function Mod.RecordChatLoaded(src)
   Mod.Append(string.format("CHAT_LOADED ver=%s src=%s", ver, src))
   Mod.Append(string.format("RUNTIME_VER ver=%s src=chat load=%s", ver, src))
   pcall(Mod.TryWriteRuntimeVerFile, ver)
+  pcall(Mod.WriteLiveHeadFile, ver, 0, "CHAT_LOADED", src)
   pcall(Mod.FlushLiveExport)
   pcall(Mod.PulseAgentLive)
 end
@@ -430,6 +466,7 @@ function Mod.PulseAgentLive()
   if not TryAppendAgentLive(stamped) then
     MirrorToFelog(body)
   end
+  pcall(Mod.WriteLiveHeadFile, al.ver, al.seq, "AGENT_LIVE", "pulse")
   Mod.ScheduleLiveFlush()
   pcall(Mod.FlushLiveExport)
 end
@@ -509,6 +546,8 @@ function Mod.BeginSession()
   )
   Mod.Append(header)
   pcall(Mod.TryWriteRuntimeVerFile, ver)
+  pcall(Mod.WriteLiveHeadFile, ver, 0, "SESSION_START", "addon")
+  pcall(Mod.FlushLiveExport)
   Mod.EnsureLiveFlushTicker()
   Mod.EnsureAgentPulseTicker()
   pcall(Mod.FlushLiveExport)

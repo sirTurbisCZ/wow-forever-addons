@@ -51,7 +51,8 @@ fi
 AGENT_LINE="$(pb_sv_export_grep_last "$PB_SV" "AGENT_LIVE" 2>/dev/null || true)"
 AGENT_SEQ="${PB_AGENT_SEQ:-0}"
 RELOAD="${PB_RELOAD_PENDING:-no}"
-KEY="${SESSION_T:-0}|${SESSION_FLUSHED:-?}|${AGENT_SEQ:-0}|${RELOAD}"
+SESSION_LIVE="${PB_LIVE_VER:-$PB_CLIENT_VER}"
+KEY="${SESSION_T:-0}|${SESSION_FLUSHED:-?}|${SESSION_LIVE:-?}|${AGENT_SEQ:-0}|${RELOAD}|${PB_RUNTIME_VER:-?}"
 
 PREV_KEY="" PREV_RELOAD=""
 if [[ -f "$STATE" ]]; then
@@ -71,7 +72,7 @@ elif [[ "${PB_RELOAD_PENDING:-no}" == "behind" ]]; then
   CHAT_HINT="[Plateband] client v${REPORT_LIVE:-?} (TOC ${PB_RUNTIME_VER:-?} older than client)"
 fi
 
-echo "SESSION_REPORT new=1 live_ver=${REPORT_LIVE:-?} client_ver=${PB_CLIENT_VER:-?} deployed_ver=${PB_RUNTIME_VER:-?} disk_ver=${PB_DISK_VER:-?} reload_pending=${RELOAD} flushed_session=${SESSION_FLUSHED:-?} flush_lag=${PB_FLUSH_LAG:-?} agent_seq=${AGENT_SEQ} feed=${PB_FEED_SOURCE:-?} t=${SESSION_T:-?} chat_hint=\"${CHAT_HINT}\" source=${PB_FEED_SOURCE:-sv} mirror=${MIRROR}"
+echo "SESSION_REPORT new=1 live_ver=${REPORT_LIVE:-?} client_ver=${PB_CLIENT_VER:-?} interface_ver=${PB_RUNTIME_VER:-?} session_load=${PB_SESSION_LOAD:-?} deployed_ver=${PB_RUNTIME_VER:-?} disk_ver=${PB_DISK_VER:-?} reload_pending=${RELOAD} flushed_session=${SESSION_FLUSHED:-?} flush_lag=${PB_FLUSH_LAG:-?} agent_seq=${AGENT_SEQ} ver_source=${PB_VER_SOURCE:-?} feed=${PB_FEED_SOURCE:-?} t=${SESSION_T:-?} chat_hint=\"${CHAT_HINT}\" source=${PB_FEED_SOURCE:-sv} mirror=${MIRROR}"
 [[ -n "$LOAD_LINE" ]] && echo "  PLATES_LOAD: $(echo "$LOAD_LINE" | rg -o '\[[0-9]+\] PLATES_LOAD[^\n]*' 2>/dev/null | tail -1 || echo "$LOAD_LINE" | tail -c 120)"
 [[ -n "$AGENT_LINE" ]] && echo "  AGENT_LIVE: $(echo "$AGENT_LINE" | rg -o '\[[0-9]+\] AGENT_LIVE[^\n]*' 2>/dev/null | tail -1 || echo "$AGENT_LINE" | tail -c 120)"
 exit 0

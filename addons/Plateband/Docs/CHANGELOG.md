@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.2.75 — live-head feed + reload stamp ≤2s
+
+- **Reload:** `RecordChatLoaded("reload")` only when `IsLoggedIn()` on `ADDON_LOADED`; cold login stamps once on `PLAYER_LOGIN` (no double reload+login).
+- **Feed:** `Logs/live-head.log` written sync on `SESSION_START` / `CHAT_LOADED` / `AGENT_LIVE`; watch prefers it over stale SV `agentLive`.
+- **Watch:** `pb_client_ver` = `live-head.log` → export → SV; export adds `interface_ver` + `session_load`.
+
 ## Release 0.2.74 — hostile skip keys + WS/full harmful parity
 
 - **Root (0.2.72 screenshot):** hostile `NativeShownKeySet` always API-augmented skip keys on `nativeVis=0` → player DoTs treated as native → `miss`/`painted` in PAINT but icons missing / partial (Tarantula, Condor).

@@ -43,7 +43,7 @@ if [[ "$PB_FLUSH_LAG" == "yes" ]]; then
 fi
 
 if [[ "${PB_RELOAD_PENDING:-no}" == "yes" ]]; then
-  echo "SV_GATE note: reload_pending=yes — live ${PB_LIVE_VER} (${PB_VER_SOURCE:-?}) != deployed TOC ${PB_RUNTIME_VER}; /reload required"
+  echo "SV_GATE note: reload_pending=yes — session ${PB_LIVE_VER} (${PB_VER_SOURCE:-?}) != interface TOC ${PB_RUNTIME_VER}; /reload after disk deploy"
 elif [[ "${PB_RELOAD_PENDING:-no}" == "behind" ]]; then
   echo "SV_GATE note: live ${PB_LIVE_VER} ahead of deployed TOC ${PB_RUNTIME_VER} (redeploy or ignore)"
 else

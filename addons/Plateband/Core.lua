@@ -201,7 +201,13 @@ bootFrame:SetScript("OnEvent", function(_, event, name)
     if SessionLog and SessionLog.BeginSession then
       SafeCall("session:begin", SessionLog.BeginSession)
     end
-    if SessionLog and SessionLog.RecordChatLoaded then
+    local loggedIn = false
+    pcall(function()
+      if IsLoggedIn then
+        loggedIn = IsLoggedIn()
+      end
+    end)
+    if loggedIn and SessionLog and SessionLog.RecordChatLoaded then
       SafeCall("session:chat_loaded", function()
         SessionLog.RecordChatLoaded("reload")
       end)

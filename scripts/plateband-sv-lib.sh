@@ -170,6 +170,28 @@ pb_agent_live_export_path() {
   printf '%s' "$(pb_plateband_logs_dir)/agent-live-export.log"
 }
 
+pb_live_head_log_path() {
+  printf '%s' "$(pb_plateband_logs_dir)/live-head.log"
+}
+
+# Client session ver from Logs/live-head.log (written on SESSION_START / CHAT_LOADED / AGENT_LIVE).
+pb_read_live_head_file() {
+  local f="${1:-$(pb_live_head_log_path)}"
+  [[ -f "$f" ]] || return 1
+  local line ver seq src load t
+  line="$(head -1 "$f" 2>/dev/null || true)"
+  [[ -n "$line" ]] || return 1
+  ver="$(sed -n 's/.*live_ver=\([0-9.]*\).*/\1/p' <<<"$line" | head -1)"
+  [[ -n "$ver" ]] || ver="$(sed -n 's/^live_ver=\([0-9.]*\).*/\1/p' <<<"$line" | head -1)"
+  seq="$(sed -n 's/.* seq=\([0-9]*\).*/\1/p' <<<"$line" | head -1)"
+  src="$(sed -n 's/.* src=\([^ ]*\).*/\1/p' <<<"$line" | head -1)"
+  load="$(sed -n 's/.* load=\([^ ]*\).*/\1/p' <<<"$line" | head -1)"
+  t="$(sed -n 's/.* t=\([0-9]*\).*/\1/p' <<<"$line" | head -1)"
+  [[ -n "$ver" ]] || return 1
+  PB_SESSION_LOAD="${load:-?}"
+  printf '%s\t%s\t%s\t%s' "$ver" "${seq:-0}" "${src:-live_head}" "${t:-0}"
+}
+
 # Newest stamped ver= from a log body (CHAT_LOADED / RUNTIME_VER / SESSION_START / AGENT_LIVE).
 pb_stamped_ver_from_file() {
   local f="$1"
@@ -211,6 +233,13 @@ PY
 pb_live_feed_runtime() {
   local f line ver seq src pick_ts pick_ver pick_src pick_seq
   pick_ts=-1
+  line="$(pb_read_live_head_file "$(pb_live_head_log_path)" 2>/dev/null || true)"
+  if [[ -n "$line" ]]; then
+    pick_ver="$(echo "$line" | cut -f1)"
+    pick_ts="$(echo "$line" | cut -f4)"
+    pick_src="live_head_file"
+    [[ "$pick_ts" -ge 0 ]] || pick_ts="$(date +%s)"
+  fi
   for f in "$(pb_runtime_ver_log)" "$(pb_agent_live_export_path)" "$(pb_repo_logs_dir)/agent-live-export.log" "$(pb_agent_live_log_path)"; do
     [[ -f "$f" ]] || continue
     if [[ "$f" == *runtime-ver.log ]]; then
@@ -355,18 +384,26 @@ PY
 }
 
 pb_publish_live_head() {
-  local sv="$1" repo out ver seq src sm
-  [[ -f "$sv" ]] || return 1
+  local sv="$1" repo out ver seq src sm load
   repo="$(pb_repo_logs_dir)"
   mkdir -p "$repo"
   out="${repo}/live-head.txt"
-  ver="$(pb_client_ver "$sv" 2>/dev/null || true)"
+  if pb_read_live_head_file "$(pb_live_head_log_path)" 2>/dev/null; then
+    :
+  elif [[ -f "$sv" ]]; then
+    pb_client_ver "$sv" 2>/dev/null || true
+  else
+    return 1
+  fi
+  ver="$(pb_read_live_head_file "$(pb_live_head_log_path)" 2>/dev/null | cut -f1 || pb_client_ver "$sv" 2>/dev/null || true)"
   [[ -n "$ver" ]] || return 1
   seq="${PB_AGENT_SEQ:-0}"
   src="${PB_VER_SOURCE:-?}"
-  sm="$(stat -f %m "$sv" 2>/dev/null || stat -c %Y "$sv" 2>/dev/null || echo 0)"
-  printf 'live_ver=%s agent_seq=%s source=%s sv_mtime=%s feed=%s\n' \
-    "$ver" "$seq" "$src" "$sm" "${PB_FEED_SOURCE:-sv_live}" > "$out"
+  load="${PB_SESSION_LOAD:-?}"
+  sm="$(stat -f %m "$(pb_live_head_log_path)" 2>/dev/null || stat -c %Y "$(pb_live_head_log_path)" 2>/dev/null || echo 0)"
+  [[ "$sm" -gt 0 ]] || sm="$(stat -f %m "$sv" 2>/dev/null || stat -c %Y "$sv" 2>/dev/null || echo 0)"
+  printf 'live_ver=%s agent_seq=%s source=%s load=%s interface_ver=%s sv_mtime=%s feed=%s\n' \
+    "$ver" "$seq" "$src" "$load" "$(pb_runtime_ver)" "$sm" "${PB_FEED_SOURCE:-live_head}" > "$out"
   PB_LIVE_HEAD="$out"
 }
 
@@ -381,6 +418,14 @@ pb_sync_live_feed() {
   if [[ -f "$src" ]] && pb_log_fresh_sec "$src" 120; then
     tail -n 400 "$src" > "${repo}/agent-live.log" 2>/dev/null || true
     PB_LIVE_SYNC="agent_live"
+  fi
+  local wow_head repo_head
+  wow_head="$(pb_live_head_log_path)"
+  repo_head="${repo}/live-head-client.log"
+  if [[ -f "$wow_head" ]]; then
+    cp -f "$wow_head" "$repo_head" 2>/dev/null || true
+    cp -f "$wow_head" "${repo}/live-head.log" 2>/dev/null || true
+    PB_LIVE_SYNC="live_head_file"
   fi
   wow_exp="$(pb_agent_live_export_path)"
   repo_exp="${repo}/agent-live-export.log"
@@ -619,10 +664,24 @@ pb_agent_live_ver() {
   [[ -n "$v" ]] && printf '%s' "$v"
 }
 
-# Live runtime — fresh Logs/export feed first, then SV unified (newest stamp wins).
+# Live runtime — Logs/live-head.log → export → SV (never stale SV agentLive alone).
 pb_client_ver() {
   local sv="$1"
   local line v feed_ver feed_src feed_ts sv_ts
+  line="$(pb_read_live_head_file "$(pb_live_head_log_path)" 2>/dev/null || true)"
+  if [[ -n "$line" ]]; then
+    PB_VER_SOURCE="live_head_file"
+    PB_AGENT_SEQ="$(echo "$line" | cut -f2)"
+    printf '%s' "$(echo "$line" | cut -f1)"
+    return 0
+  fi
+  line="$(pb_read_live_head_file "$(pb_repo_logs_dir)/live-head.log" 2>/dev/null || true)"
+  if [[ -n "$line" ]]; then
+    PB_VER_SOURCE="live_head_mirror"
+    PB_AGENT_SEQ="$(echo "$line" | cut -f2)"
+    printf '%s' "$(echo "$line" | cut -f1)"
+    return 0
+  fi
   local wow_exp="${PB_AGENT_EXPORT:-}"
   [[ -n "$wow_exp" ]] || wow_exp="$(pb_agent_live_export_path)"
   if [[ -f "$wow_exp" ]] && pb_log_fresh_sec "$wow_exp" 300; then
@@ -698,14 +757,20 @@ pb_sv_context() {
   PB_AGENT_SEQ="$(echo "$unified" | cut -f2)"
   PB_CLIENT_VER="$(pb_client_ver "$PB_SV")"
   PB_VER_SOURCE="${PB_VER_SOURCE:-$(echo "$unified" | cut -f3)}"
+  PB_INTERFACE_VER="${PB_RUNTIME_VER:-}"
   PB_LIVE_VER="$(pb_resolve_live_ver "$PB_CLIENT_VER")"
   PB_RULES_VER="${PLATEBAND_LIVE_VER:-$PB_LIVE_VER}"
   PB_RUNTIME_FILE="$(pb_runtime_ver_log)"
   PB_RUNTIME_FILE_VER="$(pb_runtime_file_ver "$PB_RUNTIME_FILE" 2>/dev/null || true)"
   PB_FEED_SOURCE="sv_unified"
+  if [[ "${PB_VER_SOURCE:-}" == live_head_file || "${PB_VER_SOURCE:-}" == live_head_mirror ]]; then
+    PB_FEED_SOURCE="$PB_VER_SOURCE"
+  fi
   local alf
   alf="$(pb_agent_live_log_path)"
-  if pb_log_fresh_sec "$alf" 120; then
+  if [[ "$PB_FEED_SOURCE" == sv_unified ]] && pb_log_fresh_sec "$(pb_live_head_log_path)" 120 2>/dev/null; then
+    PB_FEED_SOURCE="live_head_file"
+  elif pb_log_fresh_sec "$alf" 120; then
     PB_FEED_SOURCE="agent_live_file"
   elif [[ -f "$PB_RUNTIME_FILE" ]] && pb_runtime_file_fresh "$PB_RUNTIME_FILE" "$PB_SV"; then
     PB_FEED_SOURCE="runtime_ver_file"
@@ -717,7 +782,7 @@ pb_sv_context() {
 
   PB_CHAT_PRIMARY=no
   case "${PB_VER_SOURCE:-}" in
-    liveHead|liveHead_chat|CHAT_LOADED|RUNTIME_VER|SESSION_START|runtimeVer|runtime_ver_file|PLATES_LOAD)
+    live_head_file|live_head_mirror|liveHead|liveHead_chat|CHAT_LOADED|RUNTIME_VER|SESSION_START|runtimeVer|runtime_ver_file|PLATES_LOAD|AGENT_LIVE)
       PB_CHAT_PRIMARY=yes
       ;;
   esac
@@ -754,8 +819,8 @@ pb_live_ver_ok() {
 }
 
 pb_export_session_line() {
-  printf 'live_ver=%s client_ver=%s ver_source=%s flushed_session=%s deployed_ver=%s disk_ver=%s reload_pending=%s flush_lag=%s feed=%s live_sync=%s runtime_file=%s agent_seq=%s rules_ver=%s chat_primary=%s sv=%s' \
-    "${PB_LIVE_VER:-?}" "${PB_CLIENT_VER:-?}" "${PB_VER_SOURCE:-?}" "${PB_FLUSHED_VER:-?}" "${PB_RUNTIME_VER:-?}" \
+  printf 'live_ver=%s client_ver=%s session_load=%s interface_ver=%s ver_source=%s flushed_session=%s deployed_ver=%s disk_ver=%s reload_pending=%s flush_lag=%s feed=%s live_sync=%s runtime_file=%s agent_seq=%s rules_ver=%s chat_primary=%s sv=%s' \
+    "${PB_LIVE_VER:-?}" "${PB_CLIENT_VER:-?}" "${PB_SESSION_LOAD:-?}" "${PB_INTERFACE_VER:-?}" "${PB_VER_SOURCE:-?}" "${PB_FLUSHED_VER:-?}" "${PB_RUNTIME_VER:-?}" \
     "${PB_DISK_VER:-?}" "${PB_RELOAD_PENDING:-no}" "${PB_FLUSH_LAG:-?}" "${PB_FEED_SOURCE:-?}" \
     "${PB_LIVE_SYNC:-none}" "${PB_RUNTIME_FILE_VER:-?}" "${PB_AGENT_SEQ:-?}" "${PB_RULES_VER:-?}" "${PB_CHAT_PRIMARY:-no}" "${PB_SV:-none}"
 }
