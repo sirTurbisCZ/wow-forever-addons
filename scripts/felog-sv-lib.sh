@@ -68,9 +68,7 @@ felog_build_chat_truth_from_toc() {
 
 # Refresh export line 1 from Interface TOC when client pulse lags (io=sv_only or stale SV).
 pb_refresh_export_line1_from_toc() {
-  local exp pb fe line tail ver age now max_age
-  # shellcheck source=scripts/felog-sv-lib.sh
-  . "${BASH_SOURCE[0]%/*}/felog-sv-lib.sh"
+  local exp pb fe line tail ver age fe_head max_age
   exp="$(felog_wow_root)/Interface/AddOns/Plateband/Logs/agent-live-export.log"
   pb="$(felog_plateband_interface_ver 2>/dev/null || echo "?")"
   fe="$(felog_interface_ver 2>/dev/null || echo "?")"
