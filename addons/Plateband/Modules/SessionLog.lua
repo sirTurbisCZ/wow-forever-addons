@@ -140,6 +140,43 @@ local function PickVersion(...)
   return nil
 end
 
+local function VerParts(v)
+  local a, b, c = tostring(v or "0.0.0"):match("^(%d+)%.(%d+)%.(%d+)")
+  return tonumber(a) or 0, tonumber(b) or 0, tonumber(c) or 0
+end
+
+local function VerNewer(a, b)
+  if not a or a == "" then
+    return b
+  end
+  if not b or b == "" then
+    return a
+  end
+  local a1, a2, a3 = VerParts(a)
+  local b1, b2, b3 = VerParts(b)
+  if a1 ~= b1 then
+    return a1 > b1 and a or b
+  end
+  if a2 ~= b2 then
+    return a2 > b2 and a or b
+  end
+  if a3 ~= b3 then
+    return a3 > b3 and a or b
+  end
+  return a
+end
+
+local function BestVersion(...)
+  local best
+  for i = 1, select("#", ...) do
+    local v = select(i, ...)
+    if v and tostring(v) ~= "" and tostring(v) ~= "?" then
+      best = VerNewer(best, tostring(v))
+    end
+  end
+  return best
+end
+
 local function QueryAddonMetadataVersion(addon)
   if type(GetAddOnMetadata) == "function" then
     local ok, v = pcall(GetAddOnMetadata, addon, "Version")
@@ -170,28 +207,42 @@ local function QueryAddonMetadataVersion(addon)
   return nil
 end
 
---- L1 export truth: Logs stamp + disk Interface toc (gate truth), then metadata — no lastKnown / stale runtime Config.
+--- L1 export truth: chat Config (same reload) ∪ stamp ∪ disk toc ∪ metadata — highest semver wins.
 function Mod.ResolveExportVersions()
+  local pbChat = (ns.Config and ns.Config.VERSION) and tostring(ns.Config.VERSION) or nil
+  local feChat
+  pcall(function()
+    if ForeverErrorLog and ForeverErrorLog.Config and ForeverErrorLog.Config.VERSION then
+      feChat = tostring(ForeverErrorLog.Config.VERSION)
+    end
+  end)
   local pbStamp, feStamp = ReadTocStampVersion()
   local pbToc = ReadInterfaceAddonVersion({ PB_TOC_FILE, PB_TOC_BS, PB_CFG_FILE, PB_CFG_BS })
   local feToc = ReadInterfaceAddonVersion({ FE_TOC_FILE, FE_TOC_BS, FE_CFG_FILE, FE_CFG_BS })
   local pbMeta = QueryAddonMetadataVersion(PLATEBAND_TOC)
   local feMeta = QueryAddonMetadataVersion(FELOG_TOC)
-  local pbVer = PickVersion(pbStamp, pbToc, pbMeta)
-  local feVer = PickVersion(feStamp, feToc, feMeta)
-  if not pbVer and ns.Config and ns.Config.VERSION then
-    pbVer = tostring(ns.Config.VERSION)
-  end
-  if not feVer then
-    pcall(function()
-      if ForeverErrorLog and ForeverErrorLog.Config and ForeverErrorLog.Config.VERSION then
-        feVer = tostring(ForeverErrorLog.Config.VERSION)
-      end
-    end)
-  end
+  local pbVer = BestVersion(pbChat, pbStamp, pbToc, pbMeta)
+  local feVer = BestVersion(feChat, feStamp, feToc, feMeta)
   pbMeta = pbMeta or pbVer
   feMeta = feMeta or feVer
   return pbVer, feVer, pbMeta, feMeta
+end
+
+--- Line 1 only — mtime truth for watch (≤2s).
+function Mod.ForceDiskExportL1()
+  local db = ns.Config.EnsureDB()
+  db.exportPulseSeq = (tonumber(db.exportPulseSeq) or 0) + 1
+  local line = Mod.BuildChatTruthLine("EXPORT_PULSE", "pulse", db.exportPulseSeq)
+  db.chatTruthLine = line
+  db.chatTruthAt = Now()
+  db.exportPulseAt = Now()
+  local wrote = WriteLineToPaths({ AGENT_EXPORT_REL, AGENT_EXPORT_BS }, line, "w")
+  if wrote then
+    db.ioExportDiskAt = Now()
+    db.ioExportDiskOk = true
+    pcall(Mod.PublishInterfaceTocStamp)
+  end
+  return wrote
 end
 
 function Mod.LiveInterfaceVersions()
@@ -238,6 +289,8 @@ local ioPulseFrame
 local ioPulseLastGt = 0
 local worldPulseHooked = false
 local exportBurstAt = 0
+local exportDriverFrame
+local EXPORT_TICK = 1.95
 local EXPORT_PULSE_REL = "Interface/AddOns/Plateband/Logs/export-pulse.log"
 local EXPORT_PULSE_BS = [[Interface\AddOns\Plateband\Logs\export-pulse.log]]
 local felogPending = {}
@@ -565,12 +618,35 @@ end
 
 local function StopExportTruthPulse()
   exportTruthArmed = false
+  worldPulseHooked = false
   if exportTruthTicker and exportTruthTicker.Cancel then
     pcall(exportTruthTicker.Cancel, exportTruthTicker)
   end
   exportTruthTicker = nil
   ioPulseFrame = nil
   ioPulseLastGt = 0
+  if exportDriverFrame then
+    exportDriverFrame:SetScript("OnUpdate", nil)
+    exportDriverFrame = nil
+  end
+end
+
+local function EnsureExportDriverFrame()
+  if exportDriverFrame or not CreateFrame or not GetTime then
+    return
+  end
+  local parent = WorldFrame or UIParent
+  exportDriverFrame = CreateFrame("Frame", "PlatebandExportDriver", parent)
+  local lastGt = GetTime()
+  exportDriverFrame:SetScript("OnUpdate", function()
+    local gt = GetTime()
+    if (gt - lastGt) < EXPORT_TICK then
+      return
+    end
+    lastGt = gt
+    pcall(Mod.ForceDiskExportL1)
+  end)
+  pcall(exportDriverFrame.Show, exportDriverFrame)
 end
 
 function Mod.SyncLiveExportFile(src, load, seq)
@@ -664,9 +740,11 @@ function Mod.ArmExportTruthPulse(force)
   exportTruthArmed = true
   local db = ns.Config.EnsureDB()
   db.exportPulseArmedAt = Now()
+  pcall(Mod.ForceDiskExportL1)
   pcall(Mod.PulseExportDisk)
   Mod.ScheduleExportBurst()
   EnsureWorldIoPulse()
+  EnsureExportDriverFrame()
 
   if not ioPulseFrame and CreateFrame then
     local parent = WorldFrame or UIParent
@@ -834,8 +912,6 @@ function Mod.RecordChatLoaded(src)
   local ver = tostring(ns.Config and ns.Config.VERSION or "?")
   local db = ns.Config.EnsureDB()
   local at = Now()
-  db.lastKnownPbVer = nil
-  db.lastKnownFeVer = nil
   db.runtimeVer = { ver = ver, at = at, src = "chat", load = src }
   db.liveHead = string.format(
     "ver=%s seq=0 at=%s io=sv_only src=chat load=%s",
@@ -1189,6 +1265,7 @@ if CreateFrame then
     end
     if event == "ADDON_LOADED" or event == "PLAYER_ENTERING_WORLD" then
       DeferArmExportTruth(true)
+      pcall(Mod.ForceDiskExportL1)
     end
   end)
 end

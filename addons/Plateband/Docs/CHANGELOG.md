@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## Release 0.2.91 — BestVersion chat∪TOC + ExportDriver ≤2s
+
+- **`ResolveExportVersions`** — **`BestVersion`** of chat `Config`, stamp, disk toc, metadata (no lastKnown).
+- **`ForceDiskExportL1`** + **`PlatebandExportDriver`** OnUpdate **1.95s**; re-arm clears driver on reload.
+
 ## Release 0.2.90 — L1 from stamp/disk TOC (not lastKnown Config)
 
 - **`ResolveExportVersions`** — stamp + disk `.toc`/`Config.lua`, then metadata; **no `lastKnown*`**.

@@ -60,6 +60,8 @@ local livePulseFrame
 local livePulseLastGt = 0
 local felogWorldPulseHooked = false
 local felogExportBurstAt = 0
+local felogExportDriver
+local FELOG_EXPORT_TICK = 1.95
 
 local WriteLiveHeadFile
 local FlushAgentExportFiles
@@ -444,6 +446,43 @@ local function FelogPickVersion(...)
   return nil
 end
 
+local function FelogVerParts(v)
+  local a, b, c = tostring(v or "0.0.0"):match("^(%d+)%.(%d+)%.(%d+)")
+  return tonumber(a) or 0, tonumber(b) or 0, tonumber(c) or 0
+end
+
+local function FelogVerNewer(a, b)
+  if not a or a == "" then
+    return b
+  end
+  if not b or b == "" then
+    return a
+  end
+  local a1, a2, a3 = FelogVerParts(a)
+  local b1, b2, b3 = FelogVerParts(b)
+  if a1 ~= b1 then
+    return a1 > b1 and a or b
+  end
+  if a2 ~= b2 then
+    return a2 > b2 and a or b
+  end
+  if a3 ~= b3 then
+    return a3 > b3 and a or b
+  end
+  return a
+end
+
+local function FelogBestVersion(...)
+  local best
+  for i = 1, select("#", ...) do
+    local v = select(i, ...)
+    if v and tostring(v) ~= "" and tostring(v) ~= "?" then
+      best = FelogVerNewer(best, tostring(v))
+    end
+  end
+  return best
+end
+
 local function FelogQueryMetadataVersion(addon)
   if type(GetAddOnMetadata) == "function" then
     local ok, v = pcall(GetAddOnMetadata, addon, "Version")
@@ -462,19 +501,18 @@ end
 
 local function FelogResolveExportVersions()
   FelogEnsurePlatebandForToc()
+  local feChat = Config and Config.VERSION and tostring(Config.VERSION) or nil
+  local pbChat
+  if Plateband and Plateband.Config and Plateband.Config.VERSION then
+    pbChat = tostring(Plateband.Config.VERSION)
+  end
   local pbStamp, feStamp = FelogReadPlatebandTocStamp()
   local pbToc = FelogReadInterfaceVersion({ PB_TOC_FILE, PB_TOC_BS, PB_CFG_FILE, PB_CFG_BS })
   local feToc = FelogReadInterfaceVersion({ FE_TOC_FILE, FE_TOC_BS, FE_CFG_FILE, FE_CFG_BS })
   local pbMeta = FelogQueryMetadataVersion("Plateband")
   local feMeta = FelogQueryMetadataVersion("ForeverErrorLog")
-  local pbVer = FelogPickVersion(pbStamp, pbToc, pbMeta)
-  local feVer = FelogPickVersion(feStamp, feToc, feMeta)
-  if not feVer and Config and Config.VERSION then
-    feVer = tostring(Config.VERSION)
-  end
-  if not pbVer and Plateband and Plateband.Config and Plateband.Config.VERSION then
-    pbVer = tostring(Plateband.Config.VERSION)
-  end
+  local pbVer = FelogBestVersion(pbChat, pbStamp, pbToc, pbMeta)
+  local feVer = FelogBestVersion(feChat, feStamp, feToc, feMeta)
   pbMeta = pbMeta or pbVer
   feMeta = feMeta or feVer
   return pbVer, feVer, pbMeta, feMeta
@@ -598,11 +636,34 @@ end
 
 local function StopLivePulse()
   livePulseArmed = false
+  felogWorldPulseHooked = false
   if livePulseTicker and livePulseTicker.Cancel then
     pcall(livePulseTicker.Cancel, livePulseTicker)
   end
   livePulseTicker = nil
   livePulseFrame = nil
+  if felogExportDriver then
+    felogExportDriver:SetScript("OnUpdate", nil)
+    felogExportDriver = nil
+  end
+end
+
+local function EnsureFelogExportDriver()
+  if felogExportDriver or not CreateFrame or not GetTime then
+    return
+  end
+  local parent = WorldFrame or UIParent
+  felogExportDriver = CreateFrame("Frame", "FelogExportDriver", parent)
+  local lastGt = GetTime()
+  felogExportDriver:SetScript("OnUpdate", function()
+    local gt = GetTime()
+    if (gt - lastGt) < FELOG_EXPORT_TICK then
+      return
+    end
+    lastGt = gt
+    pcall(PulseLiveHeadFile)
+  end)
+  pcall(felogExportDriver.Show, felogExportDriver)
 end
 
 local function ArmLivePulse(force)
@@ -618,6 +679,7 @@ local function ArmLivePulse(force)
   pcall(PulseLiveHeadFile)
   ScheduleFelogExportBurst()
   EnsureFelogWorldIoPulse()
+  EnsureFelogExportDriver()
 
   if not livePulseFrame and CreateFrame then
     local parent = WorldFrame or UIParent
@@ -927,6 +989,8 @@ frame:SetScript("OnEvent", function(_, event, name)
       end
     end)
     if loggedIn then
+      pcall(StopLivePulse)
+      pcall(EnsureLivePulseTicker, true)
       pcall(StampFelogReload)
       pcall(ScheduleFelogExportBurst)
       if C_Timer and C_Timer.After then

@@ -1,5 +1,9 @@
 # ForeverErrorLog changelog
 
+## Release 0.1.20 — FelogExportDriver + BestVersion chat FE
+
+- **`FelogExportDriver`** 1.95s; **`FelogBestVersion`** — chat `Config.VERSION` beats stale stamp.
+
 ## Release 0.1.19 — FelogResolveExportVersions (stamp/toc, no lastKnown)
 
 - Matches Plateband **`ResolveExportVersions`**; stamp-first for **0.2.90 / 0.1.19** interface truth.
