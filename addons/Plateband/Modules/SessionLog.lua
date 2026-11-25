@@ -55,6 +55,21 @@ local FELOG_STREAM_REL = "Interface/AddOns/ForeverErrorLog/Logs/live-stream.log"
 local FELOG_STREAM_BS = [[Interface\AddOns\ForeverErrorLog\Logs\live-stream.log]]
 local LIVE_TAIL_LINES = 120
 local AGENT_PULSE_SEC = 2.0
+local PLATEBAND_TOC = "Plateband"
+local FELOG_TOC = "ForeverErrorLog"
+
+local function TocVersion(addon, configFallback)
+  if type(GetAddOnMetadata) == "function" then
+    local ok, v = pcall(GetAddOnMetadata, addon, "Version")
+    if ok and v and tostring(v) ~= "" then
+      return tostring(v)
+    end
+  end
+  if configFallback ~= nil and tostring(configFallback) ~= "" then
+    return tostring(configFallback)
+  end
+  return "?"
+end
 
 local fileOk -- nil=untried, false=unavailable, true=works
 local agentIoOk = false
@@ -303,11 +318,8 @@ function Mod.BuildChatTruthLine(src, load, seq)
   src = tostring(src or "CHAT_LOADED")
   load = tostring(load or "reload")
   seq = tonumber(seq) or 0
-  local pbVer = tostring(ns.Config and ns.Config.VERSION or "?")
-  local feVer = "?"
-  if ForeverErrorLog and ForeverErrorLog.Config and ForeverErrorLog.Config.VERSION then
-    feVer = tostring(ForeverErrorLog.Config.VERSION)
-  end
+  local pbVer = TocVersion(PLATEBAND_TOC, ns.Config and ns.Config.VERSION)
+  local feVer = TocVersion(FELOG_TOC, ForeverErrorLog and ForeverErrorLog.Config and ForeverErrorLog.Config.VERSION)
   return string.format(
     "live_ver=%s plateband_ver=%s felog_ver=%s seq=%s src=%s load=%s t=%s feed=pb_bridge",
     pbVer,
@@ -350,6 +362,7 @@ function Mod.EnsureExportTruthTicker()
   if exportTruthTicker or not C_Timer or not C_Timer.NewTicker then
     return
   end
+  pcall(Mod.SyncLiveExportFile, "EXPORT_PULSE", "pulse", 0)
   exportTruthTicker = C_Timer.NewTicker(AGENT_PULSE_SEC, function()
     local db = ns.Config.EnsureDB()
     local seq = 0
@@ -511,6 +524,7 @@ function Mod.RecordChatLoaded(src)
   end
   pcall(Mod.PublishChatTruthHead, "CHAT_LOADED", src, 0)
   pcall(Mod.SyncLiveExportFile, "CHAT_LOADED", src, 0)
+  Mod.EnsureExportTruthTicker()
   pcall(Mod.PulseAgentLive)
 end
 

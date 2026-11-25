@@ -53,6 +53,51 @@ felog_live_head_path() {
 }
 
 # Line 1 of Plateband agent-live-export when client io only allows that filename.
+felog_build_chat_truth_from_toc() {
+  local pb fe now seq src load feed
+  pb="$(felog_plateband_interface_ver 2>/dev/null || echo "?")"
+  fe="$(felog_interface_ver 2>/dev/null || echo "?")"
+  now="$(date +%s)"
+  seq="${1:-0}"
+  src="${2:-TOC_PULSE}"
+  load="${3:-watch_sync}"
+  feed="${4:-host_toc_pulse}"
+  printf 'live_ver=%s plateband_ver=%s felog_ver=%s seq=%s src=%s load=%s t=%s feed=%s\n' \
+    "$pb" "$pb" "$fe" "$seq" "$src" "$load" "$now" "$feed"
+}
+
+# Refresh export line 1 from Interface TOC when client pulse lags (io=sv_only or stale SV).
+pb_refresh_export_line1_from_toc() {
+  local exp pb fe line tail ver age now max_age
+  # shellcheck source=scripts/felog-sv-lib.sh
+  . "${BASH_SOURCE[0]%/*}/felog-sv-lib.sh"
+  exp="$(felog_wow_root)/Interface/AddOns/Plateband/Logs/agent-live-export.log"
+  pb="$(felog_plateband_interface_ver 2>/dev/null || echo "?")"
+  fe="$(felog_interface_ver 2>/dev/null || echo "?")"
+  max_age="${1:-2}"
+  now="$(date +%s)"
+  line="$(felog_build_chat_truth_from_toc 0 "TOC_PULSE" "watch_sync" "host_toc_pulse")"
+  if [[ -f "$exp" ]]; then
+    ver="$(head -1 "$exp" 2>/dev/null | sed -n 's/.*live_ver=\([0-9.]*\).*/\1/p')"
+    age="$(felog_head_age_sec "$exp" 2>/dev/null || echo 999)"
+    fe_head="$(head -1 "$exp" 2>/dev/null | sed -n 's/.*felog_ver=\([0-9.]*\).*/\1/p')"
+    if [[ "$ver" == "$pb" && "$fe_head" == "$fe" && "$age" -le "$max_age" ]]; then
+      return 0
+    fi
+    tail="$(tail -n +2 "$exp" 2>/dev/null || true)"
+  else
+    tail=""
+    mkdir -p "$(dirname "$exp")"
+  fi
+  if [[ -n "$tail" ]]; then
+    printf '%s\n%s' "$line" "$tail" > "$exp"
+  else
+    printf '%s\n' "$line" > "$exp"
+  fi
+  felog_materialize_agent_live_head_from_export 2>/dev/null || true
+  return 0
+}
+
 felog_materialize_agent_live_head_from_export() {
   local exp head line sv
   exp="$(felog_wow_root)/Interface/AddOns/Plateband/Logs/agent-live-export.log"

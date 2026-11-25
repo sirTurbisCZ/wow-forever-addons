@@ -13,6 +13,7 @@ if [[ "${1:-}" == "--max-age" && -n "${2:-}" ]]; then
 fi
 
 felog_sync_repo_mirror 2>/dev/null || true
+pb_refresh_export_line1_from_toc "${MAX_AGE}" 2>/dev/null || true
 felog_materialize_agent_live_head_from_export 2>/dev/null || true
 
 # 0.2.78+: primary head is Plateband/Logs/agent-live-head.log (Forever io allowlist).
