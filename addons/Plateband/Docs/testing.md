@@ -22,9 +22,9 @@ Green when `SESSION_START ver` matches disk, `PLATES_LOAD ok=1`, no hostile `tar
 
 WoW flushes `Plateband.lua` on logout/reload — treat WTF as archive; **watch reads Logs/ first**.
 
-- **Live during play:** `ForeverErrorLog/Logs/live-head.log` when `feed=file` or **`feed=pb_bridge`** (Plateband `MirrorFelogLogs` when FElog io is sandboxed); else **`felog_bridge_sv`** → repo `felog-plateband-live.log`; else Plateband SV mirror + `live-head.txt`.
-- **Never:** client `agent-live-export` or old PAINT lines for `live_ver`.
-- **Live ver order:** `Interface/.../Logs/live-head.log` (sync on load, read by session-watch ≤2s) → `agent-live-export.log` → SV stamps. `interface_ver` = TOC; `live_ver` = running session; `reload_pending` when they differ.
+- **Live during play (0.2.78+):** primary head = `Plateband/Logs/agent-live-head.log` (`WriteAgentLiveHead` / `PublishChatTruthHead`; Forever io allowlist). Gate: `felog-live-gate.sh --max-age 2`. Older: `ForeverErrorLog/Logs/live-head.log` / `felog-live-head.log` when allowed; else **`felog_bridge_sv`** → repo `felog-plateband-live.log`; else Plateband SV mirror + `live-head.txt`.
+- **Never:** client `agent-live-export` or old PAINT lines for `live_ver`; never treat head lag as `reload_pending`.
+- **Live ver order:** `Plateband/Logs/agent-live-head.log` (≤2s on load) → `ForeverErrorLog/Logs/live-head.log` / bridge → `agent-live-export.log` → SV stamps. `interface_ver` = TOC; `live_ver` = running session.
 - **Reload:** expect `CHAT_LOADED ver=… src=reload` in export/logs without logout; `SESSION_REPORT` within ~2s of session-watch.
 - **`agent-live.log`:** CARD/PAINT append each event (when client `io` works).
 - Gate/matrix **do not fail** on flush lag alone; paint rules still run on `agent-live.log` + SV.

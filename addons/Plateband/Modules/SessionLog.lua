@@ -269,16 +269,62 @@ local function TryWriteWholeFile(paths, body)
   return false
 end
 
---- Primary chat-truth file (same io allowlist as agent-live-export).
+--- Forever io: only exact agent-live-export.log is writable (not agent-live-head.log).
+local function DiscoverIoAllowlist(db)
+  if db.ioAllowName == "sv_only" then
+    local now = Now()
+    if (now - (db.ioAllowLastProbe or 0)) < IO_PROBE_SEC then
+      return "sv_only"
+    end
+    db.ioAllowName = nil
+    db.ioAllowLastProbe = now
+  elseif db.ioAllowName and db.ioAllowName ~= "" then
+    return db.ioAllowName
+  end
+  local probe = string.format("IO_PROBE export t=%s", tostring(Now()))
+  if TryWriteWholeFile({ AGENT_EXPORT_REL, AGENT_EXPORT_BS }, probe) then
+    db.ioAllowName = "export"
+    return "export"
+  end
+  if TryWriteWholeFile({ AGENT_HEAD_REL, AGENT_HEAD_BS }, probe) then
+    db.ioAllowName = "head"
+    return "head"
+  end
+  if WriteLineToPaths({ AGENT_LIVE_REL, AGENT_LIVE_BS }, probe, "a") then
+    db.ioAllowName = "live"
+    return "live"
+  end
+  db.ioAllowName = "sv_only"
+  return "sv_only"
+end
+
+--- Primary chat-truth: line 1 of agent-live-export (+ optional head file when io allows).
 function Mod.WriteAgentLiveHead(line)
   line = tostring(line or "")
   if line == "" then
     return false
   end
   local db = ns.Config.EnsureDB()
+  local log = EnsureLogTable()
   db.chatTruthLine = line
   db.chatTruthAt = Now()
-  return TryWriteWholeFile({ AGENT_HEAD_REL, AGENT_HEAD_BS }, line)
+  local allow = DiscoverIoAllowlist(db)
+  local body = line
+  if type(log.lines) == "table" and #log.lines > 0 then
+    body = line .. "\n" .. table.concat(log.lines, "\n")
+  end
+  local wrote = false
+  if allow == "export" or allow == "sv_only" then
+    wrote = TryWriteWholeFile({ AGENT_EXPORT_REL, AGENT_EXPORT_BS }, body) or wrote
+  end
+  if allow == "head" then
+    wrote = TryWriteWholeFile({ AGENT_HEAD_REL, AGENT_HEAD_BS }, line) or wrote
+  end
+  if wrote then
+    logDirty = false
+    return true
+  end
+  return false
 end
 
 --- Forever blocks io under ForeverErrorLog/; Plateband can write those paths.

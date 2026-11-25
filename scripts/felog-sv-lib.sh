@@ -52,6 +52,21 @@ felog_live_head_path() {
   printf '%s' "$(felog_logs_dir)/live-head.log"
 }
 
+# Line 1 of Plateband agent-live-export when client io only allows that filename.
+felog_materialize_agent_live_head_from_export() {
+  local exp head line
+  exp="$(felog_wow_root)/Interface/AddOns/Plateband/Logs/agent-live-export.log"
+  head="$(felog_agent_head_path)"
+  [[ -f "$exp" ]] || return 1
+  line="$(head -1 "$exp" 2>/dev/null || true)"
+  [[ "$line" == live_ver=* ]] || return 1
+  mkdir -p "$(dirname "$head")"
+  printf '%s\n' "$line" > "$head"
+  mkdir -p "$(felog_logs_dir)"
+  printf '%s\n' "$line" > "$(felog_live_head_path)"
+  printf '%s' "$head"
+}
+
 felog_pick_live_head_file() {
   local a b c
   a="$(felog_agent_head_path)"
@@ -169,6 +184,7 @@ felog_sync_repo_mirror() {
   local repo
   repo="$(_felog_lib_root)/addons/ForeverErrorLog/Logs"
   mkdir -p "$repo"
+  felog_materialize_agent_live_head_from_export 2>/dev/null || true
   local agent="$(felog_agent_head_path)"
   [[ -f "$agent" ]] && cp -f "$agent" "$(felog_logs_dir)/live-head.log" 2>/dev/null || true
   for name in live-head.log agent-live-export.log live-stream.log session.log; do

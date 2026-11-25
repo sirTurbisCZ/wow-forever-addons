@@ -1,5 +1,9 @@
 # Plateband changelog
 
+## Release 0.2.79 — exact io allowlist: agent-live-export.log
+
+- **`DiscoverIoAllowlist`** — only `agent-live-export.log` is writable on Forever; chat truth = **line 1** of export; host `felog_materialize_agent_live_head_from_export` for gate path.
+
 ## Release 0.2.78 — agent-live-head.log (Forever io allowlist)
 
 - **`WriteAgentLiveHead`** — `PublishChatTruthHead` writes `Logs/agent-live-head.log` first; export prepends `chatTruthLine`. Blocked paths: `live-head.log`, `felog-live-head.log`.
