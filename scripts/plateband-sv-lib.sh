@@ -199,22 +199,47 @@ def export_last(needle):
     hits = [ln for ln in body.split("\n") if needle in ln]
     return hits[-1] if hits else None
 
-# Chat/login beats flushed SESSION — fixed priority, not max(version).
+def newest_stamped(needle):
+    best_t, best_ver, best_line = -1, None, None
+    pat = re.compile(r"\[(\d+)\][^\n\"]*" + re.escape(needle))
+    for m in pat.finditer(t):
+        ts = int(m.group(1))
+        line = m.group(0)
+        vm = re.search(r"ver=([0-9.]+)", line)
+        if vm and ts >= best_t:
+            best_t, best_ver, best_line = ts, vm.group(1), line
+    return best_t, best_ver, best_line
+
 hm = re.search(r'\["liveHead"\]\s*=\s*"([^"]*)"', t)
-if hm and "src=chat" in hm.group(1):
-    vm = re.search(r"ver=([0-9.]+)", hm.group(1))
-    sm = re.search(r"seq=(\d+)", hm.group(1))
+lh_ver, lh_at, lh_seq, lh_chat = None, -1, None, False
+if hm:
+    blob = hm.group(1)
+    vm = re.search(r"ver=([0-9.]+)", blob)
+    am = re.search(r"at=([0-9]+)", blob)
+    sm = re.search(r"seq=(\d+)", blob)
+    lh_chat = "src=chat" in blob
     if vm:
-        ver, source = vm.group(1), "liveHead_chat"
+        lh_ver = vm.group(1)
+    if am:
+        lh_at = int(am.group(1))
+    if sm:
+        lh_seq = sm.group(1)
+
+chat_at, chat_ver, chat_line = newest_stamped("CHAT_LOADED")
+
+# liveHead_chat wins unless a newer CHAT_LOADED line exists (post-reload truth).
+if lh_chat and lh_ver:
+    if chat_ver and chat_at > lh_at:
+        ver, source = chat_ver, "CHAT_LOADED"
+    else:
+        ver, source = lh_ver, "liveHead_chat"
+    if lh_seq:
+        seq = lh_seq
+elif chat_ver:
+    ver, source = chat_ver, "CHAT_LOADED"
+    sm = re.search(r"seq=(\d+)", chat_line or "")
     if sm:
         seq = sm.group(1)
-
-if ver is None:
-    last = export_last("CHAT_LOADED")
-    if last:
-        vm = re.search(r"ver=([0-9.]+)", last)
-        if vm:
-            ver, source = vm.group(1), "CHAT_LOADED"
 
 if ver is None:
     last = export_last("RUNTIME_VER")
@@ -228,32 +253,26 @@ if ver is None:
     if tv:
         ver, source = tv, "runtimeVer"
 
-if ver is None and hm:
-    vm = re.search(r"ver=([0-9.]+)", hm.group(1))
-    sm = re.search(r"seq=(\d+)", hm.group(1))
-    if vm:
-        ver, source = vm.group(1), "liveHead"
-    if sm:
-        seq = sm.group(1)
+if ver is None:
+    _, rv, _ = newest_stamped("RUNTIME_VER")
+    if rv:
+        ver, source = rv, "RUNTIME_VER"
+
+if ver is None and hm and lh_ver:
+    ver, source = lh_ver, "liveHead"
+    seq = lh_seq
 
 if ver is None:
     tv = table_ver("agentLive", "ver")
     if tv:
         ver, source = tv, "agentLive"
 
-for label, needle in (("AGENT_LIVE", "AGENT_LIVE"), ("PLATES_LOAD", "PLATES_LOAD ok=1"), ("SESSION_START", "SESSION_START")):
-    if ver is not None and label not in ("AGENT_LIVE",):
-        break
-    last = export_last(needle)
-    if not last:
-        continue
-    vm = re.search(r"ver=([0-9.]+)", last)
-    if vm and ver is None:
-        ver, source = vm.group(1), label
-    if label == "AGENT_LIVE":
-        sm = re.search(r"seq=(\d+)", last)
-        if sm:
-            seq = sm.group(1)
+# Never SESSION_START for live runtime when export is stale — seq only.
+last = export_last("AGENT_LIVE")
+if last:
+    sm = re.search(r"seq=(\d+)", last)
+    if sm:
+        seq = sm.group(1)
 
 if seq is None:
     sq = table_ver("agentLive", "seq")
@@ -515,43 +534,16 @@ pb_agent_live_ver() {
   [[ -n "$v" ]] && printf '%s' "$v"
 }
 
-# Unified runtime — pb_unified_runtime_from_sv only; optional client log must match.
+# Live runtime — pb_unified_runtime_from_sv only (no felog/agent mirror overrides).
 pb_client_ver() {
-  local sv="$1" agent_log="${2:-}"
-  local line u v sv_v alf rvf
+  local sv="$1"
+  local line v
   line="$(pb_unified_runtime_from_sv "$sv" 2>/dev/null || true)"
   v="$(echo "$line" | cut -f1)"
-  [[ -n "$v" ]] && sv_v="$v" || sv_v=""
-
-  local fel
-  fel="$(pb_felog_session_log 2>/dev/null || true)"
-  if [[ -n "$fel" ]] && pb_log_fresh_sec "$fel" 300; then
-    v="$(pb_felog_plateband_ver "$fel" 2>/dev/null || true)"
-    if [[ -n "$v" ]] && [[ -z "$sv_v" || "$(printf '%s\n' "$sv_v" "$v" | sort -V | tail -1)" == "$v" ]]; then
-      printf '%s' "$v"
-      return 0
-    fi
+  if [[ -n "$v" ]]; then
+    printf '%s' "$v"
+    return 0
   fi
-
-  rvf="$(pb_runtime_ver_log)"
-  if [[ -f "$rvf" ]] && pb_runtime_file_fresh "$rvf" "$sv"; then
-    v="$(pb_runtime_file_ver "$rvf" 2>/dev/null || true)"
-    if [[ -n "$v" ]] && [[ -z "$sv_v" || "$(printf '%s\n' "$sv_v" "$v" | sort -V | tail -1)" == "$v" ]]; then
-      printf '%s' "$v"
-      return 0
-    fi
-  fi
-
-  alf="$(pb_agent_live_log_path)"
-  if [[ -f "$alf" ]] && pb_log_fresh_sec "$alf" 120; then
-    v="$(pb_agent_live_tail_ver "$alf" 2>/dev/null || true)"
-    if [[ -n "$v" ]] && [[ -z "$sv_v" || "$(printf '%s\n' "$sv_v" "$v" | sort -V | tail -1)" == "$v" ]]; then
-      printf '%s' "$v"
-      return 0
-    fi
-  fi
-
-  [[ -n "$sv_v" ]] && { printf '%s' "$sv_v"; return 0; }
   v="$(pb_flushed_session_ver "$sv")"
   [[ -n "$v" ]] && printf '%s' "$v"
 }
@@ -588,7 +580,8 @@ pb_sv_context() {
   PB_VER_SOURCE="$(echo "$unified" | cut -f3)"
   PB_AGENT_SEQ="$(echo "$unified" | cut -f2)"
   pb_sync_live_feed "$PB_SV" 2>/dev/null || true
-  PB_CLIENT_VER="$(pb_client_ver "$PB_SV" "$PB_AGENT_LOG")"
+  PB_UNIFIED_VER="$(echo "$unified" | cut -f1)"
+  PB_CLIENT_VER="$(pb_client_ver "$PB_SV")"
   PB_LIVE_VER="$(pb_resolve_live_ver "$PB_CLIENT_VER")"
   PB_RULES_VER="${PLATEBAND_LIVE_VER:-$PB_LIVE_VER}"
   PB_RUNTIME_FILE="$(pb_runtime_ver_log)"
@@ -606,24 +599,21 @@ pb_sv_context() {
     PB_FEED_SOURCE="$PB_LIVE_SYNC"
   fi
 
-  PB_CHAT_OVERRIDE=no
+  PB_CHAT_PRIMARY=no
   case "${PB_VER_SOURCE:-}" in
-    CHAT_LOADED|RUNTIME_VER|liveHead_chat|runtimeVer)
-      PB_CHAT_OVERRIDE=yes
+    liveHead_chat|CHAT_LOADED)
+      PB_CHAT_PRIMARY=yes
       ;;
   esac
 
   PB_RELOAD_PENDING=no
-  if [[ -n "$PB_RUNTIME_VER" && -n "$PB_LIVE_VER" && "$PB_RUNTIME_VER" != "$PB_LIVE_VER" ]]; then
-    if pb_ver_sort_ge "$PB_RUNTIME_VER" "$PB_LIVE_VER"; then
+  if [[ -n "$PB_RUNTIME_VER" && -n "$PB_LIVE_VER" ]]; then
+    if [[ "$PB_LIVE_VER" == "$PB_RUNTIME_VER" ]]; then
+      PB_RELOAD_PENDING=no
+    elif pb_ver_sort_ge "$PB_RUNTIME_VER" "$PB_LIVE_VER"; then
       PB_RELOAD_PENDING=yes
     else
       PB_RELOAD_PENDING=behind
-    fi
-  fi
-  if [[ "$PB_RELOAD_PENDING" == "yes" && "$PB_CHAT_OVERRIDE" == "yes" ]]; then
-    if [[ "$PB_LIVE_VER" == "$PB_RUNTIME_VER" ]] || pb_ver_sort_ge "$PB_LIVE_VER" "$PB_RUNTIME_VER"; then
-      PB_RELOAD_PENDING=no
     fi
   fi
 
@@ -636,7 +626,7 @@ pb_sv_context() {
   if [[ -n "${PLATEBAND_LIVE_VER:-}" ]]; then
     PB_CHAT_LIVE=yes
   fi
-  if [[ "${PB_CHAT_OVERRIDE:-}" == yes ]]; then
+  if [[ "${PB_CHAT_PRIMARY:-}" == yes ]]; then
     PB_CHAT_LIVE=yes
   fi
   return 0
@@ -648,10 +638,10 @@ pb_live_ver_ok() {
 }
 
 pb_export_session_line() {
-  printf 'live_ver=%s client_ver=%s ver_source=%s flushed_session=%s deployed_ver=%s disk_ver=%s reload_pending=%s flush_lag=%s feed=%s live_sync=%s runtime_file=%s agent_seq=%s rules_ver=%s chat_override=%s sv=%s' \
+  printf 'live_ver=%s client_ver=%s ver_source=%s flushed_session=%s deployed_ver=%s disk_ver=%s reload_pending=%s flush_lag=%s feed=%s live_sync=%s runtime_file=%s agent_seq=%s rules_ver=%s chat_primary=%s sv=%s' \
     "${PB_LIVE_VER:-?}" "${PB_CLIENT_VER:-?}" "${PB_VER_SOURCE:-?}" "${PB_FLUSHED_VER:-?}" "${PB_RUNTIME_VER:-?}" \
     "${PB_DISK_VER:-?}" "${PB_RELOAD_PENDING:-no}" "${PB_FLUSH_LAG:-?}" "${PB_FEED_SOURCE:-?}" \
-    "${PB_LIVE_SYNC:-none}" "${PB_RUNTIME_FILE_VER:-?}" "${PB_AGENT_SEQ:-?}" "${PB_RULES_VER:-?}" "${PB_CHAT_LIVE:-no}" "${PB_SV:-none}"
+    "${PB_LIVE_SYNC:-none}" "${PB_RUNTIME_FILE_VER:-?}" "${PB_AGENT_SEQ:-?}" "${PB_RULES_VER:-?}" "${PB_CHAT_PRIMARY:-no}" "${PB_SV:-none}"
 }
 
 pb_best_card_lines() {

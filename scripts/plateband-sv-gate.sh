@@ -43,11 +43,11 @@ if [[ "$PB_FLUSH_LAG" == "yes" ]]; then
 fi
 
 if [[ "${PB_RELOAD_PENDING:-no}" == "yes" ]]; then
-  if [[ "${PB_CHAT_OVERRIDE:-}" == yes && "${PB_LIVE_VER:-}" == "${PB_RUNTIME_VER:-}" ]]; then
-    echo "SV_GATE note: reload_pending=no — chat/liveHead runtime matches deployed ${PB_RUNTIME_VER}"
-  else
-    echo "SV_GATE note: reload_pending=yes — client ${PB_LIVE_VER} < deployed ${PB_RUNTIME_VER} (TOC); paint rules apply to client ver until /reload"
-  fi
+  echo "SV_GATE note: reload_pending=yes — live ${PB_LIVE_VER} (${PB_VER_SOURCE:-?}) != deployed TOC ${PB_RUNTIME_VER}; /reload required"
+elif [[ "${PB_RELOAD_PENDING:-no}" == "behind" ]]; then
+  echo "SV_GATE note: live ${PB_LIVE_VER} ahead of deployed TOC ${PB_RUNTIME_VER} (redeploy or ignore)"
+else
+  echo "SV_GATE note: reload_pending=no — live ${PB_LIVE_VER} matches deployed ${PB_RUNTIME_VER} (source=${PB_VER_SOURCE:-?})"
 fi
 
 FELOG=""

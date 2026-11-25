@@ -1,10 +1,11 @@
 # Plateband changelog
 
-## Release 0.2.71 — friend WS paint (visible native keys)
+## Release 0.2.71 — friend WS paint + watch truth
 
 - **Friend:** stop inflating `nativeN` via unit API; `NativeShownKeySet` skips API augment when harmful buttons visible — fixes tf>0 painted=0 (phantom native skip).
 - **Friend target:** heavy TF harvest when `tfHarm > nativeVis`; lean path runs `EnsureUnitHarmfulParity`; fix `D.ForceFillTargetFrameGaps` in PlatesPaint.
 - **Matrix:** `tgt_bind` counts friend `PAINT tgtSrc=1`.
+- **Watch:** `liveHead_chat` wins; newer stamped `CHAT_LOADED` can supersede; no felog/agent override; `reload_pending` = live vs Interface TOC only (`chat_primary`).
 
 ## Release 0.2.70 — PaintMergeMissing chunk split (60 upvalues)
 
