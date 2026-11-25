@@ -18,7 +18,9 @@ Green when `SESSION_START ver` matches disk, `PLATES_LOAD ok=1`, no hostile `tar
 
 ## Live vs flushed version
 
-WoW only flushes `Plateband.lua` on logout/reload — **do not treat `SESSION_START` in SV as live truth** while you play.
+**Live feed:** `Interface/AddOns/Plateband/Logs/agent-live.log` + `agent-live-export.log` update during play (0.2.56+). **Reload only for addon updates.**
+
+WoW flushes `Plateband.lua` on logout/reload — treat WTF as archive; **watch reads Logs/ first**.
 
 - **`plateband-sv-lib.sh`:** `live_ver` / `client_ver` = latest `SESSION_START` / `PLATES_LOAD` / CARD in SV or `agent-live.log` (what Lua runs). `deployed_ver` = TOC `Interface/AddOns/Plateband/Config.lua`. `reload_pending=yes` when deployed &gt; client (reload was before disk bump).
 - **`agent-live.log`:** CARD/PAINT append each event (when client `io` works).

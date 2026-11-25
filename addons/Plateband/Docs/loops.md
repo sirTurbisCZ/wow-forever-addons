@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.54** (combat pending first paint; hostile always heavy TF harvest)
+Version: **0.2.56** (agent-live-export rolling tail; reload = TOC only)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 

@@ -142,7 +142,7 @@ local function DumpRing()
     tostring(Config.VERSION),
     tostring(nLines)
   ))
-  Print(L.LOG_HINT or "send Plateband.lua SavedVariables after /reload")
+  Print(L.LOG_HINT or "watch reads Logs/agent-live*.log live — /reload only for addon updates")
   if db.lastDiagnose and db.lastDiagnose.card then
     print("|cffaaaaaa" .. tostring(db.lastDiagnose.card) .. "|r")
   elseif db.lastDiag and db.lastDiag.card then

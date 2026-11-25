@@ -73,12 +73,14 @@ pb_ver_from_card() {
 }
 
 pb_find_agent_live_log() {
-  local wow f pick
+  local wow f pick name
   wow="$(pb_wow_root)"
   pick=""
-  while IFS= read -r f; do
-    [[ -z "$pick" || "$f" -nt "$pick" ]] && pick="$f"
-  done < <(find "${wow}" -name 'agent-live.log' -path '*/Plateband/Logs/*' 2>/dev/null)
+  for name in agent-live.log agent-live-export.log session.log; do
+    while IFS= read -r f; do
+      [[ -z "$pick" || "$f" -nt "$pick" ]] && pick="$f"
+    done < <(find "${wow}" -name "$name" -path '*/Plateband/Logs/*' 2>/dev/null)
+  done
   printf '%s' "$pick"
 }
 
@@ -92,6 +94,9 @@ pb_agent_live_ver() {
   local log="$1" line v
   [[ -f "$log" ]] || return 1
   line="$(grep 'SESSION_START ver=' "$log" 2>/dev/null | tail -1 || true)"
+  if [[ -z "$line" ]]; then
+    line="$(grep 'PLATEBAND_CARD ver=' "$log" 2>/dev/null | tail -1 || true)"
+  fi
   v="$(echo "$line" | sed -n 's/.*SESSION_START ver=\([0-9.]*\).*/\1/p')"
   [[ -n "$v" ]] && printf '%s' "$v" && return 0
   line="$(grep 'PLATES_LOAD ok=1' "$log" 2>/dev/null | tail -1 || true)"

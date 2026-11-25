@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.2.56 — live agent feed (no reload for watch data)
+
+- **SessionLog:** append **agent-live.log** + rolling **agent-live-export.log** (~120 lines, 2s debounce, 5s ticker); re-probe `io` every 30s when `sv_only`.
+- **Watch:** `plateband-sv-lib` prefers newest `agent-live.log` / `agent-live-export.log` / `session.log` over stale WTF flush.
+- **Reload** = TOC/code only; CARD/PAINT/SESSION visible on disk as you play (when client allows `io`).
+
 ## Release 0.2.55 — PAINT telemetry + friend unit parity
 
 - **PAINT:** `SilentTraceEnabled` uses **`silentTrace` only** (schema-11 `paintTraceOn=false` no longer silences session PAINT); `RecordPaint` mirrors to `sessionLog.export`; removed redundant combat early-return in `SilentTracePaint`.

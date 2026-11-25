@@ -5,8 +5,11 @@
     PlatebandDB.sessionLog + PlatebandDB.paintTrace
     → WTF/Account/<Account>/SavedVariables/Plateband.lua on /reload|logout
 
-  Optional file when io exists:
-    Interface/AddOns/Plateband/Logs/session.log
+  Live agent feed (no /reload for CARD/PAINT):
+    Interface/AddOns/Plateband/Logs/agent-live.log (append)
+    Interface/AddOns/Plateband/Logs/agent-live-export.log (rolling tail, ~2s)
+  Optional: session.log
+  WTF SavedVariables still flush on logout/reload only — watch reads Logs/ first.
 ]]
 
 Plateband = Plateband or {}
@@ -20,15 +23,25 @@ ns.SessionLog = Mod
 local MAX_LINES = 500
 local MAX_PAINT = 200
 local MAX_LINE = 600
-local PAINT_EXPORT_DEBOUNCE = 3.0
+local PAINT_EXPORT_DEBOUNCE = 1.0
+local LIVE_FLUSH_DEBOUNCE = 2.0
+local IO_PROBE_SEC = 30
 local paintExportDirty = false
 local paintExportAt = 0
+local liveFlushPending = false
+local liveFlushTicker
+local logDirty = false
+local lastIoProbeAt = 0
 local FILE_REL = "Interface/AddOns/Plateband/Logs/session.log"
 local FILE_REL_BS = [[Interface\AddOns\Plateband\Logs\session.log]]
 local AGENT_LIVE_REL = "Interface/AddOns/Plateband/Logs/agent-live.log"
 local AGENT_LIVE_BS = [[Interface\AddOns\Plateband\Logs\agent-live.log]]
+local AGENT_EXPORT_REL = "Interface/AddOns/Plateband/Logs/agent-live-export.log"
+local AGENT_EXPORT_BS = [[Interface\AddOns\Plateband\Logs\agent-live-export.log]]
+local LIVE_TAIL_LINES = 120
 
 local fileOk -- nil=untried, false=unavailable, true=works
+local agentIoOk = false
 local sessionBegun = false
 
 local function Trim(s, maxLen)
@@ -142,6 +155,119 @@ local function RebuildPaintExport(pt)
   paintExportAt = Now()
 end
 
+local function IsAgentLine(line)
+  if not line or line == "" then
+    return false
+  end
+  if line:find("PLATEBAND_CARD", 1, true) or line:find("SESSION_START", 1, true) then
+    return true
+  end
+  if line:find("PLATES_LOAD", 1, true) or line:sub(1, 6) == "PAINT " then
+    return true
+  end
+  return false
+end
+
+local function MaybeReprobeIo()
+  if agentIoOk and fileOk then
+    return
+  end
+  local now = Now()
+  if (now - lastIoProbeAt) < IO_PROBE_SEC then
+    return
+  end
+  lastIoProbeAt = now
+  if not fileOk then
+    Mod.ProbeFile()
+  end
+  if not agentIoOk and io and io.open then
+    local f = TryOpen(AGENT_LIVE_REL, "a")
+    if f then
+      pcall(function()
+        f:close()
+      end)
+      agentIoOk = true
+    end
+  end
+end
+
+local function TryAppendAgentLive(stamped)
+  local paths = { AGENT_LIVE_REL, AGENT_LIVE_BS }
+  for i = 1, #paths do
+    local f = TryOpen(paths[i], "a")
+    if f then
+      local ok = pcall(function()
+        f:write(stamped)
+        f:write("\n")
+        f:close()
+      end)
+      if ok then
+        agentIoOk = true
+        return true
+      end
+    end
+  end
+  return false
+end
+
+function Mod.FlushLiveExport()
+  local log = EnsureLogTable()
+  if type(log.lines) ~= "table" or #log.lines == 0 then
+    return false
+  end
+  local start = math.max(1, #log.lines - LIVE_TAIL_LINES + 1)
+  local body = table.concat(log.lines, "\n", start, #log.lines)
+  local paths = { AGENT_EXPORT_REL, AGENT_EXPORT_BS }
+  for i = 1, #paths do
+    local f = TryOpen(paths[i], "w")
+    if f then
+      local ok = pcall(function()
+        f:write(body)
+        if body:sub(-1) ~= "\n" then
+          f:write("\n")
+        end
+        f:close()
+      end)
+      if ok then
+        agentIoOk = true
+        logDirty = false
+        return true
+      end
+    end
+  end
+  return false
+end
+
+function Mod.ScheduleLiveFlush()
+  if liveFlushPending then
+    return
+  end
+  liveFlushPending = true
+  if C_Timer and C_Timer.After then
+    C_Timer.After(LIVE_FLUSH_DEBOUNCE, function()
+      liveFlushPending = false
+      pcall(Mod.FlushLiveExport)
+    end)
+  else
+    liveFlushPending = false
+    pcall(Mod.FlushLiveExport)
+  end
+end
+
+function Mod.EnsureLiveFlushTicker()
+  if liveFlushTicker or not C_Timer or not C_Timer.NewTicker then
+    return
+  end
+  liveFlushTicker = C_Timer.NewTicker(5, function()
+    if logDirty then
+      pcall(Mod.FlushLiveExport)
+    end
+    if paintExportDirty then
+      pcall(Mod.FlushPaintTrace)
+    end
+  end)
+end
+
 local function PushPaintEntry(line)
   local db = ns.Config.EnsureDB()
   local pt = EnsurePaintTrace(db)
@@ -192,6 +318,8 @@ function Mod.BeginSession()
     wroteFile and "yes" or "sv_only"
   )
   Mod.Append(header)
+  Mod.EnsureLiveFlushTicker()
+  pcall(Mod.FlushLiveExport)
   return log
 end
 
@@ -213,22 +341,13 @@ function Mod.Append(line)
   while #log.lines > MAX_LINES do
     table.remove(log.lines, 1)
   end
+  MaybeReprobeIo()
   log.fileOk = AppendFile(stamped) or log.fileOk
   log.export = table.concat(log.lines, "\n")
-  if line:find("PLATEBAND_CARD", 1, true) or line:find("SESSION_START", 1, true)
-    or line:find("PLATES_LOAD", 1, true) or line:sub(1, 6) == "PAINT " then
-    pcall(function()
-      local paths = { AGENT_LIVE_REL, AGENT_LIVE_BS }
-      for i = 1, #paths do
-        local f = TryOpen(paths[i], "a")
-        if f then
-          f:write(stamped)
-          f:write("\n")
-          f:close()
-          break
-        end
-      end
-    end)
+  logDirty = true
+  if IsAgentLine(line) then
+    TryAppendAgentLive(stamped)
+    Mod.ScheduleLiveFlush()
   end
 end
 
@@ -255,6 +374,7 @@ function Mod.Status()
     startedAt = log.startedAt,
     fileOk = log.fileOk and true or false,
     paintEntries = #(pt.entries or {}),
+    agentIo = agentIoOk and true or false,
   }
 end
 
