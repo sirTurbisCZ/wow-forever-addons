@@ -91,28 +91,57 @@ pb_agent_live_card() {
 pb_agent_live_ver() {
   local log="$1" line v
   [[ -f "$log" ]] || return 1
-  line="$(grep -m1 'SESSION_START ver=' "$log" 2>/dev/null | tail -1 || true)"
+  line="$(grep 'SESSION_START ver=' "$log" 2>/dev/null | tail -1 || true)"
   v="$(echo "$line" | sed -n 's/.*SESSION_START ver=\([0-9.]*\).*/\1/p')"
   [[ -n "$v" ]] && printf '%s' "$v" && return 0
-  line="$(tail -20 "$log" | grep 'PLATEBAND_CARD' | tail -1 || true)"
+  line="$(grep 'PLATES_LOAD ok=1' "$log" 2>/dev/null | tail -1 || true)"
+  v="$(echo "$line" | sed -n 's/.*PLATES_LOAD ok=1 ver=\([0-9.]*\).*/\1/p')"
+  [[ -n "$v" ]] && printf '%s' "$v" && return 0
+  line="$(grep 'PLATEBAND_CARD' "$log" 2>/dev/null | tail -1 || true)"
   v="$(pb_ver_from_card "$line")"
   [[ -n "$v" ]] && printf '%s' "$v"
 }
 
+# What Lua actually runs (SESSION / PLATES_LOAD / CARD) — never Interface Config.lua alone.
+pb_client_ver() {
+  local sv="$1" agent_log="$2"
+  local v line
+
+  if [[ -f "${agent_log:-}" ]]; then
+    v="$(pb_agent_live_ver "$agent_log" 2>/dev/null || true)"
+    [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
+  fi
+
+  line="$(rg -o '\[[0-9]+\] SESSION_START ver=[0-9.]+' "$sv" 2>/dev/null | tail -1 || true)"
+  v="$(echo "$line" | sed -n 's/.*SESSION_START ver=\([0-9.]*\).*/\1/p')"
+  [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
+
+  line="$(rg 'PLATES_LOAD ok=1 ver=' "$sv" 2>/dev/null | tail -1 || true)"
+  v="$(echo "$line" | sed -n 's/.*PLATES_LOAD ok=1 ver=\([0-9.]*\).*/\1/p')"
+  [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
+
+  v="$(pb_flushed_session_ver "$sv")"
+  [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
+
+  v="$(pb_ver_from_card "$(pb_last_diag_card "$sv")")"
+  [[ -n "$v" ]] && printf '%s' "$v"
+}
+
 pb_resolve_live_ver() {
-  local flushed="$1" runtime="$2" agent_ver="${3:-}" diag_ver="${4:-}"
+  local client_ver="$1" flushed="$2" agent_ver="${3:-}" diag_ver="${4:-}"
   local live="${PLATEBAND_LIVE_VER:-}"
 
-  if [[ -z "$live" && -n "$agent_ver" ]]; then
+  if [[ -n "$live" ]]; then
+    printf '%s' "$live"
+    return
+  fi
+  if [[ -n "$client_ver" ]]; then
+    live="$client_ver"
+  elif [[ -n "$agent_ver" ]]; then
     live="$agent_ver"
-  fi
-  if [[ -z "$live" && -n "$diag_ver" ]] && pb_ver_sort_ge "$diag_ver" "${PB_MIN_LIVE_VER:-0.2.51}"; then
+  elif [[ -n "$diag_ver" ]] && pb_ver_sort_ge "$diag_ver" "${PB_MIN_LIVE_VER:-0.2.51}"; then
     live="$diag_ver"
-  fi
-  if [[ -z "$live" && -n "$runtime" ]]; then
-    live="$runtime"
-  fi
-  if [[ -z "$live" ]]; then
+  elif [[ -n "$flushed" ]]; then
     live="$flushed"
   fi
   printf '%s' "$live"
@@ -137,7 +166,17 @@ pb_sv_context() {
   PB_AGENT_VER="$(pb_agent_live_ver "$PB_AGENT_LOG" 2>/dev/null || true)"
   PB_LAST_CARD="$(pb_last_diag_card "$PB_SV")"
   PB_DIAG_VER="$(pb_ver_from_card "$PB_LAST_CARD")"
-  PB_LIVE_VER="$(pb_resolve_live_ver "$PB_FLUSHED_VER" "$PB_RUNTIME_VER" "$PB_AGENT_VER" "$PB_DIAG_VER")"
+  PB_CLIENT_VER="$(pb_client_ver "$PB_SV" "$PB_AGENT_LOG")"
+  PB_LIVE_VER="$(pb_resolve_live_ver "$PB_CLIENT_VER" "$PB_FLUSHED_VER" "$PB_AGENT_VER" "$PB_DIAG_VER")"
+
+  PB_RELOAD_PENDING=no
+  if [[ -n "$PB_RUNTIME_VER" && -n "$PB_LIVE_VER" && "$PB_RUNTIME_VER" != "$PB_LIVE_VER" ]]; then
+    if pb_ver_sort_ge "$PB_RUNTIME_VER" "$PB_LIVE_VER"; then
+      PB_RELOAD_PENDING=yes
+    else
+      PB_RELOAD_PENDING=behind
+    fi
+  fi
 
   if [[ -n "$PB_FLUSHED_VER" && -n "$PB_LIVE_VER" && "$PB_FLUSHED_VER" != "$PB_LIVE_VER" ]]; then
     PB_FLUSH_LAG=yes
@@ -153,9 +192,9 @@ pb_live_ver_ok() {
 }
 
 pb_export_session_line() {
-  printf 'live_ver=%s flushed_session=%s runtime_ver=%s disk_ver=%s flush_lag=%s sv=%s' \
-    "${PB_LIVE_VER:-?}" "${PB_FLUSHED_VER:-?}" "${PB_RUNTIME_VER:-?}" "${PB_DISK_VER:-?}" \
-    "${PB_FLUSH_LAG:-?}" "${PB_SV:-none}"
+  printf 'live_ver=%s client_ver=%s flushed_session=%s deployed_ver=%s disk_ver=%s reload_pending=%s flush_lag=%s sv=%s' \
+    "${PB_LIVE_VER:-?}" "${PB_CLIENT_VER:-?}" "${PB_FLUSHED_VER:-?}" "${PB_RUNTIME_VER:-?}" \
+    "${PB_DISK_VER:-?}" "${PB_RELOAD_PENDING:-no}" "${PB_FLUSH_LAG:-?}" "${PB_SV:-none}"
 }
 
 pb_best_card_lines() {

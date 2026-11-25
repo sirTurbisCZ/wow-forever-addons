@@ -92,5 +92,8 @@ if [[ -f "${FELOG:-}" ]] && rg -q 'ADDON_ACTION_BLOCKED.*Plateband.*SetPoint' "$
   note "felog_taint: $ERR"
 fi
 
-[[ "$ANOM" -eq 0 ]] && echo "ANOMALY_SCAN ok (live_ver=$PB_LIVE_VER)" && exit 0
+if [[ "$ANOM" -eq 0 ]]; then
+  echo "ANOMALY_SCAN ok (live_ver=$PB_LIVE_VER client_ver=${PB_CLIENT_VER:-?} deployed_ver=${PB_RUNTIME_VER} reload_pending=${PB_RELOAD_PENDING:-no})"
+  exit 0
+fi
 exit 1

@@ -20,7 +20,7 @@ Green when `SESSION_START ver` matches disk, `PLATES_LOAD ok=1`, no hostile `tar
 
 WoW only flushes `Plateband.lua` on logout/reload — **do not treat `SESSION_START` in SV as live truth** while you play.
 
-- **`plateband-sv-lib.sh`:** `live_ver` = `PLATEBAND_LIVE_VER` or runtime `Interface/AddOns/Plateband/Config.lua`, not stale flush.
+- **`plateband-sv-lib.sh`:** `live_ver` / `client_ver` = latest `SESSION_START` / `PLATES_LOAD` / CARD in SV or `agent-live.log` (what Lua runs). `deployed_ver` = TOC `Interface/AddOns/Plateband/Config.lua`. `reload_pending=yes` when deployed &gt; client (reload was before disk bump).
 - **`agent-live.log`:** CARD/PAINT append each event (when client `io` works).
 - Gate/matrix **do not fail** on flush lag alone; paint rules still run on `agent-live.log` + SV.
 

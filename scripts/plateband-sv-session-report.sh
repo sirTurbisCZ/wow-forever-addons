@@ -45,15 +45,15 @@ if [[ -f "$STATE" ]] && [[ "$(cat "$STATE")" == "$KEY" ]]; then
 fi
 printf '%s' "$KEY" > "$STATE"
 
-# Prefer flushed SESSION ver when it matches runtime (post-reload); else runtime/env live.
-REPORT_LIVE="$PB_LIVE_VER"
-if [[ -n "$SESSION_FLUSHED" ]] && [[ "$SESSION_FLUSHED" == "$PB_RUNTIME_VER" ]]; then
-  REPORT_LIVE="$SESSION_FLUSHED"
-elif [[ -n "$SESSION_FLUSHED" ]] && pb_ver_sort_ge "$SESSION_FLUSHED" "${PB_MIN_LIVE_VER:-0.2.51}" && [[ "$PB_FLUSH_LAG" != "yes" ]]; then
-  REPORT_LIVE="$SESSION_FLUSHED"
+REPORT_LIVE="${PB_LIVE_VER:-$PB_CLIENT_VER}"
+
+CHAT_HINT="[Plateband] client v${REPORT_LIVE}"
+if [[ "${PB_RELOAD_PENDING:-no}" == "yes" ]]; then
+  CHAT_HINT="[Plateband] client v${REPORT_LIVE} (TOC/deployed ${PB_RUNTIME_VER} — need /reload)"
+elif [[ "${PB_RELOAD_PENDING:-no}" == "behind" ]]; then
+  CHAT_HINT="[Plateband] client v${REPORT_LIVE} (TOC ${PB_RUNTIME_VER} older than client)"
 fi
 
-CHAT_HINT="[Plateband] loaded v${REPORT_LIVE}"
-echo "SESSION_REPORT new=1 live_ver=${REPORT_LIVE} flushed_session=${SESSION_FLUSHED:-?} runtime_ver=${PB_RUNTIME_VER} disk_ver=${PB_DISK_VER} flush_lag=${PB_FLUSH_LAG} t=${SESSION_T:-?} chat_hint=\"${CHAT_HINT}\" source=${PB_AGENT_LOG:-sv}"
+echo "SESSION_REPORT new=1 live_ver=${REPORT_LIVE} client_ver=${PB_CLIENT_VER:-?} deployed_ver=${PB_RUNTIME_VER} disk_ver=${PB_DISK_VER} reload_pending=${PB_RELOAD_PENDING:-no} flushed_session=${SESSION_FLUSHED:-?} flush_lag=${PB_FLUSH_LAG} t=${SESSION_T:-?} chat_hint=\"${CHAT_HINT}\" source=${PB_AGENT_LOG:-sv}"
 [[ -n "$LOAD_LINE" ]] && echo "  PLATES_LOAD: $(echo "$LOAD_LINE" | tail -c 120)"
 exit 0

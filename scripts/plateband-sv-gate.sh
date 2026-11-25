@@ -33,6 +33,10 @@ if [[ "$PB_FLUSH_LAG" == "yes" ]]; then
   echo "SV_GATE note: flush_lag=yes — paint data from SV file may trail live ${PB_LIVE_VER}; use agent-live.log when present"
 fi
 
+if [[ "${PB_RELOAD_PENDING:-no}" == "yes" ]]; then
+  echo "SV_GATE note: reload_pending=yes — client ${PB_LIVE_VER} < deployed ${PB_RUNTIME_VER} (TOC); paint rules apply to client ver until /reload"
+fi
+
 FELOG=""
 while IFS= read -r f; do
   [[ -z "$FELOG" || "$f" -nt "$FELOG" ]] && FELOG="$f"
