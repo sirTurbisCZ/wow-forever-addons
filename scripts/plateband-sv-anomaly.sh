@@ -87,7 +87,10 @@ FELOG=""
 while IFS= read -r f; do
   [[ -z "$FELOG" || "$f" -nt "$FELOG" ]] && FELOG="$f"
 done < <(find "$(pb_wow_root)/WTF/Account" -name 'ForeverErrorLog.lua' -path '*/SavedVariables/*' 2>/dev/null)
-LOAD_OK="$(rg 'PLATES_LOAD ok=1 paint=true' "$SRC" "$PB_SV" 2>/dev/null | tail -1 || true)"
+LOAD_OK="$(rg 'PLATES_LOAD ok=1 paint=true' "$PB_SV" 2>/dev/null | tail -1 || true)"
+if [[ -z "$LOAD_OK" && -f "${SRC:-}" ]]; then
+  LOAD_OK="$(rg 'PLATES_LOAD ok=1 paint=true' "$SRC" 2>/dev/null | tail -1 || true)"
+fi
 if [[ -f "${FELOG:-}" ]] && rg -q 'ADDON_ACTION_BLOCKED.*Plateband.*SetPoint' "$FELOG" 2>/dev/null; then
   ERR="$(rg 'ADDON_ACTION_BLOCKED.*Plateband' "$FELOG" 2>/dev/null | tail -1)"
   note "felog_taint: $ERR"
