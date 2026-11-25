@@ -4514,10 +4514,24 @@ PaintMergeMissing = function(unit, plate)
   lastPaintDebug.partyTok = partyAuraTok or "-"
   if useTargetSrc and HasTarget() then
     lastPaintDebug.tfRows = CountTargetHarmfulExpected("target", lastPaintDebug.harv)
-  elseif partyMerge and type(unit) == "string" then
-    lastPaintDebug.tfRows = CountTargetHarmfulExpected(unit, #missing)
+  elseif type(unit) == "string" then
+    lastPaintDebug.tfRows = CountTargetHarmfulExpected(partyAuraTok or unit, math.max(lastPaintDebug.harv or 0, #missing))
   else
     lastPaintDebug.tfRows = 0
+  end
+
+  if #missing == 0 and (friendPlate or partyMerge) and type(paintAuraTok) == "string" then
+    local retry = {}
+    local skip = CopyKeySet(NativeShownKeySet(plate))
+    pcall(EnsureUnitHarmfulParity, paintAuraTok, plate, retry, skip, maxN, stats)
+    if #retry > 0 then
+      DedupeGapIcons(retry, maxN)
+      for i = 1, #retry do
+        missing[i] = retry[i]
+      end
+      lastPaintDebug.miss = #missing
+      lastPaintDebug.tfRows = CountTargetHarmfulExpected(paintAuraTok, #missing)
+    end
   end
 
   if #missing == 0 then
@@ -4534,37 +4548,54 @@ PaintMergeMissing = function(unit, plate)
         end
       end
       if #stickyLive == 0 then
-        gapSticky[unit] = nil
-        ClearFallback(unit, false)
-        lastPaintDebug.painted = 0
-        SilentTracePaint("paint_stale_cleared", unit, plate)
-        return 0
-      end
-      sticky.icons = stickyLive
-      if type(sticky.at) == "number" and (now - sticky.at) <= PB.GAP_STICKY_SEC then
-        local heldCd = 0
-        pcall(function()
-          local n, cdn = RefreshHeldGapFallback(unit, plate, held, sticky.icons, auraUnit)
-          heldN = n or 0
-          heldCd = cdn or 0
-        end)
-        if heldN <= 0 then
+        local retry = {}
+        local skip = CopyKeySet(NativeShownKeySet(plate))
+        if (friendPlate or partyMerge) and type(auraUnit) == "string" then
+          pcall(EnsureUnitHarmfulParity, auraUnit, plate, retry, skip, maxN, stats)
+        end
+        if #retry > 0 then
           gapSticky[unit] = nil
-          lastPaintDebug.painted = 0
+          for i = 1, #retry do
+            missing[i] = retry[i]
+          end
+          lastPaintDebug.miss = #missing
+          lastPaintDebug.tfRows = CountTargetHarmfulExpected(auraUnit, #missing)
+        else
+          gapSticky[unit] = nil
           ClearFallback(unit, false)
-          SilentTracePaint("paint_hold_expired", unit, plate)
+          lastPaintDebug.painted = 0
+          SilentTracePaint("paint_stale_cleared", unit, plate)
           return 0
         end
-        lastPaintDebug.painted = heldN
-        lastPaintDebug.miss = 0
-        lastPaintDebug.cdN = heldCd
-        SilentTracePaint("paint_hold", unit, plate)
-        return heldN
+      elseif #stickyLive > 0 then
+        sticky.icons = stickyLive
+        if type(sticky.at) == "number" and (now - sticky.at) <= PB.GAP_STICKY_SEC then
+          local heldCd = 0
+          pcall(function()
+            local n, cdn = RefreshHeldGapFallback(unit, plate, held, sticky.icons, auraUnit)
+            heldN = n or 0
+            heldCd = cdn or 0
+          end)
+          if heldN <= 0 then
+            gapSticky[unit] = nil
+            lastPaintDebug.painted = 0
+            ClearFallback(unit, false)
+            SilentTracePaint("paint_hold_expired", unit, plate)
+            return 0
+          end
+          lastPaintDebug.painted = heldN
+          lastPaintDebug.miss = 0
+          lastPaintDebug.cdN = heldCd
+          SilentTracePaint("paint_hold", unit, plate)
+          return heldN
+        end
       end
     end
-    lastPaintDebug.painted = 0
-    ClearFallback(unit, false)
-    return 0
+    if #missing == 0 then
+      lastPaintDebug.painted = 0
+      ClearFallback(unit, false)
+      return 0
+    end
   end
 
   local fb = EnsureFallback(unit, plate)

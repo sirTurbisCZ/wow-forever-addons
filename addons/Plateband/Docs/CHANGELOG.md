@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## Release 0.2.57 — friend WS backfill + watch parse fix
+
+- **Friend:** `EnsureUnitHarmfulParity` backfill before clear when `miss=0`; sticky stale retries unit harmful before `paint_stale_cleared`; `tfRows` on all unit paints.
+- **Watch:** anomaly parses per-line PAINT/CARD (not `export` blobs); ignore `paint_stale_cleared` for foreign/WS rules; `session_paint_tail_streak` vs whole-session zero.
+
 ## Release 0.2.56 — live agent feed (no reload for watch data)
 
 - **SessionLog:** append **agent-live.log** + rolling **agent-live-export.log** (~120 lines, 2s debounce, 5s ticker); re-probe `io` every 30s when `sv_only`.
