@@ -352,32 +352,92 @@ UpdateLiveHeadFromAgent = function(source, payload)
   pcall(WriteLiveHeadFile, lh)
 end
 
-local function FelogPlatebandExportLine()
-  pbExportPulseSeq = pbExportPulseSeq + 1
-  local pbVer = "?"
-  local feVer = tostring(Config.VERSION or "?")
+local PB_TOC_FILE = "Interface/AddOns/Plateband/Plateband.toc"
+local PB_TOC_BS = [[Interface\AddOns\Plateband\Plateband.toc]]
+local FE_TOC_FILE = "Interface/AddOns/ForeverErrorLog/ForeverErrorLog.toc"
+local FE_TOC_BS = [[Interface\AddOns\ForeverErrorLog\ForeverErrorLog.toc]]
+local PB_CFG_FILE = "Interface/AddOns/Plateband/Config.lua"
+local PB_CFG_BS = [[Interface\AddOns\Plateband\Config.lua]]
+local FE_CFG_FILE = "Interface/AddOns/ForeverErrorLog/Config.lua"
+local FE_CFG_BS = [[Interface\AddOns\ForeverErrorLog\Config.lua]]
+
+local function FelogParseVersionText(text)
+  if not text then
+    return nil
+  end
+  local v = text:match("## Version:%s*([%d%.]+)")
+  if v then
+    return tostring(v)
+  end
+  v = text:match('Config%.VERSION%s*=%s*"([%d%.]+)"')
+  if v then
+    return tostring(v)
+  end
+  return nil
+end
+
+local function FelogReadInterfaceVersion(paths)
+  if not (io and io.open) then
+    return nil
+  end
+  for i = 1, #paths do
+    local f = TryOpen(paths[i], "r")
+    if f then
+      local ok, text = pcall(function()
+        local body = f:read("*a") or ""
+        f:close()
+        return body
+      end)
+      if ok then
+        local ver = FelogParseVersionText(text)
+        if ver then
+          return ver
+        end
+      end
+    end
+  end
+  return nil
+end
+
+local function FelogLiveInterfaceVersions()
+  local sl = Plateband and Plateband.SessionLog
+  if sl and type(sl.LiveInterfaceVersions) == "function" then
+    return sl.LiveInterfaceVersions()
+  end
+  local pbToc = FelogReadInterfaceVersion({ PB_TOC_FILE, PB_TOC_BS, PB_CFG_FILE, PB_CFG_BS })
+  local feToc = FelogReadInterfaceVersion({ FE_TOC_FILE, FE_TOC_BS, FE_CFG_FILE, FE_CFG_BS })
+  local pbMeta, feMeta
   if type(GetAddOnMetadata) == "function" then
     local ok, v = pcall(GetAddOnMetadata, "Plateband", "Version")
     if ok and v and tostring(v) ~= "" then
-      pbVer = tostring(v)
+      pbMeta = tostring(v)
     end
     ok, v = pcall(GetAddOnMetadata, "ForeverErrorLog", "Version")
     if ok and v and tostring(v) ~= "" then
-      feVer = tostring(v)
+      feMeta = tostring(v)
     end
   end
-  if pbVer == "?" and Plateband and Plateband.Config and Plateband.Config.VERSION then
-    pbVer = tostring(Plateband.Config.VERSION)
-  end
+  local pbVer = (pbToc and pbToc ~= "") and pbToc or pbMeta or "?"
+  local feVer = (feToc and feToc ~= "") and feToc or feMeta or "?"
+  return pbVer, feVer, pbMeta, feMeta
+end
+
+local function FelogPlatebandExportLine()
+  pbExportPulseSeq = pbExportPulseSeq + 1
+  local pbVer, feVer, pbMeta, feMeta = FelogLiveInterfaceVersions()
+  pbMeta = pbMeta or pbVer
+  feMeta = feMeta or feVer
   return string.format(
-    "live_ver=%s plateband_ver=%s felog_ver=%s seq=%s src=EXPORT_PULSE load=pulse t=%s feed=pb_bridge interface_pb=%s interface_fe=%s",
+    "live_ver=%s plateband_ver=%s felog_ver=%s seq=%s src=EXPORT_PULSE load=pulse t=%s feed=pb_bridge interface_pb=%s interface_fe=%s meta_pb=%s meta_fe=%s",
     pbVer,
     pbVer,
     feVer,
     tostring(pbExportPulseSeq),
     tostring(Now()),
     pbVer,
-    feVer
+    feVer,
+    pbMeta,
+    feMeta
   )
 end
 

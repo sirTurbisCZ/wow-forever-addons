@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## Release 0.2.87 — L1 from Interface .toc/.lua each pulse
+
+- **`LiveInterfaceVersions`** — re-reads **`Plateband.toc` / `Config.lua` on disk** every pulse; **`GetAddOnMetadata`** fresh (no runtime Config cache); **`meta_pb` / `meta_fe`** on line for debug vs TOC.
+- **Prove:** `scripts/felog-prove-export-l1-toc.sh` — export L1 == Interface Config (gate truth).
+
 ## Release 0.2.86 — LiveInterfaceVersions + export burst ≤10s after reload
 
 - **`LiveInterfaceVersions()`** — fresh **`GetAddOnMetadata`** every **`PulseExportDisk`** tick; line adds **`interface_pb` / `interface_fe`**.

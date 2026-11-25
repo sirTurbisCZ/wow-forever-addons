@@ -57,27 +57,72 @@ local LIVE_TAIL_LINES = 120
 local AGENT_PULSE_SEC = 2.0
 local PLATEBAND_TOC = "Plateband"
 local FELOG_TOC = "ForeverErrorLog"
+local PB_TOC_FILE = "Interface/AddOns/Plateband/Plateband.toc"
+local PB_TOC_BS = [[Interface\AddOns\Plateband\Plateband.toc]]
+local FE_TOC_FILE = "Interface/AddOns/ForeverErrorLog/ForeverErrorLog.toc"
+local FE_TOC_BS = [[Interface\AddOns\ForeverErrorLog\ForeverErrorLog.toc]]
+local PB_CFG_FILE = "Interface/AddOns/Plateband/Config.lua"
+local PB_CFG_BS = [[Interface\AddOns\Plateband\Config.lua]]
+local FE_CFG_FILE = "Interface/AddOns/ForeverErrorLog/Config.lua"
+local FE_CFG_BS = [[Interface\AddOns\ForeverErrorLog\Config.lua]]
 
---- Fresh Interface TOC every call (never cache); Config fallback when metadata missing.
+local function ParseVersionFromText(text)
+  if not text or text == "" then
+    return nil
+  end
+  local v = text:match("## Version:%s*([%d%.]+)")
+  if v then
+    return tostring(v)
+  end
+  v = text:match('Config%.VERSION%s*=%s*"([%d%.]+)"')
+  if v then
+    return tostring(v)
+  end
+  return nil
+end
+
+--- Read Interface AddOns files every call — no SV/runtime cache.
+local function ReadInterfaceAddonVersion(paths)
+  if not (io and io.open) then
+    return nil
+  end
+  for i = 1, #paths do
+    local f = TryOpen(paths[i], "r")
+    if f then
+      local ok, text = pcall(function()
+        local body = f:read("*a") or ""
+        f:close()
+        return body
+      end)
+      if ok then
+        local ver = ParseVersionFromText(text)
+        if ver then
+          return ver
+        end
+      end
+    end
+  end
+  return nil
+end
+
+--- Fresh Interface TOC every pulse: disk .toc/.lua wins; GetAddOnMetadata fresh each call (never SV cache).
 function Mod.LiveInterfaceVersions()
-  local pbVer, feVer = "?", "?"
+  local pbToc = ReadInterfaceAddonVersion({ PB_TOC_FILE, PB_TOC_BS, PB_CFG_FILE, PB_CFG_BS })
+  local feToc = ReadInterfaceAddonVersion({ FE_TOC_FILE, FE_TOC_BS, FE_CFG_FILE, FE_CFG_BS })
+  local pbMeta, feMeta
   if type(GetAddOnMetadata) == "function" then
     local ok, v = pcall(GetAddOnMetadata, PLATEBAND_TOC, "Version")
     if ok and v and tostring(v) ~= "" then
-      pbVer = tostring(v)
+      pbMeta = tostring(v)
     end
     ok, v = pcall(GetAddOnMetadata, FELOG_TOC, "Version")
     if ok and v and tostring(v) ~= "" then
-      feVer = tostring(v)
+      feMeta = tostring(v)
     end
   end
-  if pbVer == "?" and ns.Config and ns.Config.VERSION then
-    pbVer = tostring(ns.Config.VERSION)
-  end
-  if feVer == "?" and ForeverErrorLog and ForeverErrorLog.Config and ForeverErrorLog.Config.VERSION then
-    feVer = tostring(ForeverErrorLog.Config.VERSION)
-  end
-  return pbVer, feVer
+  local pbVer = (pbToc and pbToc ~= "") and pbToc or pbMeta or "?"
+  local feVer = (feToc and feToc ~= "") and feToc or feMeta or "?"
+  return pbVer, feVer, pbMeta, feMeta
 end
 
 local function TocVersion(addon, configFallback)
@@ -357,9 +402,11 @@ function Mod.BuildChatTruthLine(src, load, seq)
   src = tostring(src or "CHAT_LOADED")
   load = tostring(load or "reload")
   seq = tonumber(seq) or 0
-  local pbVer, feVer = Mod.LiveInterfaceVersions()
+  local pbVer, feVer, pbMeta, feMeta = Mod.LiveInterfaceVersions()
+  pbMeta = pbMeta or pbVer
+  feMeta = feMeta or feVer
   return string.format(
-    "live_ver=%s plateband_ver=%s felog_ver=%s seq=%s src=%s load=%s t=%s feed=pb_bridge interface_pb=%s interface_fe=%s",
+    "live_ver=%s plateband_ver=%s felog_ver=%s seq=%s src=%s load=%s t=%s feed=pb_bridge interface_pb=%s interface_fe=%s meta_pb=%s meta_fe=%s",
     pbVer,
     pbVer,
     feVer,
@@ -368,7 +415,9 @@ function Mod.BuildChatTruthLine(src, load, seq)
     load,
     tostring(Now()),
     pbVer,
-    feVer
+    feVer,
+    pbMeta,
+    feMeta
   )
 end
 
@@ -382,6 +431,8 @@ function Mod.PulseExportDisk()
   local line = Mod.BuildChatTruthLine("EXPORT_PULSE", "pulse", seq)
   db.chatTruthLine = line
   db.chatTruthAt = Now()
+  db.interfacePbVer = pbVer
+  db.interfaceFeVer = feVer
   db.ioAllowName = nil
   db.ioAllowLastProbe = 0
 
