@@ -57,6 +57,7 @@ local lastPaintTraceSig = {} -- [unit] = sig
 local refreshPass = 0
 local overlayPending = {}
 local combatDeferredClears = {} -- nameplate units to clear after regen (no SetPoint in combat)
+local combatPendingPaint = {} -- [unit]=plate — first paint after regen (no layout in combat lockdown)
 
 local function PlayerInCombat()
   return InCombatLockdown and InCombatLockdown()
@@ -176,6 +177,7 @@ local PublicString
 local PublicTexKey
 local PushTfAuraFrame
 local RawChildCount
+local FlushCombatPendingPaint
 local RefreshAll
 local RefreshActiveGapsOnly
 local ScheduleOverlayUpdate
@@ -4386,10 +4388,11 @@ PaintMergeMissing = function(unit, plate)
   local allowSecret = useTargetSrc or nativeN == 0
   local queueSkip = CopyKeySet(paintKeys)
   local harvN = 0
-  local heavyTarget = useTargetSrc and NeedsHeavyTargetHarvest(unit, plate, nativeN)
+  -- Hostile target plate: always TF harvest (0.2.54 — lean path left harv=0 / miss=0 live).
+  local heavyTarget = useTargetSrc and (not friendPlate or NeedsHeavyTargetHarvest(unit, plate, nativeN))
 
   if useTargetSrc then
-    if heavyTarget then
+    if heavyTarget or not friendPlate then
     local harv = {}
     pcall(function()
       harv = CollectTargetHarmfulRows(maxN) or {}
@@ -4458,6 +4461,10 @@ PaintMergeMissing = function(unit, plate)
       local tfHarm = CountTargetHarmfulApi("target")
       if not (tfHarm > 0 and #missing > 0) then
         PruneInactiveGapRows(missing, "target", maxN)
+      end
+      if #missing == 0 and tfHarm > 0 then
+        pcall(ForceFillTargetFrameGaps, missing, queueSkip, maxN, stats)
+        DedupeGapIcons(missing, maxN)
       end
     end
     end
@@ -4695,9 +4702,12 @@ UpdateOverlay = function(unit, plate)
     if fb and (tonumber(fb._painted) or 0) > 0 then
       local auraTok = AuraUnitForPlate(unit, plate, ShouldUseTargetAuraSource(unit, plate), nil)
       pcall(RefreshGapCooldownsOnly, unit, plate, fb, auraTok)
+    else
+      combatPendingPaint[unit] = plate
     end
     return
   end
+  combatPendingPaint[unit] = nil
 
   overlayUpdates = overlayUpdates + 1
   EnsureNativeVisible(plate)
@@ -4817,6 +4827,18 @@ RefreshActiveGapsOnly = function()
       if plate then
         UpdateOverlay(unit, plate)
       end
+    end
+  end
+end
+
+FlushCombatPendingPaint = function()
+  if SecurePaintLocked() or not ModuleActive() then
+    return
+  end
+  for unit, plate in pairs(combatPendingPaint) do
+    combatPendingPaint[unit] = nil
+    if plate and not IsForbiddenPlate(plate) then
+      pcall(UpdateOverlay, unit, plate)
     end
   end
 end
@@ -5046,6 +5068,10 @@ SnapshotDiagnose = function(reason, opts)
 
   local mergeOn = Profile().mergeMissing == true and "1" or "0"
   local lpd = lastPaintDebug or {}
+  local paintedDiag = tonumber(lpd.painted) or 0
+  if paintedDiag < fb then
+    paintedDiag = fb
+  end
   local tgtSrcLive = lpd.tgtSrc
   if targetYes and plate then
     local tu = plateUnit or NameplateUnitFor("target")
@@ -5073,7 +5099,7 @@ SnapshotDiagnose = function(reason, opts)
     mergeOn,
     tostring(lpd.harv or "?"),
     tostring(lpd.miss or "?"),
-    tostring(lpd.painted or "?"),
+    tostring(paintedDiag),
     tostring(tgtSrcLive ~= nil and tgtSrcLive or "?"),
     tostring(lpd.friendPlate or "?"),
     tostring(lpd.unit or plateUnit or "?"),
@@ -5181,7 +5207,14 @@ OnEvent = function(_, event, arg1)
           ScheduleOverlayUpdate(tu, PlateFor(tu) or PlateFor("target"))
         end
       end
-      MaybeAutoDiagnose("plate_added", true)
+      local diag = function()
+        pcall(MaybeAutoDiagnose, "plate_added", true)
+      end
+      if C_Timer and C_Timer.After then
+        C_Timer.After(0.12, diag)
+      else
+        diag()
+      end
     end)
     if C_Timer and C_Timer.After then
       C_Timer.After(0.08, function()
@@ -5190,6 +5223,7 @@ OnEvent = function(_, event, arg1)
     end
   elseif event == "NAME_PLATE_UNIT_REMOVED" then
     overlayPending[arg1] = nil
+    combatPendingPaint[arg1] = nil
     if SecurePaintLocked() then
       combatDeferredClears[arg1] = true
     else
@@ -5225,9 +5259,17 @@ OnEvent = function(_, event, arg1)
         nameShifts[u] = nil
         lastOverlayPaintAt[u] = nil
       end
+      FlushCombatPendingPaint()
       RefreshAll()
       RefreshActiveGapsOnly()
-      MaybeAutoDiagnose("regen", true)
+      local diag = function()
+        pcall(MaybeAutoDiagnose, "regen", true)
+      end
+      if C_Timer and C_Timer.After then
+        C_Timer.After(0.12, diag)
+      else
+        diag()
+      end
     end)
   elseif event == "PLAYER_ENTERING_WORLD" or event == "GROUP_ROSTER_UPDATE" then
     InvalidatePartyTokenCache()

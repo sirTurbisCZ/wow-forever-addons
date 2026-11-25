@@ -73,6 +73,16 @@ while IFS= read -r line; do
   fi
 done <<< "$TGT_CARDS"
 
+SESSION_CARDS="$(rg 'PLATEBAND_CARD' "$SRC" 2>/dev/null | tail -200 || true)"
+if echo "$SESSION_CARDS" | rg -q '.'; then
+  SEEN_LAST="$(echo "$SESSION_CARDS" | tail -1 | sed -n 's/.*seen=\([0-9]*\).*/\1/p')"
+  if [[ -n "${SEEN_LAST:-}" && "$SEEN_LAST" -gt 20 ]]; then
+    if ! echo "$SESSION_CARDS" | rg -q 'painted=[1-9]'; then
+      note "session_zero_paint_streak: seen=$SEEN_LAST cards=$(echo "$SESSION_CARDS" | wc -l | tr -d ' ')"
+    fi
+  fi
+fi
+
 FELOG=""
 while IFS= read -r f; do
   [[ -z "$FELOG" || "$f" -nt "$FELOG" ]] && FELOG="$f"

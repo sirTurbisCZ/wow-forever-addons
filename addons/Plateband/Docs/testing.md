@@ -14,7 +14,7 @@ Checks: `luac`, version sync, **chunk locals ≤195**, invariant grep (friendly 
 ./scripts/plateband-sv-gate.sh
 ```
 
-Green when `SESSION_START ver` matches disk, `PLATES_LOAD ok=1`, no hostile `target=yes tf>0 painted=0`.
+Green when `SESSION_START ver` matches disk, `PLATES_LOAD ok=1`, no hostile `target=yes tf>0 painted=0`, no `session_zero_paint_streak` (`plateband-sv-anomaly.sh`).
 
 ## Live vs flushed version
 

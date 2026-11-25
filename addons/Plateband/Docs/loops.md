@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.53** (combat cd-only gap refresh; live_ver gate; agent-live.log)
+Version: **0.2.54** (combat pending first paint; hostile always heavy TF harvest)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 
@@ -16,6 +16,18 @@ flowchart TD
   mergeFlag -->|false /pb merge off| stop[Stop — Blizzard name+DebuffList untouched]
   mergeFlag -->|true opt-in| paint[PaintMergeMissing foreign+TF]
   paint --> layout[LayoutMergeBesideNative + MergeRowIconSize TF lock]
+```
+
+## Combat lockdown
+
+```mermaid
+flowchart TD
+  upd[UpdateOverlay] --> lock{InCombatLockdown?}
+  lock -->|yes painted>0| cd[RefreshGapCooldownsOnly]
+  lock -->|yes painted=0| q[combatPendingPaint queue]
+  lock -->|no| paint[PaintMergeMissing]
+  regen[PLAYER_REGEN_ENABLED] --> flush[FlushCombatPendingPaint]
+  flush --> full[RefreshAll full]
 ```
 
 ## Hard rules (three-addon refactor)

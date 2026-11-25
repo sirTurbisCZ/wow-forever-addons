@@ -1,5 +1,12 @@
 # Plateband changelog
 
+## Release 0.2.54 — restore paint harvest + combat pending queue
+
+- **Paint:** hostile `useTargetSrc` always runs TF heavy harvest (`CollectTargetHarmfulRows`); lean path no longer leaves `harv=0 miss=0` with live DoTs. Hostile lean fallback `ForceFill` when API sees harmful.
+- **Combat:** queue `combatPendingPaint` when lockdown blocks first layout; `FlushCombatPendingPaint` on `PLAYER_REGEN_ENABLED` before `RefreshAll` (cd-only path unchanged for held gaps).
+- **CARD:** `painted=` uses max(`lastPaintDebug`, fallback `_painted`); plate/regen diag deferred 120ms after paint schedule.
+- **Agent:** `plateband-sv-anomaly.sh` — `session_zero_paint_streak` when `seen>20` and no `painted>0`.
+
 ## Release 0.2.53 — combat SetPoint taint + agent live log
 
 - **Combat:** `RefreshGapCooldownsOnly` — no `SetPoint`/`ClearAllPoints`/`LayoutMergeBesideNative` under `InCombatLockdown`; fixes *Akce rozhraní selhala kvůli addonu* from gap tick/target change.
