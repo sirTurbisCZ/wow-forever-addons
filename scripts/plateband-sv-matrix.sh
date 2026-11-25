@@ -96,11 +96,30 @@ elif rg -q 'PAINT ver=.*friend=1.*painted=[1-9]' "$SV_DATA" 2>/dev/null; then
 else
   check "friendly_ws_paint" "WAIT"
 fi
-if echo "$PAINT_FRIEND_RECENT" | rg -q 'native=0.*miss=[2-9].*painted=[2-9].*friend=0'; then
-  check "native_overlap_risk" "FAIL (native=0 full repaint — likely overlap)"
+OVERLAP_HOSTILE="$(rg 'PAINT ver=' "$SV_DATA" 2>/dev/null | rg 'friend=0' | rg 'native=0' | rg 'painted=[2-9]' | rg 'miss=[2-9]' | tail -5 || true)"
+OVERLAP_ANY="$(rg 'PAINT ver=' "$SV_DATA" 2>/dev/null | rg 'native=0.*nativeVis=[1-9]' | rg 'painted=[2-9]' | tail -5 || true)"
+if [[ -n "$OVERLAP_ANY" ]]; then
+  check "native_overlap_risk" "FAIL (nativeVis>0 but native=0 + multi paint)"
+  fail=1
+elif [[ -n "$OVERLAP_HOSTILE" ]]; then
+  check "native_overlap_risk" "FAIL (hostile native=0 multi-icon)"
+  fail=1
+elif rg -q 'PAINT ver=.*native=0.*miss=[2-9].*painted=[2-9]' "$SV_DATA" 2>/dev/null; then
+  check "native_overlap_risk" "WARN (native=0 stacked gaps — check layout)"
   fail=1
 else
   check "native_overlap_risk" "OK"
+fi
+
+MULTI_SLOT="$(rg 'PAINT ver=' "$SV_DATA" 2>/dev/null | rg 'painted=[3-9]' | rg 'native=0' | tail -3 || true)"
+if [[ -n "$MULTI_SLOT" ]] && echo "$MULTI_SLOT" | rg -q 'nativeVis=0'; then
+  check "multi_icon_overlap" "FAIL (painted≥3 nativeVis=0 — Tarantula-class stack)"
+  fail=1
+elif rg -q 'PAINT ver=.*painted=[2-9].*nativeVis=0.*miss=[2-9]' "$SV_DATA" 2>/dev/null; then
+  check "multi_icon_overlap" "FAIL (painted≥2 no native spacing)"
+  fail=1
+else
+  check "multi_icon_overlap" "OK"
 fi
 
 STALE_SRC="$PB_SV"

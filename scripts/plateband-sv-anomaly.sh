@@ -49,6 +49,15 @@ done <<< "$TGT_CARDS"
 
 while IFS= read -r line; do
   [[ -z "$line" ]] && continue
+  if echo "$line" | rg -q 'native=0' && echo "$line" | rg -q 'nativeVis=[1-9]' && echo "$line" | rg -q 'painted=[2-9]'; then
+    note "OVERLAP_nativeVis_multi_paint: $line"
+  fi
+  if echo "$line" | rg -q 'native=0' && echo "$line" | rg -q 'nativeVis=[1-9]' && echo "$line" | rg -q 'miss=[2-9]' && echo "$line" | rg -q 'painted=[2-9]'; then
+    note "OVERLAP_parent_on_native_row: $line"
+  fi
+  if echo "$line" | rg -q 'friend=1' && echo "$line" | rg -q 'party=(party|raid)[0-9]' && echo "$line" | rg -q 'tfRows=[1-9]' && echo "$line" | rg -q 'painted=0'; then
+    note "friendly_party_WS_no_paint: $line"
+  fi
   echo "$line" | rg -q 'why=paint_stale_cleared|why=paint_hold' && continue
   echo "$line" | rg -q 'why=paint ' || continue
   if echo "$line" | rg -q 'tgtSrc=1' && echo "$line" | rg -q 'tfRows=[2-9]' && echo "$line" | rg -q 'miss=[1-9]' && echo "$line" | rg -q 'painted=0'; then

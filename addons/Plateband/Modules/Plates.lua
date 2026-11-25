@@ -1393,15 +1393,8 @@ FallbackParent = function(plate)
   return NativeDebuffList(plate) or NativeDebuffAnchorList(plate) or SafeFallbackParent(plate)
 end
 
---- When native harmful row is empty, parent on health bar (hidden DebuffList parents clip icons).
+--- Gap row parent — always health/UF, never DebuffList (sibling overlap with native icons).
 FallbackPaintParent = function(plate)
-  local nativeN = CountPlateHarmfulShown(plate)
-  if nativeN > 0 then
-    return FallbackParent(plate)
-  end
-  if CountNativeAuraRow(plate) > 0 then
-    return FallbackParent(plate)
-  end
   local bar = HealthBar(plate)
   if bar and not FrameIsGlobalChrome(bar) then
     return bar
@@ -1410,7 +1403,7 @@ FallbackPaintParent = function(plate)
   if uf and not FrameIsGlobalChrome(uf) then
     return uf
   end
-  return FallbackParent(plate)
+  return SafeFallbackParent(plate)
 end
 
 CollectTargetFrameButtons = function(out, maxN)
@@ -2064,29 +2057,44 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
     return
   end
 
-  local _, pad = MergeRowIconSize(plate)
+  local sz, pad = MergeRowIconSize(plate, mergeFb)
+  pad = pad or PB.OVERLAY_PAD
   mergeFb:ClearAllPoints()
   local right = NativeBandRightAnchor(plate)
   if right then
-    -- Same horizontal band as native (left-of-health row): continue after rightmost icon.
     pcall(function()
       mergeFb:SetPoint("LEFT", right, "RIGHT", pad, 0)
       mergeFb:SetPoint("BOTTOM", right, "BOTTOM", 0, 0)
     end)
     return
   end
-  local parent = mergeFb:GetParent()
+  local offX = 0
+  if plate then
+    local buttons = {}
+    CollectPlateDebuffButtons(plate, buttons, MaxIcons())
+    local n = 0
+    for i = 1, #buttons do
+      if NativeAuraButtonLive(buttons[i]) then
+        n = n + 1
+      end
+    end
+    if n == 0 then
+      n = CountPlateHarmfulShown(plate)
+    end
+    if n == 0 then
+      n = CountNativeAuraRow(plate)
+    end
+    offX = n * (sz + pad)
+  end
   local bar = HealthBar(plate)
-  if parent and bar and parent == bar then
+  if bar then
     pcall(function()
-      mergeFb:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", 0, PB.OVERLAY_GAP_ABOVE)
+      mergeFb:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", offX, PB.OVERLAY_GAP_ABOVE)
     end)
     return
   end
   local auraRow = NativeDebuffAnchorList(plate)
   if auraRow then
-    local sz = select(1, MergeRowIconSize(plate, mergeFb)) or IconSize()
-    local offX = (CountPlateHarmfulShown(plate) or 0) * (sz + pad)
     pcall(function()
       mergeFb:SetPoint("BOTTOMLEFT", auraRow, "BOTTOMLEFT", offX, 0)
     end)
@@ -2482,6 +2490,9 @@ PickRightmostAuraFrame = function(frames)
         rightmost = child
       end
     end
+  end
+  if not rightmost and type(frames) == "table" and #frames > 0 then
+    rightmost = frames[#frames]
   end
   return rightmost
 end
@@ -4424,13 +4435,14 @@ BuildPaintTraceLine = function(why, unit, plate)
   end
   local tgtSrc = ShouldUseTargetAuraSource(unit, plate) and 1 or 0
   return string.format(
-    "PAINT ver=%s why=%s unit=%s tgt=%s merge=%s native=%s harv=%s miss=%s painted=%s tgtSrc=%s tfRows=%s friend=%s party=%s",
+    "PAINT ver=%s why=%s unit=%s tgt=%s merge=%s native=%s nativeVis=%s harv=%s miss=%s painted=%s tgtSrc=%s tfRows=%s friend=%s party=%s",
     tostring(ns.Config.VERSION),
     tostring(why or "?"),
     tostring(unit),
     HasTarget() and "1" or "0",
     p.mergeMissing == true and "1" or "0",
     tostring(lpd.nativeN or "?"),
+    tostring(lpd.nativeVis or "?"),
     tostring(lpd.harv or "?"),
     tostring(lpd.miss or "?"),
     tostring(lpd.painted or fb),
@@ -4572,11 +4584,19 @@ PaintMergeMissing = function(unit, plate)
     useTargetSrc = false
   end
 
-  if partyAuraTok and PlateFor(partyAuraTok) == plate then
+  if partyAuraTok then
     friendPlate = true
-  elseif partyAuraTok and not isTarget and PlateFor(partyAuraTok) ~= plate then
-    ClearFallback(unit)
-    return 0
+    partyMerge = true
+    local partyPlate = PlateFor(partyAuraTok)
+    if partyPlate and partyPlate ~= plate and not isTarget then
+      if not PlateUnitBindingMatches(plate, partyAuraTok) then
+        local bound = UnitTokenFromPlate(plate)
+        if not (bound and SameUnit(bound, partyAuraTok)) and not SameUnit(unit, partyAuraTok) then
+          ClearFallback(unit)
+          return 0
+        end
+      end
+    end
   end
 
   if not friendPlate and useTargetSrc then
@@ -4589,7 +4609,19 @@ PaintMergeMissing = function(unit, plate)
   lastPaintDebug.friendPlate = friendPlate and 1 or 0
 
   local nativeN = CountPlateHarmfulShown(plate)
+  local visBtns = {}
+  CollectPlateDebuffButtons(plate, visBtns, maxN)
+  local visN = 0
+  for vi = 1, #visBtns do
+    if NativeAuraButtonLive(visBtns[vi]) then
+      visN = visN + 1
+    end
+  end
+  if visN > nativeN then
+    nativeN = visN
+  end
   lastPaintDebug.nativeN = nativeN
+  lastPaintDebug.nativeVis = visN
   local allowSecret = useTargetSrc or nativeN == 0
   local queueSkip = CopyKeySet(paintKeys)
   local harvN = 0
@@ -4835,7 +4867,7 @@ PaintMergeMissing = function(unit, plate)
     lastPaintDebug.parent = "nil"
     return 0
   end
-  lastPaintDebug.parent = nativeN > 0 and "nativeRow" or "healthBar"
+  lastPaintDebug.parent = "healthBar"
   local sz, pad = MergeRowIconSize(plate, fb)
   fb._pbPlate = plate
   local auraUnit = AuraUnitForPlate(unit, plate, useTargetSrc, partyAuraTok)

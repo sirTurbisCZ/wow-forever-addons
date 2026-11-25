@@ -1,5 +1,12 @@
 # Plateband changelog
 
+## Release 0.2.69 — gap parent + party WS + overlap watch
+
+- **Layout:** `FallbackPaintParent` always parents gap row to health/UF (never `DebuffList`) — fixes Tarantula-class DoT stack when pool lies `native=0` but icons show (`nativeVis>0`).
+- **Layout:** `LayoutMergeBesideNative` pixel offset from live native buttons; `PickRightmostAuraFrame` last-button fallback; PAINT trace adds `nativeVis`.
+- **Friend party:** drop `PlateFor(party*)==plate` hard bail — use `PlateUnitBindingMatches` / `SameUnit` so Renia-class plates still run `EnsureUnitHarmfulParity` (WS).
+- **Watch:** matrix `native_overlap_risk` + `multi_icon_overlap` use `nativeVis`; anomaly flags `nativeVis` overlap + `friendly_party_WS_no_paint`.
+
 ## Release 0.2.68 — hotfix paint nil (forward decl)
 
 - **`PlateUsesFriendlyHarmfulFilter`** forward-declare — fixes `paint` nil at line 790 on 0.2.67 (native augment path).
