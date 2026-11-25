@@ -2524,7 +2524,20 @@ IsTargetPlate = function(unit, plate)
   if tu and tu == unit then
     return true
   end
+  if type(unit) == "string" and unit:match("^nameplate%d+") then
+    local tg, ug
+    pcall(function()
+      tg = UnitGUID("target")
+      ug = UnitGUID(unit)
+    end)
+    if tg and ug and not IsSecret(tg) and not IsSecret(ug) and tg == ug then
+      return true
+    end
+  end
   if plate and PlateFor("target") == plate then
+    return true
+  end
+  if plate and unit and lastTargetPlateUnit and unit == lastTargetPlateUnit and PlateFor("target") == plate then
     return true
   end
   if plate and unit and HasTarget() then
@@ -2559,17 +2572,23 @@ ShouldUseTargetAuraSource = function(unit, plate)
   if not HasTarget() then
     return false
   end
-  if IsTargetPlate(unit, plate) then
-    return true
+  if plate then
+    local tp = PlateFor("target")
+    if tp and tp == plate then
+      return true
+    end
   end
-  local tp = PlateFor("target")
-  if tp and plate and tp == plate then
+  if IsTargetPlate(unit, plate) then
     return true
   end
   if unit == "target" then
     return true
   end
   if type(unit) == "string" and lastTargetPlateUnit and unit == lastTargetPlateUnit then
+    return true
+  end
+  local tu = NameplateUnitFor("target")
+  if tu and (tu == unit or (plate and PlateFor(tu) == plate)) then
     return true
   end
   return false
@@ -4532,6 +4551,9 @@ PaintMergeMissing = function(unit, plate)
   local stats = { personal = 0, foreign = 0 }
   local isTarget = IsTargetPlate(unit, plate)
   local useTargetSrc = ShouldUseTargetAuraSource(unit, plate)
+  if not useTargetSrc and isTarget then
+    useTargetSrc = true
+  end
 
   local nativeN = CountPlateHarmfulShown(plate)
   lastPaintDebug.nativeN = nativeN
@@ -5226,7 +5248,11 @@ SnapshotDiagnose = function(reason, opts)
     tostring(lpd.harv or "?"),
     tostring(lpd.miss or "?"),
     tostring(lpd.painted or "?"),
-    tostring(lpd.tgtSrc or "?"),
+    tostring(
+      (plateUnit and plate and (ShouldUseTargetAuraSource(plateUnit, plate) or IsTargetPlate(plateUnit, plate))) and 1
+        or lpd.tgtSrc
+        or "?"
+    ),
     tostring(lpd.unit or plateUnit or "?"),
     acCreateFailed and "1" or "0",
     tostring(Profile().enabled),

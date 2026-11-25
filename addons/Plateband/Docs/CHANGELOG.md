@@ -1,5 +1,16 @@
 # Plateband changelog
 
+## Release 0.2.45 — enemy target TF merge (tgtSrc=0)
+
+- **Bug:** Target mobs (e.g. Blackrock Outrunner) — TF shows debuffs, nameplate **none**; live SV `SESSION_START ver=0.2.43` (0.2.44 not loaded) and diag `target=yes tgtSrc=0` → no `CollectTargetHarmfulRows` / merge paint.
+- **Fix (with 0.2.44 friendly-only filter):** plate==`PlateFor("target")`, **GUID** match on `nameplateN`, `NameplateUnitFor` bind; **`useTargetSrc` forced when `IsTargetPlate`**. Diagnose card computes live `tgtSrc`.
+
+### Playtest (0.2.45)
+
+1. **`/reload`** — must see **`SESSION_START ver=0.2.45`** (not 0.2.43).
+2. Target mob with TF debuffs → **`tgtSrc=1` `harv>0` `painted>0`**; icons on plate.
+3. Then friendly Weakened Soul.
+
 ## Release 0.2.44 — enemy debuff regression (urgent)
 
 - **Bug:** 0.2.41+ **`IsPlateHarmfulAuraButton` on all plates** — enemy `auraPools` debuffs dropped → **no DoTs on mobs** (native merge/nativeN broken).
