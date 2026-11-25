@@ -16,7 +16,7 @@ Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
 Config.MAX_SESSION_LINES = MAX_SESSION_LINES
 Config.MAX_AGENT_EXPORT_LINES = MAX_AGENT_EXPORT_LINES
-Config.VERSION = "0.1.8"
+Config.VERSION = "0.1.9"
 
 local function Defaults()
   return {

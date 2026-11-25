@@ -60,6 +60,7 @@ local fileOk -- nil=untried, false=unavailable, true=works
 local agentIoOk = false
 local sessionBegun = false
 local agentPulseTicker
+local exportTruthTicker
 local felogPending = {}
 local FELG_PENDING_MAX = 80
 local felogHooked
@@ -298,6 +299,67 @@ local function DiscoverIoAllowlist(db)
   return "sv_only"
 end
 
+function Mod.BuildChatTruthLine(src, load, seq)
+  src = tostring(src or "CHAT_LOADED")
+  load = tostring(load or "reload")
+  seq = tonumber(seq) or 0
+  local pbVer = tostring(ns.Config and ns.Config.VERSION or "?")
+  local feVer = "?"
+  if ForeverErrorLog and ForeverErrorLog.Config and ForeverErrorLog.Config.VERSION then
+    feVer = tostring(ForeverErrorLog.Config.VERSION)
+  end
+  return string.format(
+    "live_ver=%s plateband_ver=%s felog_ver=%s seq=%s src=%s load=%s t=%s feed=pb_bridge",
+    pbVer,
+    pbVer,
+    feVer,
+    tostring(seq),
+    src,
+    load,
+    tostring(Now())
+  )
+end
+
+--- Single write path: line 1 live_ver= + session tail in agent-live-export + SV export blob.
+function Mod.SyncLiveExportFile(src, load, seq)
+  local db = ns.Config.EnsureDB()
+  local log = EnsureLogTable()
+  local line = Mod.BuildChatTruthLine(src, load, seq)
+  db.chatTruthLine = line
+  db.chatTruthAt = Now()
+  local start = math.max(1, #log.lines - LIVE_TAIL_LINES + 1)
+  local tail = (type(log.lines) == "table" and #log.lines > 0)
+      and table.concat(log.lines, "\n", start, #log.lines)
+      or ""
+  local body = tail ~= "" and (line .. "\n" .. tail) or line
+  log.export = body
+  logDirty = false
+  local wrote = false
+  DiscoverIoAllowlist(db)
+  if TryWriteWholeFile({ AGENT_EXPORT_REL, AGENT_EXPORT_BS }, body) then
+    agentIoOk = true
+    wrote = true
+  end
+  if db.ioAllowName == "head" then
+    wrote = TryWriteWholeFile({ AGENT_HEAD_REL, AGENT_HEAD_BS }, line) or wrote
+  end
+  return wrote
+end
+
+function Mod.EnsureExportTruthTicker()
+  if exportTruthTicker or not C_Timer or not C_Timer.NewTicker then
+    return
+  end
+  exportTruthTicker = C_Timer.NewTicker(AGENT_PULSE_SEC, function()
+    local db = ns.Config.EnsureDB()
+    local seq = 0
+    if type(db.agentLive) == "table" then
+      seq = tonumber(db.agentLive.seq) or 0
+    end
+    pcall(Mod.SyncLiveExportFile, "EXPORT_PULSE", "pulse", seq)
+  end)
+end
+
 --- Primary chat-truth: line 1 of agent-live-export (+ optional head file when io allows).
 function Mod.WriteAgentLiveHead(line)
   line = tostring(line or "")
@@ -338,23 +400,12 @@ function Mod.PublishChatTruthHead(src, load, seq)
   if ForeverErrorLog and ForeverErrorLog.Config and ForeverErrorLog.Config.VERSION then
     feVer = tostring(ForeverErrorLog.Config.VERSION)
   end
-  local at = Now()
-  local line = string.format(
-    "live_ver=%s plateband_ver=%s felog_ver=%s seq=%s src=%s load=%s t=%s feed=pb_bridge",
-    pbVer,
-    pbVer,
-    feVer,
-    tostring(seq),
-    src,
-    load,
-    tostring(at)
-  )
-  local ok = Mod.WriteAgentLiveHead(line)
+  local line = Mod.BuildChatTruthLine(src, load, seq)
+  local ok = Mod.SyncLiveExportFile(src, load, seq)
   if not ok then
     ok = Mod.MirrorFelogLogs(line, nil, nil)
   end
   pcall(Mod.WriteLiveHeadFile, pbVer, seq, src, load)
-  pcall(Mod.FlushLiveExport)
   if ForeverErrorLog and ForeverErrorLog.ApplyLiveHeadSnapshot then
     pcall(ForeverErrorLog.ApplyLiveHeadSnapshot, pbVer, feVer, src, load, seq)
   end
@@ -459,7 +510,7 @@ function Mod.RecordChatLoaded(src)
     pcall(ForeverErrorLog.NotifyRuntime, "Plateband", ver, src, "CHAT_LOADED")
   end
   pcall(Mod.PublishChatTruthHead, "CHAT_LOADED", src, 0)
-  pcall(Mod.FlushLiveExport)
+  pcall(Mod.SyncLiveExportFile, "CHAT_LOADED", src, 0)
   pcall(Mod.PulseAgentLive)
 end
 
@@ -558,22 +609,12 @@ local function TryAppendAgentLive(stamped)
 end
 
 function Mod.FlushLiveExport()
-  local log = EnsureLogTable()
-  if type(log.lines) ~= "table" or #log.lines == 0 then
-    return false
-  end
-  local start = math.max(1, #log.lines - LIVE_TAIL_LINES + 1)
-  local body = table.concat(log.lines, "\n", start, #log.lines)
   local db = ns.Config.EnsureDB()
-  local truth = type(db.chatTruthLine) == "string" and db.chatTruthLine or ""
-  if truth ~= "" then
-    body = truth .. "\n" .. body
+  local seq = 0
+  if type(db.agentLive) == "table" then
+    seq = tonumber(db.agentLive.seq) or 0
   end
-  if TryWriteWholeFile({ AGENT_EXPORT_REL, AGENT_EXPORT_BS }, body) then
-    logDirty = false
-    return true
-  end
-  return false
+  return Mod.SyncLiveExportFile("FLUSH", "pulse", seq)
 end
 
 function Mod.ScheduleLiveFlush()
@@ -635,7 +676,6 @@ function Mod.PulseAgentLive()
   end
   pcall(Mod.PublishChatTruthHead, "AGENT_LIVE", "pulse", al.seq)
   Mod.ScheduleLiveFlush()
-  pcall(Mod.FlushLiveExport)
 end
 
 function Mod.EnsureAgentPulseTicker()
@@ -711,13 +751,13 @@ function Mod.BeginSession()
     tostring(log.startedAt),
     agentIo and "file" or "sv_only"
   )
+  pcall(Mod.PublishChatTruthHead, "SESSION_START", "addon", 0)
   Mod.Append(header)
   pcall(Mod.TryWriteRuntimeVerFile, ver)
-  pcall(Mod.PublishChatTruthHead, "SESSION_START", "addon", 0)
-  pcall(Mod.FlushLiveExport)
+  pcall(Mod.SyncLiveExportFile, "SESSION_START", "addon", 0)
   Mod.EnsureLiveFlushTicker()
   Mod.EnsureAgentPulseTicker()
-  pcall(Mod.FlushLiveExport)
+  Mod.EnsureExportTruthTicker()
   return log
 end
 

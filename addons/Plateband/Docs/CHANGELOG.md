@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## Release 0.2.80 — SyncLiveExportFile (line1 live_ver + 2s pulse)
+
+- **`SyncLiveExportFile` / `BuildChatTruthLine`** — every publish/flush: line 1 `live_ver=` in export + SV `chatTruthLine`; **`EnsureExportTruthTicker`** 2s refresh.
+- **Watch:** `pb_mirror_sv_export` + `pb_write_wow_export_with_chat_truth` prepend `chatTruthLine` when io=sv_only.
+
 ## Release 0.2.79 — exact io allowlist: agent-live-export.log
 
 - **`DiscoverIoAllowlist`** — only `agent-live-export.log` is writable on Forever; chat truth = **line 1** of export; host `felog_materialize_agent_live_head_from_export` for gate path.

@@ -54,11 +54,24 @@ felog_live_head_path() {
 
 # Line 1 of Plateband agent-live-export when client io only allows that filename.
 felog_materialize_agent_live_head_from_export() {
-  local exp head line
+  local exp head line sv
   exp="$(felog_wow_root)/Interface/AddOns/Plateband/Logs/agent-live-export.log"
   head="$(felog_agent_head_path)"
   [[ -f "$exp" ]] || return 1
   line="$(head -1 "$exp" 2>/dev/null || true)"
+  if [[ "$line" != live_ver=* ]]; then
+    sv="$(find "$(felog_wow_root)/WTF/Account" -name 'Plateband.lua' -path '*/SavedVariables/*' 2>/dev/null | head -1)"
+    if [[ -n "$sv" && -f "$sv" ]]; then
+      line="$(python3 - "$sv" <<'PY' 2>/dev/null || true
+import re, pathlib, sys
+t = pathlib.Path(sys.argv[1]).read_text(errors="replace")
+m = re.search(r'\["chatTruthLine"\]\s*=\s*"((?:\\.|[^"\\])*)"', t, re.S)
+if m:
+    print(m.group(1).encode("utf-8").decode("unicode_escape").strip())
+PY
+)"
+    fi
+  fi
   [[ "$line" == live_ver=* ]] || return 1
   mkdir -p "$(dirname "$head")"
   printf '%s\n' "$line" > "$head"

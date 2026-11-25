@@ -466,6 +466,7 @@ pb_sync_live_feed() {
     cp -f "$rv" "${repo}/runtime-ver.log" 2>/dev/null || true
   fi
   if [[ -n "${sv:-}" && -f "$sv" ]]; then
+    pb_write_wow_export_with_chat_truth "$sv" 2>/dev/null || true
     mirror="$repo_exp"
     local sv_ts wow_ts
     if [[ -f "$mirror" ]]; then
@@ -626,17 +627,47 @@ pb_mirror_sv_export() {
 import pathlib, re, sys
 src, dst = sys.argv[1], sys.argv[2]
 t = pathlib.Path(src).read_text(errors="replace")
-em = re.search(r'\["export"\]\s*=\s*"((?:\\.|[^"\\])*)"', t, re.S)
+
+def unescape(s):
+    try:
+        return s.encode("utf-8").decode("unicode_escape")
+    except Exception:
+        return s
+
 body = ""
+em = re.search(r'\["export"\]\s*=\s*"((?:\\.|[^"\\])*)"', t, re.S)
 if em:
-    body = em.group(1).encode("utf-8").decode("unicode_escape")
+    body = unescape(em.group(1))
+truth = ""
+tm = re.search(r'\["chatTruthLine"\]\s*=\s*"((?:\\.|[^"\\])*)"', t, re.S)
+if tm:
+    truth = unescape(tm.group(1)).strip()
+if not truth:
+    pb = re.search(r'Config\.VERSION = "([0-9.]+)"', pathlib.Path(src).read_text(errors="replace"))
+    pass
+if truth and body and not body.startswith("live_ver="):
+    body = truth + "\n" + body
+elif truth and not body:
+    body = truth + "\n"
 if not body:
-    al = re.search(r'\["agentLive"\]', t)
-    if al:
+    if re.search(r'\["agentLive"\]', t):
         body = "# sv_only mirror — no export blob yet\n"
+        if truth:
+            body = truth + "\n" + body
 pathlib.Path(dst).parent.mkdir(parents=True, exist_ok=True)
 pathlib.Path(dst).write_text(body[-48000:], encoding="utf-8")
 PY
+}
+
+# Wow client export: ensure line 1 is live_ver= from SV chatTruthLine (io often sv_only).
+pb_write_wow_export_with_chat_truth() {
+  local sv="${1:-}"
+  [[ -n "$sv" && -f "$sv" ]] || return 1
+  local wow_exp
+  wow_exp="$(pb_agent_live_export_path)"
+  mkdir -p "$(dirname "$wow_exp")"
+  pb_mirror_sv_export "$sv" "$wow_exp" 2>/dev/null || return 1
+  return 0
 }
 
 pb_last_diag_card() {
