@@ -46,6 +46,14 @@ if [[ -f "${FELOG:-}" ]] && rg -q "200 local variables" "$FELOG" 2>/dev/null; th
     echo "SV_GATE warn: FElog has historical 200-local errors (ignoring for live $PB_LIVE_VER)"
   fi
 fi
+if [[ -f "${FELOG:-}" ]] && rg -q 'Plateband:paint.*nil value' "$FELOG" 2>/dev/null; then
+  if echo "$LOAD" | rg -q 'paint=true'; then
+    echo "SV_GATE note: FElog paint-nil entries are historical when PLATES_LOAD paint=true (live $PB_LIVE_VER)"
+  else
+    echo "SV_GATE fail: FElog paint nil and no PLATES_LOAD paint=true"
+    exit 1
+  fi
+fi
 
 # Prefer live log card for hostile tf>0 painted=0
 CARD=""

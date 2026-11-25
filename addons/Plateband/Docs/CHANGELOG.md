@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.2.55 — PAINT telemetry + friend unit parity
+
+- **PAINT:** `SilentTraceEnabled` uses **`silentTrace` only** (schema-11 `paintTraceOn=false` no longer silences session PAINT); `RecordPaint` mirrors to `sessionLog.export`; removed redundant combat early-return in `SilentTracePaint`.
+- **Friend chrome:** `EnsureUnitHarmfulParity` on nameplate unit branch when friend filter (Weakened Soul without party-merge / `tgtSrc=0`).
+- **Agent:** anomaly flags `PAINT_lines_missing`; FElog `paint nil` / `200 local` treated as historical when `PLATES_LOAD paint=true`.
+
 ## Release 0.2.54 — restore paint harvest + combat pending queue
 
 - **Paint:** hostile `useTargetSrc` always runs TF heavy harvest (`CollectTargetHarmfulRows`); lean path no longer leaves `harv=0 miss=0` with live DoTs. Hostile lean fallback `ForceFill` when API sees harmful.

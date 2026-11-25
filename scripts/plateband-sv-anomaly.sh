@@ -87,9 +87,19 @@ FELOG=""
 while IFS= read -r f; do
   [[ -z "$FELOG" || "$f" -nt "$FELOG" ]] && FELOG="$f"
 done < <(find "$(pb_wow_root)/WTF/Account" -name 'ForeverErrorLog.lua' -path '*/SavedVariables/*' 2>/dev/null)
+LOAD_OK="$(rg 'PLATES_LOAD ok=1 paint=true' "$SRC" "$PB_SV" 2>/dev/null | tail -1 || true)"
 if [[ -f "${FELOG:-}" ]] && rg -q 'ADDON_ACTION_BLOCKED.*Plateband.*SetPoint' "$FELOG" 2>/dev/null; then
   ERR="$(rg 'ADDON_ACTION_BLOCKED.*Plateband' "$FELOG" 2>/dev/null | tail -1)"
   note "felog_taint: $ERR"
+fi
+if [[ -f "${FELOG:-}" ]] && [[ -z "$LOAD_OK" ]] && rg -q 'Plateband:paint.*nil value' "$FELOG" 2>/dev/null; then
+  note "felog_paint_nil: PLATES_LOAD paint!=true — Plates.lua may not have loaded"
+elif [[ -f "${FELOG:-}" ]] && rg -q 'Plateband:paint.*nil value' "$FELOG" 2>/dev/null; then
+  echo "FELOG note: paint nil present but PLATES_LOAD paint=true (historical pre-reload unless acFail=1)"
+fi
+PAINT_N="$(rg -c 'PAINT ver=' "$SRC" 2>/dev/null | awk -F: '{s+=$2} END{print s+0}' || echo 0)"
+if echo "$TGT_CARDS" | rg -q 'painted=[1-9]' && [[ "${PAINT_N:-0}" -eq 0 ]]; then
+  note "PAINT_lines_missing: cards show painted>0 but no PAINT in log (paintTraceOn regression?)"
 fi
 
 if [[ "$ANOM" -eq 0 ]]; then

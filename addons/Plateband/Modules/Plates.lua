@@ -4208,7 +4208,8 @@ end
 
 SilentTraceEnabled = function()
   local p = Profile()
-  if p.silentTrace == false or p.paintTraceOn == false then
+  -- Session PAINT follows silentTrace only (0.2.43; paintTraceOn is legacy chat gate).
+  if p.silentTrace ~= true then
     return false
   end
   if p.paintTraceInCombat == false and PlayerInCombat() then
@@ -4249,9 +4250,6 @@ end
 
 SilentTracePaint = function(why, unit, plate)
   if not SilentTraceEnabled() then
-    return
-  end
-  if PlayerInCombat() then
     return
   end
   why = tostring(why or "?")
@@ -4488,6 +4486,9 @@ PaintMergeMissing = function(unit, plate)
     CollectPlayerOwnedKeys(unit, foreignSkip)
     CollectForeignAuraGaps(unit, foreignSkip, missing, maxN, allowSecret, stats)
     CollectAuraSlotsGaps(unit, foreignSkip, missing, maxN, stats)
+    if friendPlate or PlateUsesFriendlyHarmfulFilter(plate) then
+      EnsureUnitHarmfulParity(partyAuraTok or unit, plate, missing, foreignSkip, maxN, stats)
+    end
     DedupeGapIcons(missing, maxN)
     PruneInactiveGapRows(missing, unit, maxN)
   end

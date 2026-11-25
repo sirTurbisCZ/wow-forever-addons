@@ -242,6 +242,8 @@ function Mod.RecordPaint(line)
     line = "PAINT " .. line
   end
   PushPaintEntry(line)
+  -- Mirror into sessionLog.export for agent SV grep (paintTrace alone is easy to miss).
+  Mod.Append(line)
 end
 
 function Mod.Status()
