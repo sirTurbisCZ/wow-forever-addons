@@ -130,33 +130,81 @@ local function ReadTocStampVersion()
   return nil, nil
 end
 
---- Chat TOC first (loaded Config = reload banner), then disk/stamp, then GetAddOnMetadata (fresh, no SV cache).
-function Mod.LiveInterfaceVersions()
-  local pbMeta, feMeta
+local function PickVersion(...)
+  for i = 1, select("#", ...) do
+    local v = select(i, ...)
+    if v and tostring(v) ~= "" and tostring(v) ~= "?" then
+      return tostring(v)
+    end
+  end
+  return nil
+end
+
+local function QueryAddonMetadataVersion(addon)
   if type(GetAddOnMetadata) == "function" then
-    local ok, v = pcall(GetAddOnMetadata, PLATEBAND_TOC, "Version")
+    local ok, v = pcall(GetAddOnMetadata, addon, "Version")
     if ok and v and tostring(v) ~= "" then
-      pbMeta = tostring(v)
-    end
-    ok, v = pcall(GetAddOnMetadata, FELOG_TOC, "Version")
-    if ok and v and tostring(v) ~= "" then
-      feMeta = tostring(v)
+      return tostring(v)
     end
   end
-  local pbLoaded
-  if ns.Config and ns.Config.VERSION and tostring(ns.Config.VERSION) ~= "" then
-    pbLoaded = tostring(ns.Config.VERSION)
+  if C_AddOns and C_AddOns.GetAddOnMetadata then
+    local ok, v = pcall(C_AddOns.GetAddOnMetadata, addon, "Version")
+    if ok and v and tostring(v) ~= "" then
+      return tostring(v)
+    end
   end
+  if type(GetNumAddOns) == "function" and type(GetAddOnInfo) == "function" and type(GetAddOnMetadata) == "function" then
+    local ok, n = pcall(GetNumAddOns)
+    if ok and type(n) == "number" then
+      for i = 1, n do
+        local ok2, name = pcall(GetAddOnInfo, i)
+        if ok2 and name == addon then
+          local ok3, v = pcall(GetAddOnMetadata, i, "Version")
+          if ok3 and v and tostring(v) ~= "" then
+            return tostring(v)
+          end
+        end
+      end
+    end
+  end
+  return nil
+end
+
+--- Interface TOC every pulse: GetAddOnMetadata first, then loaded Config, stamp, disk (never "?").
+function Mod.LiveInterfaceVersions()
+  local db = ns.Config.EnsureDB()
+  local pbMeta = QueryAddonMetadataVersion(PLATEBAND_TOC)
+  local feMeta = QueryAddonMetadataVersion(FELOG_TOC)
+  local pbLoaded = (ns.Config and ns.Config.VERSION) and tostring(ns.Config.VERSION) or nil
   local feLoaded
-  if ForeverErrorLog and ForeverErrorLog.Config and ForeverErrorLog.Config.VERSION then
-    feLoaded = tostring(ForeverErrorLog.Config.VERSION)
-  end
+  pcall(function()
+    if ForeverErrorLog and ForeverErrorLog.Config and ForeverErrorLog.Config.VERSION then
+      feLoaded = tostring(ForeverErrorLog.Config.VERSION)
+    end
+  end)
   local pbToc = ReadInterfaceAddonVersion({ PB_TOC_FILE, PB_TOC_BS, PB_CFG_FILE, PB_CFG_BS })
   local feToc = ReadInterfaceAddonVersion({ FE_TOC_FILE, FE_TOC_BS, FE_CFG_FILE, FE_CFG_BS })
   local pbStamp, feStamp = ReadTocStampVersion()
-  local pbVer = pbLoaded or pbToc or pbStamp or pbMeta or "?"
-  local feVer = feLoaded or feToc or feStamp or feMeta or "?"
-  return pbVer, feVer, pbMeta, feMeta
+  local pbVer = PickVersion(pbMeta, pbLoaded, pbToc, pbStamp, db.lastKnownPbVer)
+  local feVer = PickVersion(feMeta, feLoaded, feToc, feStamp, db.lastKnownFeVer)
+  if not pbVer and pbLoaded then
+    pbVer = pbLoaded
+  end
+  if not pbVer and ns.Config and ns.Config.VERSION then
+    pbVer = tostring(ns.Config.VERSION)
+  end
+  if not feVer then
+    feVer = PickVersion(feMeta, feToc, feStamp, db.lastKnownFeVer)
+  end
+  if pbVer then
+    db.lastKnownPbVer = pbVer
+  end
+  if feVer then
+    db.lastKnownFeVer = feVer
+  end
+  pbMeta = pbMeta or pbVer
+  feMeta = feMeta or feVer
+  return pbVer or pbMeta, feVer or feMeta, pbMeta, feMeta
 end
 
 --- Writable stamp when AddOns/ tree is read-only — same versions as chat on reload.

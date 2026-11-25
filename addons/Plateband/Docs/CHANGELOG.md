@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## Release 0.2.89 — fix live_ver=? (metadata-first, no "?")
+
+- **`QueryAddonMetadataVersion`** — name + index + **`C_AddOns`**; **`PickVersion`** chain; **`lastKnownPbVer`** in SV; never emit **`?`** on export L1.
+- **FElog** no longer delegates version resolution to Plateband (sandbox globals).
+
 ## Release 0.2.88 — L1 matches chat TOC (Config) immediately
 
 - **`LiveInterfaceVersions`** — **loaded `Config.VERSION` first** (same as reload chat), then disk/stamp, then **`GetAddOnMetadata`**.

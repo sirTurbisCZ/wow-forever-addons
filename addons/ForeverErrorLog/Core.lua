@@ -434,34 +434,62 @@ local function FelogReadPlatebandTocStamp()
   return nil, nil
 end
 
+local function FelogPickVersion(...)
+  for i = 1, select("#", ...) do
+    local v = select(i, ...)
+    if v and tostring(v) ~= "" and tostring(v) ~= "?" then
+      return tostring(v)
+    end
+  end
+  return nil
+end
+
+local function FelogQueryMetadataVersion(addon)
+  if type(GetAddOnMetadata) == "function" then
+    local ok, v = pcall(GetAddOnMetadata, addon, "Version")
+    if ok and v and tostring(v) ~= "" then
+      return tostring(v)
+    end
+  end
+  if C_AddOns and C_AddOns.GetAddOnMetadata then
+    local ok, v = pcall(C_AddOns.GetAddOnMetadata, addon, "Version")
+    if ok and v and tostring(v) ~= "" then
+      return tostring(v)
+    end
+  end
+  return nil
+end
+
 local function FelogLiveInterfaceVersions()
   FelogEnsurePlatebandForToc()
-  local sl = Plateband and Plateband.SessionLog
-  if sl and type(sl.LiveInterfaceVersions) == "function" then
-    return sl.LiveInterfaceVersions()
-  end
-  local feLoaded = tostring(Config.VERSION or "?")
+  local feLoaded = Config and Config.VERSION and tostring(Config.VERSION) or nil
   local pbLoaded
   if Plateband and Plateband.Config and Plateband.Config.VERSION then
     pbLoaded = tostring(Plateband.Config.VERSION)
   end
+  local pbMeta = FelogQueryMetadataVersion("Plateband")
+  local feMeta = FelogQueryMetadataVersion("ForeverErrorLog")
   local pbToc = FelogReadInterfaceVersion({ PB_TOC_FILE, PB_TOC_BS, PB_CFG_FILE, PB_CFG_BS })
   local feToc = FelogReadInterfaceVersion({ FE_TOC_FILE, FE_TOC_BS, FE_CFG_FILE, FE_CFG_BS })
   local pbStamp, feStamp = FelogReadPlatebandTocStamp()
-  local pbMeta, feMeta
-  if type(GetAddOnMetadata) == "function" then
-    local ok, v = pcall(GetAddOnMetadata, "Plateband", "Version")
-    if ok and v and tostring(v) ~= "" then
-      pbMeta = tostring(v)
-    end
-    ok, v = pcall(GetAddOnMetadata, "ForeverErrorLog", "Version")
-    if ok and v and tostring(v) ~= "" then
-      feMeta = tostring(v)
-    end
+  local db = EnsureDB()
+  local pbVer = FelogPickVersion(pbMeta, pbLoaded, pbToc, pbStamp, db.lastKnownPbVer)
+  local feVer = FelogPickVersion(feMeta, feLoaded, feToc, feStamp, db.lastKnownFeVer)
+  if not feVer and feLoaded then
+    feVer = feLoaded
   end
-  local pbVer = pbLoaded or pbStamp or pbToc or pbMeta or "?"
-  local feVer = feLoaded or feStamp or feToc or feMeta or "?"
-  return pbVer, feVer, pbMeta, feMeta
+  if not pbVer and pbLoaded then
+    pbVer = pbLoaded
+  end
+  if pbVer then
+    db.lastKnownPbVer = pbVer
+  end
+  if feVer then
+    db.lastKnownFeVer = feVer
+  end
+  pbMeta = pbMeta or pbVer
+  feMeta = feMeta or feVer
+  return pbVer or pbMeta or feLoaded, feVer or feMeta or feLoaded, pbMeta, feMeta
 end
 
 local function FelogPlatebandExportLine()
