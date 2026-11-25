@@ -13,19 +13,24 @@ local ns = Plateband
 local Mod = {}
 ns.Modules.Plates = Mod
 
-local AC_GROUP = "platebandHarmful"
-local OVERLAY_PAD = 2
-local OVERLAY_GAP_ABOVE = 2
-local GAP_CD_TICK_SEC = 3.5
+local PB = {
+  PB.AC_GROUP = "platebandHarmful",
+  PB.OVERLAY_PAD = 2,
+  PB.OVERLAY_GAP_ABOVE = 2,
+  PB.GAP_CD_TICK_SEC = 3.5,
+  PB.FULL_REFRESH_DEBOUNCE = 0.75,
+  PB.PAINT_TARGET_SEC = 0.2,
+  PB.PAINT_PARTY_SEC = 0.5,
+  PB.PAINT_ENEMY_SEC = 0.55,
+  PB.PAINT_TRACE_MIN_SEC = 1.5,
+  PB.AUTO_DIAG_MIN = 0.5,
+  PB.WATCH_DEFAULT_SEC = 2,
+  PB.AURA_DEBOUNCE_SEC = 0.35,
+  PB.GAP_STICKY_SEC = 3.0,
+  PB.SILENT_SWEEP_SEC = 2.0,
+}
 local lastGapCdTickAt = 0
 local lastFullRefreshAt = 0
-local FULL_REFRESH_DEBOUNCE = 0.75
-local PAINT_TARGET_SEC = 0.2
-local PAINT_PARTY_SEC = 0.5
-local PAINT_ENEMY_SEC = 0.55
-local PAINT_TRACE_MIN_SEC = 1.5
-local AUTO_DIAG_MIN = 0.5
-local WATCH_DEFAULT_SEC = 2
 
 local overlays = {} -- [nameplateUnit] = AuraContainer (or nil)
 local fallbacks = {} -- [nameplateUnit] = scrape Frame
@@ -42,9 +47,6 @@ local lastChatSig = nil
 local platesSeen = 0
 local overlayUpdates = 0
 local lastAuraRefreshAt = 0
-local AURA_DEBOUNCE_SEC = 0.35
-local GAP_STICKY_SEC = 3.0 -- hold when UNIT_AURA/API flickers empty on target paint (melee refresh)
-local SILENT_SWEEP_SEC = 2.0
 local gapSticky = {} -- [unit] = { icons = {}, at = number }
 local lastPaintDebug = {} -- diagnose: last PaintMergeMissing / Refresh snapshot
 local lastSilentSweepAt = 0
@@ -789,11 +791,11 @@ ShouldPaintOverlayNow = function(unit, isTarget, useTargetSrc, partyMerge)
   end
   local now = GetTime and GetTime() or 0
   local last = lastOverlayPaintAt[unit] or 0
-  local sec = PAINT_ENEMY_SEC
+  local sec = PB.PAINT_ENEMY_SEC
   if useTargetSrc or isTarget then
-    sec = PAINT_TARGET_SEC
+    sec = PB.PAINT_TARGET_SEC
   elseif partyMerge then
-    sec = PAINT_PARTY_SEC
+    sec = PB.PAINT_PARTY_SEC
   end
   if now - last < sec then
     return false
@@ -1503,7 +1505,7 @@ CreateBandContainer = function(parent, size)
   local maxN = MaxIcons()
   container:Hide()
   container:EnableMouse(false)
-  container:SetSize(math.max(1, maxN * (size + OVERLAY_PAD)), size)
+  container:SetSize(math.max(1, maxN * (size + PB.OVERLAY_PAD)), size)
 
   if container.SetFlowLayoutAxis and AnchorUtil and AnchorUtil.FlowLayoutAxis then
     pcall(container.SetFlowLayoutAxis, container, AnchorUtil.FlowLayoutAxis.Horizontal)
@@ -1528,7 +1530,7 @@ CreateBandContainer = function(parent, size)
       layout = {
         elementWidth = size,
         elementHeight = size,
-        elementSpacing = OVERLAY_PAD,
+        elementSpacing = PB.OVERLAY_PAD,
       },
     }
   end
@@ -1542,7 +1544,7 @@ CreateBandContainer = function(parent, size)
   }
   for i = 1, #tries do
     local filter, withPf = tries[i][1], tries[i][2]
-    okAdd = pcall(container.AddAuraGroup, container, AC_GROUP, filter, makeOpts(withPf))
+    okAdd = pcall(container.AddAuraGroup, container, PB.AC_GROUP, filter, makeOpts(withPf))
     if okAdd then
       container._pbFilter = filter
       break
@@ -1554,7 +1556,7 @@ CreateBandContainer = function(parent, size)
     return nil
   end
 
-  pcall(container.SetAuraGroupMaxFrameCount, container, AC_GROUP, maxN)
+  pcall(container.SetAuraGroupMaxFrameCount, container, PB.AC_GROUP, maxN)
   container._plateband = true
   container._iconSize = size
   return container
@@ -1617,16 +1619,16 @@ AnchorBand = function(container, unit, plate)
     container:ClearAllPoints()
     -- One above-plate group (same slot as native DebuffList — not beside it).
     if bar then
-      container:SetPoint("BOTTOM", bar, "TOP", 0, OVERLAY_GAP_ABOVE)
+      container:SetPoint("BOTTOM", bar, "TOP", 0, PB.OVERLAY_GAP_ABOVE)
     else
-      container:SetPoint("BOTTOM", plate, "TOP", 0, OVERLAY_GAP_ABOVE)
+      container:SetPoint("BOTTOM", plate, "TOP", 0, PB.OVERLAY_GAP_ABOVE)
     end
 
     local sz = IconSize()
     if container._iconSize ~= sz then
       container._iconSize = sz
       container:SetHeight(sz)
-      container:SetWidth(math.max(1, MaxIcons() * (sz + OVERLAY_PAD)))
+      container:SetWidth(math.max(1, MaxIcons() * (sz + PB.OVERLAY_PAD)))
     end
   end)
   return ok and true or false
@@ -1730,7 +1732,7 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
     local bar = HealthBar(plate)
     if bar then
       pcall(function()
-        mergeFb:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", 0, OVERLAY_GAP_ABOVE)
+        mergeFb:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", 0, PB.OVERLAY_GAP_ABOVE)
       end)
     end
   end
@@ -2031,7 +2033,7 @@ end
 
 --- Match native debuff chrome — reject oversized chrome (stack parent, not aura kid).
 NativeAuraMetrics = function(plate)
-  local pad = OVERLAY_PAD
+  local pad = PB.OVERLAY_PAD
   local sz = IconSize()
   local widths = {}
   local buttons = {}
@@ -2079,7 +2081,7 @@ end
 
 --- Merge row uses one fixed size (profile iconSize) — never native/TF chrome sampling.
 MergeRowIconSize = function(plate, fb)
-  local pad = OVERLAY_PAD
+  local pad = PB.OVERLAY_PAD
   local sz = IconSize()
   if plate then
     local bar = HealthBar(plate)
@@ -2482,7 +2484,7 @@ ApplyGapSticky = function(unit, missing, isTarget, unitToken)
     return
   end
   local now = GetTime and GetTime() or 0
-  if type(c.at) == "number" and (now - c.at) <= GAP_STICKY_SEC then
+  if type(c.at) == "number" and (now - c.at) <= PB.GAP_STICKY_SEC then
     unitToken = unitToken or "target"
     local live = {}
     for i = 1, #c.icons do
@@ -4057,7 +4059,7 @@ SilentTracePaint = function(why, unit, plate)
   end
   unit = OverlayUnitKey(unit, plate) or tostring(unit or "?")
   local now = GetTime and GetTime() or 0
-  if (now - (lastPaintTraceAt[unit] or 0)) < PAINT_TRACE_MIN_SEC then
+  if (now - (lastPaintTraceAt[unit] or 0)) < PB.PAINT_TRACE_MIN_SEC then
     return
   end
   local lpd = lastPaintDebug or {}
@@ -4084,7 +4086,7 @@ SilentTraceSweep = function(why)
     return
   end
   local now = GetTime and GetTime() or 0
-  if (now - lastSilentSweepAt) < SILENT_SWEEP_SEC then
+  if (now - lastSilentSweepAt) < PB.SILENT_SWEEP_SEC then
     return
   end
   lastSilentSweepAt = now
@@ -4159,6 +4161,15 @@ PaintMergeMissing = function(unit, plate)
   local stats = { personal = 0, foreign = 0 }
   local isTarget = IsTargetPlate(unit, plate)
   local useTargetSrc = ShouldUseTargetAuraSource(unit, plate)
+  if not useTargetSrc and HasTarget() and plate and PlateFor("target") == plate then
+    useTargetSrc = true
+    if type(unit) == "string" and unit:match("^pb:") then
+      local tu = NameplateUnitFor("target")
+      if tu then
+        unit = tu
+      end
+    end
+  end
 
   local nativeN = CountPlateHarmfulShown(plate)
   lastPaintDebug.nativeN = nativeN
@@ -4280,7 +4291,7 @@ PaintMergeMissing = function(unit, plate)
     local now = GetTime and GetTime() or 0
     local heldN = held and tonumber(held._painted) or 0
     if heldN > 0 and sticky and type(sticky.icons) == "table" and #sticky.icons > 0 then
-      if type(sticky.at) == "number" and (now - sticky.at) <= GAP_STICKY_SEC then
+      if type(sticky.at) == "number" and (now - sticky.at) <= PB.GAP_STICKY_SEC then
         local auraUnit = useTargetSrc and "target" or (partyAuraTok or unit)
         local heldCd = 0
         pcall(function()
@@ -4419,6 +4430,12 @@ end
 
 UpdateOverlay = function(unit, plate)
   plate = plate or (unit and PlateFor(unit))
+  if HasTarget() and plate and PlateFor("target") == plate then
+    local tu = NameplateUnitFor("target")
+    if type(tu) == "string" and tu ~= "" then
+      unit = tu
+    end
+  end
   unit = OverlayUnitKey(unit, plate)
   if not ModuleActive() or not unit then
     return
@@ -4504,10 +4521,6 @@ ScheduleOverlayUpdate = function(unit, plate)
   end
 end
 
--- Forward decl for auto-diag after RefreshAll
-local SnapshotDiagnose
-local MaybeAutoDiagnose
-
 local function WantsTickPaint(entry, index, mode)
   local unit = entry.unit
   local plate = entry.plate
@@ -4573,7 +4586,7 @@ end
 RefreshAll = function(mode)
   mode = mode or "full"
   local now = GetTime and GetTime() or 0
-  if mode == "full" and (now - lastFullRefreshAt) < FULL_REFRESH_DEBOUNCE then
+  if mode == "full" and (now - lastFullRefreshAt) < PB.FULL_REFRESH_DEBOUNCE then
     return
   end
   lastFullRefreshAt = now
@@ -4643,12 +4656,12 @@ EnsureTicker = function()
     return
   end
   -- Event-driven paint; slow tick only refreshes gap cooldowns (no EnumerateLivePlates scan).
-  ticker = C_Timer.NewTicker(GAP_CD_TICK_SEC, function()
+  ticker = C_Timer.NewTicker(PB.GAP_CD_TICK_SEC, function()
     if not ModuleActive() then
       return
     end
     local now = GetTime and GetTime() or 0
-    if (now - lastGapCdTickAt) < GAP_CD_TICK_SEC then
+    if (now - lastGapCdTickAt) < PB.GAP_CD_TICK_SEC then
       return
     end
     lastGapCdTickAt = now
@@ -4668,7 +4681,7 @@ StopTicker = function()
 end
 
 WatchInterval = function()
-  local n = tonumber(Profile().watchInterval) or WATCH_DEFAULT_SEC
+  local n = tonumber(Profile().watchInterval) or PB.WATCH_DEFAULT_SEC
   if n < 1 then
     n = 1
   elseif n > 10 then
@@ -4896,7 +4909,7 @@ MaybeAutoDiagnose = function(reason, force)
     end
     return
   end
-  if not force and (now - lastDiagAt) < AUTO_DIAG_MIN then
+  if not force and (now - lastDiagAt) < PB.AUTO_DIAG_MIN then
     return
   end
   lastDiagAt = now
@@ -4961,7 +4974,7 @@ OnEvent = function(_, event, arg1)
     end
     if unit == "target" or unit == "focus" then
       local now = GetTime and GetTime() or 0
-      if (now - lastAuraRefreshAt) < AURA_DEBOUNCE_SEC then
+      if (now - lastAuraRefreshAt) < PB.AURA_DEBOUNCE_SEC then
         return
       end
       lastAuraRefreshAt = now
@@ -5016,6 +5029,13 @@ function Mod.Start()
     return
   end
   started = true
+  if ns.SessionLog and ns.SessionLog.Append and ns.Config and ns.Config.VERSION then
+    pcall(ns.SessionLog.Append, string.format(
+      "PLATES_LOAD ok=1 ver=%s paint=%s",
+      tostring(ns.Config.VERSION),
+      tostring(type(PaintMergeMissing) == "function")
+    ))
+  end
   eventFrame = eventFrame or CreateFrame("Frame")
   eventFrame:SetScript("OnEvent", function(self, event, ...)
     local ok, err = pcall(OnEvent, self, event, ...)

@@ -1,5 +1,17 @@
 # Plateband changelog
 
+## Release 0.2.48 — Plates.lua must load (200 locals) + target own-DoT bind
+
+- **Root cause (SV/FElog):** 0.2.46 had **207** chunk `local`s → `main function has more than 200 local variables` → `PaintMergeMissing` nil → **zero own DoTs** (TF OK).
+- **Fix:** pack timing constants into `PB`; remove duplicate forward decls (**179** chunk locals). `PLATES_LOAD ok=1` in SV on start.
+- **Own DoTs:** force `useTargetSrc` when `plate == PlateFor("target")`; resolve `nameplateN` on target overlay paint.
+- **Baseline:** still **0.2.39** `Plates.lua` logic (0.2.47 revert); WS not included.
+
+### Playtest
+
+1. `/reload` → `SESSION_START ver=0.2.48` + `PLATES_LOAD ok=1 paint=true`
+2. Mob own DoTs → `tgtSrc=1` `painted>0` in PAINT/CARD
+
 ## Release 0.2.47 — revert `Plates.lua` to 0.2.39 baseline (WS branch rolled back)
 
 - **Why:** Post-0.2.40 WS work regressed **own-cast DoTs on mobs** (`CollectPlayerOwnedKeys` / `foreignSkip` / `GapAuraKey` merge path — not a full plate wipe). Ondřej: „jen mé dotky.“

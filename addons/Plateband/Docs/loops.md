@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.2.47** (`Plates.lua` = **0.2.39** baseline; WS/friendly-harmful branch reverted)
+Version: **0.2.48** (0.2.39 paint baseline; **&lt;200** chunk locals; target `useTargetSrc` bind)
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
 
