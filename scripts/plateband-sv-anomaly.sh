@@ -97,7 +97,7 @@ if [[ -f "${FELOG:-}" ]] && [[ -z "$LOAD_OK" ]] && rg -q 'Plateband:paint.*nil v
 elif [[ -f "${FELOG:-}" ]] && rg -q 'Plateband:paint.*nil value' "$FELOG" 2>/dev/null; then
   echo "FELOG note: paint nil present but PLATES_LOAD paint=true (historical pre-reload unless acFail=1)"
 fi
-PAINT_N="$(rg -c 'PAINT ver=' "$SRC" 2>/dev/null | awk -F: '{s+=$2} END{print s+0}' || echo 0)"
+PAINT_N="$(rg 'PAINT ver=' "$SRC" 2>/dev/null | wc -l | tr -d ' ')"
 if echo "$TGT_CARDS" | rg -q 'painted=[1-9]' && [[ "${PAINT_N:-0}" -eq 0 ]]; then
   note "PAINT_lines_missing: cards show painted>0 but no PAINT in log (paintTraceOn regression?)"
 fi
