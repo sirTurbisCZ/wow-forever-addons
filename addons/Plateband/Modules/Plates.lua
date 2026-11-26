@@ -2119,6 +2119,7 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
     end)
     return
   end
+  local friendLayout = IsPlayerOrFriendPlate(unit, plate) or PlateUsesFriendlyHarmfulFilter(plate)
   local offX = 0
   local visN = 0
   if plate then
@@ -2139,15 +2140,20 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
         n = CountPlateHarmfulShown(plate)
       end
     end
-  if n == 0 and lastPaintDebug then
-    local nv = tonumber(lastPaintDebug.nativeVis) or 0
-    if nv > n then
-      n = nv
+    if n == 0 and lastPaintDebug then
+      local nv = tonumber(lastPaintDebug.nativeVis) or 0
+      if nv > n then
+        n = nv
+      end
     end
-  end
+    if friendLayout and n == 0 and painted > 1 then
+      local paintedN = tonumber(lastPaintDebug and lastPaintDebug.painted) or painted
+      if paintedN > 1 then
+        n = 1
+      end
+    end
     offX = n * (sz + pad)
   end
-  local friendLayout = IsPlayerOrFriendPlate(unit, plate) or PlateUsesFriendlyHarmfulFilter(plate)
   local auraRow = NativeDebuffAnchorList(plate)
   if friendLayout and auraRow then
     pcall(function()
@@ -4660,6 +4666,7 @@ Plateband.PlatesPaintDeps = {
     ReconcileTargetFrameUiButtons = ReconcileTargetFrameUiButtons,
     ForceFillTargetFrameGaps = ForceFillTargetFrameGaps,
     CountTargetHarmfulApi = CountTargetHarmfulApi,
+    CountHarmfulAuraSlots = CountHarmfulAuraSlots,
     CollectPlayerOwnedKeys = CollectPlayerOwnedKeys,
     EnsureUnitHarmfulParity = EnsureUnitHarmfulParity,
     AuraUnitForPlate = AuraUnitForPlate,
@@ -5372,10 +5379,12 @@ function Mod.Start()
   end
   started = true
   if ns.SessionLog and ns.SessionLog.Append and ns.Config and ns.Config.VERSION then
+    local paintBody = Plateband.PlatesPaintDeps and Plateband.PlatesPaintDeps.PaintMergeMissing
+    local paintOk = type(paintBody) == "function" and type(CountHarmfulAuraSlots) == "function"
     pcall(ns.SessionLog.Append, string.format(
       "PLATES_LOAD ok=1 ver=%s paint=%s",
       tostring(ns.Config.VERSION),
-      tostring(type(PaintMergeMissing) == "function")
+      tostring(paintOk)
     ))
   end
   eventFrame = eventFrame or CreateFrame("Frame")

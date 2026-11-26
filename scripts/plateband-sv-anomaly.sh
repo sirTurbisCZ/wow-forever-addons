@@ -93,7 +93,11 @@ while IFS= read -r line; do
   fi
   # Layout overlap without nativeVis field (0.2.68 and gaps): painted≥2 native=0
   if echo "$line" | rg -q 'native=0' && echo "$line" | rg -q 'painted=[2-9]'; then
-    if echo "$line" | rg -q 'friend=1'; then
+    if echo "$line" | rg -q 'friend=1' && echo "$line" | rg -q 'nativeVis=[1-9]'; then
+      note "friend_multi_icon_overlap: $line"
+    elif echo "$line" | rg -q 'friend=1' && echo "$line" | rg -q 'nativeVis=0'; then
+      echo "OK friend_merge_band: $(echo "$line" | cut -c1-100)"
+    elif echo "$line" | rg -q 'friend=1'; then
       note "friend_multi_icon_overlap: $line"
     else
       note "enemy_multi_icon_overlap: $line"

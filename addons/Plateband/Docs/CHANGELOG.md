@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.3.06 — paint deps + friend merge offset
+
+- **`CountHarmfulAuraSlots`** wired into `PlatesPaintDeps` (0.3.04 regression caused `paint` nil @ line 258 → zero PAINT / session_zero_paint_streak).
+- **`PLATES_LOAD`** checks paint chunk body + slot API, not wrapper alone.
+- **Friend layout:** `LayoutMergeBesideNative` uses `nativeVis` offset when merging 2+ gap icons beside empty native row.
+
 ## Release 0.3.05 — live telemetry architecture (honest dual-channel)
 
 Per `docs/live-telemetry-options.md` (studio decision):

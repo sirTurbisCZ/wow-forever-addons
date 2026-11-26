@@ -42,8 +42,14 @@ function Mod.Run()
     end
   end
 
-  local paintFn = Plateband.PlatesPaintDeps and Plateband.PlatesPaintDeps.PaintMergeMissing
-  check("plates_load", Plates ~= nil and type(Plates.Diagnose) == "function" and type(paintFn) == "function", type(paintFn))
+  local deps = Plateband.PlatesPaintDeps
+  local paintFn = deps and deps.PaintMergeMissing
+  local slotFn = deps and deps.CountHarmfulAuraSlots
+  check(
+    "plates_load",
+    Plates ~= nil and type(Plates.Diagnose) == "function" and type(paintFn) == "function" and type(slotFn) == "function",
+    type(paintFn)
+  )
   check("own_dots_path", Plates ~= nil and not Plates.IsAcFailed(), tostring(Plates and Plates.IsAcFailed and Plates.IsAcFailed()))
 
   local hostileHeavy = true
