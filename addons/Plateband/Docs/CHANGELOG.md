@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## Release 0.3.30 — emergency: plate hooks after /reload
+
+- **`Core`:** `/reload` never fired `PLAYER_LOGIN` — **`ApplyModuleState`** (Plates.Start) now runs on **ADDON_LOADED** when `IsLoggedIn()` and again on **PLAYER_ENTERING_WORLD** + **RefreshAll** (restores native + merge paint).
+- **0.3.29** SessionLog truth + **0.3.28** friend paint unchanged.
+
 ## Release 0.3.29 — runtime ver truth + friend WS (0.3.28 paint)
 
 - **`SyncRuntimeVersionFromInterface`:** `live_ver` / `CHAT_LOADED` / chat line = **loaded** `Config.VERSION` only (mem+metadata); disk newer → `reloadPendingVer`, **never** fake a higher runtime without reload.

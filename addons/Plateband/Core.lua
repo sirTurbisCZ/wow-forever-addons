@@ -200,14 +200,14 @@ bootFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 bootFrame:SetScript("OnEvent", function(_, event, name)
   if event == "ADDON_LOADED" and name == addonName then
     EnsureDB()
-  if SessionLog and SessionLog.SyncRuntimeVersionFromInterface then
+    if SessionLog and SessionLog.SyncRuntimeVersionFromInterface then
       pcall(SessionLog.SyncRuntimeVersionFromInterface)
     end
     local reloadLogin = false
     pcall(function()
       reloadLogin = IsLoggedIn and IsLoggedIn()
     end)
-  if reloadLogin then
+    if reloadLogin then
       if SessionLog and SessionLog.BeginSession then
         SafeCall("session:begin", SessionLog.BeginSession)
       end
@@ -216,6 +216,8 @@ bootFrame:SetScript("OnEvent", function(_, event, name)
           SessionLog.RecordChatLoaded("reload")
         end)
       end
+      -- /reload does not fire PLAYER_LOGIN — must restart plate hooks here.
+      ApplyModuleState()
       if not loadAnnounced then
         loadAnnounced = true
         Print(string.format(L.LOADED or "loaded v%s · /pb", tostring(Config.VERSION)))
@@ -240,10 +242,14 @@ bootFrame:SetScript("OnEvent", function(_, event, name)
       Print(string.format(L.LOADED or "loaded v%s · /pb", tostring(Config.VERSION)))
     end
   elseif event == "PLAYER_ENTERING_WORLD" then
-  if SessionLog and SessionLog.EnsureChatTruthCurrent then
+    if SessionLog and SessionLog.EnsureChatTruthCurrent then
       SafeCall("session:chat_truth_pew", function()
         SessionLog.EnsureChatTruthCurrent("reload")
       end)
+    end
+    ApplyModuleState()
+    if Plates and Plates.Refresh then
+      SafeCall("plates:pew_refresh", Plates.Refresh)
     end
   end
 end)
