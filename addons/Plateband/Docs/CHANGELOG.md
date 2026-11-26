@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.3.18 — hostile debuff row only (no bar-above)
+
+- **Layout:** hostile gap icons **never** anchor `healthBar:TOP` (above name); **`HostileDebuffBandFrame`** = DebuffList / AurasFrame / UF only.
+- **`PlateHarmfulBandExpected`:** offset gap beside native band when TF/API shows harmful but `nativeVis=0`.
+- **`FallbackPaintParent`:** drop health-bar parent (merge frame lives on debuff chrome).
+
 ## Release 0.3.17 — stale paint_hold + native row band
 
 - **`paint_hold`:** no hold when sticky rows fail **`GapAuraLive`** — clear fallback (`paint_stale_cleared`); never keep icon because **other** `HARMFUL` slots remain on unit.
