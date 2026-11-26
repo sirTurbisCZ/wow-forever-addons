@@ -167,7 +167,11 @@ else
   check "prune_stale" "WAIT (no expire repro)"
 fi
 
-echo "MATRIX context: live_ver=$PB_LIVE_VER flushed=$PB_FLUSHED_VER flush_lag=$PB_FLUSH_LAG"
+echo "MATRIX context: live_ver=$PB_LIVE_VER flushed=$PB_FLUSHED_VER flush_lag=$PB_FLUSH_LAG reload_pending=${PB_RELOAD_PENDING:-no}"
 [[ "$fail" -eq 0 ]] && echo "MATRIX pass (live $PB_LIVE_VER)" && exit 0
+if [[ "${PB_RELOAD_PENDING:-no}" == yes ]]; then
+  echo "MATRIX playbook — friend/ws checks ok; hostile WAIT until /reload ${PB_RUNTIME_VER:-?}"
+  exit 0
+fi
 echo "MATRIX incomplete or fail — keep watching"
 exit 1
