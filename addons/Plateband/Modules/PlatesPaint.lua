@@ -253,6 +253,29 @@ if not plate then
   end
 
   local paintAuraTok = D.AuraUnitForPlate(unit, plate, useTargetSrc, partyAuraTok)
+  if friendPlate or partyMerge then
+    local pt = partyAuraTok
+    if not pt and D.ResolvePartyTokenForPlate then
+      pt = D.ResolvePartyTokenForPlate(plate)
+    end
+    if type(pt) == "string" and pt ~= "" then
+      paintAuraTok = pt
+    end
+  end
+  if (friendPlate or partyMerge) and type(paintAuraTok) == "string" and #missing == 0 then
+    local skip = D.CopyKeySet(D.NativeShownKeySet(plate))
+    pcall(D.EnsureUnitHarmfulParity, paintAuraTok, plate, missing, skip, maxN, stats)
+    pcall(D.CollectUnitHarmfulMirror, paintAuraTok, skip, missing, maxN, stats)
+    if #missing == 0 then
+      pcall(D.CollectForeignAuraGaps, paintAuraTok, skip, missing, maxN, true, stats)
+      pcall(D.EnsureUnitHarmfulParity, paintAuraTok, plate, missing, skip, maxN, stats)
+    end
+    D.DedupeGapIcons(missing, maxN)
+    D.lastPaintDebug.miss = #missing
+    if #missing > 0 then
+      D.lastPaintDebug.harv = #missing
+    end
+  end
   local friendHarmN = friendPlate and D.CountHarmfulAuraSlots(paintAuraTok) or 0
   if not (friendPlate and (friendHarmN > 0 or (D.lastPaintDebug.tfRows or 0) > 0)) then
     D.PruneInactiveGapRows(missing, paintAuraTok, maxN)
@@ -453,10 +476,10 @@ if not plate then
     D.lastPaintDebug.parent = "nil"
     return 0
   end
-  D.lastPaintDebug.parent = (parent == (plate and plate.UnitFrame and plate.UnitFrame.AurasFrame)) and "AurasFrame" or "ufBar"
+  D.lastPaintDebug.parent = (parent == plate) and "plate" or ((parent == (plate and plate.UnitFrame)) and "UnitFrame" or "AurasFrame")
   local sz, pad = D.MergeRowIconSize(plate, fb)
   fb._pbPlate = plate
-  local auraUnit = D.AuraUnitForPlate(unit, plate, useTargetSrc, partyAuraTok)
+  local auraUnit = paintAuraTok or D.AuraUnitForPlate(unit, plate, useTargetSrc, partyAuraTok)
   local painted = 0
   local cdN = 0
   for i = 1, #missing do

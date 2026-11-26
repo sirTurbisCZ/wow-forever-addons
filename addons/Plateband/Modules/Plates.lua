@@ -20,7 +20,7 @@ local PB = {
   -- Gap row below health bar when DebuffList BOTTOM is flush with bar (Forever party plates).
   MERGE_ROW_BELOW_BAR = 4,
   -- Party/friendly harmful band above name text (mob-style row).
-  FRIEND_AURA_ABOVE_NAME = 6,
+  FRIEND_AURA_ABOVE_NAME = 8,
   GAP_CD_TICK_SEC = 3.5,
   FULL_REFRESH_DEBOUNCE = 0.75,
   PAINT_TARGET_SEC = 0.2,
@@ -797,6 +797,10 @@ end
 --- Forever: pool buttons often fail SafeShown while still native — backfill unit API keys.
 AugmentNativeKeysFromUnitApi = function(plate, keys)
   if type(keys) ~= "table" or not plate then
+    return
+  end
+  -- Party/friend NP: never inflate skip-keys from unit API — WS must gap-paint when native row is empty/hidden (0.3.27).
+  if PlateUsesFriendlyHarmfulFilter(plate) then
     return
   end
   local unit = UnitTokenFromPlate(plate) or ResolvePartyTokenForPlate(plate)
@@ -2291,6 +2295,9 @@ local function LayoutGapIconsInFallback(mergeFb, painted, sz, pad)
 end
 
 FriendFallbackPaintParent = function(plate)
+  if plate and not FrameIsGlobalChrome(plate) then
+    return plate
+  end
   local uf = plate and plate.UnitFrame
   if uf and not FrameIsGlobalChrome(uf) then
     return uf

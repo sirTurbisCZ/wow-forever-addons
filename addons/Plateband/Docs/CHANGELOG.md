@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.3.27 — friend WS gap paint (Renia phantom skip)
+
+- **Root cause (live SV `0.3.24`):** `AugmentNativeKeysFromUnitApi` on friend plates marked **all** unit HARMFUL as “native shown” → `EnsureUnitHarmfulParity` skipped WS → **`painted=0`** (party frame showed WS, nameplate none).
+- **Fix:** no API augment on `PlateUsesFriendlyHarmfulFilter` plates; harvest/parity on **`partyN`** token; friend gap parent **`plate`** + **`nameTop`** (+8px).
+- **Playtest:** `/reload` → **`CHAT_LOADED ver=0.3.27`** → Renia WS → PAINT `friend=1 party=partyN painted≥1 gapBand=nameTop`.
+
 ## Release 0.3.26 — restore friendly WS visibility (undo 0.3.25 lift)
 
 - **Revert:** remove **`LiftFriendlyAurasAboveName`** — `AurasFrame` `ClearAllPoints` made native + gap debuffs **vanish** while PAINT still logged `painted=1`.

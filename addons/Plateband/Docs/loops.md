@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.3.26** (SV-primary telemetry; reload = TOC only)
+Version: **0.3.27** (SV-primary telemetry; reload = TOC only)
 
 ## Version / config truth (agent feed)
 
