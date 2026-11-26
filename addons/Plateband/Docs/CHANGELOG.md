@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## Release 0.3.02 — honest prove + client export ticker
+
+- **`C_Timer.NewTicker(2s)`** primary **`DoExportDiskPulse`** (deferred OnUpdate backup); one io retry 0.05s.
+- **Prove/gate:** reject `load=watch_sync`; require client **`export-pulse.log`** age; prove does not call host sync.
+
 ## Release 0.3.01 — aura telemetry + overlap offset
 
 - **Paint CARD:** `SilentTracePaint` emits `PLATEBAND_CARD reason=paint` for friend WS + multi-paint samples (`tf` from `tfRows`).

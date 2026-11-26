@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prove client export L1 matches Interface Config/TOC (same as gate).
+# Prove client export L1 matches Interface Config/TOC — no host restamp on this path.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=scripts/felog-sv-lib.sh
@@ -9,14 +9,13 @@ MAX_AGE="${1:-5}"
 PB="$(felog_plateband_interface_ver 2>/dev/null || echo "?")"
 FE="$(felog_interface_ver 2>/dev/null || echo "?")"
 EXP="$(felog_plateband_export_path)"
+PULSE="$(felog_plateband_export_pulse_path)"
 
 if [[ ! -f "$EXP" ]]; then
   echo "PROVE_L1 fail: missing export $EXP"
   exit 1
 fi
 
-L1="$(head -1 "$EXP" 2>/dev/null || true)"
-pb_sync_export_l1_active "$MAX_AGE" 2>/dev/null || true
 L1="$(head -1 "$EXP" 2>/dev/null || true)"
 AGE="$(felog_head_age_sec "$EXP" 2>/dev/null || echo 9999)"
 MTIME="$(felog_file_age_sec "$EXP" 2>/dev/null || echo "?")"
@@ -26,10 +25,26 @@ IPB="$(sed -n 's/.*interface_pb=\([0-9.]*\).*/\1/p' <<<"$L1" | head -1)"
 IFE="$(sed -n 's/.*interface_fe=\([0-9.]*\).*/\1/p' <<<"$L1" | head -1)"
 FE_L="$(sed -n 's/.*felog_ver=\([0-9.]*\).*/\1/p' <<<"$L1" | head -1)"
 SRC="$(sed -n 's/.*src=\([^ ]*\).*/\1/p' <<<"$L1" | head -1)"
+LOAD="$(sed -n 's/.* load=\([^ ]*\).*/\1/p' <<<"$L1" | head -1)"
 
 if [[ "$L1" != live_ver=* ]]; then
   echo "PROVE_L1 fail: L1 not live_ver= line"
   echo "$L1"
+  exit 1
+fi
+
+if ! felog_export_l1_is_client_pulse "$L1"; then
+  echo "PROVE_L1 fail: not client pulse (src=$SRC load=$LOAD) — host watch_sync/touch invalid"
+  echo "$L1"
+  exit 1
+fi
+
+PULSE_AGE=9999
+if [[ -f "$PULSE" ]]; then
+  PULSE_AGE="$(felog_file_age_sec "$PULSE" 2>/dev/null || echo 9999)"
+fi
+if [[ ! "$PULSE_AGE" =~ ^[0-9]+$ ]] || [[ "$PULSE_AGE" -gt "$MAX_AGE" ]]; then
+  echo "PROVE_L1 fail: export-pulse.log stale age=${PULSE_AGE}s max=${MAX_AGE}s (client DoExportDiskPulse not appending)"
   exit 1
 fi
 
@@ -59,6 +74,6 @@ if [[ "$FE_L" != "$FE" || "$IFE" != "$FE" ]]; then
   exit 1
 fi
 
-echo "PROVE_L1 ok: pb=$PB fe=$FE src=$SRC age=${AGE}s mtime=${MTIME}s t_age=${T_AGE}s"
+echo "PROVE_L1 ok: pb=$PB fe=$FE src=$SRC load=$LOAD age=${AGE}s mtime=${MTIME}s t_age=${T_AGE}s pulse_age=${PULSE_AGE}s"
 echo "$L1"
 exit 0

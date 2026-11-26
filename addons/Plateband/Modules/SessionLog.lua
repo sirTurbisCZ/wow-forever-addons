@@ -236,8 +236,19 @@ local function ExportDiskStaleSec()
   return UnixTs() - at
 end
 
+local exportRetryPending = false
+
 local function TryExportDiskLine(line)
   local wrote = Mod.WriteExportL1Brute(line, true)
+  if not wrote and not exportRetryPending and C_Timer and C_Timer.After then
+    exportRetryPending = true
+    local retryLine = line
+    C_Timer.After(0.05, function()
+      exportRetryPending = false
+      exportDiskLastGt = 0
+      pcall(TryExportDiskLine, retryLine)
+    end)
+  end
   if wrote then
     MarkExportDiskAttempt()
     pcall(Mod.PublishInterfaceTocStamp)
@@ -872,6 +883,7 @@ local function StopExportTruthPulse()
     pcall(exportTruthTicker.Cancel, exportTruthTicker)
   end
   exportTruthTicker = nil
+  exportRetryPending = false
   ioPulseFrame = nil
   ioPulseLastGt = 0
   if exportDriverFrame then
@@ -891,6 +903,16 @@ local EXPORT_PULSE_EVENTS = {
   "ZONE_CHANGED",
   "BAG_UPDATE_DELAYED",
 }
+
+local function EnsureExportDriverTicker()
+  if exportTruthTicker or not C_Timer or not C_Timer.NewTicker then
+    return false
+  end
+  exportTruthTicker = C_Timer.NewTicker(EXPORT_TICK, function()
+    pcall(DoExportDiskPulse)
+  end)
+  return true
+end
 
 local function EnsureExportDriverFrame()
   if exportDriverFrame or not CreateFrame or not GetTime then
@@ -974,8 +996,10 @@ function Mod.ArmExportTruthPulse(force)
   if force then
     Mod.ScheduleExportBurst()
   end
+  EnsureExportDriverTicker()
   EnsureExportDriverFrame()
   pcall(Mod.ResetExportTimeAnchor)
+  pcall(DoExportDiskPulse)
   QueueExportDiskPulse()
 end
 

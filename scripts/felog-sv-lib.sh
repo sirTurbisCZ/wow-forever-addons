@@ -282,18 +282,21 @@ felog_line_t_age_sec() {
   echo $((now - t))
 }
 
-# Active client export (mtime fresh): refresh host-wall t= without touching versions.
+# Active client export (mtime fresh): refresh host-wall t= only on client load= lines.
 pb_touch_export_l1_timestamp() {
   local max_mtime="${1:-5}"
-  local exp line disk_age src pb fe live fe_l now
+  local exp line disk_age src pb fe live fe_l now load
   exp="$(felog_plateband_export_path)"
   [[ -f "$exp" ]] || return 1
   disk_age="$(felog_file_age_sec "$exp" 2>/dev/null || echo 9999)"
   [[ "$disk_age" -le "$max_mtime" ]] || return 1
   line="$(head -1 "$exp" 2>/dev/null | tr -d '\r' || true)"
   [[ "$line" == live_ver=* ]] || return 1
+  felog_export_l1_is_client_pulse "$line" || return 1
   src="$(sed -n 's/.* src=\([^ ]*\).*/\1/p' <<<"$line" | head -1)"
+  load="$(sed -n 's/.* load=\([^ ]*\).*/\1/p' <<<"$line" | head -1)"
   [[ "$src" =~ ^(EXPORT_PULSE|CHAT_LOADED)$ ]] || return 1
+  [[ "$load" == "watch_sync" ]] && return 1
   pb="$(felog_plateband_interface_ver 2>/dev/null || echo "?")"
   fe="$(felog_interface_ver 2>/dev/null || echo "?")"
   live="$(sed -n 's/.*live_ver=\([0-9.]*\).*/\1/p' <<<"$line" | head -1)"
@@ -332,7 +335,29 @@ pb_promote_export_pulse_line() {
   return 0
 }
 
-# Host watch: always restamp L1 when client mtime stale (versions from L1 or Interface TOC).
+# True when L1 was written in-client (not host watch_sync / TOC patch).
+felog_export_l1_is_client_pulse() {
+  local line="$1"
+  local src load feed
+  src="$(sed -n 's/.* src=\([^ ]*\).*/\1/p' <<<"$line" | head -1)"
+  load="$(sed -n 's/.* load=\([^ ]*\).*/\1/p' <<<"$line" | head -1)"
+  feed="$(sed -n 's/.* feed=\([^ ]*\).*/\1/p' <<<"$line" | head -1)"
+  [[ "$line" == live_ver=* ]] || return 1
+  [[ "$feed" == "pb_bridge" ]] || return 1
+  [[ "$load" == "watch_sync" || "$load" == "host_toc_pulse" || "$load" == "watch_sync" ]] && return 1
+  [[ "$feed" == "host_toc_pulse" ]] && return 1
+  if [[ "$src" == "EXPORT_PULSE" ]]; then
+    [[ "$load" == "pulse" ]] && return 0
+    return 1
+  fi
+  if [[ "$src" == "CHAT_LOADED" ]]; then
+    [[ "$load" == "login" || "$load" == "reload" ]] && return 0
+    return 1
+  fi
+  return 1
+}
+
+# Host watch: only when PB_HOST_EXPORT_SYNTH=1 — prove/gate must not use this path.
 pb_restamp_export_l1_watch() {
   local exp line pb fe now live fe_l seq
   exp="$(felog_plateband_export_path)"
@@ -361,16 +386,19 @@ pb_restamp_export_l1_watch() {
   return 0
 }
 
-# 2s watch entry: promote pulse tail, else touch, else unconditional host restamp.
+# Host assist: promote client export-pulse append only (never synth L1 for prove).
 pb_sync_export_l1_active() {
   local max_age="${1:-5}"
   if pb_promote_export_pulse_line "$max_age" 2>/dev/null; then
     return 0
   fi
-  if pb_touch_export_l1_timestamp "$max_age" 2>/dev/null; then
-    return 0
+  if [[ "${PB_HOST_EXPORT_TOUCH:-0}" == "1" ]]; then
+    pb_touch_export_l1_timestamp "$max_age" 2>/dev/null && return 0
   fi
-  pb_restamp_export_l1_watch
+  if [[ "${PB_HOST_EXPORT_SYNTH:-0}" == "1" ]]; then
+    pb_restamp_export_l1_watch && return 0
+  fi
+  return 1
 }
 
 # Parse live-head.log one-liner (FElog 0.1.4+).

@@ -33,7 +33,6 @@ SV_FEED="$(echo "$SV_TRUTH" | sed -n 's/.* feed=\([^ ]*\).*/\1/p')"
 [[ -n "$SV_PB" ]] || SV_PB="$(echo "$SV_LINE" | sed -n 's/.*live_ver=\([0-9.]*\).*/\1/p')"
 
 DISK_EXP="$(felog_plateband_export_path)"
-pb_sync_export_l1_active "${MAX_AGE}" 2>/dev/null || true
 DISK_L1=""
 DISK_FEED=""
 DISK_AGE=9999
@@ -63,7 +62,8 @@ DISK_PB="$(echo "$DISK_L1" | sed -n 's/.*live_ver=\([0-9.]*\).*/\1/p' | head -1)
 DISK_FE="$(echo "$DISK_L1" | sed -n 's/.*felog_ver=\([0-9.]*\).*/\1/p' | head -1)"
 DISK_TRUTH=no
 if [[ -f "$DISK_EXP" ]] && [[ "$DISK_L1" == live_ver=* ]] && [[ "$DISK_FEED" == pb_bridge ]]; then
-  if [[ "$DISK_PB" == "$CHAT_TRUTH_PB" && "$DISK_FE" == "$CHAT_TRUTH_FE" ]] \
+  if felog_export_l1_is_client_pulse "$DISK_L1" \
+     && [[ "$DISK_PB" == "$CHAT_TRUTH_PB" && "$DISK_FE" == "$CHAT_TRUTH_FE" ]] \
      && [[ "$DISK_AGE" =~ ^[0-9]+$ ]] && [[ "$DISK_AGE" -le "$MAX_AGE" ]]; then
     DISK_TRUTH=yes
   fi
