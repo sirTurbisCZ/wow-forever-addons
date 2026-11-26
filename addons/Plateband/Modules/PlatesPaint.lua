@@ -303,7 +303,17 @@ if not plate then
     end
   end
   local friendHarmN = friendPlate and D.CountHarmfulAuraSlots(paintAuraTok) or 0
-  if not (friendPlate and (friendHarmN > 0 or (D.lastPaintDebug.tfRows or 0) > 0)) then
+  if friendPlate and friendHarmN > 0 and #missing == 0 and type(paintAuraTok) == "string" then
+    local skip = D.CopyKeySet(D.NativeShownKeySet(plate))
+    pcall(D.EnsureUnitHarmfulParity, paintAuraTok, plate, missing, skip, maxN, stats)
+    pcall(D.CollectUnitHarmfulMirror, paintAuraTok, skip, missing, maxN, stats)
+    if #missing == 0 then
+      pcall(D.CollectForeignAuraGaps, paintAuraTok, skip, missing, maxN, true, stats)
+    end
+    D.DedupeGapIcons(missing, maxN)
+    D.lastPaintDebug.miss = #missing
+  end
+  if not (friendPlate and (friendHarmN > 0 or (D.lastPaintDebug.tfRows or 0) > 0 or #missing > 0)) then
     D.PruneInactiveGapRows(missing, paintAuraTok, maxN)
   end
   D.ApplyGapSticky(unit, missing, useTargetSrc or friendPlate, paintAuraTok, friendPlate)
@@ -398,6 +408,15 @@ if not plate then
           end
           D.lastPaintDebug.miss = #missing
           D.lastPaintDebug.tfRows = D.CountTargetHarmfulExpected(auraUnit, #missing)
+        elseif (friendPlate or partyMerge) and type(auraUnit) == "string" and (D.CountHarmfulAuraSlots(auraUnit) or 0) > 0 then
+          local skip = D.CopyKeySet(D.NativeShownKeySet(plate))
+          pcall(D.EnsureUnitHarmfulParity, auraUnit, plate, missing, skip, maxN, stats)
+          pcall(D.CollectUnitHarmfulMirror, auraUnit, skip, missing, maxN, stats)
+          if #missing == 0 then
+            pcall(D.CollectForeignAuraGaps, auraUnit, skip, missing, maxN, allowSecret, stats)
+          end
+          D.DedupeGapIcons(missing, maxN)
+          D.lastPaintDebug.miss = #missing
         else
           D.ClearFallback(unit, false)
           D.lastPaintDebug.painted = 0
@@ -410,7 +429,8 @@ if not plate then
         local stillLive, liveN = D.StickyRowsLiveOnUnit(sticky.icons, auraUnit)
         if type(auraUnit) == "string" then
           local slots = D.CountHarmfulAuraSlots(auraUnit) or 0
-          if not stillLive or liveN == 0 or (not friendPlate and not partyMerge and slots == 0) then
+          local keepFriend = (friendPlate or partyMerge) and slots > 0
+          if (not stillLive or liveN == 0) and not keepFriend then
             D.gapSticky[unit] = nil
             D.ClearFallback(unit, false)
             D.lastPaintDebug.painted = 0
@@ -428,7 +448,9 @@ if not plate then
             heldCd = cdn or 0
           end)
           stillLive, liveN = D.StickyRowsLiveOnUnit(sticky.icons, auraUnit)
-          if heldN <= 0 or not stillLive then
+          local holdSlots = type(auraUnit) == "string" and (D.CountHarmfulAuraSlots(auraUnit) or 0) or 0
+          local friendHold = (friendPlate or partyMerge) and holdSlots > 0
+          if heldN <= 0 or (not stillLive and not friendHold) then
             D.gapSticky[unit] = nil
             D.lastPaintDebug.painted = 0
             D.ClearFallback(unit, false)

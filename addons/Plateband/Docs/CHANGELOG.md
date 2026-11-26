@@ -1,5 +1,12 @@
 # Plateband changelog
 
+## Release 0.3.32 — friend LEFT row + live debuff stick
+
+- **`gapBand=friendLeft`:** anchor **`BOTTOMLEFT` → lane `TOPLEFT`** (DebuffList/AurasFrame/bar) — mob-style **left growth**, not centered name.
+- **`GapAuraLive`:** party token lookup miss + **`CountHarmfulAuraSlots>0`** + icon → stay live (fixes intermittent drop).
+- **Friend paint:** re-harvest when API shows harmful but `#missing==0`; sticky hold while **`slots>0`**; empty when no debuff unchanged.
+- Bundles **0.3.31** visibility + **0.3.30/0.3.29**.
+
 ## Release 0.3.31 — friend gap visible above name (painted≥1 fix)
 
 - **`FriendFallbackPaintParent`:** prefer **`UnitFrame`** over raw **`plate`** (z-order with name/AurasFrame).

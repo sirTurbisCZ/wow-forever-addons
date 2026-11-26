@@ -39,7 +39,7 @@ flowchart TD
 
 1. Native DebuffList untouched.
 2. **Paint row** parents via `FallbackPaintParent` → `AurasFrame` / `UnitFrame` only (never **child of** `DebuffList` — sibling overlap). `FallbackParent` still names native scrape anchor.
-3. Anchor: hostile — beside rightmost native; else **`DebuffListFrame` BOTTOMLEFT** + `gapOff` / `MergeRowOffY` bar-flush. **Party/friendly:** gap parent **`UnitFrame`**; **`gapBand=nameTop`** on **`name.TOPLEFT`** (+8); **`BoostFriendGapChrome`** (0.3.31) unclips + alpha/level above name — PAINT `painted≥1` must match pixels. Never **`AurasFrame` SetPoint** (0.3.25 reverted). **`SuppressFriendlyPlateConsumables`** buff-only — never hide harmful. Never **DebuffList** SetPoint. Party: **`PlateUnitBindingMatches`** (0.2.69 Renia WS).
+3. Anchor: hostile — beside rightmost native; else **`DebuffListFrame` BOTTOMLEFT** + `gapOff` / `MergeRowOffY` bar-flush. **Party/friendly:** **`gapBand=friendLeft`** — **`BOTTOMLEFT` lane `TOPLEFT`** (DebuffList/AurasFrame left edge, +8Y); icons grow **right** like mobs; **`BoostFriendGapChrome`** (0.3.31). Live harmful on unit → must paint; empty when none. Never **`AurasFrame` SetPoint** (0.3.25 reverted). **`SuppressFriendlyPlateConsumables`** buff-only — never hide harmful. Never **DebuffList** SetPoint. Party: **`PlateUnitBindingMatches`** (0.2.69 Renia WS).
 4. `pcall` on paint + layout; debounce `UNIT_AURA` on target; **gap sticky** 3s hostile / **18s friend-party** (WS); refresh on hold; hostile merge **debuff band only** (never health-bar-top); merge offset when no rightmost native anchor (no overlap).
 
 ## Sources

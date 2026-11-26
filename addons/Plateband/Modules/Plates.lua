@@ -2333,6 +2333,33 @@ local function LayoutGapIconsInFallback(mergeFb, painted, sz, pad)
   end
 end
 
+--- Left edge of mob-style aura lane (not centered name).
+local function FriendLeftLaneFrame(plate)
+  if not plate then
+    return nil
+  end
+  local deb = NativeDebuffList(plate)
+  if deb and not FrameIsGlobalChrome(deb) then
+    return deb
+  end
+  local uf = plate.UnitFrame
+  local af = uf and uf.AurasFrame
+  if af and not FrameIsGlobalChrome(af) then
+    return af
+  end
+  local bar = HealthBar(plate)
+  if bar and not FrameIsGlobalChrome(bar) then
+    return bar
+  end
+  if uf and not FrameIsGlobalChrome(uf) then
+    return uf
+  end
+  if not FrameIsGlobalChrome(plate) then
+    return plate
+  end
+  return nil
+end
+
 FriendFallbackPaintParent = function(plate)
   -- UnitFrame above plate root — gap row must sit with name/AurasFrame z-order (0.3.26; not raw plate).
   local uf = plate and plate.UnitFrame
@@ -2634,15 +2661,17 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
     end
     return
   end
-  local nameFS = PlateNameFS(plate)
-  if nameFS then
+  local lane = FriendLeftLaneFrame(plate)
+  if lane then
     finishAnchor(function()
-      mergeFb:SetPoint("BOTTOMLEFT", nameFS, "TOPLEFT", offX, PB.FRIEND_AURA_ABOVE_NAME)
+      -- LEFT growth from DebuffList/AurasFrame edge — Y above name lane (not centered name TOPLEFT).
+      mergeFb:SetPoint("BOTTOMLEFT", lane, "TOPLEFT", offX, PB.FRIEND_AURA_ABOVE_NAME)
     end, FriendFallbackPaintParent(plate))
     if lastPaintDebug then
-      lastPaintDebug.gapBand = "nameTop"
+      lastPaintDebug.gapBand = "friendLeft"
       lastPaintDebug.gapRow = "friendAbove"
       lastPaintDebug.gapOffY = PB.FRIEND_AURA_ABOVE_NAME
+      lastPaintDebug.gapOffX = offX
     end
     return
   end
@@ -3532,7 +3561,15 @@ GapAuraLive = function(entry, unitToken)
       end
       return true
     end
+    if (CountHarmfulAuraSlots(unitToken) or 0) > 0 and (entry.icon or entry.iconTex or entry._tfFrame) then
+      return true
+    end
     return false
+  end
+  if entry.spellId and unitToken and (CountHarmfulAuraSlots(unitToken) or 0) > 0 then
+    if entry.icon or entry.iconTex or entry._tfFrame then
+      return true
+    end
   end
   if entry.spellId or entry.auraInstanceID then
     return false
