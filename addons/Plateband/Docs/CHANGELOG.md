@@ -1,5 +1,12 @@
 # Plateband changelog
 
+## Release 0.3.28 — friend WS above name (party paint path)
+
+- **Paint:** friendly/party plates **never `useTargetSrc`** — avoids hostile TF harvest + `gapOffY=-4` under-bar layout when targeting Renia.
+- **Harvest:** `partyN`/`target` token via expanded `ResolvePartyTokenForPlate`; softer party plate-binding bail.
+- **Layout:** party/friend gaps **always `gapBand=nameTop`** on `name.TOPLEFT` (+8), parent `plate`.
+- **Visual:** `ApplyGapAuraVisual` counts texture-only gaps as visible when `entry.icon` present.
+
 ## Release 0.3.27 — friend WS gap paint (Renia phantom skip)
 
 - **Root cause (live SV `0.3.24`):** `AugmentNativeKeysFromUnitApi` on friend plates marked **all** unit HARMFUL as “native shown” → `EnsureUnitHarmfulParity` skipped WS → **`painted=0`** (party frame showed WS, nameplate none).

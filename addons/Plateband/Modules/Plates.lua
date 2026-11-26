@@ -924,6 +924,31 @@ ResolvePartyTokenForPlate = function(plate)
       end
     end
   end
+  if not tok and HasTarget() and PlateFor("target") == plate then
+    pcall(function()
+      if UnitIsFriend and UnitIsFriend("player", "target") then
+        for i = 1, 4 do
+          local pt = "party" .. i
+          if SafeUnitExists(pt) and SameUnit(pt, "target") then
+            tok = pt
+            break
+          end
+        end
+        if not tok then
+          for i = 1, 40 do
+            local rt = "raid" .. i
+            if SafeUnitExists(rt) and SameUnit(rt, "target") then
+              tok = rt
+              break
+            end
+          end
+        end
+        if not tok then
+          tok = "target"
+        end
+      end
+    end)
+  end
   if not tok then
     local plateUnit = UnitTokenFromPlate(plate)
     local plateGuid
@@ -1238,16 +1263,30 @@ PlateUsesFriendlyHarmfulFilter = function(plate)
   if ResolvePartyTokenForPlate(plate) then
     return true
   end
-  if HasTarget() and PlateFor("target") == plate then
-    local friendly = false
+  if HasTarget() then
+    local friendlyTgt = false
     pcall(function()
       if UnitIsFriend and UnitIsFriend("player", "target") then
-        friendly = true
+        friendlyTgt = true
       end
     end)
-    if friendly then
-      return true
+    if friendlyTgt then
+      if PlateFor("target") == plate then
+        return true
+      end
+      local tu = NameplateUnitFor("target")
+      local pu = UnitTokenFromPlate(plate)
+      if tu and pu and SameUnit(tu, pu) then
+        return true
+      end
+      if IsTargetPlate(pu, plate) or IsTargetPlate(tu, plate) then
+        return true
+      end
     end
+  end
+  local pu = UnitTokenFromPlate(plate)
+  if pu and IsPlayerOrFriendPlate(pu, plate) then
+    return true
   end
   return false
 end
@@ -2507,29 +2546,6 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
     return
   end
   local nameFS = PlateNameFS(plate)
-  local right = NativeBandRightAnchor(plate)
-  if right and NativeAuraButtonLive(right) and AuraChromeAboveName(plate, right) then
-    finishAnchor(function()
-      mergeFb:SetPoint("LEFT", right, "RIGHT", pad, 0)
-      mergeFb:SetPoint("BOTTOM", right, "BOTTOM", 0, 0)
-    end)
-    if lastPaintDebug then
-      lastPaintDebug.gapBand = "rightNative"
-      lastPaintDebug.gapRow = "friendAbove"
-    end
-    return
-  end
-  local deb = NativeDebuffList(plate)
-  if deb and not FrameIsGlobalChrome(deb) and AuraChromeAboveName(plate, deb) then
-    finishAnchor(function()
-      mergeFb:SetPoint("BOTTOMLEFT", deb, "BOTTOMLEFT", offX, 0)
-    end)
-    if lastPaintDebug then
-      lastPaintDebug.gapBand = "DebuffList"
-      lastPaintDebug.gapRow = "friendAbove"
-    end
-    return
-  end
   if nameFS then
     finishAnchor(function()
       mergeFb:SetPoint("BOTTOMLEFT", nameFS, "TOPLEFT", offX, PB.FRIEND_AURA_ABOVE_NAME)
@@ -2543,10 +2559,11 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
   end
   if af and not FrameIsGlobalChrome(af) then
     finishAnchor(function()
-      mergeFb:SetPoint("BOTTOMLEFT", af, "BOTTOMLEFT", offX, offY)
+      mergeFb:SetPoint("BOTTOMLEFT", af, "BOTTOMLEFT", offX, 0)
     end)
     if lastPaintDebug then
       lastPaintDebug.gapBand = "AurasFrame"
+      lastPaintDebug.gapRow = "friendAbove"
     end
     return
   end
@@ -4860,6 +4877,9 @@ ApplyGapAuraVisual = function(button, entry, unitToken)
   local cdSet = type(entry) == "table" and entry._pbCd == true
   local visible = ok or auraInstanceOk
   if not visible and type(entry) == "table" and entry.iconTex and TextureHasArt(entry.iconTex) then
+    visible = true
+  end
+  if not visible and ok and type(entry) == "table" and (entry.icon or entry.spellId) then
     visible = true
   end
   return visible, cdSet

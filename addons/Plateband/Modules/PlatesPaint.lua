@@ -43,6 +43,15 @@ if not plate then
   if partyMerge then
     friendPlate = true
   end
+  if D.PlateUsesFriendlyHarmfulFilter and D.PlateUsesFriendlyHarmfulFilter(plate) then
+    friendPlate = true
+    if not partyAuraTok and D.ResolvePartyTokenForPlate then
+      partyAuraTok = D.ResolvePartyTokenForPlate(plate)
+    end
+    if partyAuraTok then
+      partyMerge = true
+    end
+  end
   if friendPlate and not partyAuraTok and plate then
     partyAuraTok = D.ResolvePartyTokenForPlate(plate)
     if partyAuraTok then
@@ -90,7 +99,8 @@ if not plate then
     friendPlate = true
     partyMerge = true
     local partyPlate = D.PlateFor(partyAuraTok)
-    if partyPlate and partyPlate ~= plate and not isTarget then
+    local plateParty = D.ResolvePartyTokenForPlate and D.ResolvePartyTokenForPlate(plate)
+    if partyPlate and partyPlate ~= plate and not isTarget and plateParty ~= partyAuraTok then
       if not D.PlateUnitBindingMatches(plate, partyAuraTok) then
         local bound = D.UnitTokenFromPlate(plate)
         if not (bound and D.SameUnit(bound, partyAuraTok)) and not D.SameUnit(unit, partyAuraTok) then
@@ -98,6 +108,18 @@ if not plate then
           return 0
         end
       end
+    end
+  end
+
+  if friendPlate then
+    useTargetSrc = false
+    if not partyAuraTok and plate and D.ResolvePartyTokenForPlate then
+      partyAuraTok = D.ResolvePartyTokenForPlate(plate)
+    end
+    if partyAuraTok then
+      partyMerge = true
+    elseif D.IsPartyRaidMergePlate and D.IsPartyRaidMergePlate(unit, plate) then
+      partyMerge = true
     end
   end
 
@@ -228,7 +250,11 @@ if not plate then
     D.CollectUnitHarmfulMirror(auraTok, foreignSkip, missing, maxN, stats)
     D.EnsureUnitHarmfulParity(auraTok, plate, missing, foreignSkip, maxN, stats)
     D.DedupeGapIcons(missing, maxN)
-    D.PruneInactiveGapRows(missing, auraTok, maxN)
+    if friendPlate and #missing > 0 then
+      D.lastPaintDebug.harv = #missing
+    else
+      D.PruneInactiveGapRows(missing, auraTok, maxN)
+    end
   elseif type(unit) == "string" then
     D.lastPaintDebug.tgtSrc = 0
     D.lastPaintDebug.harv = 0
