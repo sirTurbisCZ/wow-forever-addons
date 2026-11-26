@@ -209,8 +209,22 @@ local function QueryAddonMetadataVersion(addon)
   return nil
 end
 
+--- Max of in-memory Config, TOC metadata, and Interface AddOns file parse (every call).
+function Mod.SyncRuntimeVersionFromInterface()
+  local mem = tostring((Plateband.Config and Plateband.Config.VERSION) or (ns.Config and ns.Config.VERSION) or "?")
+  local metaPb = QueryAddonMetadataVersion(PLATEBAND_TOC)
+  local diskCfg = ReadInterfaceAddonVersion({ PB_CFG_FILE, PB_CFG_BS })
+  local diskToc = ReadInterfaceAddonVersion({ PB_TOC_FILE, PB_TOC_BS })
+  local best = BestVersion(mem, metaPb, diskCfg, diskToc) or mem
+  if Plateband.Config and best and tostring(best) ~= "" then
+    Plateband.Config.VERSION = best
+  end
+  return best, mem, diskCfg, diskToc, metaPb
+end
+
 --- Same strings as chat `loaded v%s` — always live `Plateband.Config` / `ForeverErrorLog.Config`.
 function Mod.ChatLoadedVersions()
+  pcall(Mod.SyncRuntimeVersionFromInterface)
   local pbVer = tostring((Plateband.Config and Plateband.Config.VERSION) or (ns.Config and ns.Config.VERSION) or "?")
   local feVer = "?"
   if C_AddOns and C_AddOns.LoadAddOn then
@@ -976,7 +990,10 @@ function Mod.BuildChatTruthLine(src, load, seq)
   load = tostring(load or "reload")
   seq = tonumber(seq) or 0
   local pbVer, feVer = Mod.ChatLoadedVersions()
-  local pbMeta, feMeta = pbVer, feVer
+  local diskPb = ReadInterfaceAddonVersion({ PB_TOC_FILE, PB_TOC_BS, PB_CFG_FILE, PB_CFG_BS }) or pbVer
+  local diskFe = ReadInterfaceAddonVersion({ FE_TOC_FILE, FE_TOC_BS, FE_CFG_FILE, FE_CFG_BS }) or feVer
+  local pbMeta = QueryAddonMetadataVersion(PLATEBAND_TOC) or pbVer
+  local feMeta = QueryAddonMetadataVersion(FELOG_TOC) or feVer
   return string.format(
     "live_ver=%s plateband_ver=%s felog_ver=%s seq=%s src=%s load=%s t=%s feed=pb_bridge interface_pb=%s interface_fe=%s meta_pb=%s meta_fe=%s",
     pbVer,
@@ -986,8 +1003,8 @@ function Mod.BuildChatTruthLine(src, load, seq)
     src,
     load,
     tostring(Now()),
-    pbVer,
-    feVer,
+    diskPb,
+    diskFe,
     pbMeta,
     feMeta
   )
@@ -1258,8 +1275,13 @@ end
 --- Runtime stamp — every load (login + /reload); SV + Logs before WTF flush.
 function Mod.RecordChatLoaded(src)
   src = tostring(src or "login")
-  local ver = tostring((Plateband.Config and Plateband.Config.VERSION) or (ns.Config and ns.Config.VERSION) or "?")
+  local synced, mem, diskCfg, diskToc, metaPb = Mod.SyncRuntimeVersionFromInterface()
+  local ver = tostring(synced or (Plateband.Config and Plateband.Config.VERSION) or "?")
   local db = ns.Config.EnsureDB()
+  if tostring(db.configChatVer or "") ~= ver then
+    db.exportLoginDiskVer = nil
+    db.ioExportDiskTried = nil
+  end
   db.configChatVer = ver
   db.ioExportDiskLine = nil
   db.ioExportDiskTried = nil
@@ -1277,6 +1299,16 @@ function Mod.RecordChatLoaded(src)
     src
   )
   pcall(Mod.ProbeAgentIo)
+  Mod.Append(
+    string.format(
+      "LOAD_EVIDENCE mem=%s disk_cfg=%s disk_toc=%s meta=%s synced=%s",
+      tostring(mem or "?"),
+      tostring(diskCfg or "-"),
+      tostring(diskToc or "-"),
+      tostring(metaPb or "-"),
+      ver
+    )
+  )
   Mod.Append(string.format("CHAT_LOADED ver=%s src=%s", ver, src))
   Mod.Append(string.format("RUNTIME_VER ver=%s src=chat load=%s", ver, src))
   pcall(Mod.TryWriteRuntimeVerFile, ver)
@@ -1495,7 +1527,8 @@ function Mod.BeginSession()
   local agentIo = Mod.ProbeAgentIo()
   pcall(Mod.ProbeFile)
   log.fileOk = (agentIo or fileOk) and true or false
-  local ver = tostring(ns.Config.VERSION)
+  pcall(Mod.SyncRuntimeVersionFromInterface)
+  local ver = tostring((Plateband.Config and Plateband.Config.VERSION) or (ns.Config and ns.Config.VERSION) or "?")
   local header = string.format(
     "SESSION_START ver=%s t=%s file=%s silent=1",
     ver,

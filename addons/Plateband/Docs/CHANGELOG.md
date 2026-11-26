@@ -1,5 +1,12 @@
 # Plateband changelog
 
+## Release 0.3.10 — CHAT_LOADED disk version sync
+
+- **`SyncRuntimeVersionFromInterface`** on session start + CHAT_LOADED: max(mem, TOC meta, parsed Config.lua / Plateband.toc on disk).
+- **`LOAD_EVIDENCE`** session line (mem, disk_cfg, disk_toc, meta, synced) for load-path proofs.
+- **`interface_pb` / `interface_fe`** in chatTruthLine from disk file parse (not host mirror).
+- Clears **`exportLoginDiskVer`** when synced ver changes so login disk export retries.
+
 ## Release 0.3.09 — friend WS paint anti-flake
 
 - No **`painted=0` PAINT** while friend harmful API live (`miss>0` suppress + hold prior `fb._painted`).
