@@ -1,5 +1,9 @@
 # Plateband changelog
 
+## Release 0.2.96 — sustained L1: OnUpdate scheduler only
+
+- Dropped **`C_Timer.NewTicker`** (stalls on Forever); **`PlatebandExportDriver`** OnUpdate → **`PulseExportDiskTick`** → **`C_Timer.After(0)`** io; 1 write / 2s.
+
 ## Release 0.2.95 — ongoing L1 pulse (≤2s mtime)
 
 - **`PulseExportDiskTick`** — `C_Timer.NewTicker(2s)` + deferred disk write (not OnUpdate `io`); 1 write / 2s throttle.

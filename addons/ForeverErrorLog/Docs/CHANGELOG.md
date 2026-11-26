@@ -1,5 +1,9 @@
 # ForeverErrorLog changelog
 
+## Release 0.1.25 — sustained export via Plateband OnUpdate driver
+
+- FElog OnUpdate still nudges **`PulseExportDiskTick`**; primary **`PlatebandExportDriver`** frame.
+
 ## Release 0.1.24 — FElog driver → `PulseExportDiskTick`
 
 - Ongoing export uses Plateband deferred 2s tick (fresh L1 mtime).
