@@ -233,38 +233,26 @@ local function TryExportDiskLine(line)
   return wrote
 end
 
-local function RefreshExportPulseLine()
-  local db = ns.Config.EnsureDB()
-  local seq = tonumber(db.exportPulseSeq) or 0
-  local line = Mod.BuildChatTruthLine("EXPORT_PULSE", "pulse", seq)
-  db.chatTruthLine = line
-  db.chatTruthAt = Now()
-  return line
-end
-
+--- Single EXPORT_PULSE write: fresh t=, 1 write / 2s (no nested C_Timer — idle stall).
 local function DoExportDiskPulse()
   if not ExportDiskThrottleOk() then
     return false
   end
-  local line = RefreshExportPulseLine()
+  local db = ns.Config.EnsureDB()
+  db.exportPulseSeq = (tonumber(db.exportPulseSeq) or 0) + 1
+  local line = Mod.BuildChatTruthLine("EXPORT_PULSE", "pulse", db.exportPulseSeq)
+  db.chatTruthLine = line
+  db.chatTruthAt = Now()
+  local log = EnsureLogTable()
+  log.export = line
   return TryExportDiskLine(line)
 end
 
---- fromEvent=true: disk io in handler (Forever allows). OnUpdate: defer + event backup.
-function Mod.PulseExportDiskTick(fromEvent)
-  BumpChatTruthSV("EXPORT_PULSE", "pulse")
-  if not ExportDiskThrottleOk() then
-    return false
-  end
-  if fromEvent then
-    return DoExportDiskPulse()
-  end
-  if C_Timer and C_Timer.After then
-    C_Timer.After(0.05, function()
-      pcall(DoExportDiskPulse)
-    end)
-    return true
-  end
+function Mod.ExportDiskPulse()
+  return DoExportDiskPulse()
+end
+
+function Mod.PulseExportDiskTick(_fromEvent)
   return DoExportDiskPulse()
 end
 
@@ -292,8 +280,10 @@ function Mod.FlushChatLoadedExport(loadKind)
   end
   if C_Timer and C_Timer.After then
     C_Timer.After(1.95, function()
-      pcall(Mod.PulseExportDiskTick, true)
+      pcall(DoExportDiskPulse)
     end)
+  else
+    pcall(DoExportDiskPulse)
   end
   return wrote
 end
@@ -734,21 +724,30 @@ local EXPORT_PULSE_EVENTS = {
   "BAG_UPDATE_DELAYED",
 }
 
+local function EnsureExportDriverTicker()
+  if exportTruthTicker or not C_Timer or not C_Timer.NewTicker then
+    return false
+  end
+  exportTruthTicker = C_Timer.NewTicker(EXPORT_TICK, function()
+    pcall(DoExportDiskPulse)
+  end)
+  return true
+end
+
 local function EnsureExportDriverFrame()
   if exportDriverFrame or not CreateFrame or not GetTime then
     return
   end
   local parent = WorldFrame or UIParent
   exportDriverFrame = CreateFrame("Frame", "PlatebandExportDriver", parent)
-  if not exportEventsRegistered then
-    exportEventsRegistered = true
-    for i = 1, #EXPORT_PULSE_EVENTS do
-      pcall(exportDriverFrame.RegisterEvent, exportDriverFrame, EXPORT_PULSE_EVENTS[i])
-    end
-    exportDriverFrame:SetScript("OnEvent", function()
-      pcall(Mod.PulseExportDiskTick, true)
-    end)
+  exportEventsRegistered = true
+  for i = 1, #EXPORT_PULSE_EVENTS do
+    pcall(exportDriverFrame.RegisterEvent, exportDriverFrame, EXPORT_PULSE_EVENTS[i])
   end
+  pcall(exportDriverFrame.RegisterUnitEvent, exportDriverFrame, "UNIT_AURA", "player")
+  exportDriverFrame:SetScript("OnEvent", function()
+    pcall(DoExportDiskPulse)
+  end)
   local lastGt = GetTime()
   exportDriverFrame:SetScript("OnUpdate", function()
     local gt = GetTime()
@@ -756,7 +755,7 @@ local function EnsureExportDriverFrame()
       return
     end
     lastGt = gt
-    pcall(Mod.PulseExportDiskTick, false)
+    pcall(DoExportDiskPulse)
   end)
   pcall(exportDriverFrame.Show, exportDriverFrame)
 end
@@ -800,7 +799,7 @@ function Mod.ScheduleExportBurst()
   exportBurstAt = now
   if C_Timer and C_Timer.After then
     C_Timer.After(1.95, function()
-      pcall(Mod.ForceDiskExportL1, false)
+      pcall(DoExportDiskPulse)
     end)
   end
 end
@@ -821,8 +820,9 @@ function Mod.ArmExportTruthPulse(force)
   if force then
     Mod.ScheduleExportBurst()
   end
+  EnsureExportDriverTicker()
   EnsureExportDriverFrame()
-  pcall(Mod.PulseExportDiskTick)
+  pcall(DoExportDiskPulse)
 end
 
 function Mod.EnsureExportTruthTicker(force)
@@ -979,7 +979,7 @@ function Mod.RecordChatLoaded(src)
     pcall(ForeverErrorLog.NotifyRuntime, "Plateband", ver, src, "CHAT_LOADED")
   end
   pcall(Mod.FlushChatLoadedExport, src)
-  pcall(Mod.PulseExportDiskTick, true)
+  pcall(DoExportDiskPulse)
   Mod.ScheduleExportBurst()
   pcall(Mod.PublishChatTruthHead, "CHAT_LOADED", src, 0)
   Mod.ArmExportTruthPulse(true)
@@ -1320,7 +1320,7 @@ if CreateFrame then
       if event == "PLAYER_ENTERING_WORLD" then
         EnsureExportDriverFrame()
         pcall(Mod.FlushChatLoadedExport, "login")
-        pcall(Mod.PulseExportDiskTick)
+        pcall(DoExportDiskPulse)
       end
     end
   end)

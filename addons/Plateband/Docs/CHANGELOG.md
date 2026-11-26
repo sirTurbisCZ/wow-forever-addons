@@ -1,5 +1,9 @@
 # Plateband changelog
 
+## Release 0.2.98 — idle EXPORT_PULSE every 2s (direct io)
+
+- **`DoExportDiskPulse`** — no nested **`C_Timer.After`** (idle stall); **`NewTicker(2s)`** + OnUpdate + **`UNIT_AURA`** direct single-path write; throttle 1/2s.
+
 ## Release 0.2.97 — event-driven export io + flush truth
 
 - **`PulseExportDiskTick(true)`** on movement/regen/zone/bag (io allowed); OnUpdate only defers.

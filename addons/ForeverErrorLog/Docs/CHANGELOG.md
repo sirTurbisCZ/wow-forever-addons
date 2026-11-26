@@ -1,5 +1,7 @@
 # ForeverErrorLog changelog
 
+## Release 0.1.27 — relies on Plateband `DoExportDiskPulse` idle tick
+
 ## Release 0.1.26 — export pulse from events
 
 - Felog driver calls **`PulseExportDiskTick(true)`**.
