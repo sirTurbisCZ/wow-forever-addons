@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## Release 0.3.24 — friend gap row above name (not below bar)
+
+- **Layout:** `MergeRowOffY` **never** applies `MERGE_ROW_BELOW_BAR` on party/friendly plates — gap icons align to **DebuffList above name** (same as mob plates); native-button delta only when live.
+- **PAINT:** `gapRow=friendAbove|hostile` for agent layout checks.
+
 ## Release 0.3.23 — debuff row vertical gap (Renia-class)
 
 - **Layout:** `MergeRowOffY` — sample live native button bottom vs `DebuffList` / drop **`MERGE_ROW_BELOW_BAR`** when list bottom is flush with health bar (gap icons no longer glued to bar edge).

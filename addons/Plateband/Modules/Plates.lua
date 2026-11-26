@@ -2270,10 +2270,10 @@ local function LayoutGapIconsInFallback(mergeFb, painted, sz, pad)
   end
 end
 
---- Vertical offset so gap icons share native debuff row (not glued to health-bar bottom).
-local function MergeRowOffY(plate, listFrame)
+--- Vertical offset so gap icons share native debuff row (above name — same band as DebuffList).
+local function MergeRowOffY(plate, listFrame, friendLayout)
   if not plate then
-    return -PB.MERGE_ROW_BELOW_BAR
+    return 0
   end
   local ref
   local buttons = {}
@@ -2296,6 +2296,10 @@ local function MergeRowOffY(plate, listFrame)
         return dy
       end
     end
+    return 0
+  end
+  -- Party/friendly harmful row sits above the name like hostile plates — never drop under the bar (0.3.24).
+  if friendLayout then
     return 0
   end
   local bar = HealthBar(plate)
@@ -2384,9 +2388,10 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
   end
   local af = plate and plate.UnitFrame and plate.UnitFrame.AurasFrame
   local laneFrame = NativeDebuffList(plate) or af
-  local offY = MergeRowOffY(plate, laneFrame)
+  local offY = MergeRowOffY(plate, laneFrame, friendLayout)
   if lastPaintDebug then
     lastPaintDebug.gapOffY = offY
+    lastPaintDebug.gapRow = friendLayout and "friendAbove" or "hostile"
   end
   if not friendLayout then
     local right = NativeBandRightAnchor(plate)
