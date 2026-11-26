@@ -272,6 +272,7 @@ end
 function Mod.FlushChatLoadedExport(loadKind)
   loadKind = tostring(loadKind or "reload")
   exportDiskLastGt = 0
+  pcall(Mod.ResetExportTimeAnchor)
   local line = BumpChatTruthSV("CHAT_LOADED", loadKind)
   local wrote = TryExportDiskLine(line)
   if not wrote and C_Timer and C_Timer.After then
@@ -361,9 +362,15 @@ local function Trim(s, maxLen)
   return s
 end
 
-local function UnixTs()
+local function RawWallEpoch()
   if C_Date and C_Date.GetServerTime then
     local ok, n = pcall(C_Date.GetServerTime)
+    if ok and type(n) == "number" and n > 0 then
+      return math.floor(n)
+    end
+  end
+  if os and os.time then
+    local ok, n = pcall(os.time)
     if ok and type(n) == "number" and n > 0 then
       return math.floor(n)
     end
@@ -374,8 +381,25 @@ local function UnixTs()
   return 0
 end
 
+--- Forever: `time()`/`GetServerTime` often frozen at session load — advance via `GetTime()` delta.
+local function UnixTs()
+  local db = ns.Config.EnsureDB()
+  local base = tonumber(db.exportUnixEpoch)
+  local gt0 = tonumber(db.exportLoadGt)
+  if type(base) == "number" and base > 0 and GetTime and type(gt0) == "number" then
+    return math.floor(base + (GetTime() - gt0))
+  end
+  return RawWallEpoch()
+end
+
 local function Now()
   return UnixTs()
+end
+
+function Mod.ResetExportTimeAnchor()
+  local db = ns.Config.EnsureDB()
+  db.exportUnixEpoch = RawWallEpoch()
+  db.exportLoadGt = (GetTime and GetTime()) or 0
 end
 
 local function StampExportLineT(line)
@@ -993,6 +1017,7 @@ function Mod.RecordChatLoaded(src)
   local ver = tostring(Plateband.Config and Plateband.Config.VERSION or "?")
   local db = ns.Config.EnsureDB()
   db.ioExportDiskLine = nil
+  pcall(Mod.ResetExportTimeAnchor)
   local at = Now()
   db.runtimeVer = { ver = ver, at = at, src = "chat", load = src }
   db.liveHead = string.format(
