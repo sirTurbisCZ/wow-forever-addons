@@ -311,6 +311,14 @@ if not plate then
     local sticky = D.gapSticky[unit]
     local now = GetTime and GetTime() or 0
     local heldN = held and tonumber(held._painted) or 0
+    if heldN > 0 and (not sticky or type(sticky.icons) ~= "table" or #sticky.icons == 0) then
+      D.gapSticky[unit] = nil
+      D.ClearFallback(unit, false)
+      D.lastPaintDebug.painted = 0
+      D.lastPaintDebug.miss = 0
+      D.SilentTracePaint("paint_stale_cleared", unit, plate)
+      return 0
+    end
     if heldN > 0 and sticky and type(sticky.icons) == "table" and #sticky.icons > 0 then
       local auraUnit = D.AuraUnitForPlate(unit, plate, useTargetSrc, partyAuraTok)
       local stickyLive = {}
@@ -350,6 +358,18 @@ if not plate then
         end
       elseif #stickyLive > 0 then
         sticky.icons = stickyLive
+        local stillLive, liveN = D.StickyRowsLiveOnUnit(sticky.icons, auraUnit)
+        if type(auraUnit) == "string" then
+          local slots = D.CountHarmfulAuraSlots(auraUnit) or 0
+          if not stillLive or liveN == 0 or (not friendPlate and not partyMerge and slots == 0) then
+            D.gapSticky[unit] = nil
+            D.ClearFallback(unit, false)
+            D.lastPaintDebug.painted = 0
+            D.lastPaintDebug.miss = 0
+            D.SilentTracePaint("paint_stale_cleared", unit, plate)
+            return 0
+          end
+        end
         local budget = D.GapStickyBudget(friendPlate or partyMerge)
         if type(sticky.at) == "number" and (now - sticky.at) <= budget then
           local heldCd = 0
@@ -358,11 +378,16 @@ if not plate then
             heldN = n or 0
             heldCd = cdn or 0
           end)
-          if heldN <= 0 then
+          stillLive, liveN = D.StickyRowsLiveOnUnit(sticky.icons, auraUnit)
+          if heldN <= 0 or not stillLive then
             D.gapSticky[unit] = nil
             D.lastPaintDebug.painted = 0
             D.ClearFallback(unit, false)
-            D.SilentTracePaint("paint_hold_expired", unit, plate)
+            if heldN <= 0 then
+              D.SilentTracePaint("paint_hold_expired", unit, plate)
+            else
+              D.SilentTracePaint("paint_stale_cleared", unit, plate)
+            end
             return 0
           end
           sticky.at = now

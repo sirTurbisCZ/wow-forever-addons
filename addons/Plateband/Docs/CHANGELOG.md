@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.3.20 — sticky expire → paint_stale_cleared
+
+- **`GapAuraLive`:** missing `auraInstanceID` on unit → false (no spellId fallback ghost).
+- **`paint_hold`:** only when `StickyRowsLiveOnUnit` + hostile `CountHarmfulAuraSlots>0`; held row without sticky → clear.
+- Post-refresh re-check; dead sticky → `paint_stale_cleared` not `paint_hold`.
+
 ## Release 0.3.19 — merge-design sibling layout (Wyvern band)
 
 - **Parent:** gap row on `AurasFrame`/`UnitFrame` only — **not** a child of `DebuffList` (Forever clip/wrong row).

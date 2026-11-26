@@ -3113,6 +3113,7 @@ GapAuraLive = function(entry, unitToken)
       end
       return true
     end
+    return false
   end
   if entry.spellId and unitToken and C_UnitAuras and C_UnitAuras.GetAuraDataBySpellID then
     local ok, data = pcall(C_UnitAuras.GetAuraDataBySpellID, unitToken, entry.spellId)
@@ -3120,6 +3121,12 @@ GapAuraLive = function(entry, unitToken)
       local e2 = data.expirationTime
       if type(e2) == "number" and not IsSecret(e2) and e2 > 0 and now >= e2 then
         return false
+      end
+      if type(e2) == "number" and not IsSecret(e2) and e2 == 0 then
+        return true
+      end
+      if type(e2) == "number" and not IsSecret(e2) and e2 > 0 then
+        return now < e2
       end
       return true
     end
@@ -3129,6 +3136,19 @@ GapAuraLive = function(entry, unitToken)
     return false
   end
   return false
+end
+
+StickyRowsLiveOnUnit = function(rows, unitToken)
+  if type(rows) ~= "table" or not unitToken then
+    return false, 0
+  end
+  local n = 0
+  for i = 1, #rows do
+    if GapAuraLive(rows[i], unitToken) then
+      n = n + 1
+    end
+  end
+  return n > 0, n
 end
 
 PruneInactiveGapRows = function(rows, unitToken, maxN)
@@ -4676,6 +4696,7 @@ Plateband.PlatesPaintDeps = {
     RememberGapSticky = RememberGapSticky,
     PlateUsesFriendlyHarmfulFilter = PlateUsesFriendlyHarmfulFilter,
     GapAuraLive = GapAuraLive,
+    StickyRowsLiveOnUnit = StickyRowsLiveOnUnit,
     RefreshHeldGapFallback = RefreshHeldGapFallback,
 }
 
