@@ -2,7 +2,7 @@
 
 Plateband = Plateband or {}
 
-local CURRENT_SCHEMA = 12
+local CURRENT_SCHEMA = 13
 local MAX_ERRORS = 40
 local MAX_MSG = 2000
 
@@ -12,7 +12,7 @@ local Config = Plateband.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.3.20"
+Config.VERSION = "0.3.21"
 
 local function ProfileDefaults()
   return {
@@ -27,6 +27,8 @@ local function ProfileDefaults()
     mergeMissing = true,
     -- 0.2.23: party/friend/player nameplates — same harmful merge as enemies.
     mergeFriendPlates = true,
+    -- 0.3.21: hide Well Fed / food / drink HELPFUL on party+friendly NP (not harmful WS row).
+    hideFriendlyFoodBuffs = true,
     watchOn = false,
     watchInterval = 2,
     autoDiag = true,
@@ -215,6 +217,15 @@ function Config.EnsureDB()
     end
     db.schemaVersion = 12
     from = 12
+  end
+
+  if from < 13 then
+    EnsureProfile(db)
+    if db.profile.hideFriendlyFoodBuffs == nil then
+      db.profile.hideFriendlyFoodBuffs = true
+    end
+    db.schemaVersion = 13
+    from = 13
   end
 
   EnsureProfile(db)

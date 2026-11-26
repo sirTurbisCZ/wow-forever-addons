@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## Release 0.3.21 — hide friendly food HELPFUL on NP
+
+- **`hideFriendlyFoodBuffs`** (default on, schema 13): hide **individual** native buff buttons (Well Fed / food / drink patterns) on party+friendly nameplates — **not** DebuffList/SetPoint; harmful row (e.g. WS) untouched.
+- **`SuppressFriendlyPlateConsumables`** after `EnsureNativeVisible` on overlay tick.
+
 ## Release 0.3.20 — sticky expire → paint_stale_cleared
 
 - **`GapAuraLive`:** missing `auraInstanceID` on unit → false (no spellId fallback ghost).

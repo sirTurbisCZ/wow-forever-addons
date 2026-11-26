@@ -14,6 +14,7 @@
 | **Never** `ClearAllPoints` / `SetPoint` on `UnitFrame.name` | 0.1.8–0.1.11 broke Forever plates |
 | **Never** `ClearAllPoints` / `SetPoint` / `Hide` / `SetAlpha(0)` on DebuffList | Forever FORBIDDEN |
 | **Never** parent plate band to `UIParent` / HUD | UI vanish incident |
+| **0.3.21** may `Hide()` **individual** friendly HELPFUL consumable aura buttons only (food/Well Fed) — not DebuffList frame |
 | **Never** mutate TargetFrame / TF buttons (read-only scrape OK) | Incident + taint |
 | **No CLEU** | Forever policy |
 

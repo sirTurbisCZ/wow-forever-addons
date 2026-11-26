@@ -1307,6 +1307,148 @@ PlateButtonHarmful = function(btn)
   return true
 end
 
+local FRIENDLY_CONSUMABLE_NAME = {
+  "well fed",
+  "food",
+  "drink",
+  "refreshment",
+  "feast",
+  "coffee",
+  "conjured water",
+  "conjured muffin",
+  "conjured bread",
+  "dragonbreath chili",
+  "bristle whistle",
+  "fizzled fuel",
+}
+
+local function AuraNameLooksConsumable(name)
+  if type(name) ~= "string" or name == "" or IsSecret(name) then
+    return false
+  end
+  local l = name:lower()
+  for i = 1, #FRIENDLY_CONSUMABLE_NAME do
+    if l:find(FRIENDLY_CONSUMABLE_NAME[i], 1, true) then
+      return true
+    end
+  end
+  return false
+end
+
+IsFriendlyConsumableAura = function(data)
+  if type(data) ~= "table" then
+    return false
+  end
+  if data.isHarmful == true then
+    return false
+  end
+  if data.isHelpful == false then
+    return false
+  end
+  if AuraNameLooksConsumable(data.name) then
+    return true
+  end
+  local spellId = data.spellId
+  if spellId and C_Spell and C_Spell.GetSpellName then
+    local sn
+    pcall(function()
+      sn = C_Spell.GetSpellName(spellId)
+    end)
+    if AuraNameLooksConsumable(sn) then
+      return true
+    end
+  end
+  return false
+end
+
+PlateShouldHideFriendlyConsumables = function(plate)
+  if not plate or not MergeFriendPlatesEnabled() then
+    return false
+  end
+  local p = Profile()
+  if p.hideFriendlyFoodBuffs == false then
+    return false
+  end
+  if ResolvePartyTokenForPlate(plate) then
+    return true
+  end
+  if PlateUsesFriendlyHarmfulFilter(plate) then
+    return true
+  end
+  local unit = UnitTokenFromPlate(plate)
+  if unit then
+    local friendly = false
+    pcall(function()
+      if UnitIsFriend and UnitIsFriend("player", unit) then
+        friendly = true
+      end
+    end)
+    if friendly then
+      return true
+    end
+  end
+  return false
+end
+
+SuppressFriendlyPlateConsumables = function(plate)
+  if not PlateShouldHideFriendlyConsumables(plate) then
+    return 0
+  end
+  local hidden = 0
+  local function maybeHide(btn)
+    if not btn or not btn.Hide then
+      return
+    end
+    local data
+    pcall(function()
+      if btn.GetAuraInstance then
+        local _, d = btn:GetAuraInstance()
+        data = d
+      end
+    end)
+    if not IsFriendlyConsumableAura(data) then
+      return
+    end
+    pcall(function()
+      if SafeShown(btn) then
+        btn:Hide()
+        hidden = hidden + 1
+      end
+    end)
+  end
+  local buffs = {}
+  CollectPlateBuffButtons(plate, buffs, MaxIcons())
+  for i = 1, #buffs do
+    maybeHide(buffs[i])
+  end
+  local pools = PlateAuraPools(plate)
+  if pools then
+    local poolBtns = {}
+    HarvestAuraPoolButtons(pools, poolBtns, MaxIcons() * 2)
+    for i = 1, #poolBtns do
+      local btn = poolBtns[i]
+      if btn and not IsLikelyBuffFrame(btn) then
+        local data
+        pcall(function()
+          if btn.GetAuraInstance then
+            local _, d = btn:GetAuraInstance()
+            data = d
+          end
+        end)
+        if type(data) == "table" and data.isHelpful and not data.isHarmful then
+          maybeHide(btn)
+        end
+      else
+        maybeHide(btn)
+      end
+    end
+  end
+  if hidden > 0 and lastPaintDebug then
+    lastPaintDebug.foodHide = hidden
+  end
+  return hidden
+end
+
 FilterPlateHarmfulButtons = function(buttons, maxN)
   if type(buttons) ~= "table" then
     return
@@ -4747,6 +4889,7 @@ UpdateOverlay = function(unit, plate)
 
   overlayUpdates = overlayUpdates + 1
   EnsureNativeVisible(plate)
+  pcall(SuppressFriendlyPlateConsumables, plate)
 
   -- Never use full AC overlay paint (duplicates personal / covers name).
   local holder = overlays[unit]
