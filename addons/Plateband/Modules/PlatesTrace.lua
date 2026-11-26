@@ -41,7 +41,7 @@ local function BuildPaintTraceLine(why, unit, plate)
     gapW = (tonumber(lpd.gapSz) or 18) * (tonumber(lpd.gapSpread) or 0)
   end
   return string.format(
-    "PAINT ver=%s why=%s unit=%s tgt=%s merge=%s native=%s nativeVis=%s harv=%s miss=%s painted=%s tgtSrc=%s tfRows=%s friend=%s party=%s gapW=%s gapOff=%s gapBand=%s",
+    "PAINT ver=%s why=%s unit=%s tgt=%s merge=%s native=%s nativeVis=%s harv=%s miss=%s painted=%s tgtSrc=%s tfRows=%s friend=%s party=%s gapW=%s gapOff=%s gapOffY=%s gapBand=%s",
     tostring(ver),
     tostring(why or "?"),
     tostring(unit),
@@ -58,6 +58,7 @@ local function BuildPaintTraceLine(why, unit, plate)
     tostring(lpd.partyTok or "?"),
     tostring(gapW or "?"),
     tostring(lpd.gapOffX or "?"),
+    tostring(lpd.gapOffY or "?"),
     tostring(lpd.gapBand or "?")
   )
 end

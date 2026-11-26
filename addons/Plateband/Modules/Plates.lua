@@ -15,8 +15,10 @@ ns.Modules.Plates = Mod
 
 local PB = {
   AC_GROUP = "platebandHarmful",
-  OVERLAY_PAD = 2,
+  OVERLAY_PAD = 3,
   OVERLAY_GAP_ABOVE = 2,
+  -- Gap row below health bar when DebuffList BOTTOM is flush with bar (Forever party plates).
+  MERGE_ROW_BELOW_BAR = 4,
   GAP_CD_TICK_SEC = 3.5,
   FULL_REFRESH_DEBOUNCE = 0.75,
   PAINT_TARGET_SEC = 0.2,
@@ -2268,6 +2270,50 @@ local function LayoutGapIconsInFallback(mergeFb, painted, sz, pad)
   end
 end
 
+--- Vertical offset so gap icons share native debuff row (not glued to health-bar bottom).
+local function MergeRowOffY(plate, listFrame)
+  if not plate then
+    return -PB.MERGE_ROW_BELOW_BAR
+  end
+  local ref
+  local buttons = {}
+  CollectPlateDebuffButtons(plate, buttons, MaxIcons())
+  for i = 1, #buttons do
+    if NativeAuraButtonLive(buttons[i]) then
+      ref = buttons[i]
+      break
+    end
+  end
+  if ref and listFrame then
+    local listB, refB
+    pcall(function()
+      listB = listFrame:GetBottom()
+      refB = ref:GetBottom()
+    end)
+    if type(listB) == "number" and type(refB) == "number" and not IsSecret(listB) and not IsSecret(refB) then
+      local dy = refB - listB
+      if math.abs(dy) > 0.05 then
+        return dy
+      end
+    end
+    return 0
+  end
+  local bar = HealthBar(plate)
+  if bar and listFrame then
+    local barB, listB
+    pcall(function()
+      barB = bar:GetBottom()
+      listB = listFrame:GetBottom()
+    end)
+    if type(barB) == "number" and type(listB) == "number" and not IsSecret(barB) and not IsSecret(listB) then
+      if listB >= barB - 2 then
+        return -PB.MERGE_ROW_BELOW_BAR
+      end
+    end
+  end
+  return -PB.MERGE_ROW_BELOW_BAR
+end
+
 --- Opt-in merge layout: only move Plateband fallback frame — never name / DebuffList.
 LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
   painted = tonumber(painted) or 0
@@ -2337,12 +2383,17 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
     LayoutGapIconsInFallback(mergeFb, painted, sz, pad)
   end
   local af = plate and plate.UnitFrame and plate.UnitFrame.AurasFrame
+  local laneFrame = NativeDebuffList(plate) or af
+  local offY = MergeRowOffY(plate, laneFrame)
+  if lastPaintDebug then
+    lastPaintDebug.gapOffY = offY
+  end
   if not friendLayout then
     local right = NativeBandRightAnchor(plate)
     if right then
       finishAnchor(function()
         mergeFb:SetPoint("LEFT", right, "RIGHT", pad, 0)
-        mergeFb:SetPoint("BOTTOM", right, "BOTTOM", 0, 0)
+        mergeFb:SetPoint("BOTTOM", right, "BOTTOM", 0, offY)
       end)
       if lastPaintDebug then
         lastPaintDebug.gapBand = "rightNative"
@@ -2352,7 +2403,7 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
     local deb = NativeDebuffList(plate)
     if deb and not FrameIsGlobalChrome(deb) then
       finishAnchor(function()
-        mergeFb:SetPoint("BOTTOMLEFT", deb, "BOTTOMLEFT", offX, 0)
+        mergeFb:SetPoint("BOTTOMLEFT", deb, "BOTTOMLEFT", offX, offY)
       end)
       if lastPaintDebug then
         lastPaintDebug.gapBand = "DebuffList"
@@ -2361,7 +2412,7 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
     end
     if af and not FrameIsGlobalChrome(af) then
       finishAnchor(function()
-        mergeFb:SetPoint("BOTTOMLEFT", af, "BOTTOMLEFT", offX, 0)
+        mergeFb:SetPoint("BOTTOMLEFT", af, "BOTTOMLEFT", offX, offY)
       end)
       if lastPaintDebug then
         lastPaintDebug.gapBand = "AurasFrame"
@@ -2374,13 +2425,13 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
   if right then
     finishAnchor(function()
       mergeFb:SetPoint("LEFT", right, "RIGHT", pad, 0)
-      mergeFb:SetPoint("BOTTOM", right, "BOTTOM", 0, 0)
+      mergeFb:SetPoint("BOTTOM", right, "BOTTOM", 0, offY)
     end)
     return
   end
   if af and not FrameIsGlobalChrome(af) then
     finishAnchor(function()
-      mergeFb:SetPoint("BOTTOMLEFT", af, "BOTTOMLEFT", offX, 0)
+      mergeFb:SetPoint("BOTTOMLEFT", af, "BOTTOMLEFT", offX, offY)
     end)
     return
   end

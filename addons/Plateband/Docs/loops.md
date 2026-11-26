@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.3.22** (SV-primary telemetry; reload = TOC only)
+Version: **0.3.23** (SV-primary telemetry; reload = TOC only)
 
 ## Version / config truth (agent feed)
 
@@ -42,6 +42,7 @@ flowchart TD
   gate -->|PlateMatchesTarget OR IsTargetPlate| tf[CollectTargetHarmfulRows tgtSrc=1]
   gate -->|other plate while HasTarget| unit[nameplate unit mirror tgtSrc=0]
   tf --> parity[ReconcileTfHarmfulCoverage + ForceFill]
+  paint --> offy[MergeRowOffY gapOffY native or below bar]
 ```
 
 ## Combat lockdown

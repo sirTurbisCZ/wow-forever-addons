@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.3.23 — debuff row vertical gap (Renia-class)
+
+- **Layout:** `MergeRowOffY` — sample live native button bottom vs `DebuffList` / drop **`MERGE_ROW_BELOW_BAR`** when list bottom is flush with health bar (gap icons no longer glued to bar edge).
+- **Spacing:** `OVERLAY_PAD` 3; `LayoutMergeBesideNative` applies `gapOffY` on `rightNative` / `DebuffList` / `AurasFrame` anchors.
+- **PAINT:** logs `gapOffY=` for agents.
+
 ## Release 0.3.22 — hostile target tgtSrc (IsTargetPlate)
 
 - **Regression:** `PaintMergeMissing` gated `useTargetSrc` on `PlateMatchesTarget` only and forced `useTargetSrc=false` whenever `HasTarget()` but plate frame ≠ `PlateFor("target")` — hostile PAINT could show `tgt=1` `tgtSrc=0` while still painting from unit token (skips TF parity / `ReconcileTfHarmfulCoverage`).
