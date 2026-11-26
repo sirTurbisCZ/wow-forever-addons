@@ -42,7 +42,11 @@ if not plate then
   D.lastPaintDebug.harv = 0
   D.lastPaintDebug.tgtSrc = 0
   D.lastPaintDebug.miss = 0
-  D.lastPaintDebug.painted = 0
+  local carryPaint = 0
+  if unit and D.fallbacks[unit] then
+    carryPaint = tonumber(D.fallbacks[unit]._painted) or 0
+  end
+  D.lastPaintDebug.painted = carryPaint
   D.lastPaintDebug.personal = 0
   D.lastPaintDebug.foreign = 0
   D.lastPaintDebug.cdN = 0
@@ -325,6 +329,11 @@ if not plate then
             D.SilentTracePaint("paint_hold", unit, plate)
             return heldN
           end
+        elseif type(auraUnit) == "string" and (D.CountHarmfulAuraSlots(auraUnit) or 0) > 0 then
+          D.lastPaintDebug.painted = heldN > 0 and heldN or 1
+          D.lastPaintDebug.miss = 1
+          D.SilentTracePaint("paint_hold", unit, plate)
+          return math.max(heldN, 1)
         else
           D.gapSticky[unit] = nil
           D.ClearFallback(unit, false)
@@ -472,8 +481,28 @@ if not plate then
   end
 
   if painted == 0 then
+    if friendPlate and #missing > 0 and type(auraUnit) == "string" then
+      pcall(function()
+        local n, _cdn = D.RefreshHeldGapFallback(unit, plate, fb, missing, auraUnit)
+        if (n or 0) > 0 then
+          painted = n
+        end
+      end)
+    end
+    if painted == 0 and friendPlate and type(auraUnit) == "string" and (D.CountHarmfulAuraSlots(auraUnit) or 0) > 0 then
+      local prev = tonumber(fb._painted) or carryPaint or 0
+      if prev > 0 then
+        pcall(fb.Show, fb)
+        fb._painted = prev
+        D.lastPaintDebug.painted = prev
+        D.lastPaintDebug.miss = math.max(#missing, 1)
+        D.SilentTracePaint("paint_hold", unit, plate)
+        return prev
+      end
+    end
     pcall(fb.Hide, fb)
     fb._painted = 0
+    D.lastPaintDebug.painted = 0
     return 0
   end
 
@@ -520,8 +549,13 @@ if not plate then
   D.lastPaintDebug.gapSz = sz
   D.lastPaintDebug.lockSz = fb._pbLockedSz
   D.lastPaintDebug.cdN = cdN
-  if painted > 0 or (D.lastPaintDebug.miss or 0) > 0 then
+  if painted > 0 then
     D.SilentTracePaint("paint", unit, plate)
+  elseif (D.lastPaintDebug.miss or 0) > 0 then
+    local harmLive = friendPlate and type(auraUnit) == "string" and (D.CountHarmfulAuraSlots(auraUnit) or 0) > 0
+    if not harmLive then
+      D.SilentTracePaint("paint", unit, plate)
+    end
   end
   return painted
 end

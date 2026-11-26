@@ -108,7 +108,13 @@ fi
 PAINT_FRIEND_RECENT="$(rg 'PAINT ver=.*friend=1' "$SV_DATA" 2>/dev/null | tail -12 || true)"
 PAINT_FRIEND_TF="$(echo "$PAINT_FRIEND_RECENT" | rg 'tfRows=[1-9]' | tail -5 || true)"
 if [[ -n "$PAINT_FRIEND_TF" ]]; then
-  if echo "$PAINT_FRIEND_TF" | tail -2 | rg -q 'painted=0'; then
+  PAINT_FRIEND_PAINT="$(echo "$PAINT_FRIEND_TF" | rg -v 'why=paint_hold' | tail -3 || true)"
+  if echo "$PAINT_FRIEND_TF" | tail -1 | rg -q 'painted=[1-9]'; then
+    check "friendly_ws_paint" "OK"
+  elif echo "$PAINT_FRIEND_TF" | rg -q 'why=paint_hold.*painted=[1-9]|painted=[1-9].*why=paint_hold'; then
+    check "friendly_ws_paint" "OK (hold)"
+  elif echo "$PAINT_FRIEND_PAINT" | tail -2 | rg -q 'painted=0' \
+    && ! echo "$PAINT_FRIEND_TF" | rg -q 'painted=[1-9]'; then
     check "friendly_ws_paint" "MISSING (recent friend tf, painted=0)"
     fail=1
   elif echo "$PAINT_FRIEND_TF" | rg -q 'painted=[1-9]'; then

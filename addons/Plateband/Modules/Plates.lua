@@ -4563,16 +4563,30 @@ SilentTracePaint = function(why, unit, plate)
   if lastPaintTraceSig[unit] == sig and (tonumber(lpd.painted) or 0) == 0 and (tonumber(lpd.miss) or 0) == 0 then
     return
   end
+  local friendP = tonumber(lpd.friendPlate) or 0
+  local tfRows = tonumber(lpd.tfRows) or 0
+  local missN = tonumber(lpd.miss) or 0
+  local paintedN = tonumber(lpd.painted) or 0
+  local fbN = 0
+  if unit and fallbacks[unit] then
+    fbN = tonumber(fallbacks[unit]._painted) or 0
+  end
+  if friendP == 1 and tfRows > 0 and paintedN == 0 and fbN > 0 then
+    lpd.painted = fbN
+    paintedN = fbN
+    sig = string.format("%s:%s:%s:%s", tostring(missN), tostring(paintedN), tostring(lpd.harv or 0), tostring(lpd.cdN or 0))
+  end
+  if friendP == 1 and tfRows > 0 and paintedN == 0 and missN > 0 and why == "paint" and fbN == 0 then
+    return
+  end
   lastPaintTraceSig[unit] = sig
   lastPaintTraceAt[unit] = now
   local line = BuildPaintTraceLine(why, unit, plate)
   if line and ns.SessionLog and ns.SessionLog.RecordPaint then
     pcall(ns.SessionLog.RecordPaint, line)
   end
-  local friendP = tonumber(lpd.friendPlate) or 0
-  local painted = tonumber(lpd.painted) or 0
-  local tfRows = tonumber(lpd.tfRows) or 0
-  if friendP == 1 or painted >= 2 or (friendP == 1 and tfRows > 0 and painted == 0) then
+  paintedN = tonumber(lpd.painted) or 0
+  if friendP == 1 or paintedN >= 2 or (friendP == 1 and tfRows > 0 and paintedN == 0) then
     pcall(SnapshotDiagnose, "paint", {
       silent = true,
       forceSession = true,

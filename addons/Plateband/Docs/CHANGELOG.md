@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.3.09 — friend WS paint anti-flake
+
+- No **`painted=0` PAINT** while friend harmful API live (`miss>0` suppress + hold prior `fb._painted`).
+- **`paint_stale_cleared`** blocked when `CountHarmfulAuraSlots` still positive; visual-fail → `RefreshHeldGapFallback`.
+- **`SilentTracePaint`**: friend `tfRows>0` coalesces with fallback count; drops spurious `paint`+`painted=0` lines.
+
 ## Release 0.3.08 — friend WS plate paint
 
 - **`EnsureChatTruthCurrent` (PEW):** syncs `chatTruthLine` + `configChatVer` + `CHAT_LOADED` export when runtime ≠ SV.
