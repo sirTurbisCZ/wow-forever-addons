@@ -2334,14 +2334,123 @@ local function LayoutGapIconsInFallback(mergeFb, painted, sz, pad)
 end
 
 FriendFallbackPaintParent = function(plate)
-  if plate and not FrameIsGlobalChrome(plate) then
-    return plate
-  end
+  -- UnitFrame above plate root — gap row must sit with name/AurasFrame z-order (0.3.26; not raw plate).
   local uf = plate and plate.UnitFrame
   if uf and not FrameIsGlobalChrome(uf) then
     return uf
   end
+  if plate and not FrameIsGlobalChrome(plate) then
+    return plate
+  end
   return FallbackPaintParent(plate)
+end
+
+local function UnclipAncestorChain(frame)
+  local node = frame
+  local guard = 0
+  while node and guard < 8 do
+    guard = guard + 1
+    pcall(function()
+      if node.SetClipsChildren then
+        node:SetClipsChildren(false)
+      end
+    end)
+    local parent
+    pcall(function()
+      parent = node:GetParent()
+    end)
+    if not parent or parent == UIParent or parent == WorldFrame then
+      break
+    end
+    node = parent
+  end
+end
+
+--- Friend nameTop row: show/alpha/level so PAINT painted≥1 is actually on screen.
+local function BoostFriendGapChrome(mergeFb, plate, painted)
+  painted = tonumber(painted) or 0
+  if not mergeFb or painted <= 0 or not plate then
+    return
+  end
+  pcall(function()
+    local uf = plate.UnitFrame
+    local nameFS = PlateNameFS(plate)
+    local af = uf and uf.AurasFrame
+    UnclipAncestorChain(mergeFb)
+    if plate.SetClipsChildren then
+      pcall(plate.SetClipsChildren, plate, false)
+    end
+    if uf and uf.SetClipsChildren then
+      pcall(uf.SetClipsChildren, uf, false)
+    end
+    if mergeFb.SetClipsChildren then
+      pcall(mergeFb.SetClipsChildren, mergeFb, false)
+    end
+    mergeFb:Show()
+    mergeFb:SetAlpha(1)
+    local strata = "MEDIUM"
+    local lvl = 50
+    if uf then
+      pcall(function()
+        strata = uf:GetFrameStrata() or strata
+        lvl = (uf:GetFrameLevel() or 0) + 25
+      end)
+    end
+    if nameFS then
+      pcall(function()
+        lvl = math.max(lvl, (nameFS:GetFrameLevel() or 0) + 4)
+        local ns = nameFS:GetFrameStrata()
+        if ns and ns ~= "BACKGROUND" and ns ~= "LOW" then
+          strata = ns
+        end
+      end)
+    end
+    if af then
+      pcall(function()
+        lvl = math.max(lvl, (af:GetFrameLevel() or 0) + 4)
+      end)
+    end
+    if strata == "BACKGROUND" or strata == "LOW" then
+      strata = "MEDIUM"
+    end
+    mergeFb:SetFrameStrata(strata)
+    mergeFb:SetFrameLevel(lvl)
+    for gi = 1, painted do
+      local slot = mergeFb.icons and mergeFb.icons[gi]
+      if slot then
+        pcall(function()
+          slot:SetAlpha(1)
+          slot:Show()
+          slot:SetFrameStrata(strata)
+          slot:SetFrameLevel(lvl + gi)
+          local ic = slot.icon or slot.Icon
+          if ic and ic.SetAlpha then
+            ic:SetAlpha(1)
+            ic:Show()
+          end
+          local cd = slot.cooldown
+          if cd and cd.SetAlpha and not (ic and ic.GetTexture and ic:GetTexture()) then
+            cd:SetAlpha(0)
+          end
+        end)
+      end
+    end
+    if lastPaintDebug then
+      local pn = "UnitFrame"
+      pcall(function()
+        local p = mergeFb:GetParent()
+        if p == plate then
+          pn = "plate"
+        elseif p and uf and p == uf then
+          pn = "UnitFrame"
+        elseif p then
+          pn = tostring(p:GetName() or "parent")
+        end
+      end)
+      lastPaintDebug.gapParent = pn
+      lastPaintDebug.gapLvl = lvl
+    end
+  end)
 end
 
 local function AuraChromeAboveName(plate, frame)
@@ -2482,27 +2591,7 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
     pcall(anchorFn)
     LayoutGapIconsInFallback(mergeFb, painted, sz, pad)
     if friendLayout then
-      pcall(function()
-        mergeFb:Show()
-        mergeFb:SetAlpha(1)
-        local uf = plate and plate.UnitFrame
-        local strata = "MEDIUM"
-        local lvl = 50
-        if uf then
-          pcall(function()
-            strata = uf:GetFrameStrata() or strata
-            lvl = (uf:GetFrameLevel() or 0) + 15
-          end)
-        end
-        mergeFb:SetFrameStrata(strata)
-        mergeFb:SetFrameLevel(lvl)
-        for gi = 1, painted do
-          local slot = mergeFb.icons and mergeFb.icons[gi]
-          if slot and SafeShown(slot) then
-            slot:SetFrameLevel(lvl + 1)
-          end
-        end
-      end)
+      BoostFriendGapChrome(mergeFb, plate, painted)
     end
   end
   local af = plate and plate.UnitFrame and plate.UnitFrame.AurasFrame
@@ -4882,6 +4971,20 @@ ApplyGapAuraVisual = function(button, entry, unitToken)
   if not visible and ok and type(entry) == "table" and (entry.icon or entry.spellId) then
     visible = true
   end
+  if visible then
+    pcall(function()
+      button:SetAlpha(1)
+      button:Show()
+      if tex then
+        if tex.SetAlpha then
+          tex:SetAlpha(1)
+        end
+        if tex.Show then
+          tex:Show()
+        end
+      end
+    end)
+  end
   return visible, cdSet
 end
 
@@ -4956,6 +5059,7 @@ Plateband.PlatesPaintDeps = {
     FallbackParent = FallbackParent,
     FallbackPaintParent = FallbackPaintParent,
     FriendFallbackPaintParent = FriendFallbackPaintParent,
+    BoostFriendGapChrome = BoostFriendGapChrome,
     NativeDebuffAnchorList = NativeDebuffAnchorList,
     EnsureNativeVisible = EnsureNativeVisible,
     RestoreNameShift = RestoreNameShift,

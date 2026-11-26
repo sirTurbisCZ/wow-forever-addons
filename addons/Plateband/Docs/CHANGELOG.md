@@ -1,5 +1,12 @@
 # Plateband changelog
 
+## Release 0.3.31 — friend gap visible above name (painted≥1 fix)
+
+- **`FriendFallbackPaintParent`:** prefer **`UnitFrame`** over raw **`plate`** (z-order with name/AurasFrame).
+- **`BoostFriendGapChrome`:** after `nameTop` layout — unclip ancestors, `Show`/`SetAlpha(1)`, frame level above name; PAINT `gapParent`/`gapLvl`.
+- **`ApplyGapAuraVisual` + paint loop:** force icon/button alpha + show when texture/aura binds succeed.
+- Bundles **0.3.30** reload start + **0.3.29** SV truth + **0.3.28** friend harvest.
+
 ## Release 0.3.30 — emergency: plate hooks after /reload
 
 - **`Core`:** `/reload` never fired `PLAYER_LOGIN` — **`ApplyModuleState`** (Plates.Start) now runs on **ADDON_LOADED** when `IsLoggedIn()` and again on **PLAYER_ENTERING_WORLD** + **RefreshAll** (restores native + merge paint).

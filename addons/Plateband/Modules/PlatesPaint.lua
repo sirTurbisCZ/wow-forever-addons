@@ -551,7 +551,14 @@ if not plate then
         cdN = cdN + 1
       end
       if okVis then
-        pcall(slot.Show, slot)
+        pcall(function()
+          slot:SetAlpha(1)
+          slot:Show()
+          local ic = slot.icon or slot.Icon
+          if ic and ic.SetAlpha then
+            ic:SetAlpha(1)
+          end
+        end)
       else
         pcall(slot.Hide, slot)
         painted = painted - 1
@@ -629,6 +636,9 @@ if not plate then
   fb._gapForeign = stats.foreign or 0
 
   pcall(D.LayoutMergeBesideNative, unit, plate, fb, painted)
+  if (friendPlate or partyMerge) and painted > 0 and D.BoostFriendGapChrome then
+    pcall(D.BoostFriendGapChrome, fb, plate, painted)
+  end
   if painted > 0 then
     local kept = {}
     for i = 1, painted do
