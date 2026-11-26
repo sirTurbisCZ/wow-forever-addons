@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.3.14 — friend NP harvest + PAINT samples
+
+- Re-resolve **`partyAuraTok`** for friend plates; harvest foreign gaps on party/raid token (not nameplate-only).
+- **`paint_sample` / `paint_gap`** PAINT lines when `friend=1` so agents see `tfRows`/miss without `painted>0`.
+- Card **`tfRows`** from harmful API when native/TF UI is empty.
+
 ## Release 0.3.13 — restore SilentTraceEnabled delegate
 
 - **`PlatesTrace.SilentTraceEnabled`** on deps; **`Plates.lua`** delegates (fixes `MaybeAutoDiagnose` @5119 nil after trace split).

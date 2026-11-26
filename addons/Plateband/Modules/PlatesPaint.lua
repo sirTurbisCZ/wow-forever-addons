@@ -38,6 +38,13 @@ if not plate then
   if partyMerge then
     friendPlate = true
   end
+  if friendPlate and not partyAuraTok and plate then
+    partyAuraTok = D.ResolvePartyTokenForPlate(plate)
+    if partyAuraTok then
+      partyMerge = true
+    end
+  end
+  D.lastPaintDebug.partyTok = partyAuraTok or "-"
 
   D.lastPaintDebug.harv = 0
   D.lastPaintDebug.tgtSrc = 0
@@ -225,15 +232,24 @@ if not plate then
   elseif type(unit) == "string" then
     D.lastPaintDebug.tgtSrc = 0
     D.lastPaintDebug.harv = 0
-    D.CollectPersonalAuraGaps(unit, paintKeys, missing, maxN, stats)
+    local auraTok = partyAuraTok or unit
+    if friendPlate and partyAuraTok then
+      auraTok = partyAuraTok
+    end
+    D.CollectPersonalAuraGaps(auraTok, paintKeys, missing, maxN, stats)
     local foreignSkip = D.CopyKeySet(paintKeys)
-    D.CollectPlayerOwnedKeys(unit, foreignSkip)
-    D.CollectForeignAuraGaps(unit, foreignSkip, missing, maxN, allowSecret, stats)
-    D.CollectAuraSlotsGaps(unit, foreignSkip, missing, maxN, stats)
-    D.CollectUnitHarmfulMirror(unit, foreignSkip, missing, maxN, stats)
-    D.EnsureUnitHarmfulParity(partyAuraTok or unit, plate, missing, foreignSkip, maxN, stats)
+    D.CollectPlayerOwnedKeys(auraTok, foreignSkip)
+    D.CollectForeignAuraGaps(auraTok, foreignSkip, missing, maxN, allowSecret or friendPlate, stats)
+    if auraTok ~= unit then
+      D.CollectForeignAuraGaps(unit, foreignSkip, missing, maxN, allowSecret or friendPlate, stats)
+      D.CollectAuraSlotsGaps(unit, foreignSkip, missing, maxN, stats)
+    end
+    D.CollectAuraSlotsGaps(auraTok, foreignSkip, missing, maxN, stats)
+    D.CollectUnitHarmfulMirror(auraTok, foreignSkip, missing, maxN, stats)
+    D.EnsureUnitHarmfulParity(auraTok, plate, missing, foreignSkip, maxN, stats)
     D.DedupeGapIcons(missing, maxN)
-    D.PruneInactiveGapRows(missing, unit, maxN)
+    D.PruneInactiveGapRows(missing, auraTok, maxN)
+    D.lastPaintDebug.harv = #missing
   end
 
   local paintAuraTok = D.AuraUnitForPlate(unit, plate, useTargetSrc, partyAuraTok)
@@ -550,13 +566,24 @@ if not plate then
   D.lastPaintDebug.gapSz = sz
   D.lastPaintDebug.lockSz = fb._pbLockedSz
   D.lastPaintDebug.cdN = cdN
+  local harmApi = 0
+  if friendPlate and type(auraUnit) == "string" then
+    harmApi = D.CountHarmfulAuraSlots(auraUnit) or 0
+    if harmApi > (D.lastPaintDebug.tfRows or 0) then
+      D.lastPaintDebug.tfRows = harmApi
+    end
+  end
   if painted > 0 then
     D.SilentTracePaint("paint", unit, plate)
+  elseif friendPlate and (harmApi > 0 or (D.lastPaintDebug.miss or 0) > 0) then
+    D.SilentTracePaint("paint_gap", unit, plate)
   elseif (D.lastPaintDebug.miss or 0) > 0 then
-    local harmLive = friendPlate and type(auraUnit) == "string" and (D.CountHarmfulAuraSlots(auraUnit) or 0) > 0
+    local harmLive = friendPlate and type(auraUnit) == "string" and harmApi > 0
     if not harmLive then
       D.SilentTracePaint("paint", unit, plate)
     end
+  elseif friendPlate then
+    D.SilentTracePaint("paint_sample", unit, plate)
   end
   return painted
 end

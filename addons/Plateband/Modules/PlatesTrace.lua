@@ -63,6 +63,12 @@ function D.SilentTracePaint(why, unit, plate)
   if why == "refresh" or why:match("^refresh") or why:match("^sweep") then
     return
   end
+  if why == "paint_sample" then
+    local lpd0 = D.lastPaintDebug or {}
+    if (tonumber(lpd0.miss) or 0) > 0 or (tonumber(lpd0.tfRows) or 0) > 0 then
+      why = "paint_gap"
+    end
+  end
   unit = D.OverlayUnitKey(unit, plate) or tostring(unit or "?")
   local now = GetTime and GetTime() or 0
   local minSec = (PB and PB.PAINT_TRACE_MIN_SEC) or 1.5
