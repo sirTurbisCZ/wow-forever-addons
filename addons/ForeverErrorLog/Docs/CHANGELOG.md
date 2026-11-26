@@ -1,5 +1,12 @@
 # ForeverErrorLog changelog
 
+## Release 0.1.31 — session-clean error ring
+
+- **`ResetErrorRingOnChatLoaded(load)`** on `BeginSession`, `/reload` ADDON_LOADED, and **`PLAYER_LOGIN`** (idempotent via `errorWipeTok`).
+- Prior ring archived to **`errorArchive.sessions`** (max 8); **`PlatebandDB.errors`** cleared too.
+- Chat load line: **0 errors this session** (not historical 80-count).
+- **`/felog archive [dump]`** — inspect archived rings; **`/felog clear`** archives then wipes.
+
 ## Release 0.1.30 — stop FelogExportDriver disk heartbeat
 
 - **`ArmLivePulse`** stops drivers only; no OnUpdate L1 writes when Plateband loaded (login export via **`LoginDiskExportOnce`**).

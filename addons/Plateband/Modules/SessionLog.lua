@@ -1315,6 +1315,14 @@ function Mod.RecordChatLoaded(src)
   if ForeverErrorLog and ForeverErrorLog.NotifyRuntime then
     pcall(ForeverErrorLog.NotifyRuntime, "Plateband", ver, src, "CHAT_LOADED")
   end
+  if ForeverErrorLog and ForeverErrorLog.ResetErrorRingOnChatLoaded then
+    pcall(ForeverErrorLog.ResetErrorRingOnChatLoaded, src)
+  end
+  pcall(function()
+    if type(db.errors) == "table" and wipe then
+      wipe(db.errors)
+    end
+  end)
   pcall(Mod.LoginDiskExportOnce, src)
   pcall(Mod.PublishChatTruthHead, "CHAT_LOADED", src, tonumber(db.exportPulseSeq) or 0)
   pcall(function()

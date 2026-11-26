@@ -13,6 +13,7 @@ local Config = ForeverErrorLog.Config
 local installed
 local originalHandler
 local sessionBegun = false
+local ARCHIVE_SESSIONS_MAX = 8
 local fileOk -- nil untried / false / true
 
 local function EnsureDB()
@@ -650,6 +651,64 @@ local function AppendLiveStream(stamped)
   AppendTextFile({ LIVE_STREAM_REL, LIVE_STREAM_BS }, stamped)
 end
 
+local function WipePlatebandErrors()
+  pcall(function()
+    if type(PlatebandDB) == "table" and type(PlatebandDB.errors) == "table" then
+      wipe(PlatebandDB.errors)
+    end
+  end)
+end
+
+local function ArchiveErrorRing(list, loadKind)
+  if type(list) ~= "table" or #list == 0 then
+    return 0
+  end
+  local db = EnsureDB()
+  if type(db.errorArchive) ~= "table" then
+    db.errorArchive = { sessions = {} }
+  end
+  local arch = db.errorArchive.sessions
+  if type(arch) ~= "table" then
+    arch = {}
+    db.errorArchive.sessions = arch
+  end
+  local snap = {}
+  for i = 1, #list do
+    snap[i] = list[i]
+  end
+  arch[#arch + 1] = {
+    at = Now(),
+    load = tostring(loadKind or "?"),
+    n = #snap,
+    errors = snap,
+  }
+  while #arch > ARCHIVE_SESSIONS_MAX do
+    table.remove(arch, 1)
+  end
+  return #snap
+end
+
+--- CHAT_LOADED / reload / login: archive prior ring, wipe live count (idempotent per session tok).
+function ForeverErrorLog.ResetErrorRingOnChatLoaded(loadKind)
+  local db = EnsureDB()
+  loadKind = tostring(loadKind or "login")
+  local slog = db.sessionLog
+  local started = (type(slog) == "table" and tonumber(slog.startedAt)) or 0
+  local tok = loadKind .. "@" .. tostring(started)
+  if db.errorWipeTok == tok then
+    return false
+  end
+  db.errorWipeTok = tok
+  local n = ArchiveErrorRing(db.errors, loadKind)
+  wipe(db.errors)
+  db.lastExport = nil
+  WipePlatebandErrors()
+  if type(slog) == "table" and type(slog.lines) == "table" then
+    AppendSession(string.format("ERROR_RING_WIPE load=%s archived=%d live=0", loadKind, n))
+  end
+  return true
+end
+
 local function PrintLoadedLine(reload)
   local db = EnsureDB()
   local n = #(db.errors or {})
@@ -658,14 +717,14 @@ local function PrintLoadedLine(reload)
   local feed = (slog and slog.fileOk) and "file" or ((db.liveHead and db.liveHead.feed) or "sv_only")
   if n > 0 then
     Print(string.format(
-      L.LOADED_COUNT or "loaded v%s — %d errors stored (historical) · session %s · /felog session",
+      L.LOADED_COUNT or "loaded v%s — %d errors this session · %s · /felog session",
       ver,
       n,
       tostring(feed)
     ))
   else
     Print(string.format(
-      L.LOADED_EMPTY or "loaded v%s — session %s · /felog session · popup off",
+      L.LOADED_EMPTY or "loaded v%s — 0 errors this session · %s · /felog session · popup off",
       ver,
       tostring(feed)
     ))
@@ -700,7 +759,7 @@ local function StampFelogReload()
 end
 
 --- Wipe session log on cold load. Error ring is kept across sessions.
-local function BeginSession()
+local function BeginSession(loadKind)
   if sessionBegun then
     return
   end
@@ -714,6 +773,7 @@ local function BeginSession()
     export = "",
     agentExport = "",
   }
+  pcall(ForeverErrorLog.ResetErrorRingOnChatLoaded, loadKind or "addon")
   AppendSession(string.format(
     "SESSION_START ver=%s file=%s",
     tostring(Config.VERSION or "?"),
@@ -914,17 +974,18 @@ frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:SetScript("OnEvent", function(_, event, name)
   if event == "ADDON_LOADED" and name == addonName then
     EnsureDB()
-    BeginSession()
-    InstallHandler()
-    DeferArmLivePulse()
     local loggedIn = false
     pcall(function()
       if IsLoggedIn then
         loggedIn = IsLoggedIn()
       end
     end)
+    BeginSession(loggedIn and "reload" or "addon")
+    InstallHandler()
+    DeferArmLivePulse()
     if loggedIn then
       pcall(StopLivePulse)
+      pcall(ForeverErrorLog.ResetErrorRingOnChatLoaded, "reload")
       pcall(StampFelogReload)
       if C_Timer and C_Timer.After then
         C_Timer.After(0, function()
@@ -936,10 +997,11 @@ frame:SetScript("OnEvent", function(_, event, name)
     end
   elseif event == "PLAYER_LOGIN" then
     EnsureDB()
-    BeginSession()
+    BeginSession("login")
     InstallHandler()
     SuppressScriptErrorsPopup()
     DeferArmLivePulse()
+    pcall(ForeverErrorLog.ResetErrorRingOnChatLoaded, "login")
     PrintLoadedLine(false)
     local sl = Plateband and Plateband.SessionLog
     if sl and type(sl.FlushChatLoadedExport) == "function" then
@@ -1078,9 +1140,41 @@ SlashCmdList.FOREVERERRORLOG = function(msg)
   end
 
   if cmd == "clear" then
-    db.errors = {}
+    local n = ArchiveErrorRing(db.errors, "manual_clear")
+    wipe(db.errors)
     db.lastExport = nil
-    Print(L.LOG_CLEARED or "log cleared")
+    WipePlatebandErrors()
+    Print(string.format(L.LOG_CLEARED or "log cleared (archived %d)", n))
+    return
+  end
+
+  if cmd == "archive" or cmd == "history" then
+    local arch = type(db.errorArchive) == "table" and db.errorArchive.sessions or {}
+    local n = #arch
+    Print(string.format(L.ARCHIVE_HEADER or "%d archived session(s) — /felog archive dump", n))
+    if n == 0 then
+      Print(L.NO_ARCHIVE or "no archived error rings yet")
+      return
+    end
+    local from = math.max(1, n - 5)
+    for i = from, n do
+      local s = arch[i]
+      print(string.format(
+        "|cffaaaaaa%d. load=%s at=%s n=%s|r",
+        i,
+        tostring(s.load or "?"),
+        tostring(s.at or "?"),
+        tostring(s.n or 0)
+      ))
+    end
+  if (rest or ""):lower() == "dump" and n > 0 then
+      local s = arch[n]
+      local errs = type(s.errors) == "table" and s.errors or {}
+      local f = math.max(1, #errs - 8)
+      for j = f, #errs do
+        print("|cff888888  " .. FormatEntry(errs[j], j) .. "|r")
+      end
+    end
     return
   end
 

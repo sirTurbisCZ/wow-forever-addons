@@ -6,19 +6,22 @@ ForeverErrorLog.L = ForeverErrorLog.L or {}
 local L = ForeverErrorLog.L
 
 L.PREFIX = "|cffd94a4a[FElog]|r"
-L.LOADED_COUNT = "loaded v%s — %d errors stored (historical) · session %s · /felog session"
-L.LOADED_EMPTY = "loaded v%s — session %s · /felog session · popup off"
+L.LOADED_COUNT = "loaded v%s — %d errors this session · %s · /felog session"
+L.LOADED_EMPTY = "loaded v%s — 0 errors this session · %s · /felog session · popup off"
 L.RELOAD_LINE = "reloaded v%s · live feed %s"
 L.SESSION_HEADER = "session lines=%d file=%s (LIVE this login)"
-L.SESSION_HINT = "historical errors: /felog list · agent LIVE: Logs/session.log or /felog session"
+L.SESSION_HINT = "prior rings: /felog archive · live list: /felog list · /felog session"
 L.NO_SESSION = "no session lines yet"
 L.NO_ERRORS = "no errors stored"
-L.LOG_CLEARED = "log cleared"
+L.LOG_CLEARED = "log cleared (archived %d)"
+L.ARCHIVE_HEADER = "%d archived session(s) — /felog archive dump"
+L.NO_ARCHIVE = "no archived error rings yet"
 L.CONFIG_RESET = "config reset to defaults (log cleared)"
 L.UNKNOWN_CMD = "unknown command — /felog help"
 L.HELP_LINES = {
   "/felog help — this help",
-  "/felog list — stored errors (historical ring)",
+  "/felog list — errors this session",
+  "/felog archive [dump] — prior session rings (kept in SV)",
   "/felog session — live session tail (AGENT/ERROR this login)",
   "/felog dump — recent errors with stacks (chat)",
   "/felog clear — clear the error log",

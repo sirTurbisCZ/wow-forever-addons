@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## Release 0.3.12 — session-clean FELog error ring
+
+- **`RecordChatLoaded`** calls **`ForeverErrorLog.ResetErrorRingOnChatLoaded`** (with FElog `BeginSession`); wipes Plateband `errors` too.
+- Requires **ForeverErrorLog 0.1.31** for archive + idempotent wipe tok.
+
 ## Release 0.3.11 — Plates compile fix (200 locals / 60 upvalues)
 
 - **`PlatesTrace.lua`** chunk: `SilentTracePaint` / sweep / PAINT line build (60 upvalue cap).

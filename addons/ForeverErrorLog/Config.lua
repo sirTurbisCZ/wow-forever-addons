@@ -2,7 +2,7 @@
 
 ForeverErrorLog = ForeverErrorLog or {}
 
-local CURRENT_SCHEMA = 3
+local CURRENT_SCHEMA = 4
 local MAX_ERRORS = 80
 local MAX_MSG = 4000
 local MAX_SESSION_LINES = 200
@@ -16,7 +16,7 @@ Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
 Config.MAX_SESSION_LINES = MAX_SESSION_LINES
 Config.MAX_AGENT_EXPORT_LINES = MAX_AGENT_EXPORT_LINES
-Config.VERSION = "0.1.30"
+Config.VERSION = "0.1.31"
 
 local function Defaults()
   return {
@@ -26,6 +26,10 @@ local function Defaults()
     -- Capture into ForeverErrorLogDB still runs.
     scriptErrors = false,
     errors = {},
+    errorArchive = {
+      sessions = {},
+    },
+    errorWipeTok = "",
     sessionLog = {
       startedAt = 0,
       lines = {},
@@ -111,10 +115,25 @@ function Config.EnsureDB()
       }
     end
     db.schemaVersion = 3
+    from = 3
+  end
+
+  if from < 4 then
+    if type(db.errorArchive) ~= "table" then
+      db.errorArchive = { sessions = {} }
+    end
+    if type(db.errorArchive.sessions) ~= "table" then
+      db.errorArchive.sessions = {}
+    end
+  db.errorWipeTok = tostring(db.errorWipeTok or "")
+    db.schemaVersion = 4
   end
 
   if type(db.errors) ~= "table" then
     db.errors = {}
+  end
+  if type(db.errorArchive) ~= "table" then
+    db.errorArchive = { sessions = {} }
   end
   EnsureSessionLog(db)
 
