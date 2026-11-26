@@ -1,5 +1,9 @@
 # Plateband changelog
 
+## Release 0.3.13 — restore SilentTraceEnabled delegate
+
+- **`PlatesTrace.SilentTraceEnabled`** on deps; **`Plates.lua`** delegates (fixes `MaybeAutoDiagnose` @5119 nil after trace split).
+
 ## Release 0.3.12 — session-clean FELog error ring
 
 - **`RecordChatLoaded`** calls **`ForeverErrorLog.ResetErrorRingOnChatLoaded`** (with FElog `BeginSession`); wipes Plateband `errors` too.

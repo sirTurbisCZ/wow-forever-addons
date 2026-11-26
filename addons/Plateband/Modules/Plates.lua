@@ -4492,11 +4492,29 @@ TfSupplementSkipKeys = function(paintKeys, missing)
   return skip
 end
 
+SilentTraceEnabled = function()
+  local td = Plateband.PlatesTraceDeps
+  local fn = td and td.SilentTraceEnabled
+  if type(fn) == "function" then
+    return fn()
+  end
+  local p = Profile()
+  return p.silentTrace == true
+end
+
 SilentTracePaint = function(why, unit, plate)
   local td = Plateband.PlatesTraceDeps
   local fn = td and td.SilentTracePaint
   if fn then
     fn(why, unit, plate)
+  end
+end
+
+SilentTraceSweep = function(why)
+  local td = Plateband.PlatesTraceDeps
+  local fn = td and td.SilentTraceSweep
+  if fn then
+    fn(why)
   end
 end
 

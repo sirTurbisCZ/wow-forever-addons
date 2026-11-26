@@ -7,7 +7,7 @@ end
 
 local PB = D.PB
 
-local function SilentTraceEnabled()
+function D.SilentTraceEnabled()
   local p = D.Profile()
   if p.silentTrace ~= true then
     return false
@@ -16,6 +16,10 @@ local function SilentTraceEnabled()
     return false
   end
   return true
+end
+
+local function SilentTraceEnabled()
+  return D.SilentTraceEnabled()
 end
 
 local function BuildPaintTraceLine(why, unit, plate)
