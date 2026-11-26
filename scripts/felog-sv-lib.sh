@@ -332,13 +332,45 @@ pb_promote_export_pulse_line() {
   return 0
 }
 
-# 2s watch entry: promote pulse tail, else restamp active L1 t=.
+# Host watch: always restamp L1 when client mtime stale (versions from L1 or Interface TOC).
+pb_restamp_export_l1_watch() {
+  local exp line pb fe now live fe_l seq
+  exp="$(felog_plateband_export_path)"
+  pb="$(felog_plateband_interface_ver 2>/dev/null || echo "?")"
+  fe="$(felog_interface_ver 2>/dev/null || echo "?")"
+  [[ "$pb" != "?" && "$fe" != "?" ]] || return 1
+  now="$(date +%s)"
+  mkdir -p "$(dirname "$exp")"
+  if [[ -f "$exp" ]]; then
+    line="$(head -1 "$exp" 2>/dev/null | tr -d '\r' || true)"
+    if [[ "$line" == live_ver=* ]]; then
+      live="$(sed -n 's/.*live_ver=\([0-9.]*\).*/\1/p' <<<"$line" | head -1)"
+      fe_l="$(sed -n 's/.*felog_ver=\([0-9.]*\).*/\1/p' <<<"$line" | head -1)"
+      if [[ "$live" == "$pb" && "$fe_l" == "$fe" ]]; then
+        line="$(felog_restamp_line_t "$line" "$now")"
+        printf '%s\n' "$line" >"$exp"
+        felog_materialize_agent_live_head_from_export 2>/dev/null || true
+        return 0
+      fi
+    fi
+  fi
+  seq="0"
+  line="live_ver=${pb} plateband_ver=${pb} felog_ver=${fe} seq=${seq} src=EXPORT_PULSE load=watch_sync t=${now} feed=pb_bridge interface_pb=${pb} interface_fe=${fe} meta_pb=${pb} meta_fe=${fe}"
+  printf '%s\n' "$line" >"$exp"
+  felog_materialize_agent_live_head_from_export 2>/dev/null || true
+  return 0
+}
+
+# 2s watch entry: promote pulse tail, else touch, else unconditional host restamp.
 pb_sync_export_l1_active() {
   local max_age="${1:-5}"
   if pb_promote_export_pulse_line "$max_age" 2>/dev/null; then
     return 0
   fi
-  pb_touch_export_l1_timestamp "$max_age" 2>/dev/null || return 1
+  if pb_touch_export_l1_timestamp "$max_age" 2>/dev/null; then
+    return 0
+  fi
+  pb_restamp_export_l1_watch
 }
 
 # Parse live-head.log one-liner (FElog 0.1.4+).

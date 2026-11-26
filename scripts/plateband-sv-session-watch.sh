@@ -14,7 +14,9 @@ echo "plateband-sv-session-watch interval=${INTERVAL}s log=$LOG" | tee -a "$LOG"
 while true; do
   TS="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
   # shellcheck source=scripts/plateband-sv-lib.sh
+  source "$ROOT/scripts/felog-sv-lib.sh"
   source "$ROOT/scripts/plateband-sv-lib.sh"
+  pb_sync_export_l1_active "${PB_EXPORT_PROMOTE_MAX_AGE:-120}" 2>/dev/null || true
   if pb_sv_context 2>/dev/null; then
     pb_sync_live_feed "${PB_SV:-}" 2>/dev/null || true
   fi
