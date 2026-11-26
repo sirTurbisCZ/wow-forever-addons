@@ -131,6 +131,9 @@ if not plate then
     end)
   end
   D.lastPaintDebug.friendPlate = friendPlate and 1 or 0
+  if (friendPlate or partyMerge) and D.FriendNativeShownKeySet then
+    paintKeys = D.FriendNativeShownKeySet(plate)
+  end
 
   local nativeN = D.CountPlateHarmfulShown(plate)
   local visBtns = {}
@@ -220,6 +223,10 @@ if not plate then
       D.ReconcileTargetFrameUiButtons(plate, missing, queueSkip, maxN, stats)
       local harmTok = partyAuraTok or unit or "target"
       D.EnsureUnitHarmfulParity(harmTok, plate, missing, queueSkip, maxN, stats)
+      if D.CollectFriendHelpfulAuraGaps then
+        local helpSkip = D.CopyKeySet(queueSkip)
+        pcall(D.CollectFriendHelpfulAuraGaps, harmTok, helpSkip, missing, maxN, stats)
+      end
       D.DedupeGapIcons(missing, maxN)
       if #missing == 0 then
         pcall(D.ForceFillTargetFrameGaps, missing, queueSkip, maxN, stats)
@@ -249,6 +256,10 @@ if not plate then
     D.CollectAuraSlotsGaps(auraTok, foreignSkip, missing, maxN, stats)
     D.CollectUnitHarmfulMirror(auraTok, foreignSkip, missing, maxN, stats)
     D.EnsureUnitHarmfulParity(auraTok, plate, missing, foreignSkip, maxN, stats)
+    if D.CollectFriendHelpfulAuraGaps then
+      local helpSkip = D.CopyKeySet(foreignSkip)
+      pcall(D.CollectFriendHelpfulAuraGaps, auraTok, helpSkip, missing, maxN, stats)
+    end
     D.DedupeGapIcons(missing, maxN)
     if friendPlate and #missing > 0 then
       D.lastPaintDebug.harv = #missing
@@ -273,6 +284,10 @@ if not plate then
     D.CollectAuraSlotsGaps(auraTok, foreignSkip, missing, maxN, stats)
     D.CollectUnitHarmfulMirror(auraTok, foreignSkip, missing, maxN, stats)
     D.EnsureUnitHarmfulParity(auraTok, plate, missing, foreignSkip, maxN, stats)
+    if D.CollectFriendHelpfulAuraGaps then
+      local helpSkip = D.CopyKeySet(foreignSkip)
+      pcall(D.CollectFriendHelpfulAuraGaps, auraTok, helpSkip, missing, maxN, stats)
+    end
     D.DedupeGapIcons(missing, maxN)
     D.PruneInactiveGapRows(missing, auraTok, maxN)
     D.lastPaintDebug.harv = #missing
@@ -296,24 +311,35 @@ if not plate then
       pcall(D.CollectForeignAuraGaps, paintAuraTok, skip, missing, maxN, true, stats)
       pcall(D.EnsureUnitHarmfulParity, paintAuraTok, plate, missing, skip, maxN, stats)
     end
+    if D.CollectFriendHelpfulAuraGaps then
+      local helpSkip = D.CopyKeySet(skip)
+      pcall(D.CollectFriendHelpfulAuraGaps, paintAuraTok, helpSkip, missing, maxN, stats)
+    end
     D.DedupeGapIcons(missing, maxN)
     D.lastPaintDebug.miss = #missing
     if #missing > 0 then
       D.lastPaintDebug.harv = #missing
     end
   end
-  local friendHarmN = friendPlate and D.CountHarmfulAuraSlots(paintAuraTok) or 0
-  if friendPlate and friendHarmN > 0 and #missing == 0 and type(paintAuraTok) == "string" then
+  local friendAuraN = friendPlate and D.CountFriendAuraSlots and D.CountFriendAuraSlots(paintAuraTok)
+    or (friendPlate and D.CountHarmfulAuraSlots(paintAuraTok)) or 0
+  local friendHarmN = friendAuraN
+  D.lastPaintDebug.helpfulN = stats.helpful or 0
+  if friendPlate and friendAuraN > 0 and #missing == 0 and type(paintAuraTok) == "string" then
     local skip = D.CopyKeySet(D.NativeShownKeySet(plate))
     pcall(D.EnsureUnitHarmfulParity, paintAuraTok, plate, missing, skip, maxN, stats)
     pcall(D.CollectUnitHarmfulMirror, paintAuraTok, skip, missing, maxN, stats)
     if #missing == 0 then
       pcall(D.CollectForeignAuraGaps, paintAuraTok, skip, missing, maxN, true, stats)
     end
+    if D.CollectFriendHelpfulAuraGaps then
+      local helpSkip = D.CopyKeySet(skip)
+      pcall(D.CollectFriendHelpfulAuraGaps, paintAuraTok, helpSkip, missing, maxN, stats)
+    end
     D.DedupeGapIcons(missing, maxN)
     D.lastPaintDebug.miss = #missing
   end
-  if not (friendPlate and (friendHarmN > 0 or (D.lastPaintDebug.tfRows or 0) > 0 or #missing > 0)) then
+  if not (friendPlate and (friendAuraN > 0 or (D.lastPaintDebug.tfRows or 0) > 0 or #missing > 0)) then
     D.PruneInactiveGapRows(missing, paintAuraTok, maxN)
   end
   D.ApplyGapSticky(unit, missing, useTargetSrc or friendPlate, paintAuraTok, friendPlate)
@@ -408,7 +434,9 @@ if not plate then
           end
           D.lastPaintDebug.miss = #missing
           D.lastPaintDebug.tfRows = D.CountTargetHarmfulExpected(auraUnit, #missing)
-        elseif (friendPlate or partyMerge) and type(auraUnit) == "string" and (D.CountHarmfulAuraSlots(auraUnit) or 0) > 0 then
+        elseif (friendPlate or partyMerge) and type(auraUnit) == "string"
+            and ((D.CountFriendAuraSlots and D.CountFriendAuraSlots(auraUnit))
+              or (D.CountHarmfulAuraSlots(auraUnit) or 0)) > 0 then
           local skip = D.CopyKeySet(D.NativeShownKeySet(plate))
           pcall(D.EnsureUnitHarmfulParity, auraUnit, plate, missing, skip, maxN, stats)
           pcall(D.CollectUnitHarmfulMirror, auraUnit, skip, missing, maxN, stats)
@@ -428,7 +456,8 @@ if not plate then
         sticky.icons = stickyLive
         local stillLive, liveN = D.StickyRowsLiveOnUnit(sticky.icons, auraUnit)
         if type(auraUnit) == "string" then
-          local slots = D.CountHarmfulAuraSlots(auraUnit) or 0
+          local slots = (D.CountFriendAuraSlots and D.CountFriendAuraSlots(auraUnit))
+            or (D.CountHarmfulAuraSlots(auraUnit) or 0)
           local keepFriend = (friendPlate or partyMerge) and slots > 0
           if (not stillLive or liveN == 0) and not keepFriend then
             D.gapSticky[unit] = nil
@@ -448,7 +477,9 @@ if not plate then
             heldCd = cdn or 0
           end)
           stillLive, liveN = D.StickyRowsLiveOnUnit(sticky.icons, auraUnit)
-          local holdSlots = type(auraUnit) == "string" and (D.CountHarmfulAuraSlots(auraUnit) or 0) or 0
+          local holdSlots = type(auraUnit) == "string"
+            and ((D.CountFriendAuraSlots and D.CountFriendAuraSlots(auraUnit))
+              or (D.CountHarmfulAuraSlots(auraUnit) or 0)) or 0
           local friendHold = (friendPlate or partyMerge) and holdSlots > 0
           if heldN <= 0 or (not stillLive and not friendHold) then
             D.gapSticky[unit] = nil

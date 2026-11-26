@@ -18,6 +18,7 @@ L.HELP_LINES = {
   "/pb reset — restore defaults",
   "/pb size <n> — icon size hint (12–32)",
   "/pb merge on|off — paint omitted foreign harmful beside native (experimental)",
+  "/pb food on|off — hide Well Fed / drink on friendly NP (default show all buffs)",
 }
 L.STATUS_LINE = "enabled=%s · safe=%s · watch=%s · schema=%s · ver=%s · log=%s"
 L.ENABLED = "band on"
@@ -33,4 +34,7 @@ L.WATCH_OFF = "watch off"
 L.MERGE_ON = "merge on — foreign DoTs beside native DebuffList (enemy plates)"
 L.MERGE_OFF = "merge off — native DebuffList only"
 L.MERGE_USAGE = "usage: /pb merge on|off  (currently %s)"
+L.FOOD_HIDE_ON = "friendly food buffs hidden on nameplates (Well Fed / drink)"
+L.FOOD_HIDE_OFF = "friendly food buffs shown — HELPFUL merge on"
+L.FOOD_USAGE = "usage: /pb food on|off  (currently %s)"
 L.LOG_HINT = "send WTF/.../SavedVariables/Plateband.lua after /reload (or Logs/session.log if file=yes)"

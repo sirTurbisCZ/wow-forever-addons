@@ -1,5 +1,12 @@
 # Plateband changelog
 
+## Release 0.3.33 — friend HELPFUL + optional food filter
+
+- **`mergeFriendHelpful`** (schema 14, default on): paint **HELPFUL** gaps on party/friend NP (HoTs, shields, buffs) in same **`friendLeft`** row as WS/debuffs.
+- **`CollectFriendHelpfulAuraGaps`** + **`FriendNativeShownKeySet`** (native BuffList skip keys); **`CountFriendAuraSlots`** for sticky/prune.
+- **`hideFriendlyFoodBuffs`** default **off** (show Well Fed); **`/pb food on|off`** for consumable-only hide — never hides harmful.
+- **`SuppressFriendlyPlateConsumables`** unchanged — only when food hide on.
+
 ## Release 0.3.32 — friend LEFT row + live debuff stick
 
 - **`gapBand=friendLeft`:** anchor **`BOTTOMLEFT` → lane `TOPLEFT`** (DebuffList/AurasFrame/bar) — mob-style **left growth**, not centered name.

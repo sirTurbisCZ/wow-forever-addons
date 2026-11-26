@@ -413,6 +413,29 @@ SlashCmdList.PLATEBAND = function(msg)
     return
   end
 
+  if cmd == "food" then
+    local a = (rest or ""):lower()
+    if a == "on" or a == "1" then
+      p.hideFriendlyFoodBuffs = true
+      if Plates and Plates.Refresh then
+        SafeCall("food:on", Plates.Refresh)
+      end
+      Print(L.FOOD_HIDE_ON or "friendly food buffs hidden on nameplates (Well Fed / drink)")
+    elseif a == "off" or a == "0" then
+      p.hideFriendlyFoodBuffs = false
+      if Plates and Plates.Refresh then
+        SafeCall("food:off", Plates.Refresh)
+      end
+      Print(L.FOOD_HIDE_OFF or "friendly food buffs shown — all HELPFUL merge on")
+    else
+      Print(string.format(
+        L.FOOD_USAGE or "usage: /pb food on|off  (currently %s)",
+        p.hideFriendlyFoodBuffs and "hide" or "show"
+      ))
+    end
+    return
+  end
+
   Print(L.UNKNOWN_CMD or "unknown command — /pb help")
 end
 

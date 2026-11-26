@@ -884,6 +884,14 @@ MergeFriendPlatesEnabled = function()
   return p.mergeFriendPlates ~= false
 end
 
+MergeFriendHelpfulEnabled = function()
+  local p = Profile()
+  if p.mergeMissing ~= true then
+    return false
+  end
+  return p.mergeFriendHelpful ~= false and MergeFriendPlatesEnabled()
+end
+
 InvalidatePartyTokenCache = function(plate)
   if plate then
     partyTokenCache[plate] = nil
@@ -2573,6 +2581,15 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
       end
     end
     rowN = CountNativeAuraRow(plate)
+    if friendLayout and MergeFriendHelpfulEnabled() then
+      local buffs = {}
+      CollectPlateBuffButtons(plate, buffs, MaxIcons())
+      for bi = 1, #buffs do
+        if NativeAuraButtonLive(buffs[bi]) then
+          visN = visN + 1
+        end
+      end
+    end
     local nativeN = lastPaintDebug and tonumber(lastPaintDebug.nativeN) or 0
     local n = math.max(visN, nativeN, rowN)
     if n == 0 then
@@ -2911,6 +2928,47 @@ NativeShownKeySet = function(plate)
   -- (hostile DoTs were phantom-skipped: painted in log, zero on plate).
   if next(keys) ~= nil then
     AugmentNativeKeysFromUnitApi(plate, keys)
+  end
+  return keys
+end
+
+local function MergeBuffButtonKeys(plate, keys)
+  if not plate or type(keys) ~= "table" then
+    return keys
+  end
+  local buffs = {}
+  CollectPlateBuffButtons(plate, buffs, MaxIcons())
+  for i = 1, #buffs do
+    local btn = buffs[i]
+    if btn and NativeAuraButtonLive(btn) then
+      local icon, _, gotIcon = ButtonAuraIcon(btn)
+      if gotIcon and icon then
+        local k
+        pcall(function()
+          if btn.GetAuraInstance then
+            local _, data = btn:GetAuraInstance()
+            if data then
+              k = GapAuraKey(data, icon)
+            end
+          end
+        end)
+        if not k then
+          k = GapAuraKey(nil, icon)
+        end
+        if k then
+          keys[k] = true
+        end
+      end
+    end
+  end
+  return keys
+end
+
+--- Harmful + shown HELPFUL native keys (friend gap merge).
+FriendNativeShownKeySet = function(plate)
+  local keys = NativeShownKeySet(plate)
+  if MergeFriendHelpfulEnabled() then
+    MergeBuffButtonKeys(plate, keys)
   end
   return keys
 end
@@ -3282,6 +3340,63 @@ AuraCountsAsForeignGaps = function(data)
 end
 
 --- v0.2.4 P0 — 0.1.15 foreign API pass: skip owned==true (personal stays native-only).
+--- Party/friend HELPFUL gaps (HoTs, shields, buffs) beside native BuffList — consumables optional.
+CollectFriendHelpfulAuraGaps = function(unitToken, skipKeys, out, maxN, stats)
+  if not unitToken or not MergeFriendHelpfulEnabled() then
+    return
+  end
+  if not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
+    return
+  end
+  local hideFood = Profile().hideFriendlyFoodBuffs == true
+  for i = 1, 40 do
+    if #out >= maxN then
+      return
+    end
+    local data
+    local ok = pcall(function()
+      data = C_UnitAuras.GetAuraDataByIndex(unitToken, i, "HELPFUL")
+    end)
+    if not ok or not data then
+      break
+    end
+    if hideFood and IsFriendlyConsumableAura(data) then
+      -- optional consumable filter (`/pb food on`)
+    else
+      local icon = data.icon
+      local key = AuraDedupeKey(data, icon)
+      local ck = CanonicalGapKey({ icon = icon, spellId = data.spellId, auraInstanceID = data.auraInstanceID })
+      if ck and skipKeys[ck] then
+        -- native shown
+      elseif key and skipKeys[key] then
+        -- dup
+      else
+        if not key then
+          key = "help:" .. tostring(i) .. ":" .. tostring(unitToken)
+        end
+        if not skipKeys[key] then
+          out[#out + 1] = {
+            icon = icon,
+            spellId = data.spellId,
+            auraInstanceID = data.auraInstanceID,
+            applications = data.applications,
+            expirationTime = data.expirationTime,
+            duration = data.duration,
+            isHelpful = true,
+          }
+          skipKeys[key] = true
+          if ck then
+            skipKeys[ck] = true
+          end
+          if stats then
+            stats.helpful = (stats.helpful or 0) + 1
+          end
+        end
+      end
+    end
+  end
+end
+
 CollectForeignAuraGaps = function(unitToken, skipKeys, out, maxN, allowSecretUnknown, stats)
   if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
     return
@@ -3561,12 +3676,13 @@ GapAuraLive = function(entry, unitToken)
       end
       return true
     end
-    if (CountHarmfulAuraSlots(unitToken) or 0) > 0 and (entry.icon or entry.iconTex or entry._tfFrame) then
+    local slots = CountFriendAuraSlots(unitToken) or CountHarmfulAuraSlots(unitToken) or 0
+    if slots > 0 and (entry.icon or entry.iconTex or entry._tfFrame) then
       return true
     end
     return false
   end
-  if entry.spellId and unitToken and (CountHarmfulAuraSlots(unitToken) or 0) > 0 then
+  if entry.spellId and unitToken and (CountFriendAuraSlots(unitToken) or CountHarmfulAuraSlots(unitToken) or 0) > 0 then
     if entry.icon or entry.iconTex or entry._tfFrame then
       return true
     end
@@ -3726,6 +3842,31 @@ RefreshHeldGapFallback = function(unit, plate, fb, icons, auraUnit)
   lastPaintDebug.cdN = cdN
   lastPaintDebug.painted = painted
   return painted, cdN
+end
+
+CountHelpfulAuraSlots = function(unitToken)
+  if not unitToken or not C_UnitAuras or not C_UnitAuras.GetAuraSlots then
+    return 0
+  end
+  local pack = { pcall(C_UnitAuras.GetAuraSlots, unitToken, "HELPFUL") }
+  if not pack[1] then
+    return 0
+  end
+  local n = 0
+  for i = 3, #pack do
+    if pack[i] ~= nil then
+      n = n + 1
+    end
+  end
+  return n
+end
+
+CountFriendAuraSlots = function(unitToken)
+  local n = CountHarmfulAuraSlots(unitToken) or 0
+  if MergeFriendHelpfulEnabled() then
+    n = n + (CountHelpfulAuraSlots(unitToken) or 0)
+  end
+  return n
 end
 
 CountHarmfulAuraSlots = function(unitToken)
@@ -5107,6 +5248,11 @@ Plateband.PlatesPaintDeps = {
     PlateFor = PlateFor,
     IsPartyRaidMergePlate = IsPartyRaidMergePlate,
     MergeFriendPlatesEnabled = MergeFriendPlatesEnabled,
+    MergeFriendHelpfulEnabled = MergeFriendHelpfulEnabled,
+    FriendNativeShownKeySet = FriendNativeShownKeySet,
+    CollectFriendHelpfulAuraGaps = CollectFriendHelpfulAuraGaps,
+    CountFriendAuraSlots = CountFriendAuraSlots,
+    CountHelpfulAuraSlots = CountHelpfulAuraSlots,
     IsPlayerOrFriendPlate = IsPlayerOrFriendPlate,
     CanonicalPlateUnit = CanonicalPlateUnit,
     NativeShownKeySet = NativeShownKeySet,
