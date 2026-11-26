@@ -200,6 +200,9 @@ bootFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 bootFrame:SetScript("OnEvent", function(_, event, name)
   if event == "ADDON_LOADED" and name == addonName then
     EnsureDB()
+  if SessionLog and SessionLog.SyncRuntimeVersionFromInterface then
+      pcall(SessionLog.SyncRuntimeVersionFromInterface)
+    end
     local reloadLogin = false
     pcall(function()
       reloadLogin = IsLoggedIn and IsLoggedIn()
@@ -215,14 +218,14 @@ bootFrame:SetScript("OnEvent", function(_, event, name)
       end
       if not loadAnnounced then
         loadAnnounced = true
-        pcall(function()
-          SessionLog.SyncRuntimeVersionFromInterface()
-        end)
         Print(string.format(L.LOADED or "loaded v%s · /pb", tostring(Config.VERSION)))
       end
     end
   elseif event == "PLAYER_LOGIN" then
     EnsureDB()
+    if SessionLog and SessionLog.SyncRuntimeVersionFromInterface then
+      pcall(SessionLog.SyncRuntimeVersionFromInterface)
+    end
     if SessionLog and SessionLog.BeginSession then
       SafeCall("session:begin", SessionLog.BeginSession)
     end
@@ -234,9 +237,6 @@ bootFrame:SetScript("OnEvent", function(_, event, name)
     ApplyModuleState()
     if not loadAnnounced then
       loadAnnounced = true
-      pcall(function()
-        SessionLog.SyncRuntimeVersionFromInterface()
-      end)
       Print(string.format(L.LOADED or "loaded v%s · /pb", tostring(Config.VERSION)))
     end
   elseif event == "PLAYER_ENTERING_WORLD" then

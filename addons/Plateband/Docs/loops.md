@@ -1,14 +1,15 @@
 # Plateband — aura / layout loops
 
-Version: **0.3.28** (SV-primary telemetry; reload = TOC only)
+Version: **0.3.29** (SV-primary telemetry; reload = TOC only)
 
 ## Version / config truth (agent feed)
 
 ```mermaid
 flowchart TD
   reload["/reload PLAYER_LOGIN"] --> chat[chat Config.VERSION line]
-  reload --> sv[BumpChatTruthSV CHAT_LOADED]
-  sv --> once[LoginDiskExportOnce one io attempt]
+  reload --> sv[BumpChatTruthSV CHAT_LOADED once]
+  sv --> syncSv[agentLive runtimeVer export L1 truth]
+  syncSv --> once[LoginDiskExportOnce one io attempt]
   once -->|ok| disk[agent-live-export L1 optional]
   once -->|fail| svonly[ioAllowName sv_only]
   paint[UNIT_AURA PAINT events] --> ring[paintTrace + sessionLog SV]

@@ -1,5 +1,12 @@
 # Plateband changelog
 
+## Release 0.3.29 — runtime ver truth + friend WS (0.3.28 paint)
+
+- **`SyncRuntimeVersionFromInterface`:** `live_ver` / `CHAT_LOADED` / chat line = **loaded** `Config.VERSION` only (mem+metadata); disk newer → `reloadPendingVer`, **never** fake a higher runtime without reload.
+- **`Core`:** `SyncRuntimeVersionFromInterface` on `ADDON_LOADED`; chat **loaded v%s** after `RecordChatLoaded`.
+- **`RecordChatLoaded` / `BumpChatTruthSV`:** one CHAT_LOADED bump **after** session lines; **`agentLive` + `runtimeVer` + `configChatVer`** sync from **`chatTruthLine`** same turn; **`sessionLog.export`** = line 1 `live_ver` + tail (no wipe until WTF flush).
+- **Includes 0.3.28:** friend `useTargetSrc=off`, `partyN` harvest, `gapBand=nameTop` WS row.
+
 ## Release 0.3.28 — friend WS above name (party paint path)
 
 - **Paint:** friendly/party plates **never `useTargetSrc`** — avoids hostile TF harvest + `gapOffY=-4` under-bar layout when targeting Renia.

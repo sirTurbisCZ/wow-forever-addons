@@ -209,17 +209,32 @@ local function QueryAddonMetadataVersion(addon)
   return nil
 end
 
---- Max of in-memory Config, TOC metadata, and Interface AddOns file parse (every call).
+--- Runtime truth = loaded addon only (mem + TOC metadata). Disk newer → reloadPending, never inflate running Config.
 function Mod.SyncRuntimeVersionFromInterface()
   local mem = tostring((Plateband.Config and Plateband.Config.VERSION) or (ns.Config and ns.Config.VERSION) or "?")
   local metaPb = QueryAddonMetadataVersion(PLATEBAND_TOC)
   local diskCfg = ReadInterfaceAddonVersion({ PB_CFG_FILE, PB_CFG_BS })
   local diskToc = ReadInterfaceAddonVersion({ PB_TOC_FILE, PB_TOC_BS })
-  local best = BestVersion(mem, metaPb, diskCfg, diskToc) or mem
-  if Plateband.Config and best and tostring(best) ~= "" then
-    Plateband.Config.VERSION = best
+  local loaded = BestVersion(mem, metaPb) or mem
+  local diskHint = BestVersion(diskCfg, diskToc)
+  local db = ns.Config and ns.Config.EnsureDB and ns.Config.EnsureDB()
+  if db then
+    db.interfacePbVer = diskHint or metaPb or loaded
+    if diskHint and loaded and VerNewer(diskHint, loaded) == diskHint then
+      db.reloadPendingVer = diskHint
+      db.reloadPending = true
+    else
+      db.reloadPendingVer = nil
+      db.reloadPending = false
+    end
   end
-  return best, mem, diskCfg, diskToc, metaPb
+  if Plateband.Config and loaded and tostring(loaded) ~= "" then
+    Plateband.Config.VERSION = loaded
+  end
+  if ns.Config and loaded and tostring(loaded) ~= "" then
+    ns.Config.VERSION = loaded
+  end
+  return loaded, mem, diskCfg, diskToc, metaPb, diskHint
 end
 
 --- Same strings as chat `loaded v%s` — always live `Plateband.Config` / `ForeverErrorLog.Config`.
@@ -661,26 +676,83 @@ MarkExportDiskAttempt = function()
   end
 end
 
+local function EnsureAgentLive(db)
+  if type(db.agentLive) ~= "table" then
+    db.agentLive = { seq = 0, ver = "", at = 0, io = "sv_only", lines = 0 }
+  end
+  return db.agentLive
+end
+
+local function ParseChatTruthVer(line)
+  line = tostring(line or "")
+  return line:match("live_ver=([%d%.]+)") or line:match("plateband_ver=([%d%.]+)") or ""
+end
+
+local function SyncAgentLiveFromTruth(db, truthLine, src, load)
+  local ver = ParseChatTruthVer(truthLine)
+  if ver == "" then
+    ver = tostring((Plateband.Config and Plateband.Config.VERSION) or (ns.Config and ns.Config.VERSION) or "?")
+  end
+  local al = EnsureAgentLive(db)
+  al.ver = ver
+  al.at = Now()
+  al.io = (agentIoOk or fileOk) and "file" or "sv_only"
+  local log = EnsureLogTable()
+  al.lines = #(log.lines or {})
+  load = tostring(load or "pulse")
+  src = tostring(src or "EXPORT_PULSE")
+  if load == "login" or load == "reload" or src == "CHAT_LOADED" or src == "SESSION_START" then
+    al.seq = (tonumber(al.seq) or 0) + 1
+  end
+  db.liveHead = string.format(
+    "ver=%s seq=%s at=%s io=%s src=%s load=%s",
+    ver,
+    tostring(al.seq or 0),
+    tostring(al.at),
+    al.io,
+    src,
+    load
+  )
+  db.configChatVer = ver
+  if type(db.runtimeVer) ~= "table" then
+    db.runtimeVer = { ver = "", at = 0, src = "" }
+  end
+  if load == "login" or load == "reload" or src == "CHAT_LOADED" then
+    db.runtimeVer.ver = ver
+    db.runtimeVer.at = al.at
+    db.runtimeVer.src = "chat"
+    db.runtimeVer.load = load
+  end
+end
+
+local function MergeSessionExportWithTruth(truthLine)
+  truthLine = tostring(truthLine or "")
+  local log = EnsureLogTable()
+  local tail = table.concat(log.lines or {}, "\n")
+  if tail == "" then
+    log.export = truthLine
+  elseif truthLine == "" then
+    log.export = tail
+  else
+    log.export = truthLine .. "\n" .. tail
+  end
+end
+
 BumpChatTruthSV = function(src, load)
   local db = ns.Config.EnsureDB()
   db.exportPulseSeq = (tonumber(db.exportPulseSeq) or 0) + 1
   local seq = db.exportPulseSeq
   db.exportPulseAt = Now()
   db.exportPulseN = seq
-  local line = CommitChatTruthLine(Mod.BuildChatTruthLine(src or "EXPORT_PULSE", load or "pulse", seq))
+  src = tostring(src or "EXPORT_PULSE")
+  load = tostring(load or "pulse")
+  local line = CommitChatTruthLine(Mod.BuildChatTruthLine(src, load, seq))
   local pbVer, feVer = Mod.ResolveExportVersions()
   db.interfacePbVer = pbVer
   db.interfaceFeVer = feVer
-  local log = EnsureLogTable()
-  log.export = line
+  SyncAgentLiveFromTruth(db, line, src, load)
+  MergeSessionExportWithTruth(line)
   return line
-end
-
-local function EnsureAgentLive(db)
-  if type(db.agentLive) ~= "table" then
-    db.agentLive = { seq = 0, ver = "", at = 0, io = "sv_only", lines = 0 }
-  end
-  return db.agentLive
 end
 
 local function EnsurePaintTrace(db)
@@ -1275,8 +1347,8 @@ end
 --- Runtime stamp — every load (login + /reload); SV + Logs before WTF flush.
 function Mod.RecordChatLoaded(src)
   src = tostring(src or "login")
-  local synced, mem, diskCfg, diskToc, metaPb = Mod.SyncRuntimeVersionFromInterface()
-  local ver = tostring(synced or (Plateband.Config and Plateband.Config.VERSION) or "?")
+  local synced, mem, diskCfg, diskToc, metaPb, diskHint = Mod.SyncRuntimeVersionFromInterface()
+  local ver = tostring((Plateband.Config and Plateband.Config.VERSION) or synced or "?")
   local db = ns.Config.EnsureDB()
   if tostring(db.configChatVer or "") ~= ver then
     db.exportLoginDiskVer = nil
@@ -1287,26 +1359,19 @@ function Mod.RecordChatLoaded(src)
   db.ioExportDiskTried = nil
   db.exportLoginDiskVer = nil
   pcall(Mod.ResetExportTimeAnchor)
-  pcall(function()
-    BumpChatTruthSV("CHAT_LOADED", src)
-  end)
   local at = Now()
+  db.configChatVer = ver
   db.runtimeVer = { ver = ver, at = at, src = "chat", load = src }
-  db.liveHead = string.format(
-    "ver=%s seq=0 at=%s io=sv_only src=chat load=%s",
-    ver,
-    tostring(at),
-    src
-  )
   pcall(Mod.ProbeAgentIo)
   Mod.Append(
     string.format(
-      "LOAD_EVIDENCE mem=%s disk_cfg=%s disk_toc=%s meta=%s synced=%s",
+      "LOAD_EVIDENCE mem=%s disk_cfg=%s disk_toc=%s meta=%s synced=%s pending=%s",
       tostring(mem or "?"),
       tostring(diskCfg or "-"),
       tostring(diskToc or "-"),
       tostring(metaPb or "-"),
-      ver
+      ver,
+      tostring((db and db.reloadPendingVer) or "-")
     )
   )
   Mod.Append(string.format("CHAT_LOADED ver=%s src=%s", ver, src))
@@ -1323,11 +1388,12 @@ function Mod.RecordChatLoaded(src)
       wipe(db.errors)
     end
   end)
-  pcall(Mod.LoginDiskExportOnce, src)
-  pcall(Mod.PublishChatTruthHead, "CHAT_LOADED", src, tonumber(db.exportPulseSeq) or 0)
   pcall(function()
     BumpChatTruthSV("CHAT_LOADED", src)
   end)
+  pcall(Mod.PulseAgentLive)
+  pcall(Mod.LoginDiskExportOnce, src)
+  pcall(Mod.PublishChatTruthHead, "CHAT_LOADED", src, tonumber(db.exportPulseSeq) or 0)
   Mod.ArmExportTruthPulse(true)
 end
 
@@ -1592,6 +1658,11 @@ function Mod.Append(line)
       MirrorToFelog(line)
     end
     Mod.ScheduleLiveFlush()
+  end
+  local db = ns.Config.EnsureDB()
+  local truth = tostring(db.chatTruthLine or "")
+  if truth ~= "" then
+    MergeSessionExportWithTruth(truth)
   end
 end
 
