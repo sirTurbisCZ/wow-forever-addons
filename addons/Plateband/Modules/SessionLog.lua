@@ -253,11 +253,7 @@ local function DoExportDiskPulse()
   end
   local db = ns.Config.EnsureDB()
   db.exportPulseSeq = (tonumber(db.exportPulseSeq) or 0) + 1
-  local line = Mod.BuildChatTruthLine("EXPORT_PULSE", "pulse", db.exportPulseSeq)
-  db.chatTruthLine = line
-  db.chatTruthAt = Now()
-  local log = EnsureLogTable()
-  log.export = line
+  local line = CommitChatTruthLine(Mod.BuildChatTruthLine("EXPORT_PULSE", "pulse", db.exportPulseSeq))
   return TryExportDiskLine(line)
 end
 
@@ -355,6 +351,8 @@ local exportEventsRegistered = false
 local EXPORT_TICK = 2.0
 local EXPORT_DISK_MIN_SEC = 1.85
 local exportDiskLastGt = 0
+local memExportEpoch = nil
+local memExportGt = nil
 local BumpChatTruthSV
 local ExportDiskThrottleOk
 local MarkExportDiskAttempt
@@ -391,12 +389,34 @@ local function RawWallEpoch()
   return 0
 end
 
---- Forever: `time()`/`GetServerTime` often frozen at session load — advance via `GetTime()` delta.
+local function HydrateExportTimeAnchor()
+  local db = ns.Config.EnsureDB()
+  if memExportEpoch and memExportGt then
+    return
+  end
+  local base = tonumber(db.exportUnixEpoch)
+  local gt0 = tonumber(db.exportLoadGt)
+  if type(base) == "number" and base > 0 and type(gt0) == "number" then
+    memExportEpoch = base
+    memExportGt = gt0
+    return
+  end
+  pcall(Mod.ResetExportTimeAnchor)
+end
+
+--- Forever: `time()`/`GetServerTime` often frozen — advance via in-memory `GetTime()` anchor (not stale SV).
 local function UnixTs()
+  if not GetTime then
+    return RawWallEpoch()
+  end
+  HydrateExportTimeAnchor()
+  if type(memExportEpoch) == "number" and memExportEpoch > 0 and type(memExportGt) == "number" then
+    return math.floor(memExportEpoch + (GetTime() - memExportGt))
+  end
   local db = ns.Config.EnsureDB()
   local base = tonumber(db.exportUnixEpoch)
   local gt0 = tonumber(db.exportLoadGt)
-  if type(base) == "number" and base > 0 and GetTime and type(gt0) == "number" then
+  if type(base) == "number" and base > 0 and type(gt0) == "number" then
     return math.floor(base + (GetTime() - gt0))
   end
   return RawWallEpoch()
@@ -407,9 +427,15 @@ local function Now()
 end
 
 function Mod.ResetExportTimeAnchor()
+  memExportEpoch = RawWallEpoch()
+  memExportGt = (GetTime and GetTime()) or 0
   local db = ns.Config.EnsureDB()
-  db.exportUnixEpoch = RawWallEpoch()
-  db.exportLoadGt = (GetTime and GetTime()) or 0
+  db.exportUnixEpoch = memExportEpoch
+  db.exportLoadGt = memExportGt
+end
+
+local function ParseLineT(line)
+  return tonumber(tostring(line or ""):match("t=(%d+)"))
 end
 
 local function StampExportLineT(line)
@@ -419,6 +445,18 @@ local function StampExportLineT(line)
     return (line:gsub("(t=)(%d+)", "%1" .. ts, 1))
   end
   return line .. " t=" .. ts
+end
+
+--- One stamped line for disk + PlatebandDB.chatTruthLine (same `t=`).
+local function CommitChatTruthLine(line)
+  line = StampExportLineT(line)
+  local db = ns.Config.EnsureDB()
+  local ts = ParseLineT(line) or Now()
+  db.chatTruthLine = line
+  db.chatTruthAt = ts
+  local log = EnsureLogTable()
+  log.export = line
+  return line, ts
 end
 
 local function EnsureLogTable()
@@ -451,9 +489,7 @@ BumpChatTruthSV = function(src, load)
   local seq = db.exportPulseSeq
   db.exportPulseAt = Now()
   db.exportPulseN = seq
-  local line = Mod.BuildChatTruthLine(src or "EXPORT_PULSE", load or "pulse", seq)
-  db.chatTruthLine = line
-  db.chatTruthAt = Now()
+  local line = CommitChatTruthLine(Mod.BuildChatTruthLine(src or "EXPORT_PULSE", load or "pulse", seq))
   local pbVer, feVer = Mod.ResolveExportVersions()
   db.interfacePbVer = pbVer
   db.interfaceFeVer = feVer
@@ -629,17 +665,14 @@ function Mod.WriteExportL1Brute(line, throttleBypass)
   if not throttleBypass and not ExportDiskThrottleOk() and ExportDiskStaleSec() < EXPORT_DISK_MIN_SEC then
     return false
   end
+  HydrateExportTimeAnchor()
   local db = ns.Config.EnsureDB()
   local hint = tostring(line or "")
   local src = hint:match("src=([^%s]+)") or "EXPORT_PULSE"
   local load = hint:match("load=([^%s]+)") or "pulse"
   local seq = tonumber(db.exportPulseSeq) or tonumber(hint:match("seq=([^%s]+)")) or 0
-  line = Mod.BuildChatTruthLine(src, load, seq)
-  db.chatTruthLine = line
-  db.chatTruthAt = Now()
+  line = CommitChatTruthLine(Mod.BuildChatTruthLine(src, load, seq))
   db.interfacePbVer, db.interfaceFeVer = Mod.ChatLoadedVersions()
-  local log = EnsureLogTable()
-  log.export = line
   local f = TryOpen(AGENT_EXPORT_REL, "w")
   if not f then
     f = TryOpen(AGENT_EXPORT_BS, "w")
@@ -647,9 +680,8 @@ function Mod.WriteExportL1Brute(line, throttleBypass)
   if not f then
     return false
   end
-  line = StampExportLineT(line)
-  db.chatTruthLine = line
-  log.export = line
+  line = CommitChatTruthLine(line)
+  local ts = ParseLineT(line) or Now()
   local ok = pcall(function()
     f:write(line)
     f:write("\n")
@@ -661,9 +693,13 @@ function Mod.WriteExportL1Brute(line, throttleBypass)
   if ok then
     agentIoOk = true
     db.ioAllowName = "export"
-    db.ioExportDiskAt = Now()
+    db.ioExportDiskAt = ts
     db.ioExportDiskOk = true
     db.ioExportDiskLine = line
+    db.chatTruthLine = line
+    db.chatTruthAt = ts
+    local log = EnsureLogTable()
+    log.export = line
     return true
   end
   return false

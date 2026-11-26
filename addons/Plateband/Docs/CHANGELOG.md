@@ -4,6 +4,7 @@
 
 - **`WriteExportL1Brute`** always **`BuildChatTruthLine`** from **`ChatLoadedVersions`**; **`t=`** = **`exportUnixEpoch + GetTime()`** (Forever frozen **`time()`**); **`StampExportLineT`** at **`fopen`**.
 - Throttle marks **only on successful write**; **stale ≥2s** bypass; OnUpdate **elapsed** driver (no stalled NewTicker); FElog does not double-pulse Plateband.
+- **`UnixTs`**: in-memory **GetTime** anchor (SV hydration only); **`CommitChatTruthLine`** stamps **`t=`** before fwrite and syncs **`chatTruthLine`** / **`chatTruthAt`**.
 - Export L1 only through **`WriteExportL1Brute`** (no **`TryWriteWholeFile`** body stomp).
 
 ## Release 0.2.98 — idle EXPORT_PULSE every 2s (direct io)
