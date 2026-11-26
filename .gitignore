@@ -29,3 +29,6 @@ Screenshots/
 _diag*
 .reload*
 *.log
+
+# Lua compiler output
+luac.out

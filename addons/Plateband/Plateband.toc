@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: Plateband
-## Notes: Native nameplate DebuffList companion — merges omitted party DoTs beside Blizzard's band.
+## Notes: Nameplate aura row: party/own debuffs, short buffs, dispellable enemy buffs.
 ## Author: tuma
-## Version: 0.3.34
+## Version: 0.6.3
 ## SavedVariables: PlatebandDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled
@@ -14,5 +14,6 @@ Modules/SessionLog.lua
 Modules/SelfTest.lua
 Modules/Plates.lua
 Modules/PlatesTrace.lua
+Modules/PlatesPolicy.lua
 Modules/PlatesPaint.lua
 Core.lua

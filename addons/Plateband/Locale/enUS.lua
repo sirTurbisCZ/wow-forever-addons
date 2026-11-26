@@ -6,19 +6,21 @@ Plateband.L = Plateband.L or {}
 local L = Plateband.L
 
 L.PREFIX = "|cff7ec8e3[Plateband]|r"
-L.LOADED = "loaded v%s · merge on · silent paint trace on → Plateband.lua · /pb help"
+L.LOADED = "loaded v%s · /pb help"
 L.UNKNOWN_CMD = "unknown command — /pb help"
 L.HELP_LINES = {
   "/pb help — this help",
   "/pb on|off — enable/disable the above-plate aura band",
   "/pb diagnose — compact status card (chat); SV always logs silently",
-  "/pb dump — status + errors + paintTrace tail (no /reload spam needed)",
-  "/pb watch on|off — chat card every ~2s (off by default; silent trace on)",
+  "/pb dump — status + errors + last diagnose card",
+  "/pb watch on|off — chat card every ~2s (off by default)",
+  "/pb dev on|off — dev telemetry (PAINT trace, cards in SavedVariables; default off)",
+  "/pb selftest — quick self check",
+  "/pb tree — aura frames of the target plate (which frame draws which icon)",
   "/pb safe — disable band and clear overlays",
   "/pb reset — restore defaults",
   "/pb size <n> — icon size hint (12–32)",
-  "/pb merge on|off — paint omitted foreign harmful beside native (experimental)",
-  "/pb food on|off — hide Well Fed / drink on friendly NP (default show all buffs)",
+  "/pb merge on|off — add party debuffs / short buffs / dispellable enemy buffs to the aura row",
 }
 L.STATUS_LINE = "enabled=%s · safe=%s · watch=%s · schema=%s · ver=%s · log=%s"
 L.ENABLED = "band on"
@@ -28,13 +30,13 @@ L.CONFIG_RESET = "config reset to defaults"
 L.SIZE_SET = "icon size hint: %d"
 L.SIZE_BAD = "usage: /pb size <12-32>"
 L.NO_ERRORS = "no errors in ring"
-L.DUMP_HEADER = "dump — errors=%d · sessionLog lines=%d · file=%s"
+L.DUMP_HEADER = "dump — errors=%d · sessionLog lines=%d"
 L.WATCH_ON = "watch on — card every %ss (also SV sessionLog)"
 L.WATCH_OFF = "watch off"
 L.MERGE_ON = "merge on — foreign DoTs beside native DebuffList (enemy plates)"
 L.MERGE_OFF = "merge off — native DebuffList only"
 L.MERGE_USAGE = "usage: /pb merge on|off  (currently %s)"
-L.FOOD_HIDE_ON = "friendly food buffs hidden on nameplates (Well Fed / drink)"
-L.FOOD_HIDE_OFF = "friendly food buffs shown — HELPFUL merge on"
-L.FOOD_USAGE = "usage: /pb food on|off  (currently %s)"
-L.LOG_HINT = "send WTF/.../SavedVariables/Plateband.lua after /reload (or Logs/session.log if file=yes)"
+L.LOG_HINT = "diagnostics are in WTF/.../SavedVariables/Plateband.lua after /reload"
+L.DEV_ON = "dev telemetry on — PAINT trace + cards go to SavedVariables"
+L.DEV_OFF = "dev telemetry off"
+L.DEV_USAGE = "usage: /pb dev on|off  (currently %s)"

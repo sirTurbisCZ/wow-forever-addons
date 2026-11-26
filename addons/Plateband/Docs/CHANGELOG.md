@@ -1,5 +1,73 @@
 # Plateband changelog
 
+## Release 0.6.3 — debuffs from any player
+
+- Enemy plates show debuffs cast by **any player or player pet** (yours, party, strangers); NPC debuffs stay hidden. (`isFromPlayerOrPlayerPet` means "a player", not "me".)
+
+## Release 0.6.2 — border colours
+
+- Thin coloured border per icon: red debuff, green helpful, gold dispellable enemy buff.
+
+## Release 0.6.1 — no duplicate crowd control
+
+- Blizzard's `CrowdControlListFrame` is muted (Frost Nova etc. appeared twice).
+
+## Release 0.6.0 — tooltips
+
+- Hover an added icon for the effect tooltip (`GameTooltip` only; clicks still pass to the plate). `gapTooltip` setting.
+
+## Release 0.5.3 — rules also for remembered icons
+
+- The rules are applied to the remembered ("sticky") icons too. Before, an emptied list re-painted old icons that the rules reject (long buffs, foreign debuffs).
+
+## Release 0.5.2 — row height
+
+- Row offset above the name uses the height of the name text.
+
+## Release 0.5.1 — anchor fix
+
+- The row anchors only to **visible** native debuffs. Native buffs (muted but still "shown", centred on the plate) acted as the anchor and pushed the row to the middle.
+
+## Release 0.5.0 — one layout
+
+- One layout for every plate: after the last visible native debuff, otherwise directly above the name, left-aligned with the bar. The separate friendly layouts (`friendLeft`/`friendAbove`) are gone.
+
+## Release 0.4.10 / 0.4.9 — `/pb tree`
+
+- `/pb tree` prints which frames of the target plate draw aura icons; compact, summary last.
+
+## Release 0.4.8 — recycled plates
+
+- The cached party token of a plate is cleared on plate add/remove and target change (auras could follow a recycled plate, including the literal `target` token).
+
+## Release 0.4.6 — `pol=` in `/pb diagnose`
+
+- The card shows rows kept / no data / unknown type / buff rule / source / error.
+
+## Release 0.4.4 — buff or debuff by list membership
+
+- The type of an aura is decided by the list it is in (`HELPFUL`/`HARMFUL`); the client's `AuraData` has no reliable `isHelpful`. Unknown type is a debuff on enemies and not added on friendly plates.
+
+## Release 0.4.2 — friendly plates only
+
+- Individual native helpful buttons are muted only on friendly plates (on enemies the buff list only), because telling buff buttons from debuff buttons is not reliable and hid native debuffs.
+
+## Release 0.4.1 — rules (`PlatesPolicy.lua`)
+
+- **New `Modules/PlatesPolicy.lua`:** one place for what is added.
+  - **Friendly plates:** every debuff (any caster) + helpful effects with a total duration of 60 s or less. Food, drink and long buffs never.
+  - **Enemy plates (neutral counts as enemy):** your debuffs, debuffs from other players, dispellable / stealable enemy buffs.
+- Native buff list muted (alpha only); the old "hide all friendly buffs" code and `/pb food`, `hideFriendlyFoodBuffs`, `mergeFriendHelpful` are removed. Nameplate `UNIT_AURA` repaints non-target plates (`auraWatchPlates`). Expired icons hide immediately; tick 2 s.
+- Reaction 4 (neutral) is no longer "friendly".
+
+## Release 0.4.0 — telemetry rewrite (schema 16)
+
+- **`SessionLog.lua` rewritten** (1697 → ~230 lines, no `io`). The old module had forward-reference errors that silently broke every chat-truth/commit path.
+- **Dev telemetry is opt-in** (`/pb dev on`, default off); only ERROR lines are always kept.
+- **Fixes:** `SnapshotDiagnose` was captured as nil by the trace deps (no `reason=paint` cards ever); `auraUnit` was a nil global in the friend retry; `autoDiag` was defined twice; dead keys `paintOverlay` / `paintTraceOn` and ~20 undeclared SavedVariables keys are removed.
+- **`/pb selftest`** now runs six real wiring checks (it used to report most cases as passed unconditionally).
+- Load message no longer mentions "silent paint trace".
+
 ## Release 0.3.34 — friend HARMFUL only (revert HELPFUL gaps)
 
 - **`mergeFriendHelpful` default off** (schema 15 forces off): party/friend NP = **debuffs / negative effects only** (e.g. Weakened Soul) — **no** buff/HoT gap merge.

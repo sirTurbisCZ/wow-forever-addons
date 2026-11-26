@@ -104,6 +104,7 @@ local SetBagMatchHighlight
 local ClearBagMatchGlows
 local InventoryOccupiedCount
 local VisibleGridSignature
+local MeasureAutoSortSize
 
 local function SafeNum(v, fallback)
   return Slots.SafeNum(v, fallback)
@@ -717,6 +718,35 @@ local function PlaceOnScreen()
     main:ClearAllPoints()
     main:SetPoint("CENTER", UIParent, "CENTER", 180, 60)
   end)
+end
+
+-- The closed bag is kept "shown" at alpha 0 (warm shell, so B works in combat). Its headers and slots would
+-- keep catching the mouse over the empty spot (stuck tooltips, hover) - park the shell off-screen while closed.
+-- Opening re-anchors it (PlaceOnScreen / CombatPlaceFrame).
+local function ParkOffscreen(frame)
+  pcall(function()
+    frame:ClearAllPoints()
+    frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -10000, 10000)
+  end)
+  -- A tooltip owned by something inside the bag would stay on screen (no OnLeave fires when it moves away).
+  if GameTooltip and GameTooltip.GetOwner then
+    local owner
+    pcall(function()
+      owner = GameTooltip:GetOwner()
+    end)
+    local depth = 0
+    while owner and depth < 8 do
+      if owner == frame then
+        pcall(GameTooltip.Hide, GameTooltip)
+        break
+      end
+      local ok, par = pcall(function()
+        return owner:GetParent()
+      end)
+      owner = ok and par or nil
+      depth = depth + 1
+    end
+  end
 end
 
 local function UpdateMoney()
@@ -1385,6 +1415,12 @@ local function DoLayout()
   if not main or not content then
     return
   end
+  -- Slots.Place mutates secure buttons (parent/points/size): never in combat lockdown.
+  -- Defer: Layout.Refresh runs the layout on PLAYER_REGEN_ENABLED.
+  if InCombatLockdown and InCombatLockdown() then
+    BetterBackpack._bbLayoutPending = true
+    return
+  end
   if layoutBusy then
     return
   end
@@ -1418,10 +1454,10 @@ local function DoLayout()
     -- only change what is drawn inside; the window never resizes for them.
     local filtering = IsFiltering()
     local sizing = filtering and MergedLists(CollectBuckets(true)) or lists
-    -- Custom lanes and Trash are drop targets: drawn even when empty (header + "(0)"),
+    -- Custom lanes, Trash and Junk are drop targets: drawn even when empty (header + "(0)"),
     -- except while a search / filter hides lanes without matches.
     local function IsCustom(key)
-      return key == TRASH or (type(key) == "string" and key:find("^custom_", 1) ~= nil)
+      return key == TRASH or key == "junk" or (type(key) == "string" and key:find("^custom_", 1) ~= nil)
     end
 
     -- Trash ghosts: one per taught itemID, UI-only (no bag slot), appended after real stacks.
@@ -2043,7 +2079,7 @@ local function CloseButtonSize(close)
   return MeasureAutoSortSize()
 end
 
-local function MeasureAutoSortSize()
+MeasureAutoSortSize = function()
   -- Native BagItemAutoSortButton is typically 25×23 — do not Show() (flash).
   local w, h = 25, 23
   local sortNative = _G.BagItemAutoSortButton
@@ -3147,6 +3183,7 @@ function Layout.EnsureCombatShell()
       f:SetAlpha(0)
       f:EnableMouse(false)
     end)
+    ParkOffscreen(f)
     Layout.SyncBagUISpecialFrame()
     return true
   end
@@ -3170,6 +3207,7 @@ function Layout.EnsureCombatShell()
     f:SetAlpha(0)
     f:EnableMouse(false)
   end)
+  ParkOffscreen(f)
   Layout.SyncBagUISpecialFrame()
   return true
 end
@@ -3177,7 +3215,12 @@ end
 local function CombatPlaceFrame(frame)
   pcall(function()
     frame:ClearAllPoints()
-    frame:SetPoint("CENTER", UIParent, "CENTER", 180, 60)
+    local p = Profile()
+    if p.userMoved and type(p.pos) == "table" and p.pos.point then
+      frame:SetPoint(p.pos.point, UIParent, p.pos.relPoint or p.pos.point, p.pos.x or 0, p.pos.y or 0)
+    else
+      frame:SetPoint("CENTER", UIParent, "CENTER", 180, 60)
+    end
   end)
 end
 
@@ -3278,7 +3321,7 @@ local function CombatPresentFrame(frame)
   end
   pcall(Layout.Raise)
   pcall(ApplyCombinedBagsChrome, frame)
-  pcall(RefreshCooldowns)
+  pcall(Layout.RefreshCooldowns)
   UpdateFreeSpace()
   UpdateMoney()
   DumpCombatFrameMetrics(frame)
@@ -3319,6 +3362,7 @@ function Layout.CombatHide()
     frame:SetAlpha(0)
     frame:EnableMouse(false)
   end)
+  ParkOffscreen(frame)
   Layout.SyncBagUISpecialFrame()
   return not Layout.IsBagFrameVisible()
 end
@@ -3576,6 +3620,11 @@ function Layout.Refresh()
     return
   end
   if not Layout.IsShown() then
+    return
+  end
+  if BetterBackpack._bbLayoutPending then
+    BetterBackpack._bbLayoutPending = false
+    DoLayout()
     return
   end
   local occ = InventoryOccupiedCount()

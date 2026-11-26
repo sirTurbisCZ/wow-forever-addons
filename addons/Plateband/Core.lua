@@ -127,10 +127,9 @@ local function DumpRing()
   local slog = db.sessionLog or {}
   local nLines = type(slog.lines) == "table" and #slog.lines or 0
   Print(string.format(
-    L.DUMP_HEADER or "dump — errors=%d · sessionLog lines=%d · file=%s",
+    L.DUMP_HEADER or "dump — errors=%d · sessionLog lines=%d",
     #list,
-    nLines,
-    tostring(slog.fileOk)
+    nLines
   ))
   local p = db.profile
   Print(string.format(
@@ -142,7 +141,7 @@ local function DumpRing()
     tostring(Config.VERSION),
     tostring(nLines)
   ))
-  Print(L.LOG_HINT or "watch reads Logs/agent-live*.log live — /reload only for addon updates")
+  Print(L.LOG_HINT or "diagnostics are in SavedVariables after /reload")
   if db.lastDiagnose and db.lastDiagnose.card then
     print("|cffaaaaaa" .. tostring(db.lastDiagnose.card) .. "|r")
   elseif db.lastDiag and db.lastDiag.card then
@@ -341,6 +340,29 @@ SlashCmdList.PLATEBAND = function(msg)
     return
   end
 
+  if cmd == "tree" then
+    if Plates and Plates.DumpTree then
+      SafeCall("tree", Plates.DumpTree)
+    end
+    return
+  end
+
+  if cmd == "dev" then
+    local a = (rest or ""):lower()
+    if a == "on" or a == "1" then
+      p.silentTrace = true
+      p.autoDiag = true
+      Print(L.DEV_ON or "dev telemetry on")
+    elseif a == "off" or a == "0" then
+      p.silentTrace = false
+      p.autoDiag = false
+      Print(L.DEV_OFF or "dev telemetry off")
+    else
+      Print(string.format(L.DEV_USAGE or "usage: /pb dev on|off  (currently %s)", p.silentTrace and "on" or "off"))
+    end
+    return
+  end
+
   if cmd == "selftest" then
     if not SelfTest or not SelfTest.Run then
       Print("SelfTest module missing")
@@ -408,29 +430,6 @@ SlashCmdList.PLATEBAND = function(msg)
       Print(string.format(
         L.MERGE_USAGE or "usage: /pb merge on|off  (currently %s)",
         p.mergeMissing and "on" or "off"
-      ))
-    end
-    return
-  end
-
-  if cmd == "food" then
-    local a = (rest or ""):lower()
-    if a == "on" or a == "1" then
-      p.hideFriendlyFoodBuffs = true
-      if Plates and Plates.Refresh then
-        SafeCall("food:on", Plates.Refresh)
-      end
-      Print(L.FOOD_HIDE_ON or "friendly food buffs hidden on nameplates (Well Fed / drink)")
-    elseif a == "off" or a == "0" then
-      p.hideFriendlyFoodBuffs = false
-      if Plates and Plates.Refresh then
-        SafeCall("food:off", Plates.Refresh)
-      end
-      Print(L.FOOD_HIDE_OFF or "friendly food buffs shown — all HELPFUL merge on")
-    else
-      Print(string.format(
-        L.FOOD_USAGE or "usage: /pb food on|off  (currently %s)",
-        p.hideFriendlyFoodBuffs and "hide" or "show"
       ))
     end
     return

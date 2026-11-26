@@ -2,7 +2,7 @@
 
 BetterBackpack = BetterBackpack or {}
 
-local CURRENT_SCHEMA = 10
+local CURRENT_SCHEMA = 12
 local MAX_ERRORS = 40
 local MAX_MSG = 2000
 
@@ -12,10 +12,12 @@ local Config = BetterBackpack.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "1.2.22"
+Config.VERSION = "1.3.7"
 
 local function CharVendorDefaults()
   return {
+    -- Trash (destroy) lane state is per character since schema 11; confirm is ON by default.
+    trash = { confirm = true, confirmed = {}, destroyed = {}, log = {} },
     autoSellJunk = false,
     autoSellJunkLane = false,
     autoSellMarked = {}, -- [itemID] = true — always sell at vendor (this character)
@@ -49,7 +51,6 @@ local function ProfileDefaults()
       other = true,
     },
     itemRules = {},
-    trash = { confirm = false, confirmed = {}, destroyed = {}, log = {} },
     -- Nice-to-have (from betterbackpack/features-nth): optional Feat() modules.
     searchQuery = "",
     filterCategory = nil, -- nil / "all" = no filter; else category key
@@ -59,7 +60,6 @@ local function ProfileDefaults()
     fillEmptyWells = false, -- opt-in: empty slot wells in space freed by collapse / search
     pins = {}, -- { [itemID] = true } red ghost when not owned
     layoutMode = "lanes", -- "lanes" | "dense"
-    bagBarNativeBag = true, -- bar slots → native single bag; main backpack + B → BB combined
     autoSellJunk = false, -- vendor: auto-sell poor (grey) quality items
     autoSellJunkLane = false, -- vendor: also sell non-grey items in Junk lane (opt-in)
     pos = nil, -- { point, relPoint, x, y } when user-moved
@@ -328,6 +328,58 @@ function Config.EnsureDB()
     from = 10
   end
 
+  -- 1.3.0: Trash rules + confirm state become per character. Account-wide trash rules are parked in
+  -- db.legacyTrash and copied to EVERY character on its first login (EnsureCharProfile).
+  if from < 11 then
+    EnsureProfile(db)
+    if type(db.profile) == "table" then
+      local legacy = { rules = {}, confirmed = {}, destroyed = {} }
+      if type(db.profile.itemRules) == "table" then
+        for itemID, rule in pairs(db.profile.itemRules) do
+          if rule == "trash" then
+            legacy.rules[itemID] = "trash"
+            db.profile.itemRules[itemID] = nil
+          end
+        end
+      end
+      local old = db.profile.trash
+      if type(old) == "table" then
+        if type(old.confirmed) == "table" then
+          for k, v in pairs(old.confirmed) do
+            legacy.confirmed[k] = v
+          end
+        end
+        if type(old.destroyed) == "table" then
+          for k, v in pairs(old.destroyed) do
+            legacy.destroyed[k] = v
+          end
+        end
+      end
+      db.profile.trash = nil
+      db.legacyTrash = legacy
+    end
+    db.schemaVersion = 11
+    from = 11
+  end
+
+  -- 1.3.4: ALL item rules (built-in lanes too) are per character. Remaining account rules are parked in
+  -- db.legacyRules and copied to every character on its first login (EnsureCharProfile).
+  if from < 12 then
+    EnsureProfile(db)
+    local legacy = {}
+    if type(db.profile) == "table" and type(db.profile.itemRules) == "table" then
+      for itemID, rule in pairs(db.profile.itemRules) do
+        if type(rule) == "string" and rule ~= "" then
+          legacy[itemID] = rule
+        end
+      end
+      db.profile.itemRules = {}
+    end
+    db.legacyRules = legacy
+    db.schemaVersion = 12
+    from = 12
+  end
+
   EnsureProfile(db)
   if type(db.errors) ~= "table" then
     db.errors = {}
@@ -337,9 +389,21 @@ function Config.EnsureDB()
   return db
 end
 
-function Config.Reset()
-  BetterBackpackDB = Defaults()
-  return BetterBackpackDB
+--- Reset("all") wipes everything (every character). Reset() resets account settings + the CURRENT
+--- character only; other characters keep their lanes, rules and vendor settings.
+function Config.Reset(scope)
+  if scope == "all" or type(BetterBackpackDB) ~= "table" then
+    BetterBackpackDB = Defaults()
+    return BetterBackpackDB
+  end
+  local db = Config.EnsureDB()
+  db.profile = ProfileDefaults()
+  local key = Config.CharKey()
+  if key and type(db.chars) == "table" then
+    -- *Migrated=true: a reset character must not get the legacy account rules copied back.
+    db.chars[key] = { trashMigrated = true, rulesMigrated = true }
+  end
+  return db
 end
 
 function Config.GetProfile()
@@ -383,6 +447,47 @@ function Config.EnsureCharProfile(db, key)
   if type(c.itemRules) ~= "table" then
     c.itemRules = {}
   end
+  if type(c.trash) ~= "table" then
+    c.trash = { confirm = true, confirmed = {}, destroyed = {}, log = {} }
+  end
+  for _, k in ipairs({ "confirmed", "destroyed", "log" }) do
+    if type(c.trash[k]) ~= "table" then
+      c.trash[k] = {}
+    end
+  end
+  if c.trash.confirm == nil then
+    c.trash.confirm = true
+  end
+  -- Schema 12: copy the former account-wide item rules into this character once.
+  if not c.rulesMigrated then
+    c.rulesMigrated = true
+    local legacyRules = db.legacyRules
+    if type(legacyRules) == "table" then
+      for itemID, rule in pairs(legacyRules) do
+        if c.itemRules[itemID] == nil and c.itemRules[tostring(itemID)] == nil then
+          c.itemRules[itemID] = rule
+        end
+      end
+    end
+  end
+  -- Schema 11: copy the former account-wide trash rules into this character once.
+  if not c.trashMigrated then
+    c.trashMigrated = true
+    local legacy = db.legacyTrash
+    if type(legacy) == "table" then
+      for itemID, rule in pairs(legacy.rules or {}) do
+        if c.itemRules[itemID] == nil and c.itemRules[tostring(itemID)] == nil then
+          c.itemRules[itemID] = rule
+        end
+      end
+      for k, v in pairs(legacy.confirmed or {}) do
+        c.trash.confirmed[k] = v
+      end
+      for k, v in pairs(legacy.destroyed or {}) do
+        c.trash.destroyed[k] = v
+      end
+    end
+  end
   return c
 end
 
@@ -400,6 +505,9 @@ function Config.GetCharProfile()
     end
     if type(s.itemRules) ~= "table" then
       s.itemRules = {}
+    end
+    if type(s.trash) ~= "table" then
+      s.trash = { confirm = true, confirmed = {}, destroyed = {}, log = {} }
     end
     return s
   end

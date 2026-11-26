@@ -18,7 +18,7 @@ local NAV_W = 132
 local PAD = 10
 local TOP = 36
 local ROW_H = 24
-local CONTENT_W = PANEL_W - NAV_W - PAD * 3
+local CONTENT_W = PANEL_W - NAV_W - PAD * 3 - 26 -- 26px reserved for the Blizzard scroll bar (arrows + track)
 
 local SECTIONS = {
   { id = "lanes", label = "Lanes" },
@@ -32,8 +32,9 @@ local panel
 local currentSection = "lanes"
 local navBtns = {}
 local laneRows, customRows, featureRows, headers, notes = {}, {}, {}, {}, {}
-local trashChecks, trashRows = {}, {}
+local trashChecks, trashRows, learnedRows = {}, {}, {}
 local autoSellMarkedRows, autoSellPreviewRows, autoSellDropRow = {}, {}, nil
+local Paint -- forward declaration (defined after the paint helpers)
 
 local function Profile()
   return Config.GetProfile()
@@ -76,15 +77,19 @@ local function Gold(fs)
 end
 
 local function HideAll()
+  -- pairs, not #: pools can be sparse (e.g. notes[4..6] used without notes[1..3]).
   local function hidePool(pool)
-    for i = 1, #pool do
-      pool[i]:Hide()
+    for _, f in pairs(pool) do
+      if f and f.Hide then
+        f:Hide()
+      end
     end
   end
   hidePool(laneRows)
   hidePool(customRows)
   hidePool(featureRows)
   hidePool(trashRows)
+  hidePool(learnedRows)
   hidePool(trashChecks)
   hidePool(autoSellMarkedRows)
   hidePool(autoSellPreviewRows)
@@ -99,11 +104,7 @@ local function HideAll()
       headers[i].line:Hide()
     end
   end
-  for i = 1, #notes do
-    if notes[i] and notes[i].Hide then
-      notes[i]:Hide()
-    end
-  end
+  hidePool(notes)
   if panel then
     if panel.addBtn then
       panel.addBtn:Hide()
@@ -147,6 +148,39 @@ local function Note(i, text, y)
   fs:SetText(text)
   fs:Show()
   return y + math.ceil(fs:GetStringHeight() or 12) + 8
+end
+
+-- Item names come from the client cache: ask for uncached items and repaint when they arrive.
+local nameWatcher
+local function ItemNameOrRequest(T, id)
+  local name = T and T.ItemName and T.ItemName(id)
+  if name and name ~= ("item:" .. tostring(id)) then
+    return name
+  end
+  if C_Item and C_Item.RequestLoadItemDataByID then
+    pcall(C_Item.RequestLoadItemDataByID, id)
+  end
+  if not nameWatcher then
+    nameWatcher = CreateFrame("Frame")
+    nameWatcher:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+    local pending = false
+    nameWatcher:SetScript("OnEvent", function()
+      if pending or not (panel and panel:IsShown()) then
+        return
+      end
+      if currentSection ~= "learned" and currentSection ~= "trash" then
+        return
+      end
+      pending = true
+      C_Timer.After(0.3, function()
+        pending = false
+        if panel and panel:IsShown() then
+          Paint()
+        end
+      end)
+    end)
+  end
+  return "Loading item…"
 end
 
 local function RowHighlight(row)
@@ -398,7 +432,7 @@ local function PaintTrash(y)
   if not T then
     return y
   end
-  y = Note(4, "Trash |cffff6666(destroy)|r is not Junk (sort). Drop on the Trash header — destroyed immediately. Ghost icon = future loot destroyed. Keep to stop.", y)
+  y = Note(4, "Trash |cffff6666(destroy)|r is not Junk (sell). Rules are per character. Drop an item on the Trash header — it is destroyed (with confirmation) and future loot of it too. The list below shows what this character auto-destroys; Keep removes an item from it.", y)
   y = Note(5, TrashStatus(T), y)
   local row = CheckRow(trashChecks, 1)
   row:ClearAllPoints()
@@ -427,9 +461,8 @@ local function PaintTrash(y)
     r:ClearAllPoints()
     r:SetPoint("TOPLEFT", Content(), "TOPLEFT", 0, -y)
     r.icon:SetTexture(T.ItemIcon(id))
-    r.label:SetText(T.ItemName(id))
-    local n = T.DestroyedCount(id)
-    r.extra:SetText(n > 0 and ("x" .. n) or "")
+    r.label:SetText(ItemNameOrRequest(T, id))
+    r.extra:SetText("")
     r.forget:SetScript("OnClick", function()
       T.Forget(id)
     end)
@@ -437,9 +470,52 @@ local function PaintTrash(y)
     y = y + ROW_H
   end
   if #ids == 0 then
-    y = Note(6, "Nothing in Trash yet.", y)
+    y = Note(6, "Nothing is auto-destroyed on this character.", y)
   end
   return y
+end
+
+local LEARNED_ROW_H = 36
+
+
+local function LearnedRow(i)
+  local row = learnedRows[i]
+  if row then
+    return row
+  end
+  row = CreateFrame("Frame", nil, Content())
+  row:SetSize(CONTENT_W, LEARNED_ROW_H)
+  row:EnableMouse(true)
+  local icon = row:CreateTexture(nil, "ARTWORK")
+  icon:SetSize(26, 26)
+  icon:SetPoint("LEFT", 3, 0)
+  row.icon = icon
+  local label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  label:SetPoint("TOPLEFT", icon, "TOPRIGHT", 8, -1)
+  label:SetJustifyH("LEFT")
+  label:SetWidth(CONTENT_W - 120)
+  label:SetWordWrap(false)
+  row.label = label
+  local extra = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  extra:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -2)
+  extra:SetJustifyH("LEFT")
+  extra:SetWidth(CONTENT_W - 120)
+  extra:SetWordWrap(false)
+  row.extra = extra
+  row.forget = SmallButton(row, "Forget", 58)
+  row.forget:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+  row:SetScript("OnEnter", function(self)
+    if self.itemID and GameTooltip.SetItemByID then
+      GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+      pcall(GameTooltip.SetItemByID, GameTooltip, self.itemID)
+      GameTooltip:Show()
+    end
+  end)
+  row:SetScript("OnLeave", function()
+    GameTooltip:Hide()
+  end)
+  learnedRows[i] = row
+  return row
 end
 
 local function PaintLearned(y)
@@ -474,7 +550,31 @@ local function PaintLearned(y)
     forget:Disable()
   end
   forget:Show()
-  return y + 28
+  y = y + 28
+  local T = Feat("Trash")
+  local list = CC and CC.ListRules and CC.ListRules() or {}
+  for i = 1, #list do
+    local entry = list[i]
+    local id, lane = entry.itemID, entry.lane
+    local r = LearnedRow(i)
+    r.itemID = id
+    r:ClearAllPoints()
+    r:SetPoint("TOPLEFT", Content(), "TOPLEFT", 0, -y)
+    r.icon:SetTexture(T and T.ItemIcon and T.ItemIcon(id) or nil)
+    r.label:SetText(ItemNameOrRequest(T, id))
+    local natural = Layout and Layout.NaturalLaneForID and Layout.NaturalLaneForID(id) or "other"
+    r.extra:SetText(string.format("in |cffffffff%s|r · default: %s", CategoryLabel(lane), CategoryLabel(natural)))
+    r.forget:SetScript("OnClick", function()
+      if lane == "trash" and T and T.Forget then
+        T.Forget(id)
+      elseif CC and CC.AssignItem then
+        CC.AssignItem(id, nil)
+      end
+    end)
+    r:Show()
+    y = y + LEARNED_ROW_H
+  end
+  return y
 end
 
 local function AutoSellMarkedRow(i)
@@ -675,16 +775,6 @@ local FEATURES = {
     end,
   },
   {
-    label = "Bag bar opens native Blizzard bag",
-    get = function()
-      return Profile().bagBarNativeBag ~= false
-    end,
-    set = function(on)
-      Profile().bagBarNativeBag = on and true or false
-      RefreshBags()
-    end,
-  },
-  {
     label = "Auto-sell grey items at vendor",
     get = function()
       local VJ = Feat("VendorJunk")
@@ -815,8 +905,13 @@ local function PaintNav()
   end
 end
 
+local lastPaintedSection
 local function PaintContent()
   HideAll()
+  if panel and panel.scroll and lastPaintedSection ~= currentSection then
+    panel.scroll:SetVerticalScroll(0)
+  end
+  lastPaintedSection = currentSection
   local title
   for i = 1, #SECTIONS do
     if SECTIONS[i].id == currentSection then
@@ -837,10 +932,15 @@ local function PaintContent()
   elseif currentSection == "features" then
     y = PaintFeatures(y)
   end
-  Content():SetHeight(math.max(120, y + 8))
+  local contentH = math.max(120, y + 8)
+  Content():SetHeight(contentH)
+  local sbar = panel.scroll and panel.scroll.ScrollBar
+  if sbar and panel.scroll.GetHeight then
+    sbar:SetShown(contentH - (panel.scroll:GetHeight() or 0) > 1)
+  end
 end
 
-local function Paint()
+Paint = function()
   if not panel or not panel.content then
     return
   end
@@ -900,10 +1000,35 @@ function Settings.Ensure()
   panel.navDiv:SetPoint("BOTTOM", panel.nav, "BOTTOMRIGHT", 4, 0)
   panel.navDiv:Show()
 
-  panel.content = CreateFrame("Frame", nil, panel)
-  panel.content:SetPoint("TOPLEFT", panel.navDiv, "TOPRIGHT", PAD, 0)
+  -- Scrollable content (Blizzard UIPanelScrollFrameTemplate: arrows, track, thumb, mouse wheel).
+  local okScroll, scroll = pcall(CreateFrame, "ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
+  if not okScroll or not scroll then
+    scroll = CreateFrame("ScrollFrame", nil, panel)
+    scroll:EnableMouseWheel(true)
+    scroll:SetScript("OnMouseWheel", function(self, delta)
+      local max = self:GetVerticalScrollRange() or 0
+      self:SetVerticalScroll(math.max(0, math.min(max, (self:GetVerticalScroll() or 0) - delta * 48)))
+    end)
+  end
+  scroll:SetPoint("TOPLEFT", panel.navDiv, "TOPRIGHT", PAD, 0)
+  scroll:SetSize(CONTENT_W, PANEL_H - TOP - PAD)
+  scroll:SetFrameLevel(panel:GetFrameLevel() + 20)
+  local sb = scroll.ScrollBar or (scroll.GetName and scroll:GetName() and _G[scroll:GetName() .. "ScrollBar"])
+  if sb then
+    sb:ClearAllPoints()
+    sb:SetPoint("TOPLEFT", scroll, "TOPRIGHT", 4, -16)
+    sb:SetPoint("BOTTOMLEFT", scroll, "BOTTOMRIGHT", 4, 16)
+    sb:SetFrameLevel(panel:GetFrameLevel() + 25)
+    -- Show the bar only when the content is taller than the viewport.
+    scroll:HookScript("OnScrollRangeChanged", function(_, _, yRange)
+      sb:SetShown((yRange or 0) > 1)
+    end)
+    sb:Hide()
+  end
+  panel.scroll = scroll
+  panel.content = CreateFrame("Frame", nil, scroll)
   panel.content:SetSize(CONTENT_W, PANEL_H - TOP - PAD)
-  panel.content:SetFrameLevel(panel:GetFrameLevel() + 20)
+  scroll:SetScrollChild(panel.content)
   panel.host = panel.content
 
   if UISpecialFrames then
@@ -951,7 +1076,7 @@ function Settings.Show()
   Paint()
   panel:ClearAllPoints()
   local main = Layout and Layout.EnsureMain and Layout.EnsureMain()
-  if main and main:IsShown() then
+  if main and main:IsShown() and (main:GetAlpha() or 0) > 0.5 then
     panel:SetPoint("TOPRIGHT", main, "TOPLEFT", -8, 0)
   else
     panel:SetPoint("CENTER", UIParent, "CENTER", 0, 40)

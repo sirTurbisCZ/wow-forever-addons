@@ -286,6 +286,31 @@ bootFrame:RegisterEvent("ADDON_ACTION_BLOCKED")
 
 local blockedQuietUntil = 0
 
+-- Vendor / mail / auction / bank: if BetterBackpack was closed when the window opened,
+-- it is closed again together with that window (never closes a bag the player had open).
+local function NoteInteractionOpened()
+  if BetterBackpack._bbOpenedByWindow ~= nil then
+    return
+  end
+  local shown = Layout and Layout.IsShown and Layout.IsShown()
+  BetterBackpack._bbOpenedByWindow = not shown
+end
+
+local function CloseIfOpenedByInteraction()
+  local byWindow = BetterBackpack._bbOpenedByWindow
+  BetterBackpack._bbOpenedByWindow = nil
+  if byWindow ~= true then
+    return
+  end
+  if InCombatLockdown and InCombatLockdown() then
+    return
+  end
+  OpenClose = OC() or OpenClose
+  if Layout and Layout.IsShown and Layout.IsShown() and OpenClose and OpenClose.CloseOurs then
+    SafeCall("closeWithWindow", OpenClose.CloseOurs)
+  end
+end
+
 bootFrame:SetScript("OnEvent", function(_, event, ...)
   if event == "ADDON_LOADED" then
     local name = ...
@@ -434,6 +459,7 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
   end
 
   if event == "MERCHANT_SHOW" then
+    NoteInteractionOpened()
     if Context then
       Context.SyncSpecialMode()
     end
@@ -455,6 +481,7 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
     if Context and Context.ForceRestoreDeferred then
       Context.ForceRestoreDeferred()
     end
+    CloseIfOpenedByInteraction()
     if event == "MERCHANT_CLOSED" then
       local VJ = BetterBackpack.Modules.VendorJunk
       if VJ and VJ.OnMerchantClosed then
@@ -465,6 +492,7 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
   end
 
   if event == "MAIL_SHOW" or event == "AUCTION_HOUSE_SHOW" or event == "BANKFRAME_OPENED" then
+    NoteInteractionOpened()
     if Context then
       Context.SyncSpecialMode()
     end
@@ -575,9 +603,11 @@ SlashCmdList.BETTERBACKPACK = function(msg)
   end
 
   if cmd == "reset" then
-    Config.Reset()
+    local all = (rest or ""):lower() == "all"
+    Config.Reset(all and "all" or nil)
     SafeCall("shutdown", OpenClose.ShutdownToBlizzard)
-    Print(L.CONFIG_RESET or "config reset")
+    Print(all and (L.CONFIG_RESET_ALL or "all BetterBackpack data reset (every character)")
+      or (L.CONFIG_RESET or "settings + this character reset (other characters kept) — /bb reset all wipes everything"))
     return
   end
 

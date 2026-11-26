@@ -1,31 +1,22 @@
 # wow-forever-addons
 
-Addons for **World of Warcraft Forever**, shipped as a monorepo.
+Addons for **World of Warcraft Forever** (Interface 16001), shipped as a monorepo.
 
-Install from [Releases](https://github.com/sirTurbisCZ/wow-forever-addons/releases) — download the zip for the addon you want, extract so you get `Interface/AddOns/<AddonName>/`, then `/reload` in game.
+Install from [Releases](https://github.com/sirTurbisCZ/wow-forever-addons/releases): download the zip of the addon you want, extract so you get `Interface/AddOns/<AddonName>/`, then `/reload` in game.
 
 ## Addons
 
 | Addon | Slash | What it does |
-|-------|-------|----------------|
-| [ForeverErrorLog](addons/ForeverErrorLog/) | `/felog` | Captures Lua errors from all addons into SavedVariables (Blizzard error popup off by default) |
-| [Plateband](addons/Plateband/) | `/pb` | Native DebuffList companion — merges omitted party DoTs beside Blizzard’s band |
-| [BetterBackpack](addons/BetterBackpack/) | `/bb` | Category-lane bags with combat-safe RMB; parks CombinedBags (never Hide) |
+|-------|-------|--------------|
+| [ForeverErrorLog](addons/ForeverErrorLog/Docs/README.md) | `/felog` | Collects Lua errors from all addons into SavedVariables. The Blizzard error popup is off by default (`/felog ui on` brings it back). |
+| [Plateband](addons/Plateband/Docs/README.md) | `/pb` | One aura row above each nameplate's name: your debuffs and other players' debuffs on enemies, debuffs and short buffs on friendly units, dispellable enemy buffs. Colour-coded, with tooltips. |
+| [BetterBackpack](addons/BetterBackpack/Docs/README.md) | `/bb` | Category-lane bags with combat-safe item use, a Junk lane that sells everything in it, per-character rules and an auto-destroy Trash lane. |
 
-Player docs live next to each addon (`Docs/README.md`). Development notes and Scenario Maps stay in the Cursor project store, not in this repo.
+Each addon has its player documentation in `Docs/README.md` and its history in `Docs/CHANGELOG.md`.
 
-## Local development
+## Release tags
 
-```bash
-./scripts/link-addon.sh ForeverErrorLog   # symlink into Forever Interface/AddOns
-./scripts/link-addon.sh Plateband
-./scripts/link-addon.sh BetterBackpack
-./scripts/package-addon.sh ForeverErrorLog  # zip → dist/
-./scripts/package-addon.sh Plateband
-./scripts/package-addon.sh BetterBackpack
-```
-
-Release tags look like `betterbackpack-v1.2.6` / `felog-v0.1.0` / `plateband-v0.1.0` and produce a zip whose root is the addon folder.
+`felog-v<version>`, `plateband-v<version>`, `betterbackpack-v<version>` — for example `plateband-v0.6.3`. The version must equal the `## Version` in the addon's `.toc`. A tag builds a zip whose root is the addon folder and publishes it as a GitHub Release (the workflow also syntax-checks every Lua file first).
 
 ## License
 

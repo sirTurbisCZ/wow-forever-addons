@@ -1668,18 +1668,22 @@ local function NormalizeSlotVisual(btn)
     return
   end
   EnsureSlotBackground(btn)
-  pcall(function()
-    btn:SetScale(1)
-    if btn.SetIgnoreParentScale then
-      btn:SetIgnoreParentScale(false)
-    end
-    btn:SetSize(SLOT, SLOT)
-    btn:SetWidth(SLOT)
-    btn:SetHeight(SLOT)
-    if btn.SetHitRectInsets then
-      btn:SetHitRectInsets(0, 0, 0, 0)
-    end
-  end)
+  -- Size/scale/hit-rect of a secure button are protected: never touch them in combat lockdown
+  -- (cooldown refreshes call this on every SPELL_UPDATE_COOLDOWN). They are re-applied after combat.
+  if not (InCombatLockdown and InCombatLockdown()) then
+    pcall(function()
+      btn:SetScale(1)
+      if btn.SetIgnoreParentScale then
+        btn:SetIgnoreParentScale(false)
+      end
+      btn:SetSize(SLOT, SLOT)
+      btn:SetWidth(SLOT)
+      btn:SetHeight(SLOT)
+      if btn.SetHitRectInsets then
+        btn:SetHitRectInsets(0, 0, 0, 0)
+      end
+    end)
+  end
   if btn.SlotBackground then
     pcall(function()
       btn.SlotBackground:ClearAllPoints()

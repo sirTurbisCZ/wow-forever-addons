@@ -10,9 +10,16 @@ local VendorJunk = {}
 BetterBackpack.Modules.VendorJunk = VendorJunk
 
 local Config = BetterBackpack.Config
-local BulkTransfer = BetterBackpack.Modules.BulkTransfer
-local Layout = BetterBackpack.Modules.Layout
 local Slots = BetterBackpack.Modules.Slots
+
+-- BulkTransfer and Layout load AFTER this file (see TOC): resolve them lazily, never at load time.
+local function BulkTransferMod()
+  return BetterBackpack.Modules.BulkTransfer
+end
+
+local function LayoutMod()
+  return BetterBackpack.Modules.Layout
+end
 
 local sellScheduled = false
 
@@ -38,6 +45,7 @@ local function GreyQuality(q)
 end
 
 local function InJunkLane(bag, slot)
+  local Layout = LayoutMod()
   if not Layout or not Layout.ClassifyBagSlot then
     return false
   end
@@ -164,7 +172,8 @@ local function SellReason(bag, slot, itemID)
   if itemID and IsMarked(itemID) then
     return "marked"
   end
-  local q = BulkTransfer.SlotQuality and BulkTransfer.SlotQuality(bag, slot)
+  local BulkTransfer = BulkTransferMod()
+  local q = BulkTransfer and BulkTransfer.SlotQuality and BulkTransfer.SlotQuality(bag, slot)
   if c.autoSellJunk and GreyQuality(q) then
     return "grey"
   end
@@ -175,6 +184,7 @@ local function SellReason(bag, slot, itemID)
 end
 
 local function ShouldAutoSell(bag, slot)
+  local BulkTransfer = BulkTransferMod()
   if not BulkTransfer or not BulkTransfer.MerchantCanSell then
     return false
   end
@@ -285,6 +295,7 @@ local function FormatSellSummary(list)
 end
 
 local function RunSell(list)
+  local BulkTransfer, Layout = BulkTransferMod(), LayoutMod()
   sellScheduled = false
   if not OOC() or #list == 0 then
     return

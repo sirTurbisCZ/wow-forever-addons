@@ -223,10 +223,6 @@ if not plate then
       D.ReconcileTargetFrameUiButtons(plate, missing, queueSkip, maxN, stats)
       local harmTok = partyAuraTok or unit or "target"
       D.EnsureUnitHarmfulParity(harmTok, plate, missing, queueSkip, maxN, stats)
-      if D.CollectFriendHelpfulAuraGaps then
-        local helpSkip = D.CopyKeySet(queueSkip)
-        pcall(D.CollectFriendHelpfulAuraGaps, harmTok, helpSkip, missing, maxN, stats)
-      end
       D.DedupeGapIcons(missing, maxN)
       if #missing == 0 then
         pcall(D.ForceFillTargetFrameGaps, missing, queueSkip, maxN, stats)
@@ -256,10 +252,6 @@ if not plate then
     D.CollectAuraSlotsGaps(auraTok, foreignSkip, missing, maxN, stats)
     D.CollectUnitHarmfulMirror(auraTok, foreignSkip, missing, maxN, stats)
     D.EnsureUnitHarmfulParity(auraTok, plate, missing, foreignSkip, maxN, stats)
-    if D.CollectFriendHelpfulAuraGaps then
-      local helpSkip = D.CopyKeySet(foreignSkip)
-      pcall(D.CollectFriendHelpfulAuraGaps, auraTok, helpSkip, missing, maxN, stats)
-    end
     D.DedupeGapIcons(missing, maxN)
     if friendPlate and #missing > 0 then
       D.lastPaintDebug.harv = #missing
@@ -284,10 +276,6 @@ if not plate then
     D.CollectAuraSlotsGaps(auraTok, foreignSkip, missing, maxN, stats)
     D.CollectUnitHarmfulMirror(auraTok, foreignSkip, missing, maxN, stats)
     D.EnsureUnitHarmfulParity(auraTok, plate, missing, foreignSkip, maxN, stats)
-    if D.CollectFriendHelpfulAuraGaps then
-      local helpSkip = D.CopyKeySet(foreignSkip)
-      pcall(D.CollectFriendHelpfulAuraGaps, auraTok, helpSkip, missing, maxN, stats)
-    end
     D.DedupeGapIcons(missing, maxN)
     D.PruneInactiveGapRows(missing, auraTok, maxN)
     D.lastPaintDebug.harv = #missing
@@ -311,10 +299,6 @@ if not plate then
       pcall(D.CollectForeignAuraGaps, paintAuraTok, skip, missing, maxN, true, stats)
       pcall(D.EnsureUnitHarmfulParity, paintAuraTok, plate, missing, skip, maxN, stats)
     end
-    if D.CollectFriendHelpfulAuraGaps then
-      local helpSkip = D.CopyKeySet(skip)
-      pcall(D.CollectFriendHelpfulAuraGaps, paintAuraTok, helpSkip, missing, maxN, stats)
-    end
     D.DedupeGapIcons(missing, maxN)
     D.lastPaintDebug.miss = #missing
     if #missing > 0 then
@@ -332,10 +316,6 @@ if not plate then
     if #missing == 0 then
       pcall(D.CollectForeignAuraGaps, paintAuraTok, skip, missing, maxN, true, stats)
     end
-    if D.CollectFriendHelpfulAuraGaps then
-      local helpSkip = D.CopyKeySet(skip)
-      pcall(D.CollectFriendHelpfulAuraGaps, paintAuraTok, helpSkip, missing, maxN, stats)
-    end
     D.DedupeGapIcons(missing, maxN)
     D.lastPaintDebug.miss = #missing
   end
@@ -343,6 +323,13 @@ if not plate then
     D.PruneInactiveGapRows(missing, paintAuraTok, maxN)
   end
   D.ApplyGapSticky(unit, missing, useTargetSrc or friendPlate, paintAuraTok, friendPlate)
+  -- Rules (PlatesPolicy.lua): add short helpful / dispellable buffs, then drop everything the rules exclude.
+  if type(paintAuraTok) == "string" then
+    D.CollectPolicyHelpfulGaps(paintAuraTok, D.CopyKeySet(D.NativeShownKeySet(plate)), missing, maxN, friendPlate and true or false, stats)
+    D.DedupeGapIcons(missing, maxN)
+    D.ApplyGapPolicy(missing, paintAuraTok, friendPlate and true or false)
+    D.lastPaintDebug.miss = #missing
+  end
   if useTargetSrc and heavyTarget then
     local tfUiLate = D.CountTargetFrameAuras()
     if not (tfUiLate > 0 and #missing > 0) then
@@ -392,8 +379,20 @@ if not plate then
   end
 
   if #missing == 0 then
+    -- Remembered (sticky) icons were judged when they were stored: run them through today's rules too,
+    -- otherwise an emptied list re-paints icons the rules would reject (long buffs, foreign debuffs).
+    do
+      local st = D.gapSticky[unit]
+      if st and type(st.icons) == "table" and type(paintAuraTok) == "string" then
+        D.ApplyGapPolicy(st.icons, paintAuraTok, friendPlate and true or false, true)
+        if #st.icons == 0 then
+          D.gapSticky[unit] = nil
+        end
+      end
+    end
     local held = D.fallbacks[unit]
     local sticky = D.gapSticky[unit]
+    local auraUnit -- also used by the friend retry below (was a nil global there)
     local now = GetTime and GetTime() or 0
     local heldN = held and tonumber(held._painted) or 0
     if heldN > 0 and (not sticky or type(sticky.icons) ~= "table" or #sticky.icons == 0) then
@@ -405,7 +404,7 @@ if not plate then
       return 0
     end
     if heldN > 0 and sticky and type(sticky.icons) == "table" and #sticky.icons > 0 then
-      local auraUnit = D.AuraUnitForPlate(unit, plate, useTargetSrc, partyAuraTok)
+      auraUnit = D.AuraUnitForPlate(unit, plate, useTargetSrc, partyAuraTok)
       local stickyLive = {}
       for si = 1, #sticky.icons do
         if D.GapAuraLive(sticky.icons[si], auraUnit) then
@@ -508,6 +507,9 @@ if not plate then
       end
     end
     if #missing == 0 then
+      if auraUnit == nil and (friendPlate or partyMerge) then
+        auraUnit = D.AuraUnitForPlate(unit, plate, useTargetSrc, partyAuraTok)
+      end
       if (friendPlate or partyMerge) and type(auraUnit) == "string" then
         local retry = {}
         local skip = D.CopyKeySet(D.NativeShownKeySet(plate))
@@ -545,6 +547,18 @@ if not plate then
         D.lastPaintDebug.painted = 0
         D.ClearFallback(unit, false)
         return 0
+      end
+    end
+  end
+
+  -- Rows re-added by the retry paths above go through the same rules.
+  do
+    local ruleTok = paintAuraTok or auraUnit
+    if type(ruleTok) == "string" then
+      local dropped = D.ApplyGapPolicy(missing, ruleTok, friendPlate and true or false) or 0
+      if dropped > 0 then
+        D.lastPaintDebug.policyDrop = dropped
+        D.lastPaintDebug.miss = #missing
       end
     end
   end

@@ -183,9 +183,18 @@ local function MerchantAllowed(bag, slot)
   if not id then
     return false
   end
-  local Trash = BetterBackpack.Modules.Trash
-  if Trash and Trash.Refuse and Trash.Refuse(id, b, s) then
+  -- Lane rules: Trash lane = destroy only, never sold. Junk lane = sell everything in it, no quality filter.
+  -- Any other lane keeps the safety filter (quest items, green+, unknown quality).
+  local Layout = LayoutMod()
+  local lane = Layout and Layout.ClassifyBagSlot and Layout.ClassifyBagSlot(b, s) or nil
+  if lane == "trash" then
     return false
+  end
+  if lane ~= "junk" then
+    local Trash = BetterBackpack.Modules.Trash
+    if Trash and Trash.Refuse and Trash.Refuse(id, b, s) then
+      return false
+    end
   end
   if SlotLocked(b, s) then
     return false
@@ -279,7 +288,7 @@ local function MailSubjectIsEmpty()
   if not ok or text == nil or text == "" then
     return true
   end
-  return not tostring(text):find("%S", 1, true)
+  return not tostring(text):find("%S")
 end
 
 local function SlotDisplayName(bag, slot)
@@ -788,10 +797,7 @@ function BulkTransfer.RunSelfTest()
     local slots = StackMerge.CollectMergeGroup(0, 1, { { bag = 0, slot = 2 } })
     ok(type(slots) == "table" and #slots >= 1, "CollectMergeGroup hint path")
   end
-  if OOC() then
-    local noop = BulkTransfer.TransferMergeGroup(0, 1, nil)
-    ok(noop == false or noop == true, "TransferMergeGroup callable OOC")
-  end
+  -- Never call a transfer here: at a vendor/mail/bank/auction it would really sell or move bag 0 slot 1.
   return fail == 0, pass, fail, notes
 end
 

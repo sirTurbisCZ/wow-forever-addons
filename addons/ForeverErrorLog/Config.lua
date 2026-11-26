@@ -2,7 +2,7 @@
 
 ForeverErrorLog = ForeverErrorLog or {}
 
-local CURRENT_SCHEMA = 4
+local CURRENT_SCHEMA = 5
 local MAX_ERRORS = 80
 local MAX_MSG = 4000
 local MAX_SESSION_LINES = 200
@@ -16,7 +16,7 @@ Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
 Config.MAX_SESSION_LINES = MAX_SESSION_LINES
 Config.MAX_AGENT_EXPORT_LINES = MAX_AGENT_EXPORT_LINES
-Config.VERSION = "0.1.31"
+Config.VERSION = "0.2.0"
 
 local function Defaults()
   return {
@@ -25,21 +25,21 @@ local function Defaults()
     -- Default OFF: Blizzard popup queues stale errors and users click "next" forever.
     -- Capture into ForeverErrorLogDB still runs.
     scriptErrors = false,
+    -- Default OFF: AgentFeed / live-head / session export for dev scripts (/felog dev on).
+    devTelemetry = false,
     errors = {},
     errorArchive = {
       sessions = {},
     },
-    errorWipeTok = "",
     sessionLog = {
       startedAt = 0,
       lines = {},
-      fileOk = false,
       export = "",
       agentExport = "",
     },
     liveHead = {
       platebandVer = "",
-      felogVer = Config.VERSION or "0.1.4",
+      felogVer = Config.VERSION or "?",
       seq = 0,
       src = "",
       load = "",
@@ -58,11 +58,11 @@ local function EnsureSessionLog(db)
     db.sessionLog = {
       startedAt = 0,
       lines = {},
-      fileOk = false,
       export = "",
       agentExport = "",
     }
   end
+  db.sessionLog.fileOk = nil
   if type(db.sessionLog.lines) ~= "table" then
     db.sessionLog.lines = {}
   end
@@ -125,8 +125,21 @@ function Config.EnsureDB()
     if type(db.errorArchive.sessions) ~= "table" then
       db.errorArchive.sessions = {}
     end
-  db.errorWipeTok = tostring(db.errorWipeTok or "")
     db.schemaVersion = 4
+    from = 4
+  end
+
+  if from < 5 then
+    -- 0.2.0: no io in Forever; ring is reset once per load (no persisted token); dev telemetry is opt-in.
+    db.errorWipeTok = nil
+    if db.devTelemetry == nil then
+      db.devTelemetry = false
+    end
+    if type(db.sessionLog) == "table" and db.devTelemetry ~= true then
+      db.sessionLog.export = ""
+      db.sessionLog.agentExport = ""
+    end
+    db.schemaVersion = 5
   end
 
   if type(db.errors) ~= "table" then

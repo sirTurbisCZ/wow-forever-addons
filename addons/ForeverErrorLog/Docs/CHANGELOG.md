@@ -1,5 +1,15 @@
 # ForeverErrorLog changelog
 
+## Release 0.2.0 — rewrite: working capture, persistent popup setting, dev telemetry opt-in
+
+- **Fix (critical):** every session-log write threw (`AppendLiveStream` was called before it was declared), so the error handler was installed late, the `[FElog]` chat line never appeared and nothing was recorded after the first error. `Core.lua` is rewritten without the dead export/pulse/version code (about 40 % of the old file); the handler is installed on `ADDON_LOADED`.
+- **`/felog ui on` persists** across `/reload` and relog (the saved preference is applied; the `scriptErrors` CVar is only written when it differs).
+- **`/felog off` hands errors to the default handler** instead of swallowing them; the same happens if capture itself fails.
+- **Error list:** reset once per load (previous list archived, last 8 kept, each message/stack trimmed to 1000 characters). FElog no longer wipes other addons' error lists. Repeated errors write to the session log sparsely.
+- **Developer telemetry** (`AgentFeed`, `NotifyRuntime`, `ApplyLiveHeadSnapshot`, live head, export strings) runs only after **`/felog dev on`** (default off). All file-writing code is gone: the Forever client has no `io`.
+- **SavedVariables schema 5:** `errorWipeTok` removed; session `export` strings are emptied unless dev telemetry is on.
+- TOC: `OptionalDeps: !BugGrabber` (stable load order). README rewritten.
+
 ## Release 0.1.31 — session-clean error ring
 
 - **`ResetErrorRingOnChatLoaded(load)`** on `BeginSession`, `/reload` ADDON_LOADED, and **`PLAYER_LOGIN`** (idempotent via `errorWipeTok`).

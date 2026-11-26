@@ -2,7 +2,7 @@
   BetterBackpack.CustomCategories — user lanes + hide defaults (v1).
   Hidden defaults still route items to Other (existing CategoryEnabled path).
   Custom cats + rules targeting custom_* live per character (Config.GetCharProfile).
-  Built-in lane teachings stay on account profile.itemRules.
+  Since schema 12 ALL item rules (built-in lanes, custom, Trash) live per character.
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -24,6 +24,7 @@ end
 local function IsCustomLaneId(id)
   return type(id) == "string" and id:find("^custom_", 1) ~= nil
 end
+
 
 local function EnsureCharTables()
   local c = Char()
@@ -153,7 +154,8 @@ function CustomCategories.AssignItem(itemID, categoryId)
         cat.itemIDs[tostring(itemID)] = nil
       end
     end
-  elseif IsCustomLaneId(categoryId) then
+  else
+    -- Every lane (built-in, custom, Trash) stores its rule on the character.
     p.itemRules[itemID] = nil
     p.itemRules[tostring(itemID)] = nil
     c.itemRules[tostring(itemID)] = nil
@@ -166,18 +168,6 @@ function CustomCategories.AssignItem(itemID, categoryId)
       if cat.id == categoryId then
         cat.itemIDs[itemID] = true
       else
-        cat.itemIDs[itemID] = nil
-        cat.itemIDs[tostring(itemID)] = nil
-      end
-    end
-  else
-    c.itemRules[itemID] = nil
-    c.itemRules[tostring(itemID)] = nil
-    p.itemRules[tostring(itemID)] = nil
-    p.itemRules[itemID] = categoryId
-    for i = 1, #c.customCategories do
-      local cat = c.customCategories[i]
-      if type(cat.itemIDs) == "table" then
         cat.itemIDs[itemID] = nil
         cat.itemIDs[tostring(itemID)] = nil
       end
@@ -286,6 +276,30 @@ local function CountRulesIn(tableRules)
   return n
 end
 
+--- Every taught item with its lane: { { itemID = n, lane = "key" }, ... } sorted by itemID.
+--- Built-in lane teachings come from the account profile, custom lanes + Trash from this character.
+function CustomCategories.ListRules()
+  local out, seen = {}, {}
+  local function add(rules)
+    if type(rules) ~= "table" then
+      return
+    end
+    for itemID, rule in pairs(rules) do
+      local n = tonumber(itemID)
+      if n and type(rule) == "string" and rule ~= "" and not seen[n] then
+        seen[n] = true
+        out[#out + 1] = { itemID = n, lane = rule }
+      end
+    end
+  end
+  add(EnsureCharTables().itemRules)
+  add(EnsureProfileTables().itemRules)
+  table.sort(out, function(a, b)
+    return a.itemID < b.itemID
+  end)
+  return out
+end
+
 function CustomCategories.CountRules()
   local c = EnsureCharTables()
   local p = EnsureProfileTables()
@@ -294,15 +308,7 @@ end
 
 function CustomCategories.CountLaneRules(laneKey)
   local n = 0
-  if IsCustomLaneId(laneKey) then
-    for _, rule in pairs(EnsureCharTables().itemRules) do
-      if rule == laneKey then
-        n = n + 1
-      end
-    end
-    return n
-  end
-  for _, rule in pairs(EnsureProfileTables().itemRules) do
+  for _, rule in pairs(EnsureCharTables().itemRules) do
     if rule == laneKey then
       n = n + 1
     end
