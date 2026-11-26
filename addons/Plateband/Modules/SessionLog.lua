@@ -224,16 +224,41 @@ function Mod.ResolveExportVersions()
   return pbVer, feVer, pbVer, feVer
 end
 
---- SV every tick; disk L1 at most once per 2s (allowImmediate unused — always throttled).
-function Mod.ForceDiskExportL1(_allowImmediate)
-  local line = BumpChatTruthSV("EXPORT_PULSE", "pulse")
-  if not ExportDiskThrottleOk() then
-    return false
-  end
+local function TryExportDiskLine(line)
   MarkExportDiskAttempt()
   local wrote = Mod.WriteExportL1Brute(line, true)
   if wrote then
     pcall(Mod.PublishInterfaceTocStamp)
+  end
+  return wrote
+end
+
+--- SV every tick; disk L1 at most once per 2s (bypassThrottle=true ignores window).
+function Mod.ForceDiskExportL1(bypassThrottle)
+  local line = BumpChatTruthSV("EXPORT_PULSE", "pulse")
+  if not bypassThrottle and not ExportDiskThrottleOk() then
+    return false
+  end
+  return TryExportDiskLine(line)
+end
+
+--- PLAYER_LOGIN + /reload: Config.VERSION truth to SV + disk within ≤2s (throttle kept on pulse).
+function Mod.FlushChatLoadedExport(loadKind)
+  loadKind = tostring(loadKind or "reload")
+  exportDiskLastGt = 0
+  local line = BumpChatTruthSV("CHAT_LOADED", loadKind)
+  local wrote = TryExportDiskLine(line)
+  if not wrote and C_Timer and C_Timer.After then
+    C_Timer.After(0, function()
+      exportDiskLastGt = 0
+      local l = BumpChatTruthSV("CHAT_LOADED", loadKind)
+      TryExportDiskLine(l)
+    end)
+  end
+  if C_Timer and C_Timer.After then
+    C_Timer.After(1.95, function()
+      pcall(Mod.ForceDiskExportL1, false)
+    end)
   end
   return wrote
 end
@@ -717,8 +742,8 @@ function Mod.ScheduleExportBurst()
   end
   exportBurstAt = now
   if C_Timer and C_Timer.After then
-    C_Timer.After(1.0, function()
-      pcall(Mod.ForceDiskExportL1, true)
+    C_Timer.After(1.95, function()
+      pcall(Mod.ForceDiskExportL1, false)
     end)
   end
 end
@@ -736,9 +761,8 @@ function Mod.ArmExportTruthPulse(force)
   exportTruthArmed = true
   local db = ns.Config.EnsureDB()
   db.exportPulseArmedAt = Now()
-  pcall(Mod.RefreshChatTruthSV, "EXPORT_ARM", "reload")
-  pcall(Mod.ForceDiskExportL1, true)
   if force then
+    pcall(Mod.FlushChatLoadedExport, "reload")
     Mod.ScheduleExportBurst()
   end
   EnsureExportDriverFrame()
@@ -897,8 +921,7 @@ function Mod.RecordChatLoaded(src)
   if ForeverErrorLog and ForeverErrorLog.NotifyRuntime then
     pcall(ForeverErrorLog.NotifyRuntime, "Plateband", ver, src, "CHAT_LOADED")
   end
-  pcall(Mod.RefreshChatTruthSV, "CHAT_LOADED", src)
-  pcall(Mod.ForceDiskExportL1, true)
+  pcall(Mod.FlushChatLoadedExport, src)
   Mod.ScheduleExportBurst()
   pcall(Mod.PublishChatTruthHead, "CHAT_LOADED", src, 0)
   Mod.ArmExportTruthPulse(true)
@@ -1235,6 +1258,9 @@ if CreateFrame then
     end
     if event == "ADDON_LOADED" or event == "PLAYER_ENTERING_WORLD" then
       DeferArmExportTruth(true)
+      if event == "PLAYER_ENTERING_WORLD" then
+        pcall(Mod.FlushChatLoadedExport, "login")
+      end
     end
   end)
 end

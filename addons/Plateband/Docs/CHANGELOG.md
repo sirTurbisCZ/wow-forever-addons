@@ -1,5 +1,9 @@
 # Plateband changelog
 
+## Release 0.2.94 — FlushChatLoadedExport on login/reload
+
+- **`FlushChatLoadedExport`** — resets throttle, writes L1 = **`ChatLoadedVersions`** on **`CHAT_LOADED`**; one **`C_Timer.After(0)`** fallback; pulse throttle unchanged.
+
 ## Release 0.2.94 — HOTFIX: safe export io (no freeze)
 
 - **Max 1 disk L1 / 2s** — no **`C_Timer`** retry storms, no stacked OnUpdate/ticker pulses.

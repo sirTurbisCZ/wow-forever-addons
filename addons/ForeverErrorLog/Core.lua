@@ -698,9 +698,19 @@ local function StampFelogReload()
   lh.felogVer = tostring(Config.VERSION or "?")
   db.liveHead = lh
   AppendSession(string.format("CHAT_LOADED ver=%s src=reload addon=ForeverErrorLog", lh.felogVer))
-  pcall(function()
-    WritePlatebandExportLine(FelogPlatebandExportLine())
-  end)
+  local sl = Plateband and Plateband.SessionLog
+  if sl and type(sl.FlushChatLoadedExport) == "function" then
+    pcall(sl.FlushChatLoadedExport, "reload")
+    return
+  end
+  if C_Timer and C_Timer.After then
+    C_Timer.After(0.1, function()
+      local s = Plateband and Plateband.SessionLog
+      if s and type(s.FlushChatLoadedExport) == "function" then
+        pcall(s.FlushChatLoadedExport, "reload")
+      end
+    end)
+  end
 end
 
 --- Wipe session log on cold load. Error ring is kept across sessions.
@@ -956,6 +966,10 @@ frame:SetScript("OnEvent", function(_, event, name)
     SuppressScriptErrorsPopup()
     DeferArmLivePulse()
     PrintLoadedLine(false)
+    local sl = Plateband and Plateband.SessionLog
+    if sl and type(sl.FlushChatLoadedExport) == "function" then
+      pcall(sl.FlushChatLoadedExport, "login")
+    end
   elseif event == "PLAYER_ENTERING_WORLD" then
     DeferArmLivePulse()
   end
