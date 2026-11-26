@@ -1,18 +1,19 @@
 # Plateband — aura / layout loops
 
-Version: **0.3.00** (export pulse; reload = TOC only)
+Version: **0.3.04** (export pulse; reload = TOC only)
 
 ## Export L1 pulse (agent feed)
 
 ```mermaid
 flowchart TD
-  tick[OnUpdate 2s / world events] --> q[QueueExportDiskPulse C_Timer 0]
-  q --> pulse[DoExportDiskPulse]
-  pulse --> stamp[CommitChatTruthLine + UnixTs anchor]
-  stamp --> w[WriteExportL1Brute agent-live-export]
-  stamp --> a[Append export-pulse.log]
+  login[ScheduleLoginExportPulses 0.05-2s] --> pulse[DoExportDiskPulse]
+  tick[OnUpdate 2s driver] --> pulse
+  pulse --> gate[ResetExportIoGate + ProbeExportL1Write]
+  gate --> stamp[CommitChatTruthLine EXPORT_PULSE load=pulse]
+  stamp --> w[WriteExportL1Brute / TryWriteWholeFile L1]
+  stamp --> a[Append export-pulse.log or EXPORT_PULSE_LINE]
   w -->|fail| a
-  host[host pb_promote_export_pulse 2s] -->|fresh pulse tail| w
+  host[host pb_promote_export_pulse 2s] -->|must not satisfy prove| w
 ```
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).
