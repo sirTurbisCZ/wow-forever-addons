@@ -1,5 +1,10 @@
 # ForeverErrorLog changelog
 
+## Release 0.1.30 — stop FelogExportDriver disk heartbeat
+
+- **`ArmLivePulse`** stops drivers only; no OnUpdate L1 writes when Plateband loaded (login export via **`LoginDiskExportOnce`**).
+- Pairs with Plateband **0.3.05** live-telemetry-options architecture.
+
 ## Release 0.1.29 — pairs with Plateband 0.3.00 export defer
 
 - FElog **`PulseLiveHeadFile`** still delegates; host pulse promote unchanged.

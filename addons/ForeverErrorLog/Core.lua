@@ -593,17 +593,13 @@ end
 
 local function PulseLiveHeadFile()
   local sl = Plateband and Plateband.SessionLog
-  if sl and (type(sl.ExportDiskPulse) == "function" or type(sl.PulseExportDiskTick) == "function") then
+  if sl then
     return
   end
   if GetTime and (GetTime() - felogExportDiskLastGt) < 2.0 then
     return
   end
   felogExportDiskLastGt = GetTime() or felogExportDiskLastGt
-  if sl and type(sl.WriteExportL1Brute) == "function" then
-    pcall(sl.WriteExportL1Brute, "", true)
-    return
-  end
   WritePlatebandExportLine(FelogPlatebandExportLine())
 end
 
@@ -640,18 +636,10 @@ local function EnsureFelogExportDriver()
 end
 
 local function ArmLivePulse(force)
-  if livePulseArmed and not force then
-    return
-  end
   if force then
     StopLivePulse()
-  elseif livePulseArmed then
-    return
   end
   livePulseArmed = true
-  pcall(PulseLiveHeadFile)
-  ScheduleFelogExportBurst()
-  EnsureFelogExportDriver()
 end
 
 local function EnsureLivePulseTicker(force)
@@ -915,17 +903,8 @@ local function InstallHandler()
 end
 
 local function DeferArmLivePulse()
-  local function arm()
-    pcall(function()
-      EnsureLivePulseTicker(true)
-    end)
-  end
-  if C_Timer and C_Timer.After then
-    C_Timer.After(0, arm)
-    C_Timer.After(0.5, arm)
-  else
-    arm()
-  end
+  pcall(StopLivePulse)
+  pcall(ArmLivePulse, true)
 end
 
 local frame = CreateFrame("Frame")
@@ -946,9 +925,7 @@ frame:SetScript("OnEvent", function(_, event, name)
     end)
     if loggedIn then
       pcall(StopLivePulse)
-      pcall(EnsureLivePulseTicker, true)
       pcall(StampFelogReload)
-      pcall(ScheduleFelogExportBurst)
       if C_Timer and C_Timer.After then
         C_Timer.After(0, function()
           PrintLoadedLine(true)

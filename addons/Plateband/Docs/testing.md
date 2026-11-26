@@ -22,11 +22,10 @@ Green when `SESSION_START ver` matches disk, `PLATES_LOAD ok=1`, no hostile `tar
 
 WoW flushes `Plateband.lua` on logout/reload — treat WTF as archive; **watch reads Logs/ first**.
 
-- **Live during play (0.2.78+):** primary head = `Plateband/Logs/agent-live-head.log` (`WriteAgentLiveHead` / `PublishChatTruthHead`; Forever io allowlist). Gate: `felog-live-gate.sh --max-age 2`. Older: `ForeverErrorLog/Logs/live-head.log` / `felog-live-head.log` when allowed; else **`felog_bridge_sv`** → repo `felog-plateband-live.log`; else Plateband SV mirror + `live-head.txt`.
-- **Never:** client `agent-live-export` or old PAINT lines for `live_ver`; never treat head lag as `reload_pending`.
-- **Live ver order:** `Plateband/Logs/agent-live-head.log` (≤2s on load) → `ForeverErrorLog/Logs/live-head.log` / bridge → `agent-live-export.log` → SV stamps. `interface_ver` = TOC on disk; `live_ver` / `felog_ver` on L1 = runtime **`Config.VERSION`** (same string as chat **`loaded v…`**).
-- **Export prove (0.3.02+):** `./scripts/felog-prove-export-l1-toc.sh` — **no host restamp**; requires `load=pulse` + fresh **`export-pulse.log`** (client append). Host watch may `PB_HOST_EXPORT_SYNTH=1` assist only; never PASS.
-- **Reload:** expect `CHAT_LOADED ver=… src=reload` in export/logs without logout; `SESSION_REPORT` within ~2s of session-watch.
+- **Version truth (0.3.05+):** chat **`loaded v…`** = Interface `Config.VERSION`. Gate/prove: `./scripts/felog-live-gate.sh` / `./scripts/felog-prove-export-l1-toc.sh` — PASS when **SV `chatTruthLine`** matches TOC after **`/reload`** (WTF flush lag OK; no ≤2s SV age requirement).
+- **Disk L1:** optional bonus only — one **`LoginDiskExportOnce`** at CHAT_LOADED when io allowlist permits. **Host `watch_sync` / restamp never PASS.**
+- **Paint:** PAINT/CARD in SV ring + optional `agent-live.log` append; matrix/anomaly accept flush lag until logout/`/reload`.
+- **Reload:** one `/reload` after deploy; expect `src=CHAT_LOADED load=login|reload` in SV `chatTruthLine`.
 - **`agent-live.log`:** CARD/PAINT append each event (when client `io` works).
 - Gate/matrix **do not fail** on flush lag alone; paint rules still run on `agent-live.log` + SV.
 

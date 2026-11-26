@@ -212,11 +212,6 @@ bootFrame:SetScript("OnEvent", function(_, event, name)
         SessionLog.RecordChatLoaded("reload")
       end)
     end
-    if SessionLog and SessionLog.ArmExportTruthPulse then
-      SafeCall("session:export_ticker", function()
-        SessionLog.ArmExportTruthPulse(true)
-      end)
-    end
   elseif event == "PLAYER_LOGIN" then
     EnsureDB()
     if SessionLog and SessionLog.BeginSession then
@@ -225,11 +220,6 @@ bootFrame:SetScript("OnEvent", function(_, event, name)
     if SessionLog and SessionLog.RecordChatLoaded then
       SafeCall("session:chat_loaded", function()
         SessionLog.RecordChatLoaded("login")
-      end)
-    end
-    if SessionLog and SessionLog.ArmExportTruthPulse then
-      SafeCall("session:export_ticker", function()
-        SessionLog.ArmExportTruthPulse(true)
       end)
     end
     ApplyModuleState()

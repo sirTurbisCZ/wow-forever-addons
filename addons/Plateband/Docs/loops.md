@@ -1,19 +1,21 @@
 # Plateband — aura / layout loops
 
-Version: **0.3.04** (export pulse; reload = TOC only)
+Version: **0.3.05** (SV-primary telemetry; reload = TOC only)
 
-## Export L1 pulse (agent feed)
+## Version / config truth (agent feed)
 
 ```mermaid
 flowchart TD
-  login[ScheduleLoginExportPulses 0.05-2s] --> pulse[DoExportDiskPulse]
-  tick[OnUpdate 2s driver] --> pulse
-  pulse --> gate[ResetExportIoGate + ProbeExportL1Write]
-  gate --> stamp[CommitChatTruthLine EXPORT_PULSE load=pulse]
-  stamp --> w[WriteExportL1Brute / TryWriteWholeFile L1]
-  stamp --> a[Append export-pulse.log or EXPORT_PULSE_LINE]
-  w -->|fail| a
-  host[host pb_promote_export_pulse 2s] -->|must not satisfy prove| w
+  reload["/reload PLAYER_LOGIN"] --> chat[chat Config.VERSION line]
+  reload --> sv[BumpChatTruthSV CHAT_LOADED]
+  sv --> once[LoginDiskExportOnce one io attempt]
+  once -->|ok| disk[agent-live-export L1 optional]
+  once -->|fail| svonly[ioAllowName sv_only]
+  paint[UNIT_AURA PAINT events] --> ring[paintTrace + sessionLog SV]
+  host[host restamp watch] -->|rejected| x[never PASS prove/gate]
+  prove[prove/gate scripts] --> sv
+  prove --> chat
+  prove -.->|bonus only| disk
 ```
 
 See also: [merge-design.md](merge-design.md) (default merge on 0.1.15+, no name mutation).

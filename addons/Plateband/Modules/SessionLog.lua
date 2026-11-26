@@ -5,9 +5,9 @@
     PlatebandDB.sessionLog + PlatebandDB.paintTrace
     → WTF/Account/<Account>/SavedVariables/Plateband.lua on /reload|logout
 
-  Live agent feed (no /reload for CARD/PAINT):
-    Interface/AddOns/Plateband/Logs/agent-live.log (append)
-    Interface/AddOns/Plateband/Logs/agent-live-export.log (rolling tail, ~2s)
+  Live agent feed:
+    SV chatTruthLine + sessionLog/paintTrace (primary; WTF flush lag OK)
+    Optional disk: one CHAT_LOADED write to agent-live-export.log when io allowlist permits
   Optional: session.log
   WTF SavedVariables still flush on logout/reload only — watch reads Logs/ first.
 ]]
@@ -55,6 +55,8 @@ local FELOG_STREAM_REL = "Interface/AddOns/ForeverErrorLog/Logs/live-stream.log"
 local FELOG_STREAM_BS = [[Interface\AddOns\ForeverErrorLog\Logs\live-stream.log]]
 local LIVE_TAIL_LINES = 120
 local AGENT_PULSE_SEC = 2.0
+-- Architecture live-telemetry-options: no OnUpdate/C_Timer disk heartbeat (default off).
+local CONTINUOUS_DISK_PULSE = false
 local PLATEBAND_TOC = "Plateband"
 local FELOG_TOC = "ForeverErrorLog"
 local PB_TOC_FILE = "Interface/AddOns/Plateband/Plateband.toc"
@@ -308,8 +310,11 @@ local function ScheduleLoginExportPulses()
   end
 end
 
---- Single EXPORT_PULSE write: fresh t=, 1 write / 2s (io off OnUpdate — queue below).
+--- Legacy continuous pulse — disabled unless CONTINUOUS_DISK_PULSE.
 local function DoExportDiskPulse()
+  if not CONTINUOUS_DISK_PULSE then
+    return false
+  end
   HydrateExportTimeAnchor()
   local loginBoost = GetTime and exportLoginBoostUntil > 0 and GetTime() <= exportLoginBoostUntil
   local stale = ExportDiskStaleSec()
@@ -345,6 +350,9 @@ local function DoExportDiskPulse()
 end
 
 local function QueueExportDiskPulse()
+  if not CONTINUOUS_DISK_PULSE then
+    return
+  end
   if exportPulseQueued then
     return
   end
@@ -372,6 +380,9 @@ end
 
 --- SV every tick; disk L1 at most once per 2s (bypassThrottle=true ignores window).
 function Mod.ForceDiskExportL1(bypassThrottle)
+  if not CONTINUOUS_DISK_PULSE then
+    return false
+  end
   if not bypassThrottle then
     return Mod.PulseExportDiskTick()
   end
@@ -379,22 +390,42 @@ function Mod.ForceDiskExportL1(bypassThrottle)
   return TryExportDiskLine(line)
 end
 
---- PLAYER_LOGIN + /reload: Config.VERSION truth to SV + disk within ≤2s (throttle kept on pulse).
-function Mod.FlushChatLoadedExport(loadKind)
+--- PLAYER_LOGIN + /reload: SV chatTruthLine + one disk attempt (no retry spam).
+function Mod.LoginDiskExportOnce(loadKind)
   loadKind = tostring(loadKind or "reload")
   exportDiskLastGt = 0
   pcall(Mod.ResetExportTimeAnchor)
+  local db = ns.Config.EnsureDB()
   local line = BumpChatTruthSV("CHAT_LOADED", loadKind)
-  local wrote = TryExportDiskLine(line)
-  if not wrote and C_Timer and C_Timer.After then
-    C_Timer.After(0.05, function()
-      exportDiskLastGt = 0
-      local l = BumpChatTruthSV("CHAT_LOADED", loadKind)
-      TryExportDiskLine(l)
-    end)
+  db.telemetryMode = "login_disk_once"
+  if not (io and io.open) then
+    db.ioAllowName = "sv_only"
+    db.ioExportDiskOk = false
+    NoteExportIoDiag(db, false, "no_io")
+    return false
   end
-  ScheduleLoginExportPulses()
+  pcall(Mod.ResetExportIoGate)
+  local wrote = TryExportDiskLine(line)
+  if not wrote then
+    wrote = TryWriteWholeFile({ AGENT_EXPORT_REL, AGENT_EXPORT_BS }, line .. "\n") or false
+  end
+  if wrote then
+    db.ioAllowName = "export"
+    db.ioExportDiskOk = true
+    db.ioExportDiskLine = line
+    db.exportLoginDiskAt = Now()
+    NoteExportIoDiag(db, true, "login_once")
+  else
+    db.ioAllowName = "sv_only"
+    db.ioExportDiskOk = false
+    db.exportLoginDiskAt = Now()
+    NoteExportIoDiag(db, false, "export_open")
+  end
   return wrote
+end
+
+function Mod.FlushChatLoadedExport(loadKind)
+  return Mod.LoginDiskExportOnce(loadKind)
 end
 
 function Mod.RefreshChatTruthSV(src, load)
@@ -1025,6 +1056,9 @@ function Mod.SyncLiveExportFile(src, load, seq)
   local body = tail ~= "" and (line .. "\n" .. tail) or line
   log.export = line
   logDirty = false
+  if not CONTINUOUS_DISK_PULSE then
+    return false
+  end
   local wrote = false
   db.ioAllowLastProbe = 0
   wrote = Mod.WriteExportL1Brute(line, true) or false
@@ -1051,27 +1085,15 @@ function Mod.ScheduleExportBurst()
   end
 end
 
---- Primary export pulse (2s). GetTime + OnUpdate on UIParent — C_Timer callbacks can stall on Forever.
+--- Default off: drivers stopped; version truth in SV + chat (see live-telemetry-options).
 function Mod.ArmExportTruthPulse(force)
-  if exportTruthArmed and not force then
-    return
-  end
   if force then
     StopExportTruthPulse()
-  elseif exportTruthArmed then
-    return
   end
   exportTruthArmed = true
   local db = ns.Config.EnsureDB()
   db.exportPulseArmedAt = Now()
-  if force then
-    Mod.ScheduleExportBurst()
-  end
-  EnsureExportDriverTicker()
-  EnsureExportDriverFrame()
-  pcall(Mod.ResetExportTimeAnchor)
-  ScheduleLoginExportPulses()
-  QueueExportDiskPulse()
+  db.continuousDiskPulse = false
 end
 
 function Mod.EnsureExportTruthTicker(force)
@@ -1213,8 +1235,6 @@ function Mod.RecordChatLoaded(src)
   local ver = tostring(Plateband.Config and Plateband.Config.VERSION or "?")
   local db = ns.Config.EnsureDB()
   db.ioExportDiskLine = nil
-  pcall(Mod.ResetExportIoGate)
-  exportLoginBoostUntil = (GetTime and GetTime() or 0) + 15
   pcall(Mod.ResetExportTimeAnchor)
   local at = Now()
   db.runtimeVer = { ver = ver, at = at, src = "chat", load = src }
@@ -1231,11 +1251,9 @@ function Mod.RecordChatLoaded(src)
   if ForeverErrorLog and ForeverErrorLog.NotifyRuntime then
     pcall(ForeverErrorLog.NotifyRuntime, "Plateband", ver, src, "CHAT_LOADED")
   end
-  pcall(Mod.FlushChatLoadedExport, src)
-  Mod.ScheduleExportBurst()
+  pcall(Mod.LoginDiskExportOnce, src)
   pcall(Mod.PublishChatTruthHead, "CHAT_LOADED", src, 0)
   Mod.ArmExportTruthPulse(true)
-  pcall(Mod.PulseAgentLive)
 end
 
 local function UpsertAgentLiveStamped(stamped)
@@ -1255,6 +1273,9 @@ local function UpsertAgentLiveStamped(stamped)
 end
 
 local function MaybeReprobeIo()
+  if not CONTINUOUS_DISK_PULSE then
+    return
+  end
   local now = Now()
   if (now - lastIoProbeAt) < IO_PROBE_SEC then
     return
@@ -1333,8 +1354,9 @@ local function TryAppendAgentLive(stamped)
 end
 
 function Mod.FlushLiveExport()
-  exportDiskLastGt = 0
-  QueueExportDiskPulse()
+  local log = EnsureLogTable()
+  log.export = table.concat(log.lines or {}, "\n")
+  logDirty = false
   return true
 end
 
@@ -1347,6 +1369,9 @@ function Mod.ScheduleLiveFlush()
     C_Timer.After(LIVE_FLUSH_DEBOUNCE, function()
       liveFlushPending = false
       pcall(Mod.FlushLiveExport)
+      if paintExportDirty then
+        pcall(Mod.FlushPaintTrace)
+      end
     end)
   else
     liveFlushPending = false
@@ -1355,17 +1380,7 @@ function Mod.ScheduleLiveFlush()
 end
 
 function Mod.EnsureLiveFlushTicker()
-  if liveFlushTicker or not C_Timer or not C_Timer.NewTicker then
-    return
-  end
-  liveFlushTicker = C_Timer.NewTicker(5, function()
-    if logDirty then
-      pcall(Mod.FlushLiveExport)
-    end
-    if paintExportDirty then
-      pcall(Mod.FlushPaintTrace)
-    end
-  end)
+  return
 end
 
 --- 2s runtime truth for agents — SV agentLive + rolling AGENT_LIVE in session export.
@@ -1395,18 +1410,10 @@ function Mod.PulseAgentLive()
   if not TryAppendAgentLive(stamped) then
     MirrorToFelog(body)
   end
-  Mod.ScheduleLiveFlush()
 end
 
 function Mod.EnsureAgentPulseTicker()
   Mod.ArmExportTruthPulse(false)
-  if agentPulseTicker or not C_Timer or not C_Timer.NewTicker then
-    return
-  end
-  pcall(Mod.PulseAgentLive)
-  agentPulseTicker = C_Timer.NewTicker(AGENT_PULSE_SEC, function()
-    pcall(Mod.PulseAgentLive)
-  end)
 end
 
 local function PushPaintEntry(line)
@@ -1476,9 +1483,6 @@ function Mod.BeginSession()
   Mod.Append(header)
   pcall(Mod.TryWriteRuntimeVerFile, ver)
   pcall(Mod.PublishInterfaceTocStamp)
-  pcall(Mod.PulseExportDisk)
-  Mod.EnsureLiveFlushTicker()
-  Mod.EnsureAgentPulseTicker()
   Mod.ArmExportTruthPulse(true)
   return log
 end
@@ -1542,36 +1546,6 @@ function Mod.Status()
     exportPulseAt = tonumber(db.exportPulseAt) or 0,
     exportPulseN = tonumber(db.exportPulseN) or 0,
   }
-end
-
-local function DeferArmExportTruth(force)
-  local function arm()
-    pcall(Mod.ArmExportTruthPulse, force == true)
-  end
-  if C_Timer and C_Timer.After then
-    C_Timer.After(0, arm)
-  else
-    arm()
-  end
-end
-
-if CreateFrame then
-  local exportBoot = CreateFrame("Frame")
-  exportBoot:RegisterEvent("ADDON_LOADED")
-  exportBoot:RegisterEvent("PLAYER_ENTERING_WORLD")
-  exportBoot:SetScript("OnEvent", function(_, event, loadName)
-    if event == "ADDON_LOADED" and loadName ~= "Plateband" then
-      return
-    end
-    if event == "ADDON_LOADED" or event == "PLAYER_ENTERING_WORLD" then
-      DeferArmExportTruth(true)
-      if event == "PLAYER_ENTERING_WORLD" then
-        EnsureExportDriverFrame()
-        pcall(Mod.FlushChatLoadedExport, "login")
-        QueueExportDiskPulse()
-      end
-    end
-  end)
 end
 
 return Mod

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Prove client export L1 matches Interface Config/TOC — no host restamp on this path.
+# Version prove: SV chatTruthLine vs Interface Config/TOC (live-telemetry-options).
+# Disk L1 is optional bonus only when client-authored CHAT_LOADED (not host restamp).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=scripts/felog-sv-lib.sh
@@ -9,68 +10,67 @@ MAX_AGE="${1:-5}"
 PB="$(felog_plateband_interface_ver 2>/dev/null || echo "?")"
 FE="$(felog_interface_ver 2>/dev/null || echo "?")"
 EXP="$(felog_plateband_export_path)"
-PULSE="$(felog_plateband_export_pulse_path)"
 
-if [[ ! -f "$EXP" ]]; then
-  echo "PROVE_L1 fail: missing export $EXP"
+SV_TRUTH="$(felog_read_chat_truth_sv 2>/dev/null || true)"
+if [[ -z "$SV_TRUTH" ]]; then
+  echo "PROVE_L1 fail: no PlatebandDB.chatTruthLine in SV — /reload after deploy (toc pb=$PB fe=$FE)"
   exit 1
 fi
 
-L1="$(head -1 "$EXP" 2>/dev/null || true)"
-AGE="$(felog_head_age_sec "$EXP" 2>/dev/null || echo 9999)"
-MTIME="$(felog_file_age_sec "$EXP" 2>/dev/null || echo "?")"
-T_AGE="$(felog_line_t_age_sec "$L1" 2>/dev/null || echo "?")"
-LIVE="$(sed -n 's/.*live_ver=\([0-9.]*\).*/\1/p' <<<"$L1" | head -1)"
-IPB="$(sed -n 's/.*interface_pb=\([0-9.]*\).*/\1/p' <<<"$L1" | head -1)"
-IFE="$(sed -n 's/.*interface_fe=\([0-9.]*\).*/\1/p' <<<"$L1" | head -1)"
-FE_L="$(sed -n 's/.*felog_ver=\([0-9.]*\).*/\1/p' <<<"$L1" | head -1)"
-SRC="$(sed -n 's/.*src=\([^ ]*\).*/\1/p' <<<"$L1" | head -1)"
-LOAD="$(sed -n 's/.* load=\([^ ]*\).*/\1/p' <<<"$L1" | head -1)"
+SV_LINE="$(echo "$SV_TRUTH" | sed -n 's/.*line=//p' | head -1)"
+SV_PB="$(echo "$SV_TRUTH" | sed -n 's/.*plateband_ver=\([^ ]*\).*/\1/p')"
+SV_FE="$(echo "$SV_TRUTH" | sed -n 's/.*felog_ver=\([^ ]*\).*/\1/p')"
+SV_SRC="$(echo "$SV_TRUTH" | sed -n 's/.* src=\([^ ]*\).*/\1/p' | head -1)"
+SV_LOAD="$(echo "$SV_TRUTH" | sed -n 's/.* load=\([^ ]*\).*/\1/p' | head -1)"
+SV_FEED="$(echo "$SV_TRUTH" | sed -n 's/.* feed=\([^ ]*\).*/\1/p' | head -1)"
+SV_AGE="$(echo "$SV_TRUTH" | sed -n 's/.*age_sec=\([^ ]*\).*/\1/p')"
+[[ -n "$SV_PB" ]] || SV_PB="$(sed -n 's/.*live_ver=\([0-9.]*\).*/\1/p' <<<"$SV_LINE" | head -1)"
+[[ -n "$SV_FE" ]] || SV_FE="$(sed -n 's/.*felog_ver=\([0-9.]*\).*/\1/p' <<<"$SV_LINE" | head -1)"
 
-if [[ "$L1" != live_ver=* ]]; then
-  echo "PROVE_L1 fail: L1 not live_ver= line"
-  echo "$L1"
+if [[ "$SV_FEED" == host_toc_pulse ]]; then
+  echo "PROVE_L1 fail: SV feed=host_toc_pulse — not client truth"
+  echo "$SV_LINE"
+  exit 1
+fi
+if [[ "$SV_LOAD" == "watch_sync" || "$SV_LOAD" == "host_toc_pulse" ]]; then
+  echo "PROVE_L1 fail: SV load=$SV_LOAD — host restamp"
+  echo "$SV_LINE"
   exit 1
 fi
 
-if ! felog_export_l1_is_client_pulse "$L1"; then
-  echo "PROVE_L1 fail: not client pulse (src=$SRC load=$LOAD) — host watch_sync/touch invalid"
-  echo "$L1"
+if [[ "$SV_PB" != "$PB" ]]; then
+  echo "PROVE_L1 fail: sv plateband_ver=$SV_PB != interface toc=$PB (age=${SV_AGE:-?}s — WTF flush lag OK after /reload)"
+  echo "$SV_LINE"
+  exit 1
+fi
+if [[ -n "$SV_FE" && "$SV_FE" != "$FE" ]]; then
+  echo "PROVE_L1 fail: sv felog_ver=$SV_FE != interface toc=$FE"
+  echo "$SV_LINE"
   exit 1
 fi
 
-PULSE_AGE="$(felog_export_pulse_age_sec 2>/dev/null || echo 9999)"
-if [[ ! "$PULSE_AGE" =~ ^[0-9]+$ ]] || [[ "$PULSE_AGE" -gt "$MAX_AGE" ]]; then
-  echo "PROVE_L1 fail: export-pulse.log stale age=${PULSE_AGE}s max=${MAX_AGE}s (client DoExportDiskPulse not appending)"
-  exit 1
-fi
-
-if [[ ! "$AGE" =~ ^[0-9]+$ ]] || [[ "$AGE" -gt "$MAX_AGE" ]]; then
-  echo "PROVE_L1 fail: export stale age=${AGE}s max=${MAX_AGE}s"
-  echo "$L1"
-  exit 1
-fi
-
-for label in LIVE IPB IFE FE_L; do
-  val="${!label}"
-  if [[ -z "$val" ]]; then
-    echo "PROVE_L1 fail: missing $label in L1"
-    exit 1
+DISK_BONUS=no
+DISK_NOTE=""
+if [[ -f "$EXP" ]]; then
+  L1="$(head -1 "$EXP" 2>/dev/null | tr -d '\r' || true)"
+  DISK_AGE="$(felog_head_age_sec "$EXP" 2>/dev/null || echo 9999)"
+  DISK_LOAD="$(sed -n 's/.* load=\([^ ]*\).*/\1/p' <<<"$L1" | head -1)"
+  if [[ "$DISK_LOAD" == "watch_sync" || "$DISK_LOAD" == "host_toc_pulse" ]]; then
+    DISK_NOTE="disk_ignored_host_restamp"
+  elif felog_export_l1_is_client_pulse "$L1" 2>/dev/null; then
+    DISK_PB="$(sed -n 's/.*live_ver=\([0-9.]*\).*/\1/p' <<<"$L1" | head -1)"
+    DISK_FE="$(sed -n 's/.*felog_ver=\([0-9.]*\).*/\1/p' <<<"$L1" | head -1)"
+    if [[ "$DISK_PB" == "$PB" && "$DISK_FE" == "$FE" ]] \
+      && [[ "$DISK_AGE" =~ ^[0-9]+$ ]] && [[ "$DISK_AGE" -le "$MAX_AGE" ]]; then
+      DISK_BONUS=yes
+    else
+      DISK_NOTE="disk_client_but_stale_or_ver_mismatch age=${DISK_AGE}s"
+    fi
+  else
+    DISK_NOTE="disk_not_client_authored"
   fi
-done
-
-if [[ "$LIVE" != "$PB" || "$IPB" != "$PB" ]]; then
-  echo "PROVE_L1 fail: plateband L1=$LIVE interface_pb=$IPB != toc=$PB"
-  echo "$L1"
-  exit 1
 fi
 
-if [[ "$FE_L" != "$FE" || "$IFE" != "$FE" ]]; then
-  echo "PROVE_L1 fail: felog L1=$FE_L interface_fe=$IFE != toc=$FE"
-  echo "$L1"
-  exit 1
-fi
-
-echo "PROVE_L1 ok: pb=$PB fe=$FE src=$SRC load=$LOAD age=${AGE}s mtime=${MTIME}s t_age=${T_AGE}s pulse_age=${PULSE_AGE}s"
-echo "$L1"
+echo "PROVE_L1 ok: pb=$PB fe=$FE truth=sv_chat_truth src=${SV_SRC:-?} load=${SV_LOAD:-?} sv_age=${SV_AGE:-?}s disk_bonus=$DISK_BONUS ${DISK_NOTE:+$DISK_NOTE}"
+echo "$SV_LINE"
 exit 0

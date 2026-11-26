@@ -1,5 +1,14 @@
 # Plateband changelog
 
+## Release 0.3.05 — live telemetry architecture (honest dual-channel)
+
+Per `docs/live-telemetry-options.md` (studio decision):
+
+- **Default off** `CONTINUOUS_DISK_PULSE` — no `PlatebandExportDriver` OnUpdate, no `C_Timer` 2s disk heartbeat, no login pulse spam.
+- **`LoginDiskExportOnce`** — single CHAT_LOADED write to `agent-live-export.log`; `ioAllowName`=`export` or `sv_only`; no retry loop.
+- **SV `chatTruthLine` + paint ring** on events only; session `log.export` flush without disk queue.
+- **Host gates:** prove/gate PASS = SV vs Interface `Config.VERSION`; disk L1 bonus only when client-authored.
+
 ## Release 0.3.04 — export io probe + friend WS refill
 
 - **`ResetExportIoGate` + `ProbeExportL1Write`** on each pulse; **`TryWriteWholeFile`** fallback when line write fails; **15s login boost** bypasses export throttle.
