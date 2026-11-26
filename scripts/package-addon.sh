@@ -40,6 +40,7 @@ if [[ -z "$VER" ]]; then
 fi
 
 mkdir -p "$OUT_DIR"
+OUT_DIR="$(cd "$OUT_DIR" && pwd)" # absolute: the zip is written after a cd into the staging dir
 STAGE="$(mktemp -d "${TMPDIR:-/tmp}/package-${NAME}.XXXXXX")"
 trap 'rm -rf "$STAGE"' EXIT
 
@@ -52,6 +53,11 @@ rsync -a \
   --exclude '*.bak*' \
   --exclude '.DS_Store' \
   --exclude '.git' \
+  --exclude 'Logs/' \
+  --exclude 'luac.out' \
+  --exclude 'Docs/loops.md' \
+  --exclude 'Docs/merge-design.md' \
+  --exclude 'Docs/testing.md' \
   "$SRC/" "$DEST/"
 
 missing=0

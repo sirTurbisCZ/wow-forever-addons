@@ -48,14 +48,15 @@ local function InCombat()
   return InCombatLockdown and InCombatLockdown() and true or false
 end
 
+-- Per character (schema 11): confirm flag, confirmed items, destroyed counts and log.
 local function TrashDB()
-  local p = Config.GetProfile()
+  local p = Config.GetCharProfile()
   if type(p.trash) ~= "table" then
     p.trash = {}
   end
   local t = p.trash
   if t.confirm == nil then
-    t.confirm = false
+    t.confirm = true
   end
   for _, k in ipairs({ "confirmed", "destroyed", "log" }) do
     if type(t[k]) ~= "table" then
@@ -117,7 +118,7 @@ function Trash.ShouldConfirm(itemID)
 end
 
 local function Rules()
-  local p = Config.GetProfile()
+  local p = Config.GetCharProfile()
   if type(p.itemRules) ~= "table" then
     p.itemRules = {}
   end

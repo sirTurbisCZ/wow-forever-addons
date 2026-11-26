@@ -1,5 +1,683 @@
 # Plateband changelog
 
+## Release 0.6.3 — debuffs from any player
+
+- Enemy plates show debuffs cast by **any player or player pet** (yours, party, strangers); NPC debuffs stay hidden. (`isFromPlayerOrPlayerPet` means "a player", not "me".)
+
+## Release 0.6.2 — border colours
+
+- Thin coloured border per icon: red debuff, green helpful, gold dispellable enemy buff.
+
+## Release 0.6.1 — no duplicate crowd control
+
+- Blizzard's `CrowdControlListFrame` is muted (Frost Nova etc. appeared twice).
+
+## Release 0.6.0 — tooltips
+
+- Hover an added icon for the effect tooltip (`GameTooltip` only; clicks still pass to the plate). `gapTooltip` setting.
+
+## Release 0.5.3 — rules also for remembered icons
+
+- The rules are applied to the remembered ("sticky") icons too. Before, an emptied list re-painted old icons that the rules reject (long buffs, foreign debuffs).
+
+## Release 0.5.2 — row height
+
+- Row offset above the name uses the height of the name text.
+
+## Release 0.5.1 — anchor fix
+
+- The row anchors only to **visible** native debuffs. Native buffs (muted but still "shown", centred on the plate) acted as the anchor and pushed the row to the middle.
+
+## Release 0.5.0 — one layout
+
+- One layout for every plate: after the last visible native debuff, otherwise directly above the name, left-aligned with the bar. The separate friendly layouts (`friendLeft`/`friendAbove`) are gone.
+
+## Release 0.4.10 / 0.4.9 — `/pb tree`
+
+- `/pb tree` prints which frames of the target plate draw aura icons; compact, summary last.
+
+## Release 0.4.8 — recycled plates
+
+- The cached party token of a plate is cleared on plate add/remove and target change (auras could follow a recycled plate, including the literal `target` token).
+
+## Release 0.4.6 — `pol=` in `/pb diagnose`
+
+- The card shows rows kept / no data / unknown type / buff rule / source / error.
+
+## Release 0.4.4 — buff or debuff by list membership
+
+- The type of an aura is decided by the list it is in (`HELPFUL`/`HARMFUL`); the client's `AuraData` has no reliable `isHelpful`. Unknown type is a debuff on enemies and not added on friendly plates.
+
+## Release 0.4.2 — friendly plates only
+
+- Individual native helpful buttons are muted only on friendly plates (on enemies the buff list only), because telling buff buttons from debuff buttons is not reliable and hid native debuffs.
+
+## Release 0.4.1 — rules (`PlatesPolicy.lua`)
+
+- **New `Modules/PlatesPolicy.lua`:** one place for what is added.
+  - **Friendly plates:** every debuff (any caster) + helpful effects with a total duration of 60 s or less. Food, drink and long buffs never.
+  - **Enemy plates (neutral counts as enemy):** your debuffs, debuffs from other players, dispellable / stealable enemy buffs.
+- Native buff list muted (alpha only); the old "hide all friendly buffs" code and `/pb food`, `hideFriendlyFoodBuffs`, `mergeFriendHelpful` are removed. Nameplate `UNIT_AURA` repaints non-target plates (`auraWatchPlates`). Expired icons hide immediately; tick 2 s.
+- Reaction 4 (neutral) is no longer "friendly".
+
+## Release 0.4.0 — telemetry rewrite (schema 16)
+
+- **`SessionLog.lua` rewritten** (1697 → ~230 lines, no `io`). The old module had forward-reference errors that silently broke every chat-truth/commit path.
+- **Dev telemetry is opt-in** (`/pb dev on`, default off); only ERROR lines are always kept.
+- **Fixes:** `SnapshotDiagnose` was captured as nil by the trace deps (no `reason=paint` cards ever); `auraUnit` was a nil global in the friend retry; `autoDiag` was defined twice; dead keys `paintOverlay` / `paintTraceOn` and ~20 undeclared SavedVariables keys are removed.
+- **`/pb selftest`** now runs six real wiring checks (it used to report most cases as passed unconditionally).
+- Load message no longer mentions "silent paint trace".
+
+## Release 0.3.34 — friend HARMFUL only (revert HELPFUL gaps)
+
+- **`mergeFriendHelpful` default off** (schema 15 forces off): party/friend NP = **debuffs / negative effects only** (e.g. Weakened Soul) — **no** buff/HoT gap merge.
+- **`friendLeft`** layout + visibility stack (**0.3.31–0.3.32**) unchanged.
+- **`/pb food on|off`** still only affects native consumable **hide**, not gap paint.
+
+## Release 0.3.33 — friend HELPFUL + optional food filter
+
+- **`mergeFriendHelpful`** (schema 14, default on): paint **HELPFUL** gaps on party/friend NP (HoTs, shields, buffs) in same **`friendLeft`** row as WS/debuffs.
+- **`CollectFriendHelpfulAuraGaps`** + **`FriendNativeShownKeySet`** (native BuffList skip keys); **`CountFriendAuraSlots`** for sticky/prune.
+- **`hideFriendlyFoodBuffs`** default **off** (show Well Fed); **`/pb food on|off`** for consumable-only hide — never hides harmful.
+- **`SuppressFriendlyPlateConsumables`** unchanged — only when food hide on.
+
+## Release 0.3.32 — friend LEFT row + live debuff stick
+
+- **`gapBand=friendLeft`:** anchor **`BOTTOMLEFT` → lane `TOPLEFT`** (DebuffList/AurasFrame/bar) — mob-style **left growth**, not centered name.
+- **`GapAuraLive`:** party token lookup miss + **`CountHarmfulAuraSlots>0`** + icon → stay live (fixes intermittent drop).
+- **Friend paint:** re-harvest when API shows harmful but `#missing==0`; sticky hold while **`slots>0`**; empty when no debuff unchanged.
+- Bundles **0.3.31** visibility + **0.3.30/0.3.29**.
+
+## Release 0.3.31 — friend gap visible above name (painted≥1 fix)
+
+- **`FriendFallbackPaintParent`:** prefer **`UnitFrame`** over raw **`plate`** (z-order with name/AurasFrame).
+- **`BoostFriendGapChrome`:** after `nameTop` layout — unclip ancestors, `Show`/`SetAlpha(1)`, frame level above name; PAINT `gapParent`/`gapLvl`.
+- **`ApplyGapAuraVisual` + paint loop:** force icon/button alpha + show when texture/aura binds succeed.
+- Bundles **0.3.30** reload start + **0.3.29** SV truth + **0.3.28** friend harvest.
+
+## Release 0.3.30 — emergency: plate hooks after /reload
+
+- **`Core`:** `/reload` never fired `PLAYER_LOGIN` — **`ApplyModuleState`** (Plates.Start) now runs on **ADDON_LOADED** when `IsLoggedIn()` and again on **PLAYER_ENTERING_WORLD** + **RefreshAll** (restores native + merge paint).
+- **0.3.29** SessionLog truth + **0.3.28** friend paint unchanged.
+
+## Release 0.3.29 — runtime ver truth + friend WS (0.3.28 paint)
+
+- **`SyncRuntimeVersionFromInterface`:** `live_ver` / `CHAT_LOADED` / chat line = **loaded** `Config.VERSION` only (mem+metadata); disk newer → `reloadPendingVer`, **never** fake a higher runtime without reload.
+- **`Core`:** `SyncRuntimeVersionFromInterface` on `ADDON_LOADED`; chat **loaded v%s** after `RecordChatLoaded`.
+- **`RecordChatLoaded` / `BumpChatTruthSV`:** one CHAT_LOADED bump **after** session lines; **`agentLive` + `runtimeVer` + `configChatVer`** sync from **`chatTruthLine`** same turn; **`sessionLog.export`** = line 1 `live_ver` + tail (no wipe until WTF flush).
+- **Includes 0.3.28:** friend `useTargetSrc=off`, `partyN` harvest, `gapBand=nameTop` WS row.
+
+## Release 0.3.28 — friend WS above name (party paint path)
+
+- **Paint:** friendly/party plates **never `useTargetSrc`** — avoids hostile TF harvest + `gapOffY=-4` under-bar layout when targeting Renia.
+- **Harvest:** `partyN`/`target` token via expanded `ResolvePartyTokenForPlate`; softer party plate-binding bail.
+- **Layout:** party/friend gaps **always `gapBand=nameTop`** on `name.TOPLEFT` (+8), parent `plate`.
+- **Visual:** `ApplyGapAuraVisual` counts texture-only gaps as visible when `entry.icon` present.
+
+## Release 0.3.27 — friend WS gap paint (Renia phantom skip)
+
+- **Root cause (live SV `0.3.24`):** `AugmentNativeKeysFromUnitApi` on friend plates marked **all** unit HARMFUL as “native shown” → `EnsureUnitHarmfulParity` skipped WS → **`painted=0`** (party frame showed WS, nameplate none).
+- **Fix:** no API augment on `PlateUsesFriendlyHarmfulFilter` plates; harvest/parity on **`partyN`** token; friend gap parent **`plate`** + **`nameTop`** (+8px).
+- **Playtest:** `/reload` → **`CHAT_LOADED ver=0.3.27`** → Renia WS → PAINT `friend=1 party=partyN painted≥1 gapBand=nameTop`.
+
+## Release 0.3.26 — restore friendly WS visibility (undo 0.3.25 lift)
+
+- **Revert:** remove **`LiftFriendlyAurasAboveName`** — `AurasFrame` `ClearAllPoints` made native + gap debuffs **vanish** while PAINT still logged `painted=1`.
+- **`SuppressFriendlyPlateConsumables`:** never `Hide` **`PlateButtonHarmful`**; scrape **BuffList only** (not all aura pools).
+- **Visible gaps:** friend fallback parents **`UnitFrame`**; merge row **`nameTop`** on `name.TOPLEFT` (+6); `Show` + frame level after layout.
+- **`EnsureNativeVisible`:** show/alpha **`AurasFrame`** + DebuffList (never hide DebuffList).
+
+## Release 0.3.25 — lift friendly AurasFrame above name (Renia)
+
+- **Layout:** `LiftFriendlyAurasAboveName` re-anchors **`AurasFrame`** `BOTTOMLEFT` → **`name.TOPLEFT`** (+6px) when band is bar-flush / below name — native DebuffList row + gaps match mob “above name” band (no DebuffList SetPoint).
+- **Gaps:** friend `gapBand=nameTop|DebuffListLift|rightNativeLift`; merge parent `UnitFrame` for name-top row; `offX=0` when no live native icons.
+- **`EnsureNativeVisible`:** lifts on every friendly overlay tick (native WS visible above name).
+- **Agent:** playtest SV had **`CHAT_LOADED ver=0.3.22`** — `/reload` required before judging 0.3.24+ layout fixes.
+
+## Release 0.3.24 — friend gap row above name (not below bar)
+
+- **Layout:** `MergeRowOffY` **never** applies `MERGE_ROW_BELOW_BAR` on party/friendly plates — gap icons align to **DebuffList above name** (same as mob plates); native-button delta only when live.
+- **PAINT:** `gapRow=friendAbove|hostile` for agent layout checks.
+
+## Release 0.3.23 — debuff row vertical gap (Renia-class)
+
+- **Layout:** `MergeRowOffY` — sample live native button bottom vs `DebuffList` / drop **`MERGE_ROW_BELOW_BAR`** when list bottom is flush with health bar (gap icons no longer glued to bar edge).
+- **Spacing:** `OVERLAY_PAD` 3; `LayoutMergeBesideNative` applies `gapOffY` on `rightNative` / `DebuffList` / `AurasFrame` anchors.
+- **PAINT:** logs `gapOffY=` for agents.
+
+## Release 0.3.22 — hostile target tgtSrc (IsTargetPlate)
+
+- **Regression:** `PaintMergeMissing` gated `useTargetSrc` on `PlateMatchesTarget` only and forced `useTargetSrc=false` whenever `HasTarget()` but plate frame ≠ `PlateFor("target")` — hostile PAINT could show `tgt=1` `tgtSrc=0` while still painting from unit token (skips TF parity / `ReconcileTfHarmfulCoverage`).
+- **Fix:** `useTargetSrc = ShouldUseTargetAuraSource` (includes **GUID / `nameplateN` / `IsTargetPlate`** bind).
+- **CARD:** live `tgtSrc` when `plate=no` but `punit` + `PlateFor(target)` resolve.
+- **Watcher:** skip `hostile_tgtSrc0_HARMFUL` on `plate=no` + `painted>0` (stale `lpd.tgtSrc`, not harvest miss).
+
+## Release 0.3.21 — hide friendly food HELPFUL on NP
+
+- **`hideFriendlyFoodBuffs`** (default on, schema 13): hide **individual** native buff buttons (Well Fed / food / drink patterns) on party+friendly nameplates — **not** DebuffList/SetPoint; harmful row (e.g. WS) untouched.
+- **`SuppressFriendlyPlateConsumables`** after `EnsureNativeVisible` on overlay tick.
+
+## Release 0.3.20 — sticky expire → paint_stale_cleared
+
+- **`GapAuraLive`:** missing `auraInstanceID` on unit → false (no spellId fallback ghost).
+- **`paint_hold`:** only when `StickyRowsLiveOnUnit` + hostile `CountHarmfulAuraSlots>0`; held row without sticky → clear.
+- Post-refresh re-check; dead sticky → `paint_stale_cleared` not `paint_hold`.
+
+## Release 0.3.19 — merge-design sibling layout (Wyvern band)
+
+- **Parent:** gap row on `AurasFrame`/`UnitFrame` only — **not** a child of `DebuffList` (Forever clip/wrong row).
+- **Hostile anchor:** `SetPoint` to rightmost native pool kid, else `DebuffListFrame` **BOTTOMLEFT** + `gapOff` from **`nativeN`** when pools undercount `nativeVis`.
+- **No** hostile health-bar-top; `NativeBandRightAnchor` keeps pool rightmost without over-strict live gate.
+- PAINT **`gapBand=`** (`rightNative` / `DebuffList` / `AurasFrame`).
+
+## Release 0.3.18 — hostile debuff row only (no bar-above)
+
+- **Layout:** hostile gap icons **never** anchor `healthBar:TOP` (above name); **`HostileDebuffBandFrame`** = DebuffList / AurasFrame / UF only.
+- **`PlateHarmfulBandExpected`:** offset gap beside native band when TF/API shows harmful but `nativeVis=0`.
+- **`FallbackPaintParent`:** drop health-bar parent (merge frame lives on debuff chrome).
+
+## Release 0.3.17 — stale paint_hold + native row band
+
+- **`paint_hold`:** no hold when sticky rows fail **`GapAuraLive`** — clear fallback (`paint_stale_cleared`); never keep icon because **other** `HARMFUL` slots remain on unit.
+- Sticky budget expiry clears fallback (no frozen swipe).
+- **`MergeRowIconSize`:** samples live native debuff chrome (`NativeAuraMetrics` / plate kids).
+- **Layout:** merge beside native band when plate has personal DoTs (`nativeHarm`); hostile **AurasFrame** row before bar-above fallback.
+- **`GapAuraLive`:** unverified rows never stick (strict false).
+
+## Release 0.3.16 — hostile gap row + overlap gate
+
+- **False-positive fix:** `nativeVis=0` + `painted≥2` with **miss=painted** or `gapW≥` = spaced gap row (Patriarch-class), not matrix FAIL.
+- PAINT **`gapW` / `gapOff`** after `LayoutGapIconsInFallback`; hostile anchors **AurasFrame row** parent, no right-anchor unless `nativeVis>0`.
+- Matrix FAIL only **painted≥2 miss=1** (true stack risk).
+
+## Release 0.3.15 — multi-gap layout (nativeVis=0)
+
+- **`LayoutGapIconsInFallback`** — re-spread gap buttons after anchor; skip dead **right-anchor** when `nativeVis=0`.
+- **`NativeBandRightAnchor`** — live native buttons only (no pool ghost anchor).
+- **Empty-native multi-paint:** reserve one native slot width before gap row when `painted>1` && `visN=0`.
+- **CARD:** `painted` follows latest `lastPaintDebug` when unit matches (less CARD vs PAINT lag).
+- **Matrix:** friend `miss≥2 painted≥2 nativeVis=0` = merge band OK (not Tarantula hostile FAIL).
+
+## Release 0.3.14 — friend NP harvest + PAINT samples
+
+- Re-resolve **`partyAuraTok`** for friend plates; harvest foreign gaps on party/raid token (not nameplate-only).
+- **`paint_sample` / `paint_gap`** PAINT lines when `friend=1` so agents see `tfRows`/miss without `painted>0`.
+- Card **`tfRows`** from harmful API when native/TF UI is empty.
+
+## Release 0.3.13 — restore SilentTraceEnabled delegate
+
+- **`PlatesTrace.SilentTraceEnabled`** on deps; **`Plates.lua`** delegates (fixes `MaybeAutoDiagnose` @5119 nil after trace split).
+
+## Release 0.3.12 — session-clean FELog error ring
+
+- **`RecordChatLoaded`** calls **`ForeverErrorLog.ResetErrorRingOnChatLoaded`** (with FElog `BeginSession`); wipes Plateband `errors` too.
+- Requires **ForeverErrorLog 0.1.31** for archive + idempotent wipe tok.
+
+## Release 0.3.11 — Plates compile fix (200 locals / 60 upvalues)
+
+- **`PlatesTrace.lua`** chunk: `SilentTracePaint` / sweep / PAINT line build (60 upvalue cap).
+- **`Plates.lua`**: drop ~20 chunk `local function`s; trace forward decls removed → client compiles under 200 locals.
+- **Core**: one chat `loaded v%s` per session (reload vs login); `RecordChatLoaded` only on applicable path; sync ver before announce.
+- **PlatesPaint**: nil-safe `CountTargetFrameAuras` when deps incomplete.
+
+## Release 0.3.10 — CHAT_LOADED disk version sync
+
+- **`SyncRuntimeVersionFromInterface`** on session start + CHAT_LOADED: max(mem, TOC meta, parsed Config.lua / Plateband.toc on disk).
+- **`LOAD_EVIDENCE`** session line (mem, disk_cfg, disk_toc, meta, synced) for load-path proofs.
+- **`interface_pb` / `interface_fe`** in chatTruthLine from disk file parse (not host mirror).
+- Clears **`exportLoginDiskVer`** when synced ver changes so login disk export retries.
+
+## Release 0.3.09 — friend WS paint anti-flake
+
+- No **`painted=0` PAINT** while friend harmful API live (`miss>0` suppress + hold prior `fb._painted`).
+- **`paint_stale_cleared`** blocked when `CountHarmfulAuraSlots` still positive; visual-fail → `RefreshHeldGapFallback`.
+- **`SilentTracePaint`**: friend `tfRows>0` coalesces with fallback count; drops spurious `paint`+`painted=0` lines.
+
+## Release 0.3.08 — friend WS plate paint
+
+- **`EnsureChatTruthCurrent` (PEW):** syncs `chatTruthLine` + `configChatVer` + `CHAT_LOADED` export when runtime ≠ SV.
+- **Host watch:** `pb_client_ver` prefers SV `chatTruthLine` / unified export over stale live-head; auto **`reload_hint`** when TOC ahead.
+- Skip **`PruneInactiveGapRows`** when friend harmful API / `tfRows` says WS still live.
+- **`paint_hold`** + PAINT trace use **`fallback._painted`** (no `tfRows>0 painted=0` flake).
+- Friend gap paint: alt unit tokens on visual fail (party / target / nameplate).
+- Empty-missing friend path: mirror/foreign backfill before clear.
+
+## Release 0.3.07 — chatTruthLine on every reload
+
+- **`RecordChatLoaded`** always bumps SV `chatTruthLine` (not only via disk); clears per-version disk gate.
+- **`ADDON_LOADED`** reload no longer requires `IsLoggedIn()` (Forever skipped truth during `/reload`).
+- **`EnsureChatTruthCurrent`** on `PLAYER_ENTERING_WORLD` when stored `live_ver` ≠ `Config.VERSION`.
+- **`SyncLiveExportFile`** uses **`CommitChatTruthLine`**.
+
+## Release 0.3.06 — paint deps + friend merge offset
+
+- **`CountHarmfulAuraSlots`** wired into `PlatesPaintDeps` (0.3.04 regression caused `paint` nil @ line 258 → zero PAINT / session_zero_paint_streak).
+- **`PLATES_LOAD`** checks paint chunk body + slot API, not wrapper alone.
+- **Friend layout:** `LayoutMergeBesideNative` uses `nativeVis` offset when merging 2+ gap icons beside empty native row.
+
+## Release 0.3.05 — live telemetry architecture (honest dual-channel)
+
+Per `docs/live-telemetry-options.md` (studio decision):
+
+- **Default off** `CONTINUOUS_DISK_PULSE` — no `PlatebandExportDriver` OnUpdate, no `C_Timer` 2s disk heartbeat, no login pulse spam.
+- **`LoginDiskExportOnce`** — single CHAT_LOADED write to `agent-live-export.log`; `ioAllowName`=`export` or `sv_only`; no retry loop.
+- **SV `chatTruthLine` + paint ring** on events only; session `log.export` flush without disk queue.
+- **Host gates:** prove/gate PASS = SV vs Interface `Config.VERSION`; disk L1 bonus only when client-authored.
+
+## Release 0.3.04 — export io probe + friend WS refill
+
+- **`ResetExportIoGate` + `ProbeExportL1Write`** on each pulse; **`TryWriteWholeFile`** fallback when line write fails; **15s login boost** bypasses export throttle.
+- **OnUpdate driver** calls **`DoExportDiskPulse`** directly (not queue).
+- **Friend paint:** `tfRows` from unit API when not targeting; mirror/foreign backfill before prune; hold sticky when harmful API still live (`paint_hold`).
+
+## Release 0.3.03 — login pulse off load frame
+
+- **No `DoExportDiskPulse` on `RecordChatLoaded`/`Arm` sync path** — `ScheduleLoginExportPulses` at 0.05/0.35/1/2s.
+- **`export-pulse.log`** append `a`+`w` fallback; mirror **`EXPORT_PULSE_LINE`** on `agent-live.log`.
+
+## Release 0.3.02 — honest prove + client export ticker
+
+- **`C_Timer.NewTicker(2s)`** primary **`DoExportDiskPulse`** (deferred OnUpdate backup); one io retry 0.05s.
+- **Prove/gate:** reject `load=watch_sync`; require client **`export-pulse.log`** age; prove does not call host sync.
+
+## Release 0.3.01 — aura telemetry + overlap offset
+
+- **Paint CARD:** `SilentTracePaint` emits `PLATEBAND_CARD reason=paint` for friend WS + multi-paint samples (`tf` from `tfRows`).
+- **Layout:** `LayoutMergeBesideNative` uses `nativeVis` when native count is 0 (Tarantula-class overlap).
+- **Matrix:** `friendly_ws` OK from PAINT `friend=1 tfRows painted`; anomaly `PB_FLUSHED_VER` bash fix.
+
+## Release 0.3.00 — deferred export io + pulse promote
+
+- **`QueueExportDiskPulse`**: `C_Timer.After(0)` off OnUpdate/OnEvent (Forever blocks `io` in frame scripts).
+- **`export-pulse.log`** append each pulse; host **`pb_promote_export_pulse_line`** (2s watch) promotes stale L1.
+- **`exportIoDiag`** ok/fail counters; anchor reset when SV **`exportLoadGt` > GetTime()**.
+- **`felog_head_age_sec`**: **`feed=pb_bridge`** uses mtime-only age for prove/gate.
+
+## Release 0.2.99 — L1 rebuilt from Config every disk write
+
+- **`WriteExportL1Brute`** always **`BuildChatTruthLine`** from **`ChatLoadedVersions`**; **`t=`** = **`exportUnixEpoch + GetTime()`** (Forever frozen **`time()`**); **`StampExportLineT`** at **`fopen`**.
+- Throttle marks **only on successful write**; **stale ≥2s** bypass; OnUpdate **elapsed** driver (no stalled NewTicker); FElog does not double-pulse Plateband.
+- **`UnixTs`**: in-memory **GetTime** anchor (SV hydration only); **`CommitChatTruthLine`** stamps **`t=`** before fwrite and syncs **`chatTruthLine`** / **`chatTruthAt`**.
+- Export L1 only through **`WriteExportL1Brute`** (no **`TryWriteWholeFile`** body stomp).
+
+## Release 0.2.98 — idle EXPORT_PULSE every 2s (direct io)
+
+- **`DoExportDiskPulse`** — no nested **`C_Timer.After`** (idle stall); **`NewTicker(2s)`** + OnUpdate + **`UNIT_AURA`** direct single-path write; throttle 1/2s.
+
+## Release 0.2.97 — event-driven export io + flush truth
+
+- **`PulseExportDiskTick(true)`** on movement/regen/zone/bag (io allowed); OnUpdate only defers.
+- **`FlushLiveExport`** uses **`ChatLoadedVersions`** line (not stale **`FLUSH`** metadata).
+
+## Release 0.2.96 — sustained L1: OnUpdate scheduler only
+
+- Dropped **`C_Timer.NewTicker`** (stalls on Forever); **`PlatebandExportDriver`** OnUpdate → **`PulseExportDiskTick`** → **`C_Timer.After(0)`** io; 1 write / 2s.
+
+## Release 0.2.95 — ongoing L1 pulse (≤2s mtime)
+
+- **`PulseExportDiskTick`** — `C_Timer.NewTicker(2s)` + deferred disk write (not OnUpdate `io`); 1 write / 2s throttle.
+
+## Release 0.2.94 — safe io + reload L1 flush
+
+- **Max 1 disk L1 / 2s** on pulse; **`FlushChatLoadedExport`** on login/`/reload` (throttle reset + ≤2s follow-up).
+- **`ChatLoadedVersions`** = **`Config.VERSION`** on L1; single **`PlatebandExportDriver`**.
+
+## Release 0.2.93 — L1 = chat `Config.VERSION` only
+
+- **`ChatLoadedVersions`** / **`ResolveExportVersions`** — same source as **`loaded v%s`** chat line; no stamp/toc/metadata/`chatTruthLine` union.
+
+## Release 0.2.92 — WriteExportL1Brute + SV→disk mirror
+
+- **`WriteExportL1Brute`** — `agent-live-export.log` w/wb + **`C_Timer.After(0)`** defer (io blocked in OnUpdate).
+- **`BuildChatTruthLine`** unions **`chatTruthLine`** semver (SV pulse) so disk L1 never lags in-memory truth.
+- **`ForceDiskExportL1`** → **`WriteExportL1Brute`** every ≤2s tick.
+
+## Release 0.2.91 — BestVersion chat∪TOC + ExportDriver ≤2s
+
+- **`ResolveExportVersions`** — **`BestVersion`** of chat `Config`, stamp, disk toc, metadata (no lastKnown).
+- **`ForceDiskExportL1`** + **`PlatebandExportDriver`** OnUpdate **1.95s**; re-arm clears driver on reload.
+
+## Release 0.2.90 — L1 from stamp/disk TOC (not lastKnown Config)
+
+- **`ResolveExportVersions`** — stamp + disk `.toc`/`Config.lua`, then metadata; **no `lastKnown*`**.
+- **`PulseExportDisk`** — **line-only `w` first** every pulse (mtime ≤2s); refresh **`interface-toc.ver`**.
+
+## Release 0.2.89 — fix live_ver=? (metadata-first, no "?")
+
+- **`QueryAddonMetadataVersion`** — name + index + **`C_AddOns`**; **`PickVersion`** chain; **`lastKnownPbVer`** in SV; never emit **`?`** on export L1.
+- **FElog** no longer delegates version resolution to Plateband (sandbox globals).
+
+## Release 0.2.88 — L1 matches chat TOC (Config) immediately
+
+- **`LiveInterfaceVersions`** — **loaded `Config.VERSION` first** (same as reload chat), then disk/stamp, then **`GetAddOnMetadata`**.
+- **`PublishInterfaceTocStamp`** → `Logs/interface-toc.ver` when AddOns tree is read-only.
+
+## Release 0.2.87 — L1 from Interface .toc/.lua each pulse
+
+- **`LiveInterfaceVersions`** — re-reads **`Plateband.toc` / `Config.lua` on disk** every pulse; **`GetAddOnMetadata`** fresh (no runtime Config cache); **`meta_pb` / `meta_fe`** on line for debug vs TOC.
+- **Prove:** `scripts/felog-prove-export-l1-toc.sh` — export L1 == Interface Config (gate truth).
+
+## Release 0.2.86 — LiveInterfaceVersions + export burst ≤10s after reload
+
+- **`LiveInterfaceVersions()`** — fresh **`GetAddOnMetadata`** every **`PulseExportDisk`** tick; line adds **`interface_pb` / `interface_fe`**.
+- **`ScheduleExportBurst`** — writes at 0–8s post-reload; **WorldFrame** OnUpdate backup; host watch skips fresh client export (&lt;20s).
+
+## Release 0.2.85 — PulseExportDisk (GetTime OnUpdate → export mtime)
+
+- **`PulseExportDisk`** — dedicated 2s disk write (`agent-live-export.log`); `w` line-only fallback + append `export-pulse.log`.
+- **Io pulse frame** — `GetTime` + **UIParent** OnUpdate (not elapsed); clears `ioAllowName` each pulse.
+- **FElog 0.1.14** bridges **`PulseExportDisk`** or direct Plateband export write when PB unloaded.
+
+## Release 0.2.84 — ArmExportTruthPulse (OnUpdate survives reload)
+
+- **Root cause:** `EnsureExportTruthTicker` set `exportTruthStarted` once on `ADDON_LOADED`; if `C_Timer` was nil or callbacks never ran, pulse stopped until next cold login.
+- **`ArmExportTruthPulse(force)`** — unconditional **OnUpdate** every 2s (shown frame) + optional `C_Timer`; **re-arm** on `ADDON_LOADED` / `PLAYER_ENTERING_WORLD` via SessionLog boot frame.
+- **`exportPulseAt` / `exportPulseN`** in SV for gate/debug; FElog pulse calls **`PulseExportTruth`** directly.
+
+## Release 0.2.83 — EXPORT_PULSE every 2s (t= + mtime)
+
+- **`PulseExportTruth`** — bumps `exportPulseSeq`; **`BuildChatTruthLine`** always fresh **`t=`** even when ver unchanged.
+- **`EnsureExportTruthTicker`** — idempotent start on login/reload; C_Timer 2s + OnUpdate watchdog if `chatTruthAt` lags.
+- **`Core`** — calls **`EnsureExportTruthTicker`** on `ADDON_LOADED` + `PLAYER_LOGIN` (not only `BeginSession`).
+
+## Release 0.2.82 — SV chatTruth gate + disk write retry
+
+- **`SyncLiveExportFile`** — export write every pulse (no sv_only skip); **`felog-live-gate`** reads **`PlatebandDB.chatTruthLine`** (rejects `host_toc_pulse` as PASS).
+
+## Release 0.2.80 — SyncLiveExportFile (line1 live_ver + 2s pulse)
+
+- **`SyncLiveExportFile` / `BuildChatTruthLine`** — every publish/flush: line 1 `live_ver=` in export + SV `chatTruthLine`; **`EnsureExportTruthTicker`** 2s refresh.
+- **Watch:** `pb_mirror_sv_export` + `pb_write_wow_export_with_chat_truth` prepend `chatTruthLine` when io=sv_only.
+
+## Release 0.2.79 — exact io allowlist: agent-live-export.log
+
+- **`DiscoverIoAllowlist`** — only `agent-live-export.log` is writable on Forever; chat truth = **line 1** of export; host `felog_materialize_agent_live_head_from_export` for gate path.
+
+## Release 0.2.78 — agent-live-head.log (Forever io allowlist)
+
+- **`WriteAgentLiveHead`** — `PublishChatTruthHead` writes `Logs/agent-live-head.log` first; export prepends `chatTruthLine`. Blocked paths: `live-head.log`, `felog-live-head.log`.
+
+## Release 0.2.77 — PublishChatTruthHead (reload ≤2s)
+
+- **`PublishChatTruthHead`** on SESSION_START, CHAT_LOADED, AGENT_LIVE (2s) — unified `live_ver` + `felog_ver` from loaded Config (matches chat).
+
+## Release 0.2.76 — FElog disk bridge (Forever io sandbox)
+
+- **`SessionLog.MirrorFelogLogs`** — writes `ForeverErrorLog/Logs/live-head.log`, export, stream, and `Plateband/Logs/felog-live-head.log` when FElog’s own `io.open` is `sv_only`.
+
+## Release 0.2.75 — live-head feed + reload stamp ≤2s
+
+- **Reload:** `RecordChatLoaded("reload")` only when `IsLoggedIn()` on `ADDON_LOADED`; cold login stamps once on `PLAYER_LOGIN` (no double reload+login).
+- **Feed:** `Logs/live-head.log` written sync on `SESSION_START` / `CHAT_LOADED` / `AGENT_LIVE`; watch prefers it over stale SV `agentLive`.
+- **Watch:** `pb_client_ver` = `live-head.log` → export → SV; export adds `interface_ver` + `session_load`.
+
+## Release 0.2.74 — hostile skip keys + WS/full harmful parity
+
+- **Root (0.2.72 screenshot):** hostile `NativeShownKeySet` always API-augmented skip keys on `nativeVis=0` → player DoTs treated as native → `miss`/`painted` in PAINT but icons missing / partial (Tarantula, Condor).
+- **Fix:** API augment **only when visible harmful buttons exist** (friend + hostile).
+- **Paint:** `EnsureUnitHarmfulParity` + `CollectUnitHarmfulMirror` on all nameplate unit paths; gap parent = `DebuffList` row first; unclip parent; layout fallback if unanchored.
+
+## Release 0.2.73 — live feed + reload runtime truth
+
+- **Runtime:** `CHAT_LOADED` + `RUNTIME_VER` on **ADDON_LOADED** (`src=reload`), not only `PLAYER_LOGIN` — fixes stale `0.2.71` after `/reload` on deployed `0.2.72+`.
+- **Session:** `BeginSession` writes `runtimeVer` + `liveHead` + `runtime-ver.log` with `SESSION_START`.
+- **Watch:** `pb_client_ver` prefers fresh `Logs/agent-live-export.log` / `runtime-ver.log`; SV unified picks **newest stamp** across `runtimeVer`, `CHAT_LOADED`, `RUNTIME_VER`, `SESSION_START`, `liveHead`, `agentLive` (no stale `liveHead_chat` lock-in).
+
+## Release 0.2.72 — paint deps wire + friend gap layout
+
+- **Root (live 0.2.71):** `PlatesPaint.lua` called `LayoutMergeBesideNative`, `InitAuraButton`, `EnsureUnitHarmfulParity`, `GapAuraLive`, `RefreshHeldGapFallback` as globals (nil in split chunk) — PAINT logged `painted>0` but gap row never positioned / friend parity skipped → no visible DoT/WS on plates.
+- **Fix:** all paint-side calls via `Plateband.PlatesPaintDeps` (`D.*`); expose `GapAuraLive` + `RefreshHeldGapFallback` on deps table.
+- **Layout:** friend/party merge anchors to `AurasFrame` debuff row (not health TOP) — fixes `painted=2 nativeVis=0` overlap with cast/chrome on party plates.
+- **Layout:** horizontal offset from **visible** native buttons only on friends (no API inflate in spacing).
+- **Matrix:** `multi_icon_overlap` hostile-only FAIL; friend `nativeVis=0` multi-gap = expected merge band.
+
+## Release 0.2.71 — friend WS paint + watch truth
+
+- **Friend:** stop inflating `nativeN` via unit API; `NativeShownKeySet` skips API augment when harmful buttons visible — fixes tf>0 painted=0 (phantom native skip).
+- **Friend target:** heavy TF harvest when `tfHarm > nativeVis`; lean path runs `EnsureUnitHarmfulParity`; fix `D.ForceFillTargetFrameGaps` in PlatesPaint.
+- **Matrix:** `tgt_bind` counts friend `PAINT tgtSrc=1`.
+- **Watch:** `liveHead_chat` wins; newer stamped `CHAT_LOADED` can supersede; no felog/agent override; `reload_pending` = live vs Interface TOC only (`chat_primary`).
+
+## Release 0.2.70 — PaintMergeMissing chunk split (60 upvalues)
+
+- **Root (live 0.2.69):** `PaintMergeMissing` exceeded Lua **60 upvalues** → compile/paint failure; `PLATES_LOAD` missing from export; auras invisible despite CHAT `0.2.69`.
+- **Fix:** `Modules/PlatesPaint.lua` owns paint merge; `Plates.lua` injects `Plateband.PlatesPaintDeps` + thin delegate.
+- **Paint:** `AurasFrame` parent, `PlateMatchesTarget` / party GUID resolve (from 0.2.69 WIP).
+- **Watch:** gate/anomaly flag missing `PLATES_LOAD`, `paint=false`, FElog `more than 60 upvalues`.
+
+## Release 0.2.69 — gap parent + party WS + overlap watch
+
+- **Layout:** `FallbackPaintParent` always parents gap row to health/UF (never `DebuffList`) — fixes Tarantula-class DoT stack when pool lies `native=0` but icons show (`nativeVis>0`).
+- **Layout:** `LayoutMergeBesideNative` pixel offset from live native buttons; `PickRightmostAuraFrame` last-button fallback; PAINT trace adds `nativeVis`.
+- **Friend party:** drop `PlateFor(party*)==plate` hard bail — use `PlateUnitBindingMatches` / `SameUnit` so Renia-class plates still run `EnsureUnitHarmfulParity` (WS).
+- **Watch:** matrix `native_overlap_risk` + `multi_icon_overlap` use `nativeVis`; anomaly flags `nativeVis` overlap + `friendly_party_WS_no_paint`.
+
+## Release 0.2.68 — hotfix paint nil (forward decl)
+
+- **`PlateUsesFriendlyHarmfulFilter`** forward-declare — fixes `paint` nil at line 790 on 0.2.67 (native augment path).
+
+## Release 0.2.67 — plate binding + watcher chat truth
+
+- **Plates:** `CanonicalPlateUnit` / `PlateMatchesTarget` — TF harvest only on real target plate; drop party paint on wrong plate; CARD `punit`/fb from target unit only (no bleed).
+- **Watch:** `pb_unified_runtime_from_sv` priority `liveHead_chat` → `CHAT_LOADED` → `RUNTIME_VER` (not SESSION max); `chat_override` clears false `reload_pending`.
+
+## Release 0.2.66 — native API fallback (overlap / false gaps)
+
+- **Root (live 0.2.64):** `native=0` on every PAINT while `painted>0` — Forever pool buttons fail `SafeShown` → empty `NativeShownKeySet` → full-gap repaint on top of Blizzard row.
+- **Fix:** `NativeAuraButtonLive`, `AugmentNativeKeysFromUnitApi` (personal harmful / friend all harmful), relaxed `CountPlateHarmfulShown`.
+- **CARD:** `punit` = plate token (not stale `lastPaintDebug.unit`).
+- **Matrix:** `native_overlap_risk` + recent-only friend PAINT.
+
+## Release 0.2.65 — WS sticky + merge overlap + matrix strict
+
+- **Sticky:** `GAP_STICKY_FRIEND_SEC=18` (hostile stays 3s); refresh `sticky.at` on hold/paint; friend re-inject sticky rows after budget; parity retry before friendly clear.
+- **GapAuraLive:** instance lookup miss no longer instant-dead (index/spell fallback).
+- **Layout:** merge row offset by `nativeN*(sz+pad)` when anchoring aura row (no DoT overlap).
+- **Watch:** matrix recent-tail rules for `friendly_ws` / `tgt_bind` (no stale OK).
+
+## Release 0.2.64 — FElog bridge always + pending queue
+
+- **SessionLog:** always `MirrorToFelog` (not only when `agentIoOk`); flush pending on `ADDON_LOADED` ForeverErrorLog.
+- **Watch:** host reads `ForeverErrorLogDB.sessionLog.agentExport` when `session.log` missing (`felog_bridge_sv`).
+
+## Release 0.2.63 — FElog live bridge (io sv_only fallback)
+
+- **SessionLog:** agent lines → `ForeverErrorLog.AgentFeed` when `agent-live.log` append fails.
+- **Watch:** `felog-plateband-live.log` sync + `pb_felog_plateband_ver` in unified client ver (`feed=felog_bridge`).
+- Requires **ForeverErrorLog 0.1.2+** loaded.
+
+## Release 0.2.62 — unified runtime detection + sv live mirror
+
+- **Lua:** `PlatebandDB.liveHead` (ver/seq/at) updated every pulse — regex-fast for agents.
+- **Watch:** single `pb_unified_runtime_from_sv` (chat → agentLive → export); **never** stale `agent-live-export` for version.
+- **Feed:** `pb_sync_live_feed` mirrors SV export + writes `Logs/live-head.txt` every 2s when SV mtime moves (in-play flush path).
+
+## Release 0.2.61 — in-play agent-live file feed (no SV wait)
+
+- **Io:** `ProbeAgentIo` append-only (`agent-live.log`) — decoupled from `session.log` truncate; pulse + PAINT flush `agent-live-export.log` every 2s when io works.
+- **Host:** `pb_sync_live_feed` copies client `agent-live*.log` to repo `Logs/` each 2s poll; watch **skips SV mirror** when live file is fresh (`feed=agent_live_file`).
+- **Forever:** `file=file` in `SESSION_START` when append io works; SV flush remains reload-only — live path is **disk logs**, not `Plateband.lua`.
+
+## Release 0.2.60 — chat-first runtime ver (no SV lag)
+
+- **PLAYER_LOGIN:** `RecordChatLoaded` → `CHAT_LOADED` + `RUNTIME_VER` + `PlatebandDB.runtimeVer` + `Logs/runtime-ver.log` (prefer over stale `SESSION_START` until WTF flush).
+- **Watch:** `pb_client_ver` order runtime file → `runtimeVer` → `CHAT_LOADED` → export `RUNTIME_VER` → `agentLive` → `SESSION`.
+- **Pulse:** `AGENT_LIVE` also refreshes `runtime-ver.log` when io works.
+
+## Release 0.2.59 — agent live_ver detection + SV feed mirror
+
+- **Agent pulse:** `AGENT_LIVE` every 2s → `PlatebandDB.agentLive` + rolling export line (`io=file|sv_only`); `live_ver` never inferred from TOC.
+- **SessionLog:** `EnsureAgentPulseTicker` on session start; CARD appended on silent `start`/`regen`/`target` (`forceSession`).
+- **Watch scripts:** `pb_client_ver` reads `agentLive` / export before stale `agent-live.log`; `pb_mirror_sv_export` → `Logs/agent-live-export.log` when io blocked.
+- **SESSION_REPORT:** key includes `agent_seq` + `reload_pending`; fires on reload transition; never treats `PLATEBAND_LIVE_VER` as runtime truth.
+
+## Release 0.2.58 — merge row anchor fix (below-health overlap)
+
+- **Layout:** `LayoutMergeBesideNative` health-bar fallback only when fallback parents to **health bar**; otherwise anchor to `AurasFrame` / debuff row — fixes merge strip sitting under health overlapping cast/name chrome (Blackrock Grunt screenshot).
+- **Anchor:** `NativeBandRightAnchor` scans hostile buff row when debuff anchor missing; never use bare `DebuffListFrame` as spatial anchor.
+- **Parent:** `FallbackPaintParent` keeps aura-row parent when native buffs show but harmful count is zero.
+
+## Release 0.2.57 — friend WS backfill + watch parse fix
+
+- **Friend:** `EnsureUnitHarmfulParity` backfill before clear when `miss=0`; sticky stale retries unit harmful before `paint_stale_cleared`; `tfRows` on all unit paints.
+- **Watch:** anomaly parses per-line PAINT/CARD (not `export` blobs); ignore `paint_stale_cleared` for foreign/WS rules; `session_paint_tail_streak` vs whole-session zero.
+
+## Release 0.2.56 — live agent feed (no reload for watch data)
+
+- **SessionLog:** append **agent-live.log** + rolling **agent-live-export.log** (~120 lines, 2s debounce, 5s ticker); re-probe `io` every 30s when `sv_only`.
+- **Watch:** `plateband-sv-lib` prefers newest `agent-live.log` / `agent-live-export.log` / `session.log` over stale WTF flush.
+- **Reload** = TOC/code only; CARD/PAINT/SESSION visible on disk as you play (when client allows `io`).
+
+## Release 0.2.55 — PAINT telemetry + friend unit parity
+
+- **PAINT:** `SilentTraceEnabled` uses **`silentTrace` only** (schema-11 `paintTraceOn=false` no longer silences session PAINT); `RecordPaint` mirrors to `sessionLog.export`; removed redundant combat early-return in `SilentTracePaint`.
+- **Friend chrome:** `EnsureUnitHarmfulParity` on nameplate unit branch when friend filter (Weakened Soul without party-merge / `tgtSrc=0`).
+- **Agent:** anomaly flags `PAINT_lines_missing`; FElog `paint nil` / `200 local` treated as historical when `PLATES_LOAD paint=true`.
+
+## Release 0.2.54 — restore paint harvest + combat pending queue
+
+- **Paint:** hostile `useTargetSrc` always runs TF heavy harvest (`CollectTargetHarmfulRows`); lean path no longer leaves `harv=0 miss=0` with live DoTs. Hostile lean fallback `ForceFill` when API sees harmful.
+- **Combat:** queue `combatPendingPaint` when lockdown blocks first layout; `FlushCombatPendingPaint` on `PLAYER_REGEN_ENABLED` before `RefreshAll` (cd-only path unchanged for held gaps).
+- **CARD:** `painted=` uses max(`lastPaintDebug`, fallback `_painted`); plate/regen diag deferred 120ms after paint schedule.
+- **Agent:** `plateband-sv-anomaly.sh` — `session_zero_paint_streak` when `seen>20` and no `painted>0`.
+
+## Release 0.2.53 — combat SetPoint taint + agent live log
+
+- **Combat:** `RefreshGapCooldownsOnly` — no `SetPoint`/`ClearAllPoints`/`LayoutMergeBesideNative` under `InCombatLockdown`; fixes *Akce rozhraní selhala kvůli addonu* from gap tick/target change.
+- Plate remove / clear deferred until `PLAYER_REGEN_ENABLED`.
+- **`agent-live.log`:** CARD/PAINT lines for agent watch when WTF flush lags (alongside `plateband-sv-lib.sh` live_ver).
+
+## Release 0.2.52 — NameplateUnitFor strict + SV anomaly watch
+
+- **Bleed:** removed `NameplateUnitFor` stale `lastTargetPlateUnit` + sole-enemy fallback (party WS on mob).
+- **Agent:** `plateband-sv-anomaly.sh` in watch loop (own/foreign/WS/bleed/sticky + FElog paint).
+
+## Release 0.2.51 — selftest + SV automation + target paint
+
+- **QA:** `plateband-selftest.sh`, `plateband-sv-gate.sh`, `plateband-sv-watch.sh`, `plateband-sv-matrix.sh`; `/pb selftest`.
+- **Paint:** target/party plates bypass overlay throttle; `PLAYER_TARGET_CHANGED` clears throttle + immediate `UpdateOverlay` on new target.
+- **CARD:** live `tgtSrc`; `friend=` for agent matrix.
+
+## Release 0.2.50 — party DoTs on mobs + sticky expiry
+
+- **Foreign DoTs:** hostile targets always **heavy** harvest (`NeedsHeavyTargetHarvest` + `apiH`); skip `CollectPlayerOwnedKeys` on hostile lean (was overskip party rows).
+- **Sticky ghosts:** `GapAuraLive` returns false when spell/instance absent on `AuraUnitForPlate`; hold path prunes dead sticky before refresh; prune uses `paintAuraTok`.
+
+## Release 0.2.49 — friendly WS + no party→mob aura bleed
+
+- **Bug:** Party PW:S/WS debuff appeared on **mob** plates — `ShouldUseTargetAuraSource` used stale `lastTargetPlateUnit` + sole-enemy `IsTargetPlate` heuristic → harvested **`target`** (party) onto wrong plate.
+- **Fix:** `useTargetSrc` only when `plate == PlateFor("target")`; `AuraUnitForPlate` binds gap apply token to plate owner; removed stale/sole-enemy target binds.
+- **Friendly harmful (WFA-45):** `PlateUsesFriendlyHarmfulFilter` — harmful-only pool harvest + buff-row anchor on friend/party plates only; lean target TF parity (`EnsureTargetHarmfulParity`, `ForceFill`). Hostile harvest unchanged.
+- **Locals:** friend helpers as nested `local function` (no forward decl bloat).
+
+### Playtest
+
+1. `/reload` → `ver=0.2.49`, own DoTs on mob still `painted>0`
+2. Party PW:S → **no** shield/WS on mob; friend target WS on plate `friend=1`
+
+## Release 0.2.48 — Plates.lua must load (200 locals) + target own-DoT bind
+
+- **Root cause (SV/FElog):** 0.2.46 had **207** chunk `local`s → `main function has more than 200 local variables` → `PaintMergeMissing` nil → **zero own DoTs** (TF OK).
+- **Fix:** pack timing constants into `PB`; remove duplicate forward decls (**179** chunk locals). `PLATES_LOAD ok=1` in SV on start.
+- **Own DoTs:** force `useTargetSrc` when `plate == PlateFor("target")`; resolve `nameplateN` on target overlay paint.
+- **Baseline:** still **0.2.39** `Plates.lua` logic (0.2.47 revert); WS not included.
+
+### Playtest
+
+1. `/reload` → `SESSION_START ver=0.2.48` + `PLATES_LOAD ok=1 paint=true`
+2. Mob own DoTs → `tgtSrc=1` `painted>0` in PAINT/CARD
+
+## Release 0.2.47 — revert `Plates.lua` to 0.2.39 baseline (WS branch rolled back)
+
+- **Why:** Post-0.2.40 WS work regressed **own-cast DoTs on mobs** (`CollectPlayerOwnedKeys` / `foreignSkip` / `GapAuraKey` merge path — not a full plate wipe). Ondřej: „jen mé dotky.“
+- **Change:** **`Modules/Plates.lua`** restored to **`plateband-v0.2.39`** (`662eb57`). All 0.2.40–0.2.46 paint/harvest/sticky/friendly-filter commits **removed** from that file. Version bump only elsewhere.
+- **WS on friends:** deferred until mob **own DoTs** green in SV (`painted>0` on target mob).
+- **Symlink:** disk already `0.2.47`; requires **`/reload`** → `SESSION_START ver=0.2.47`.
+
+### Playtest (0.2.47)
+
+1. `/reload` → **`SESSION_START ver=0.2.47`**
+2. Target mob, apply **your** DoT → nameplate shows it; CARD/PAINT `painted>0` own spells.
+3. Do **not** expect friendly Weakened Soul yet.
+
+## Release 0.2.46 — hostile paint restore + stable unit key
+
+- **Enemy DoTs:** legacy **unfiltered** `CollectPlateDebuffButtons` on hostiles (pre-0.2.41 parity); friendly filter opt-in only.
+- **Target plate:** `ResolvePaintUnit` — always `nameplateN` for current target plate (fixes `pb:` vs `nameplateN` fallback split).
+- **Heavy harvest:** force when TF API harmful > native (hostiles); TF harmful count on friend targets only.
+- **Includes 0.2.44–0.2.45** friendly filter scope + tgtSrc bind.
+
+### Playtest (0.2.46)
+
+1. `/reload` → **`SESSION_START ver=0.2.46`**
+2. Mob: **`tgtSrc=1` `painted>0`**
+3. Friend PW:S + Weakened Soul OOC + combat
+
+## Release 0.2.45 — enemy target TF merge (tgtSrc=0)
+
+- **Bug:** Target mobs (e.g. Blackrock Outrunner) — TF shows debuffs, nameplate **none**; live SV `SESSION_START ver=0.2.43` (0.2.44 not loaded) and diag `target=yes tgtSrc=0` → no `CollectTargetHarmfulRows` / merge paint.
+- **Fix (with 0.2.44 friendly-only filter):** plate==`PlateFor("target")`, **GUID** match on `nameplateN`, `NameplateUnitFor` bind; **`useTargetSrc` forced when `IsTargetPlate`**. Diagnose card computes live `tgtSrc`.
+
+### Playtest (0.2.45)
+
+1. **`/reload`** — must see **`SESSION_START ver=0.2.45`** (not 0.2.43).
+2. Target mob with TF debuffs → **`tgtSrc=1` `harv>0` `painted>0`**; icons on plate.
+3. Then friendly Weakened Soul.
+
+## Release 0.2.44 — enemy debuff regression (urgent)
+
+- **Bug:** 0.2.41+ **`IsPlateHarmfulAuraButton` on all plates** — enemy `auraPools` debuffs dropped → **no DoTs on mobs** (native merge/nativeN broken).
+- **Fix:** **`PlateUsesFriendlyHarmfulFilter`** — harmful/helpful split **only** on friend/party plates; enemy plates use legacy full debuff harvest.
+
+### Playtest (0.2.44)
+
+1. `/reload` → **`ver=0.2.44`** in SV/FElog.
+2. Mob DoTs on plate again; then friendly PW:S + Weakened Soul.
+
+## Release 0.2.43 — friendly gap telemetry + paint nil fix
+
+- **SV root cause (feed):** `paintTraceOn=false` silenced **all** session PAINT despite `silentTrace=true` — inbox empty; **`Plates.lua` paint nil** (early `IsLikelyBuffFrame` ref) aborted harvest OOC; **combat** `UpdateOverlay` held row without repaint; **`PLAYER_REGEN_ENABLED`** OOC repaint hit `miss=0` → clear.
+- **Fix:** session PAINT when **`silentTrace` only**; **`PlateButtonProbablyHelpful`** early helper; PAINT adds **`sticky=` `ooc=`**; regen refresh deferred 120ms; 0.2.42 sticky/backfill retained.
+
+### Playtest (0.2.43)
+
+1. `/reload` → `ver=0.2.43`; `/felog clear`; target friend PW:S+WS OOC — icon stable; SV `PAINT … ooc=1 sticky=1`.
+2. Enter combat — icon stays (no paint nil in FElog).
+
+## Release 0.2.42 — friendly harmful stable OOC (Weakened Soul)
+
+- **Bug:** Weakened Soul visible **in combat** only; **out of combat** gap cleared after `/reload` or `PLAYER_REGEN_ENABLED` repaints with empty harvest.
+- **Root cause:** combat `UpdateOverlay` held painted row; OOC paint got `miss=0` and **`ClearFallback`** after 3s sticky; TF buff buttons skewed lean harvest vs real debuff count.
+- **Fix:** **`GapStickyActive`** — hold while `GapAuraLive` (up to 30s); **`TargetFriendlyHarmfulGapExpected`** + TF backfill before clear; **`CountTargetFrameHarmfulShown`**; lean path TF-harmful prune skip; `paint_hold` relayout OOC.
+
+### Playtest (0.2.42)
+
+1. `/reload` → `v0.2.41` or newer **`ver=0.2.42`** in SV.
+2. OOC party friend **PW:S + Weakened Soul** — red hand stays full ~15s (not combat-only).
+3. Enter/leave combat — icon remains (`paint_hold` / `sticky=1` in trace).
+4. `/pb diagnose` → `miss≥1` or `painted≥1` / `sticky=1` OOC.
+
+## Release 0.2.41 — friendly harmful gaps (Weakened Soul)
+
+- **Bug:** priest **Weakened Soul** (and similar own HARMFUL on friendlies) missing on nameplate while target-frame debuff row shows it — PW:S on buff row only.
+- **Root cause:** plate `auraPools` harvested **HELPFUL** icons as “native harmful” → wrong `nativeN`, merge parented to hidden `DebuffList` (clipped).
+- **Fix:** `IsPlateHarmfulAuraButton` + buff/debuff filters on `CollectPlateDebuffButtons`; anchor gap row beside **buff** band when debuff row empty; lean **target** path runs `EnsureTargetHarmfulParity` + TF scrape.
+
+### Playtest (0.2.41)
+
+1. `/reload` → `v0.2.41`; party friend with **PW:S** + **Weakened Soul** — red ghost-hand on plate (beside PW:S or gap row).
+2. Enemy personal DoT still one icon (0.2.40 dedupe).
+
+## Release 0.2.40 — no duplicate personal DoTs (Flame Shock ×2)
+
+- **Bug:** own DoT (e.g. Flame Shock) painted twice — native DebuffList + Plateband gap (key mismatch `inst:` vs `spell:`).
+- **Fix:** `MarkAllAuraKeys` / `AuraKeysCovered` / `NativeCoversAura` — native + gap share inst+spell+tex; personal gap only when native omitted it.
+
+### Playtest (0.2.40)
+
+1. `/reload` → `v0.2.40`; Flame Shock solo on mob → **one** icon on plate (not two).
+2. Party DoT still appears beside native when merge on.
+
 ## Release 0.2.39 — native nameplate cooldown font
 
 - Gap timers sample **native** debuff / nameplate aura cooldown: `SetUseAuraDisplayTime`, `SetCountdownFont` (`LayoutFont_Bold_Small_Outline` fallback), font **path + px** from `GetCountdownFontString` or `Duration` (scaled to `/pb size`).

@@ -1,6 +1,7 @@
 --[[
   Forever Error Log — lean capture of Lua errors into SavedVariables.
-  /felog help|list|dump|clear|reset  (+ on|off, ui on|off)
+  /felog help|list|dump|session|archive|clear|reset  (+ on|off, ui on|off, dev on|off)
+  Dev telemetry (AgentFeed / live head / session export) runs only after /felog dev on.
 ]]
 
 local addonName = ...
@@ -13,7 +14,9 @@ local Config = ForeverErrorLog.Config
 local installed
 local originalHandler
 local sessionBegun = false
-local fileOk -- nil untried / false / true
+local ringReset = false
+local ARCHIVE_SESSIONS_MAX = 8
+local ARCHIVE_TEXT_MAX = 1000
 
 local function EnsureDB()
   return Config.EnsureDB()
@@ -42,71 +45,12 @@ local function Now()
   return 0
 end
 
-local FILE_REL = "Interface/AddOns/ForeverErrorLog/Logs/session.log"
-local FILE_REL_BS = [[Interface\AddOns\ForeverErrorLog\Logs\session.log]]
-
-local function TryOpen(path, mode)
-  if not (io and io.open) then
-    return nil
-  end
-  local ok, f = pcall(io.open, path, mode)
-  if ok then
-    return f
-  end
-  return nil
+local function DevOn()
+  return EnsureDB().devTelemetry == true
 end
 
-local function ProbeSessionFile()
-  if fileOk == false then
-    return false
-  end
-  if not (io and io.open) then
-    fileOk = false
-    return false
-  end
-  for _, path in ipairs({ FILE_REL, FILE_REL_BS }) do
-    local f = TryOpen(path, "w")
-    if f then
-      pcall(function()
-        f:write("")
-        f:close()
-      end)
-      fileOk = true
-      return true
-    end
-  end
-  fileOk = false
-  return false
-end
-
-local function AppendSessionFile(line)
-  if fileOk == false or not (io and io.open) then
-    return false
-  end
-  if fileOk == nil then
-    ProbeSessionFile()
-  end
-  if not fileOk then
-    return false
-  end
-  for _, path in ipairs({ FILE_REL, FILE_REL_BS }) do
-    local f = TryOpen(path, "a")
-    if f then
-      local ok = pcall(function()
-        f:write(line)
-        f:write("\n")
-        f:close()
-      end)
-      if ok then
-        return true
-      end
-    end
-  end
-  fileOk = false
-  return false
-end
-
-local function AppendSession(line)
+--- Append one line to the bounded in-SV session log. `isAgent` lines also feed agentExport (dev only).
+local function AppendSession(line, isAgent)
   local db = EnsureDB()
   local log = db.sessionLog
   if type(log) ~= "table" then
@@ -115,36 +59,132 @@ local function AppendSession(line)
   if type(log.lines) ~= "table" then
     log.lines = {}
   end
-  line = Trim(line, 500)
-  local stamped = string.format("[%s] %s", tostring(Now()), line)
+  local stamped = string.format("[%s] %s", tostring(Now()), Trim(line, 500))
   log.lines[#log.lines + 1] = stamped
   local maxN = Config.MAX_SESSION_LINES or 200
   while #log.lines > maxN do
     table.remove(log.lines, 1)
   end
+  if db.devTelemetry ~= true then
+    return
+  end
   log.export = table.concat(log.lines, "\n")
-  log.fileOk = AppendSessionFile(stamped) or log.fileOk
+  if isAgent then
+    local maxAgent = Config.MAX_AGENT_EXPORT_LINES or 120
+    local agentLines = {}
+    if type(log.agentExport) == "string" and log.agentExport ~= "" then
+      for agentLine in log.agentExport:gmatch("[^\n]+") do
+        agentLines[#agentLines + 1] = agentLine
+      end
+    end
+    agentLines[#agentLines + 1] = stamped
+    while #agentLines > maxAgent do
+      table.remove(agentLines, 1)
+    end
+    log.agentExport = table.concat(agentLines, "\n")
+  end
 end
 
---- Wipe session log on cold load. Error ring is kept across sessions.
-local function BeginSession()
+local function EnsureLiveHeadTable(db)
+  if type(db.liveHead) ~= "table" then
+    db.liveHead = {
+      platebandVer = "",
+      felogVer = tostring(Config.VERSION or "?"),
+      seq = 0,
+      src = "",
+      load = "",
+      at = 0,
+      lastPaint = "",
+      lastCard = "",
+      feed = "sv_only",
+    }
+  end
+  return db.liveHead
+end
+
+local function CompactEntry(e)
+  return {
+    msg = Trim(e.msg, ARCHIVE_TEXT_MAX),
+    stack = Trim(e.stack or "", ARCHIVE_TEXT_MAX),
+    addon = e.addon,
+    first = e.first,
+    last = e.last,
+    count = e.count,
+  }
+end
+
+local function ArchiveErrorRing(list, loadKind)
+  if type(list) ~= "table" or #list == 0 then
+    return 0
+  end
+  local db = EnsureDB()
+  if type(db.errorArchive) ~= "table" then
+    db.errorArchive = { sessions = {} }
+  end
+  local arch = db.errorArchive.sessions
+  if type(arch) ~= "table" then
+    arch = {}
+    db.errorArchive.sessions = arch
+  end
+  local snap = {}
+  for i = 1, #list do
+    snap[i] = CompactEntry(list[i])
+  end
+  arch[#arch + 1] = {
+    at = Now(),
+    load = tostring(loadKind or "?"),
+    n = #snap,
+    errors = snap,
+  }
+  while #arch > ARCHIVE_SESSIONS_MAX do
+    table.remove(arch, 1)
+  end
+  return #snap
+end
+
+--- Once per addon load (login, /reload): archive the prior ring and start a fresh live list.
+--- Idempotent within a load, so callers from other addons (Plateband CHAT_LOADED) are harmless.
+function ForeverErrorLog.ResetErrorRingOnChatLoaded(loadKind)
+  if ringReset then
+    return false
+  end
+  ringReset = true
+  local db = EnsureDB()
+  loadKind = tostring(loadKind or "login")
+  local n = ArchiveErrorRing(db.errors, loadKind)
+  wipe(db.errors)
+  db.lastExport = nil
+  AppendSession(string.format("ERROR_RING_WIPE load=%s archived=%d live=0", loadKind, n))
+  return true
+end
+
+local function PrintLoadedLine()
+  local db = EnsureDB()
+  local n = #(db.errors or {})
+  local ver = tostring(Config.VERSION or "?")
+  local popup = db.scriptErrors == true and "on" or "off"
+  if n > 0 then
+    Print(string.format(L.LOADED_COUNT or "loaded v%s — %d errors this session · popup %s", ver, n, popup))
+  else
+    Print(string.format(L.LOADED_EMPTY or "loaded v%s — 0 errors this session · popup %s", ver, popup))
+  end
+end
+
+--- Fresh session log on every addon load; archives the previous error ring.
+local function BeginSession(loadKind)
   if sessionBegun then
     return
   end
   sessionBegun = true
   local db = EnsureDB()
-  local wrote = ProbeSessionFile()
   db.sessionLog = {
     startedAt = Now(),
     lines = {},
-    fileOk = wrote and true or false,
     export = "",
+    agentExport = "",
   }
-  AppendSession(string.format(
-    "SESSION_START ver=%s file=%s",
-    tostring(Config.VERSION or "?"),
-    wrote and "yes" or "sv_only"
-  ))
+  ForeverErrorLog.ResetErrorRingOnChatLoaded(loadKind or "addon")
+  AppendSession(string.format("SESSION_START ver=%s", tostring(Config.VERSION or "?")))
 end
 
 local function AddonFromMessage(msg)
@@ -162,14 +202,14 @@ local function AddonFromMessage(msg)
   return "?"
 end
 
+--- Store one error. Returns true when captured (false when capture is off).
 local function Record(msg, stack)
   local db = EnsureDB()
   if not db.enabled then
-    return
+    return false
   end
-  local maxMsg = Config.MAX_MSG
-  msg = Trim(msg, maxMsg)
-  stack = Trim(stack or "", maxMsg)
+  msg = Trim(msg, Config.MAX_MSG)
+  stack = Trim(stack or "", Config.MAX_MSG)
   local list = db.errors
   for i = 1, #list do
     local e = list[i]
@@ -179,14 +219,18 @@ local function Record(msg, stack)
       if stack ~= "" then
         e.stack = stack
       end
-      AppendSession(string.format("ERROR ×%s [%s] %s", tostring(e.count), tostring(e.addon or "?"), msg))
-      return
+      -- Repeats are logged sparsely so an error storm cannot flood the session log.
+      if e.count == 2 or e.count % 100 == 0 then
+        AppendSession(string.format("ERROR ×%s [%s] %s", tostring(e.count), tostring(e.addon or "?"), msg))
+      end
+      return true
     end
   end
+  local addon = AddonFromMessage(msg)
   list[#list + 1] = {
     msg = msg,
     stack = stack,
-    addon = AddonFromMessage(msg),
+    addon = addon,
     first = Now(),
     last = Now(),
     count = 1,
@@ -194,12 +238,9 @@ local function Record(msg, stack)
   while #list > Config.MAX_ERRORS do
     table.remove(list, 1)
   end
-  AppendSession(string.format("ERROR [%s] %s", tostring(AddonFromMessage(msg)), msg))
-  local short = msg
-  if #short > 180 then
-    short = short:sub(1, 177) .. "..."
-  end
-  Print(tostring(AddonFromMessage(msg)) .. ": " .. short)
+  AppendSession(string.format("ERROR [%s] %s", tostring(addon), msg))
+  Print(tostring(addon) .. ": " .. Trim(msg, 180))
+  return true
 end
 
 local function FormatEntry(e, i)
@@ -241,8 +282,27 @@ local function DumpRecent()
   end
 end
 
+local function GetScriptErrorsCVar()
+  if C_CVar and C_CVar.GetCVar then
+    local ok, v = pcall(C_CVar.GetCVar, "scriptErrors")
+    if ok then
+      return v
+    end
+  elseif GetCVar then
+    local ok, v = pcall(GetCVar, "scriptErrors")
+    if ok then
+      return v
+    end
+  end
+  return nil
+end
+
+--- Set the scriptErrors CVar only when it differs (avoids rewriting the account-wide CVar every load).
 local function SetScriptErrorsCVar(on)
   local value = on and "1" or "0"
+  if GetScriptErrorsCVar() == value then
+    return
+  end
   if C_CVar and C_CVar.SetCVar then
     pcall(C_CVar.SetCVar, "scriptErrors", value)
   elseif SetCVar then
@@ -250,30 +310,37 @@ local function SetScriptErrorsCVar(on)
   end
 end
 
-local function SuppressScriptErrorsPopup()
-  local db = EnsureDB()
-  db.scriptErrors = false
-  SetScriptErrorsCVar(false)
-  if ScriptErrorsFrame then
-    pcall(function()
-      if ScriptErrorsFrame.Hide then
-        ScriptErrorsFrame:Hide()
-      end
-      if type(ScriptErrorsFrame.messageCount) == "number" then
-        ScriptErrorsFrame.messageCount = 0
-      end
-      if type(ScriptErrorsFrame.messages) == "table" and wipe then
-        wipe(ScriptErrorsFrame.messages)
-      end
-      if ScriptErrorsFrame.index then
-        ScriptErrorsFrame.index = 0
-      end
-    end)
+local function ClearScriptErrorsFrame()
+  if not ScriptErrorsFrame then
+    return
+  end
+  pcall(function()
+    if ScriptErrorsFrame.Hide then
+      ScriptErrorsFrame:Hide()
+    end
+    if type(ScriptErrorsFrame.messageCount) == "number" then
+      ScriptErrorsFrame.messageCount = 0
+    end
+    if type(ScriptErrorsFrame.messages) == "table" and wipe then
+      wipe(ScriptErrorsFrame.messages)
+    end
+    if ScriptErrorsFrame.index then
+      ScriptErrorsFrame.index = 0
+    end
+  end)
+end
+
+--- Apply the saved popup preference (db.scriptErrors) — never overrides it.
+local function ApplyScriptErrorsPref()
+  local want = EnsureDB().scriptErrors == true
+  SetScriptErrorsCVar(want)
+  if not want then
+    ClearScriptErrorsFrame()
   end
 end
 
 local function InstallHandler()
-  -- Idempotent within a session (ADDON_LOADED + PLAYER_LOGIN).
+  -- Idempotent within a load.
   if installed then
     return
   end
@@ -295,7 +362,7 @@ local function InstallHandler()
   end
 
   if type(seterrorhandler) ~= "function" then
-    Print(L.NO_SETHANDLER or "seterrorhandler missing")
+    Print(L.NO_SETHANDLER or "seterrorhandler missing — use /console scriptErrors 1 at least")
     return
   end
 
@@ -307,9 +374,10 @@ local function InstallHandler()
         stack = s or ""
       end
     end
-    pcall(Record, msg, stack)
-    local db = EnsureDB()
-    if db.scriptErrors then
+    local ok, captured = pcall(Record, msg, stack)
+    captured = ok and captured == true
+    -- Forward to the original handler when the popup is wanted, capture is off, or capture failed.
+    if EnsureDB().scriptErrors == true or not captured then
       if originalHandler then
         return originalHandler(msg)
       end
@@ -326,27 +394,125 @@ frame:RegisterEvent("PLAYER_LOGIN")
 frame:SetScript("OnEvent", function(_, event, name)
   if event == "ADDON_LOADED" and name == addonName then
     EnsureDB()
-    BeginSession()
+    pcall(BeginSession, "addon")
     InstallHandler()
+    pcall(ApplyScriptErrorsPref)
   elseif event == "PLAYER_LOGIN" then
     EnsureDB()
-    BeginSession()
+    pcall(BeginSession, "login")
     InstallHandler()
-    SuppressScriptErrorsPopup()
-    local db = ForeverErrorLogDB
-    local n = #(db.errors or {})
-    if n > 0 then
-      Print(string.format(L.LOADED_COUNT or "loaded — %d stored", n))
-    else
-      Print(L.LOADED_EMPTY or "loaded — capturing to log, popup off · /felog")
-    end
+    pcall(ApplyScriptErrorsPref)
+    PrintLoadedLine()
   end
 end)
 
 -- Public API for other Forever addons (optional)
 ForeverErrorLog.Record = function(msg, stack)
-  Record(msg, stack)
+  return Record(msg, stack)
 end
+
+--- Compact live-head update from a bridge addon line (dev telemetry only).
+local function UpdateLiveHeadFromAgent(source, payload)
+  if source ~= "Plateband" then
+    return
+  end
+  local db = EnsureDB()
+  local lh = EnsureLiveHeadTable(db)
+  local ver = payload:match("ver=([0-9%.]+)")
+  local seq = tonumber(payload:match("seq=([0-9]+)"))
+  local load = payload:match("load=([%w_]+)") or payload:match("src=([%w_]+)")
+  if payload:find("CHAT_LOADED", 1, true) then
+    lh.src = "CHAT_LOADED"
+    load = payload:match("src=([%w_]+)") or load
+  elseif payload:find("SESSION_START", 1, true) then
+    lh.src = "SESSION_START"
+    load = "addon"
+  elseif payload:sub(1, 6) == "PAINT " then
+    lh.lastPaint = Trim(payload, 220)
+    lh.src = lh.src ~= "" and lh.src or "PAINT"
+  elseif payload:find("PLATEBAND_CARD", 1, true) then
+    lh.lastCard = Trim(payload, 220)
+    lh.src = lh.src ~= "" and lh.src or "CARD"
+  elseif payload:find("RUNTIME_VER", 1, true) then
+    lh.src = "RUNTIME_VER"
+  end
+  if ver then
+    lh.platebandVer = ver
+  end
+  if seq then
+    lh.seq = seq
+  end
+  if load and load ~= "" then
+    lh.load = load
+  end
+  lh.felogVer = tostring(Config.VERSION or "?")
+  lh.at = Now()
+  lh.feed = "pb_bridge"
+end
+
+--- Cross-addon telemetry line (dev telemetry only; no-op by default).
+ForeverErrorLog.AgentFeed = function(source, line)
+  if not DevOn() then
+    return
+  end
+  if not sessionBegun then
+    BeginSession()
+  end
+  source = tostring(source or "?")
+  line = Trim(tostring(line or ""), 490)
+  if line == "" then
+    return
+  end
+  AppendSession(string.format("AGENT[%s] %s", source, line), true)
+  pcall(UpdateLiveHeadFromAgent, source, line)
+end
+
+ForeverErrorLog.AgentFeedReady = function()
+  return sessionBegun and DevOn()
+end
+
+--- Explicit runtime stamp from a bridge addon (dev telemetry only).
+ForeverErrorLog.ApplyLiveHeadSnapshot = function(plateVer, feVer, src, loadKind, seq)
+  if not DevOn() then
+    return
+  end
+  local db = EnsureDB()
+  local lh = EnsureLiveHeadTable(db)
+  plateVer = tostring(plateVer or "")
+  if plateVer ~= "" then
+    lh.platebandVer = plateVer
+  end
+  lh.felogVer = tostring(feVer or Config.VERSION or "?")
+  lh.src = tostring(src or "CHAT_LOADED")
+  lh.load = tostring(loadKind or "reload")
+  lh.seq = tonumber(seq) or lh.seq or 0
+  lh.at = Now()
+  lh.feed = "pb_bridge"
+end
+
+--- Runtime version note from a bridge addon: (source, ver, loadKind, src). Dev telemetry only.
+ForeverErrorLog.NotifyRuntime = function(source, ver, loadKind, src)
+  if not DevOn() then
+    return
+  end
+  if not sessionBegun then
+    BeginSession()
+  end
+  source = tostring(source or "addon")
+  ver = tostring(ver or "?")
+  loadKind = tostring(loadKind or "runtime")
+  src = tostring(src or "notify")
+  local db = EnsureDB()
+  local lh = EnsureLiveHeadTable(db)
+  if source == "Plateband" then
+    lh.platebandVer = ver
+  end
+  lh.src = src
+  lh.load = loadKind
+  lh.at = Now()
+  AppendSession(string.format("AGENT[%s] RUNTIME_VER ver=%s src=%s load=%s", source, ver, src, loadKind), true)
+end
+
 ForeverErrorLog.Count = function()
   return #(EnsureDB().errors or {})
 end
@@ -389,16 +555,64 @@ SlashCmdList.FOREVERERRORLOG = function(msg)
     return
   end
 
+  if cmd == "session" then
+    local slog = db.sessionLog or {}
+    local lines = type(slog.lines) == "table" and slog.lines or {}
+    local n = #lines
+    Print(string.format(L.SESSION_HEADER or "session lines=%d (this load)", n))
+    if n == 0 then
+      Print(L.NO_SESSION or "no session lines yet")
+      return
+    end
+    local from = math.max(1, n - 12)
+    for i = from, n do
+      print("|cff888888" .. tostring(lines[i]) .. "|r")
+    end
+    print("|cffaaaaaa" .. (L.SESSION_HINT or "prior rings: /felog archive · live list: /felog list") .. "|r")
+    return
+  end
+
   if cmd == "clear" then
-    db.errors = {}
+    local n = ArchiveErrorRing(db.errors, "manual_clear")
+    wipe(db.errors)
     db.lastExport = nil
-    Print(L.LOG_CLEARED or "log cleared")
+    Print(string.format(L.LOG_CLEARED or "log cleared (archived %d)", n))
+    return
+  end
+
+  if cmd == "archive" or cmd == "history" then
+    local arch = type(db.errorArchive) == "table" and db.errorArchive.sessions or {}
+    local n = #arch
+    Print(string.format(L.ARCHIVE_HEADER or "%d archived session(s) — /felog archive dump", n))
+    if n == 0 then
+      Print(L.NO_ARCHIVE or "no archived error rings yet")
+      return
+    end
+    local from = math.max(1, n - 5)
+    for i = from, n do
+      local s = arch[i]
+      print(string.format(
+        "|cffaaaaaa%d. load=%s at=%s n=%s|r",
+        i,
+        tostring(s.load or "?"),
+        tostring(s.at or "?"),
+        tostring(s.n or 0)
+      ))
+    end
+    if (rest or ""):lower() == "dump" then
+      local s = arch[n]
+      local errs = type(s.errors) == "table" and s.errors or {}
+      local f = math.max(1, #errs - 8)
+      for j = f, #errs do
+        print("|cff888888  " .. FormatEntry(errs[j], j) .. "|r")
+      end
+    end
     return
   end
 
   if cmd == "reset" then
     Config.Reset()
-    SuppressScriptErrorsPopup()
+    pcall(ApplyScriptErrorsPref)
     Print(L.CONFIG_RESET or "config reset to defaults (log cleared)")
     return
   end
@@ -411,7 +625,7 @@ SlashCmdList.FOREVERERRORLOG = function(msg)
 
   if cmd == "off" then
     db.enabled = false
-    Print(L.CAPTURE_OFF or "capture off")
+    Print(L.CAPTURE_OFF or "capture off — errors go to the default handler")
     return
   end
 
@@ -423,10 +637,24 @@ SlashCmdList.FOREVERERRORLOG = function(msg)
       Print(L.UI_ON or "scriptErrors popup on")
     elseif a == "off" or a == "0" then
       db.scriptErrors = false
-      SetScriptErrorsCVar(false)
-      Print(L.UI_OFF or "scriptErrors popup off")
+      ApplyScriptErrorsPref()
+      Print(L.UI_OFF or "scriptErrors popup off (capture still runs)")
     else
       Print(string.format(L.UI_STATUS or "scriptErrors preference: %s", tostring(db.scriptErrors)))
+    end
+    return
+  end
+
+  if cmd == "dev" then
+    local a = (rest or ""):lower()
+    if a == "on" or a == "1" then
+      db.devTelemetry = true
+      Print(L.DEV_ON or "dev telemetry on")
+    elseif a == "off" or a == "0" then
+      db.devTelemetry = false
+      Print(L.DEV_OFF or "dev telemetry off")
+    else
+      Print(string.format(L.DEV_STATUS or "dev telemetry: %s — /felog dev on|off", tostring(db.devTelemetry == true)))
     end
     return
   end

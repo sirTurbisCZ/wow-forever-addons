@@ -184,7 +184,9 @@ local function QueueBagRefresh()
   end
   bagRefreshToken = bagRefreshToken + 1
   local token = bagRefreshToken
-  local delays = { 0.05, 0.25, 0.7, 1.5 }
+  -- Always Layout.Refresh (it already chooses DoLayout vs RefreshLight via occ/sig).
+  -- Early RefreshLight-only left emptied sell cells lit until the last tick (~1.5s).
+  local delays = { 0.05, 0.2, 0.55 }
   for i = 1, #delays do
     local d = delays[i]
     C_Timer.After(d, function()
@@ -200,10 +202,10 @@ local function QueueBagRefresh()
       if not (Layout.IsShown and Layout.IsShown()) then
         return
       end
-      if i < #delays and Layout.RefreshLight then
-        Layout.RefreshLight()
-      elseif Layout.Refresh then
+      if Layout.Refresh then
         Layout.Refresh()
+      elseif Layout.RefreshLight then
+        Layout.RefreshLight()
       end
     end)
   end
@@ -274,6 +276,8 @@ bootFrame:RegisterEvent("MERCHANT_SHOW")
 bootFrame:RegisterEvent("MERCHANT_CLOSED")
 bootFrame:RegisterEvent("MAIL_SHOW")
 bootFrame:RegisterEvent("MAIL_CLOSED")
+bootFrame:RegisterEvent("AUCTION_HOUSE_SHOW")
+bootFrame:RegisterEvent("AUCTION_HOUSE_CLOSED")
 bootFrame:RegisterEvent("BANKFRAME_OPENED")
 bootFrame:RegisterEvent("BANKFRAME_CLOSED")
 bootFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
@@ -281,6 +285,31 @@ bootFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 bootFrame:RegisterEvent("ADDON_ACTION_BLOCKED")
 
 local blockedQuietUntil = 0
+
+-- Vendor / mail / auction / bank: if BetterBackpack was closed when the window opened,
+-- it is closed again together with that window (never closes a bag the player had open).
+local function NoteInteractionOpened()
+  if BetterBackpack._bbOpenedByWindow ~= nil then
+    return
+  end
+  local shown = Layout and Layout.IsShown and Layout.IsShown()
+  BetterBackpack._bbOpenedByWindow = not shown
+end
+
+local function CloseIfOpenedByInteraction()
+  local byWindow = BetterBackpack._bbOpenedByWindow
+  BetterBackpack._bbOpenedByWindow = nil
+  if byWindow ~= true then
+    return
+  end
+  if InCombatLockdown and InCombatLockdown() then
+    return
+  end
+  OpenClose = OC() or OpenClose
+  if Layout and Layout.IsShown and Layout.IsShown() and OpenClose and OpenClose.CloseOurs then
+    SafeCall("closeWithWindow", OpenClose.CloseOurs)
+  end
+end
 
 bootFrame:SetScript("OnEvent", function(_, event, ...)
   if event == "ADDON_LOADED" then
@@ -430,6 +459,7 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
   end
 
   if event == "MERCHANT_SHOW" then
+    NoteInteractionOpened()
     if Context then
       Context.SyncSpecialMode()
     end
@@ -447,10 +477,11 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
     return
   end
 
-  if event == "MERCHANT_CLOSED" or event == "MAIL_CLOSED" or event == "BANKFRAME_CLOSED" then
+  if event == "MERCHANT_CLOSED" or event == "MAIL_CLOSED" or event == "AUCTION_HOUSE_CLOSED" or event == "BANKFRAME_CLOSED" then
     if Context and Context.ForceRestoreDeferred then
       Context.ForceRestoreDeferred()
     end
+    CloseIfOpenedByInteraction()
     if event == "MERCHANT_CLOSED" then
       local VJ = BetterBackpack.Modules.VendorJunk
       if VJ and VJ.OnMerchantClosed then
@@ -460,7 +491,8 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
     return
   end
 
-  if event == "MAIL_SHOW" or event == "BANKFRAME_OPENED" then
+  if event == "MAIL_SHOW" or event == "AUCTION_HOUSE_SHOW" or event == "BANKFRAME_OPENED" then
+    NoteInteractionOpened()
     if Context then
       Context.SyncSpecialMode()
     end
@@ -571,9 +603,11 @@ SlashCmdList.BETTERBACKPACK = function(msg)
   end
 
   if cmd == "reset" then
-    Config.Reset()
+    local all = (rest or ""):lower() == "all"
+    Config.Reset(all and "all" or nil)
     SafeCall("shutdown", OpenClose.ShutdownToBlizzard)
-    Print(L.CONFIG_RESET or "config reset")
+    Print(all and (L.CONFIG_RESET_ALL or "all BetterBackpack data reset (every character)")
+      or (L.CONFIG_RESET or "settings + this character reset (other characters kept) — /bb reset all wipes everything"))
     return
   end
 

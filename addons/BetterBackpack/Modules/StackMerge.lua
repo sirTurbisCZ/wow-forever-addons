@@ -293,6 +293,10 @@ function StackMerge.ApplyDisplayCount(btn, entry)
   end
   local count = entry.displayCount
   if type(count) ~= "number" or count <= 1 then
+    -- Buttons are reused 1:1 per bag:slot: drop any merge hint left from a previous layout,
+    -- otherwise RMB at a vendor/mail would treat this single stack as the old merge group.
+    btn._bbMergedStacks = nil
+    btn._bbMergedFrom = nil
     return
   end
   local fs = btn.Count

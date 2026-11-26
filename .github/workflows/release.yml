@@ -49,6 +49,16 @@ jobs:
           echo "version=$VER" >> "$GITHUB_OUTPUT"
           echo "asset=${ADDON}-${VER}.zip" >> "$GITHUB_OUTPUT"
 
+      - name: Lua syntax check (all addons)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq lua5.1
+          # luac -p also fails on "more than 200 local variables" / "more than 60 upvalues".
+          fail=0
+          while IFS= read -r f; do
+            luac5.1 -p "$f" || fail=1
+          done < <(find addons -name '*.lua' -type f)
+          exit $fail
+
       - name: Package zip
         run: |
           chmod +x scripts/package-addon.sh

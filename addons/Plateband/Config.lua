@@ -2,7 +2,7 @@
 
 Plateband = Plateband or {}
 
-local CURRENT_SCHEMA = 11
+local CURRENT_SCHEMA = 17
 local MAX_ERRORS = 40
 local MAX_MSG = 2000
 
@@ -12,7 +12,7 @@ local Config = Plateband.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.2.39"
+Config.VERSION = "0.6.3"
 
 local function ProfileDefaults()
   return {
@@ -21,20 +21,21 @@ local function ProfileDefaults()
     iconSize = 18,
     maxIcons = 12,
     showBand = true,
-    -- Never replace/park native DebuffList (personal = Blizzard only).
-    paintOverlay = false,
     -- 0.1.15: safe beside-native merge default on (schema 6 had opt-in off).
     mergeMissing = true,
     -- 0.2.23: party/friend/player nameplates — same harmful merge as enemies.
     mergeFriendPlates = true,
+    -- Repaint non-target plates when their auras change (new HoTs / party DoTs). Off-switch for CPU.
+    auraWatchPlates = true,
+    -- Hover tooltip on added icons (step 3).
+    gapTooltip = true,
     watchOn = false,
     watchInterval = 2,
-    autoDiag = true,
     chatOnChange = false,
-    silentTrace = true,
-    -- 0.2.33: paint trace off by default (SV concat was costing CPU); `/pb trace on` for agents.
-    paintTraceOn = false,
+    -- Dev telemetry (PAINT/PLATE trace, CARD export, FELog mirror). OFF for players: `/pb dev on`.
+    silentTrace = false,
     paintTraceInCombat = false,
+    -- Auto-saved diagnose cards (dev): off by default.
     autoDiag = false,
   }
 end
@@ -49,7 +50,6 @@ local function Defaults()
     sessionLog = {
       startedAt = 0,
       lines = {},
-      fileOk = false,
       export = "",
     },
     paintTrace = {
@@ -58,6 +58,7 @@ local function Defaults()
       export = "",
     },
     lastPaintTrace = nil,
+    runtimeVer = { ver = "", at = 0, src = "" },
   }
 end
 
@@ -204,6 +205,78 @@ function Config.EnsureDB()
     end
     db.schemaVersion = 11
     from = 11
+  end
+
+  if from < 12 then
+    if type(db.agentLive) ~= "table" then
+      db.agentLive = { seq = 0, ver = "", at = 0, io = "sv_only", lines = 0 }
+    end
+    db.schemaVersion = 12
+    from = 12
+  end
+
+  if from < 13 then
+    EnsureProfile(db)
+    if db.profile.hideFriendlyFoodBuffs == nil then
+      db.profile.hideFriendlyFoodBuffs = true
+    end
+    db.schemaVersion = 13
+    from = 13
+  end
+
+  if from < 14 then
+    EnsureProfile(db)
+    if db.profile.mergeFriendHelpful == nil then
+      db.profile.mergeFriendHelpful = true
+    end
+    db.schemaVersion = 14
+    from = 14
+  end
+
+  if from < 15 then
+    EnsureProfile(db)
+    db.profile.mergeFriendHelpful = false
+    db.schemaVersion = 15
+    from = 15
+  end
+
+  -- 0.4.0: dev telemetry is opt-in; drop dead keys and the undeclared host-script SV keys.
+  if from < 16 then
+    EnsureProfile(db)
+    db.profile.silentTrace = false
+    db.profile.autoDiag = false
+    db.profile.paintOverlay = nil
+    db.profile.paintTraceOn = nil
+    for _, k in ipairs({
+      "chatTruthLine", "chatTruthAt", "configChatVer", "exportPulseSeq", "exportPulseAt", "exportPulseN",
+      "exportUnixEpoch", "exportLoadGt", "ioAllowName", "ioExportDiskLine", "ioExportDiskTried",
+      "ioExportDiskVer", "exportIoDiag", "interfacePbVer", "interfaceFeVer", "reloadPending",
+      "reloadPendingVer", "telemetryMode", "exportLoginDiskVer", "continuousDiskPulse", "agentLive",
+      "liveHead",
+    }) do
+      db[k] = nil
+    end
+    if type(db.sessionLog) == "table" then
+      db.sessionLog.fileOk = nil
+      db.sessionLog.export = ""
+    end
+    db.schemaVersion = 16
+    from = 16
+  end
+
+  -- 0.4.1: helpful-gap rules moved to PlatesPolicy.lua; the old switches are gone.
+  if from < 17 then
+    EnsureProfile(db)
+    db.profile.mergeFriendHelpful = nil
+    db.profile.hideFriendlyFoodBuffs = nil
+    if db.profile.auraWatchPlates == nil then
+      db.profile.auraWatchPlates = true
+    end
+    if db.profile.gapTooltip == nil then
+      db.profile.gapTooltip = true
+    end
+    db.schemaVersion = 17
+    from = 17
   end
 
   EnsureProfile(db)

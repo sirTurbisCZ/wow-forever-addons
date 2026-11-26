@@ -1,9 +1,9 @@
 --[[
-  BetterBackpack.Context — vendor / mail / bank RMB meaning.
+  BetterBackpack.Context — vendor / mail / auction / bank RMB meaning.
   Never UseContainerItem from insecure OnClick.
   Bank: keep SecureActionButton type2=item (Blizzard UseContainerItem deposits).
-  Merchant/mail: clear type2 + Pickup + Sell / ClickSendMail (OOC only).
-  Mail detect = MailFrame:IsVisible().
+  Merchant/mail/auction: clear type2 + Pickup + Sell / ClickSendMail / ClickAuctionSellItemButton (OOC only).
+  Mail detect = MailFrame:IsVisible(). Auction = AuctionFrame (create-auction slot).
 ]]
 
 BetterBackpack = BetterBackpack or {}
@@ -72,12 +72,30 @@ local function BankIsOpen()
   return false
 end
 
+local function AuctionIsOpen()
+  -- Classic / Forever: AuctionFrame (Blizzard_AuctionUI). Prefer Auctions tab when present.
+  if FrameShown(AuctionFrame) then
+    if AuctionFrameAuctions and FrameShown(AuctionFrameAuctions) then
+      return true
+    end
+    -- Frame open but other tab — still allow (ClickAuctionSellItemButton switches/uses sell slot).
+    return true
+  end
+  if FrameShown(AuctionHouseFrame) then
+    return true
+  end
+  return false
+end
+
 function Context.SpecialRmbContext()
   if MerchantIsOpen() then
     return "merchant"
   end
   if MailSendIsOpen() then
     return "mail"
+  end
+  if AuctionIsOpen() then
+    return "auction"
   end
   if BankIsOpen() then
     return "bank"
@@ -86,12 +104,12 @@ function Context.SpecialRmbContext()
 end
 
 --[[
-  Merchant/mail need insecure Pickup RMB. Bank must NOT — keep type2=item so
+  Merchant/mail/auction need insecure Pickup RMB. Bank must NOT — keep type2=item so
   secure UseContainerItem deposits (native CombinedBags behavior).
 ]]
 function Context.NeedsInsecureSpecialRmb()
   local ctx = Context.SpecialRmbContext()
-  return ctx == "merchant" or ctx == "mail"
+  return ctx == "merchant" or ctx == "mail" or ctx == "auction"
 end
 
 local function PickupSlotToCursor(b, s)
@@ -129,7 +147,8 @@ function Context.TrySpecialRmb(self)
   end
   local shift = (IsShiftKeyDown and IsShiftKeyDown()) or self._bbShiftDown == true
   local merged = type(self._bbMergedStacks) == "number" and self._bbMergedStacks > 1
-  if shift or merged then
+  -- Auction sell slot holds one item — never dump a merge group into it.
+  if (shift or merged) and ctx ~= "auction" then
     local BT = BetterBackpack.Modules and BetterBackpack.Modules.BulkTransfer
     if BT and BT.TransferMergeGroup then
       local hint = merged and self._bbMergedFrom
@@ -149,6 +168,13 @@ function Context.TrySpecialRmb(self)
     if BT and BT.MaybeFillMailSubject then
       BT.MaybeFillMailSubject(b, s)
     end
+    if ClearCursor then
+      pcall(ClearCursor)
+    end
+    return true
+  end
+  if ctx == "auction" and ClickAuctionSellItemButton then
+    pcall(ClickAuctionSellItemButton)
     if ClearCursor then
       pcall(ClearCursor)
     end

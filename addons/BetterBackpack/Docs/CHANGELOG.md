@@ -1,5 +1,107 @@
 # BetterBackpack changelog
 
+## Release 1.3.7 — closed bag no longer catches the mouse
+
+- The invisible "warm shell" of a closed bag is parked off-screen (it kept its headers and slots hoverable, leaving stuck lane tooltips such as "Deposit lane in bank" on the world). Opening re-anchors it; Settings opened with a closed bag centre on screen.
+
+## Release 1.3.6 — scroll bar only when needed
+
+- Settings use Blizzard's `UIPanelScrollFrameTemplate` (arrows, track, wheel); the bar is hidden when the content fits.
+
+## Release 1.3.5 — Blizzard scroll bar
+
+## Release 1.3.4 — all item rules per character (schema 12)
+
+- Every taught item rule (built-in lanes too) is saved per character. Former account rules are copied to **each** character on its first login. Account-wide: pins, collapse state, built-in lane toggles, search.
+
+## Release 1.3.3 — Settings scroll, item names from the client cache
+
+- Long Settings lists scroll; item names are requested from the client instead of showing `item:ID`.
+
+## Release 1.3.2 — Learned list
+
+- **Settings → Learned** lists every taught item: icon, name, its lane, its default lane, and **Forget**.
+
+## Release 1.3.1 — Settings fixes
+
+- Notes of other sections no longer stay visible (sparse pool hidden with `#`); destroy counts removed from the Trash list.
+
+## Release 1.3.0 — Trash per character (schema 11)
+
+- **Trash rules and state are per character** (rules, confirm flag, confirmed items, counts, log). **Destroy confirmation is on by default.** Former account rules are copied to every character on its first login.
+- **Settings → Trash** lists what the character auto-destroys, with **Keep**.
+- **`/bb reset`** now resets settings plus the current character only; **`/bb reset all`** wipes everything.
+
+## Release 1.2.25 — closes with the window, saved position in combat
+
+- BetterBackpack closes together with a vendor / mail / auction / bank window when it was closed before the window opened.
+- Opening in combat uses the saved position (when present) instead of a fixed spot.
+- Removed the "Bag bar opens native bag" switch (it never worked as described) and 17 dead functions (~380 lines) from `OpenClose.lua`. Single bags from the bag bar are always native.
+
+## Release 1.2.24 — Junk lane always visible
+
+- The Junk lane is drawn even when empty so items can be dragged onto it.
+
+## Release 1.2.23 — auto-sell and selling fixes
+
+- **Fix:** auto-sell never ran (`VendorJunk` captured `BulkTransfer`/`Layout` at load time, before they existed). Modules are now resolved lazily.
+- **Selling by lane:** the **Junk** lane sells everything in it regardless of quality; the **Trash** lane is never sold; other lanes keep the safety filter.
+- **Fix:** a stale merge hint could make plain right-click sell all stacks of the *previous* item in a slot.
+- **Fix:** mail subject check was inverted (an existing subject was overwritten).
+- **Fix:** `/bb selftest` no longer sells, attaches or deposits real items.
+- **Fix:** forward references: bag-key hook retries, close-button size, cooldown refresh when opening in combat.
+- **Combat:** `DoLayout` is deferred during lockdown and runs when combat ends; secure slot buttons are not resized in combat.
+
+## Release 1.2.22 — post-sell empty slot linger
+
+After vendor sell, emptied cells stayed lit until the last `QueueBagRefresh` tick (~1.5s) because early ticks only ran `RefreshLight` (no `DoLayout`).
+
+- **`QueueBagRefresh`:** every tick calls `Layout.Refresh` (already gates DoLayout vs light via occ/sig); delays `0.05 / 0.2 / 0.55`.
+- **BulkTransfer:** after merchant/mail pump or single RMB sell, invalidate grid sig + `Relayout`.
+- **Normalize:** empty slots keep icon + `IconBorder` hidden (no revive glow before repack).
+
+### Playtest (1.2.22)
+
+1. `/reload` → `v1.2.22`; vendor → RMB sell one item → empty cell clears / grid packs within ~0.2s (no long lit hole).
+2. Shift+RMB merged / Ctrl+Shift+RMB lane → same, no multi-second empty glow.
+
+## Release 1.2.21 — hotfix: bags open (InventoryOccupiedCount)
+
+**1.2.14+ regression:** `DoLayout` called `InventoryOccupiedCount()` before its `local function` (same Lua 5.1 scope bug as `VisibleGridSignature` in 1.2.13) → layout nil → bags crash/close.
+
+- Forward-declare `InventoryOccupiedCount`; assign as upvalue (same pattern as `VisibleGridSignature`).
+- `/bb selftest` asserts both helpers are callable.
+
+### Playtest (1.2.21)
+
+1. `/reload` → `v1.2.21`; **B** opens bags; loot/move item → grid stays up (no layout error).
+2. `/bb selftest` → pass on `InventoryOccupiedCount` + `VisibleGridSignature`.
+
+## Release 1.2.20 — auction house RMB
+
+- **Auction open:** RMB no longer `use`/equips gear — Pickup + `ClickAuctionSellItemButton` into create-auction slot (same pattern as vendor/mail).
+
+### Playtest (1.2.20)
+
+1. `/reload` → `v1.2.20`; open AH → Auctions tab → RMB green gear in BB → item in sell slot (not equipped).
+
+## Release 1.2.19 — white square after item use
+
+- **After RMB use / click:** `UI-Quickslot2` NormalTexture stayed on the icon (Hearthstone white frame). Occupied slots hide bevel (`SyncBevelChrome`); reset on `OnMouseUp`.
+
+### Playtest (1.2.19)
+
+1. `/reload` → `v1.2.19`; RMB use food/hearth → no white square on the slot after.
+
+## Release 1.2.18 — gear slot chrome / stale icons
+
+- **IconBorder:** Forever GrabTex left a small black inset square on some greens — border always `SetAllPoints` SLOT.
+- **Secret `iconFileID`:** `SetTexture` without reading; clear stale recycle so gloves don’t ghost onto the next cell; hide empty `IconOverlay*`.
+
+### Playtest (1.2.18)
+
+1. `/reload` → `v1.2.18`; open bags → **Výbava** greens — no black inset square; each slot shows its own item art.
+
 ## Release 1.2.17 — hotfix slot OnLeave tooltip
 
 - **Slots.OnLeave** used invalid `self` / `BagsMatch` refs (1.2.16) → fixed; glow restore via `SetBagFocus`.

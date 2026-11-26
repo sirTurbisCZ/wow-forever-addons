@@ -621,7 +621,52 @@ local function PlaceItemButtonArt(btn)
     PlaceArt(btn.GetNormalTexture and btn:GetNormalTexture(), btn, art.normal)
     PlaceArt(btn.GetPushedTexture and btn:GetPushedTexture(), btn, art.pushed)
     PlaceArt(btn.GetHighlightTexture and btn:GetHighlightTexture(), btn, art.highlight)
-    PlaceArt(btn.IconBorder, btn, art.border)
+    -- Forever ItemButtonTemplate IconBorder GrabTex is often 64× offset — never PlaceArt it.
+    if btn.IconBorder then
+      btn.IconBorder:ClearAllPoints()
+      btn.IconBorder:SetAllPoints(btn)
+      btn.IconBorder:SetSize(SLOT, SLOT)
+    end
+  end)
+end
+
+--- UI-Quickslot2 NormalTexture sits on top after click/use — hide bevel when slot has an item.
+local function SyncBevelChrome(btn, occupied)
+  if not btn then
+    return
+  end
+  pcall(function()
+    if btn.SetButtonState then
+      btn:SetButtonState("NORMAL", false)
+    end
+    if btn.UnlockHighlight then
+      btn:UnlockHighlight()
+    end
+    if btn.StopAnimating then
+      btn:StopAnimating()
+    end
+    local flash = btn.flash or btn.Flash
+    if flash and flash.Hide then
+      flash:Hide()
+      flash:SetAlpha(0)
+    end
+    local nt = btn.GetNormalTexture and btn:GetNormalTexture()
+    if nt then
+      if occupied then
+        nt:SetAlpha(0)
+      else
+        nt:SetAlpha(1)
+        nt:Show()
+      end
+    end
+    local pt = btn.GetPushedTexture and btn:GetPushedTexture()
+    if pt then
+      if occupied then
+        pt:SetAlpha(0)
+      else
+        pt:SetAlpha(1)
+      end
+    end
   end)
 end
 
@@ -857,9 +902,20 @@ function Slots.SyncVisual(btn, bag, slot)
     local icon = btn.icon or btn.Icon
     local tex = ResolveIconTexture(info, bag, slot)
     EnsureSlotBackground(btn)
+    local slotKey = tostring(bag) .. ":" .. tostring(slot)
+    local itemKey = info and (info.itemID or info.hyperlink) or nil
+    if itemKey ~= nil and IsSecret(itemKey) then
+      itemKey = "sec:" .. slotKey
+    elseif itemKey ~= nil then
+      itemKey = tostring(itemKey)
+    else
+      itemKey = slotKey
+    end
     if not info and not tex then
+      btn._bbIconKey = nil
       if icon then
         icon:SetTexture(nil)
+        icon:SetTexCoord(0, 1, 0, 1)
         icon:Hide()
       end
       if btn.SlotBackground then
@@ -873,6 +929,13 @@ function Slots.SyncVisual(btn, bag, slot)
         fs:SetText("")
         fs:Hide()
       end
+      for _, key in ipairs({ "IconOverlay", "IconOverlay2" }) do
+        local r = btn[key]
+        if r and r.Hide then
+          r:Hide()
+        end
+      end
+      SyncBevelChrome(btn, false)
       Slots.SyncCooldown(btn, bag, slot)
       if Slots.Normalize then
         Slots.Normalize(btn)
@@ -881,15 +944,31 @@ function Slots.SyncVisual(btn, bag, slot)
       return
     end
     if icon then
+      -- Stale recycle: clear when bag:slot / item identity changes before paint.
+      if btn._bbIconKey and btn._bbIconKey ~= itemKey then
+        icon:SetTexture(nil)
+      end
+      local painted = false
       if tex ~= nil then
         icon:SetTexture(tex)
+        painted = true
+      elseif info and info.iconFileID ~= nil then
+        -- Forever secret FileID — SetTexture without reading the value.
+        local ok = pcall(function()
+          icon:SetTexture(info.iconFileID)
+        end)
+        painted = ok
+      end
+      if painted then
+        icon:SetTexCoord(0, 1, 0, 1)
         icon:SetAlpha(1)
         icon:Show()
-      elseif not info or not info.iconFileID then
+        btn._bbIconKey = itemKey
+      else
         icon:SetTexture(nil)
         icon:Hide()
+        btn._bbIconKey = nil
       end
-      -- secret iconFileID with no itemID fallback: leave prior tex; never SetTexture(secret)
     end
     if btn.SlotBackground then
       btn.SlotBackground:Show()
@@ -907,20 +986,64 @@ function Slots.SyncVisual(btn, bag, slot)
         fs:Hide()
       end
     end
-    if SetItemButtonQuality and type(info.quality) == "number" and not IsSecret(info.quality) then
+    if info and SetItemButtonQuality and type(info.quality) == "number" and not IsSecret(info.quality) then
       SetItemButtonQuality(btn, info.quality, info.itemID)
+    end
+    -- Quality border must fill SLOT (SetItemButtonQuality drifts Forever chrome).
+    if btn.IconBorder then
+      pcall(function()
+        btn.IconBorder:ClearAllPoints()
+        btn.IconBorder:SetAllPoints(btn)
+        btn.IconBorder:SetSize(SLOT, SLOT)
+      end)
     end
     -- Re-force white after quality (some builds tint Count).
     if fs and type(count) == "number" and count > 1 then
       fs:SetTextColor(1, 1, 1, 1)
       fs:Show()
     end
+    for _, key in ipairs({ "IconOverlay", "IconOverlay2" }) do
+      local r = btn[key]
+      if r then
+        pcall(function()
+          local hasArt = false
+          local t = r.GetTexture and r:GetTexture()
+          if t ~= nil and not IsSecret(t) and t ~= "" and t ~= 0 then
+            hasArt = true
+          end
+          if not hasArt and r.GetAtlas then
+            local a = r:GetAtlas()
+            if type(a) == "string" and a ~= "" and not IsSecret(a) then
+              hasArt = true
+            end
+          end
+          r:ClearAllPoints()
+          r:SetAllPoints(btn)
+          if r.SetSize then
+            r:SetSize(SLOT, SLOT)
+          end
+          if not hasArt then
+            r:Hide()
+          end
+        end)
+      end
+    end
+    SyncBevelChrome(btn, true)
     Slots.SyncCooldown(btn, bag, slot)
     if Slots.Normalize then
       Slots.Normalize(btn)
     end
+    SyncBevelChrome(btn, true)
     SyncQuestBang(btn, bag, slot)
   end)
+end
+
+function Slots.SyncBevelAfterClick(btn)
+  if not btn then
+    return
+  end
+  local occupied = btn._bbBag ~= nil and btn._bbSlot ~= nil and Slots.SlotOccupied(btn._bbBag, btn._bbSlot)
+  SyncBevelChrome(btn, occupied and true or false)
 end
 
 function Slots.SyncAttrs(btn, bag, slot)
@@ -951,9 +1074,9 @@ function Slots.SyncAttrs(btn, bag, slot)
     btn:SetAttribute("macrotext1", nil)
     btn:SetAttribute("*type1", nil)
     btn:SetAttribute("*macrotext1", nil)
-    -- Merchant/mail: clear type2 (Pickup RMB). Bank + normal: keep type2=item
+    -- Merchant/mail/auction: clear type2 (Pickup RMB). Bank + normal: keep type2=item
     -- so secure UseContainerItem deposits at bank (native CombinedBags path).
-    local insecure = special == "merchant" or special == "mail"
+    local insecure = special == "merchant" or special == "mail" or special == "auction"
     if insecure then
       btn:SetAttribute("type2", nil)
       btn:SetAttribute("*type2", nil)
@@ -1264,7 +1387,7 @@ local function WireScripts(btn)
         end
       end
       local Context = BetterBackpack.Modules.Context
-      -- Only merchant/mail clear type2. Bank keeps secure UseContainerItem.
+      -- Merchant/mail/auction clear type2. Bank keeps secure UseContainerItem.
       if button == "RightButton" and Context and Context.NeedsInsecureSpecialRmb and Context.NeedsInsecureSpecialRmb() then
         Slots.ClearRmbUse(self)
         self._bbSpecialRmb = true
@@ -1290,6 +1413,14 @@ local function WireScripts(btn)
         end
         self._bbSpecialRmb = nil
         self._bbShiftDown = nil
+        -- Use/learn leaves UI-Quickslot2 NormalTexture stuck on the icon.
+        if C_Timer and C_Timer.After then
+          C_Timer.After(0, function()
+            Slots.SyncBevelAfterClick(self)
+          end)
+        else
+          Slots.SyncBevelAfterClick(self)
+        end
         return
       end
       if button == "LeftButton" and self._bbLmbDown and not self._bbDragging then
@@ -1298,10 +1429,12 @@ local function WireScripts(btn)
             C_Timer.After(0, function()
               ClearLmbUse(self)
               self._bbSpellTarget = nil
+              Slots.SyncBevelAfterClick(self)
             end)
           else
             ClearLmbUse(self)
             self._bbSpellTarget = nil
+            Slots.SyncBevelAfterClick(self)
           end
         elseif CursorItemID() or not HandleModifiedLmb(self) then
           pickup(self)
@@ -1309,6 +1442,13 @@ local function WireScripts(btn)
       end
       self._bbLmbDown = nil
       self._bbDragging = nil
+      if C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+          Slots.SyncBevelAfterClick(self)
+        end)
+      else
+        Slots.SyncBevelAfterClick(self)
+      end
     end)
     btn:HookScript("OnDragStart", function(self)
       self._bbDragging = true
@@ -1333,6 +1473,8 @@ local function WireScripts(btn)
       GameTooltip:AddLine("RMB = sell to vendor", 0.2, 1, 0.4, true)
     elseif ctx == "mail" then
       GameTooltip:AddLine("RMB = attach to mail", 0.2, 1, 0.4, true)
+    elseif ctx == "auction" then
+      GameTooltip:AddLine("RMB = put in auction", 0.2, 1, 0.4, true)
     elseif ctx == "bank" then
       GameTooltip:AddLine("RMB = deposit to bank", 0.2, 1, 0.4, true)
     else
@@ -1343,6 +1485,8 @@ local function WireScripts(btn)
         GameTooltip:AddLine("RMB = sell all merged stacks", 0.2, 1, 0.4, true)
       elseif ctx == "mail" then
         GameTooltip:AddLine("RMB = attach all merged stacks", 0.2, 1, 0.4, true)
+      elseif ctx == "auction" then
+        GameTooltip:AddLine("RMB = auction first stack (AH holds one)", 0.2, 1, 0.4, true)
       end
     end
     GameTooltip:Show()
@@ -1524,18 +1668,22 @@ local function NormalizeSlotVisual(btn)
     return
   end
   EnsureSlotBackground(btn)
-  pcall(function()
-    btn:SetScale(1)
-    if btn.SetIgnoreParentScale then
-      btn:SetIgnoreParentScale(false)
-    end
-    btn:SetSize(SLOT, SLOT)
-    btn:SetWidth(SLOT)
-    btn:SetHeight(SLOT)
-    if btn.SetHitRectInsets then
-      btn:SetHitRectInsets(0, 0, 0, 0)
-    end
-  end)
+  -- Size/scale/hit-rect of a secure button are protected: never touch them in combat lockdown
+  -- (cooldown refreshes call this on every SPELL_UPDATE_COOLDOWN). They are re-applied after combat.
+  if not (InCombatLockdown and InCombatLockdown()) then
+    pcall(function()
+      btn:SetScale(1)
+      if btn.SetIgnoreParentScale then
+        btn:SetIgnoreParentScale(false)
+      end
+      btn:SetSize(SLOT, SLOT)
+      btn:SetWidth(SLOT)
+      btn:SetHeight(SLOT)
+      if btn.SetHitRectInsets then
+        btn:SetHitRectInsets(0, 0, 0, 0)
+      end
+    end)
+  end
   if btn.SlotBackground then
     pcall(function()
       btn.SlotBackground:ClearAllPoints()
@@ -1543,6 +1691,7 @@ local function NormalizeSlotVisual(btn)
       btn.SlotBackground:Show()
     end)
   end
+  local occupied = btn._bbBag ~= nil and btn._bbSlot ~= nil and (Slots.SlotOccupied and Slots.SlotOccupied(btn._bbBag, btn._bbSlot))
   local ic = btn.icon or btn.Icon or btn.IconTexture
   if ic then
     pcall(function()
@@ -1556,12 +1705,27 @@ local function NormalizeSlotVisual(btn)
         ic:SetDrawLayer("BORDER", 0)
       end
       ic:SetAlpha(1)
-      ic:Show()
+      -- Empty after sell: keep icon hidden (Show revived a lit empty cell until DoLayout).
+      if occupied then
+        ic:Show()
+      else
+        ic:Hide()
+      end
     end)
   end
   -- State art keeps ItemButtonTemplate geometry (64×64 bevel centered), never squashed to SLOT.
   PlaceItemButtonArt(btn)
-  -- Quality / overlay chrome must not inflate past SLOT.
+  -- Quality border + overlays must fill SLOT (no GrabTex inset black square).
+  if btn.IconBorder then
+    pcall(function()
+      btn.IconBorder:ClearAllPoints()
+      btn.IconBorder:SetAllPoints(btn)
+      btn.IconBorder:SetSize(SLOT, SLOT)
+      if not occupied then
+        btn.IconBorder:Hide()
+      end
+    end)
+  end
   for _, key in ipairs({ "IconOverlay", "IconOverlay2", "IconQuestTexture", "flash" }) do
     local r = btn[key]
     if r and r.ClearAllPoints then
@@ -1570,6 +1734,22 @@ local function NormalizeSlotVisual(btn)
         r:SetAllPoints(btn)
         if r.SetSize then
           r:SetSize(SLOT, SLOT)
+        end
+        if key == "IconOverlay" or key == "IconOverlay2" then
+          local hasArt = false
+          local t = r.GetTexture and r:GetTexture()
+          if t ~= nil and not IsSecret(t) and t ~= "" and t ~= 0 then
+            hasArt = true
+          end
+          if not hasArt and r.GetAtlas then
+            local a = r:GetAtlas()
+            if type(a) == "string" and a ~= "" and not IsSecret(a) then
+              hasArt = true
+            end
+          end
+          if not hasArt then
+            r:Hide()
+          end
         end
       end)
     end
@@ -1596,11 +1776,9 @@ local function NormalizeSlotVisual(btn)
       flash:Hide()
       flash:SetAlpha(0)
     end
-    local nt = btn.GetNormalTexture and btn:GetNormalTexture()
-    if nt and btn.SetPushedTexture then
-      btn:SetPushedTexture(nt)
-    end
   end)
+  -- Occupied slots: hide Quickslot bevel (white square after click/use).
+  SyncBevelChrome(btn, occupied and true or false)
 end
 
 function Slots.Normalize(btn)

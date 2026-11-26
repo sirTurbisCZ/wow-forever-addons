@@ -183,9 +183,18 @@ local function MerchantAllowed(bag, slot)
   if not id then
     return false
   end
-  local Trash = BetterBackpack.Modules.Trash
-  if Trash and Trash.Refuse and Trash.Refuse(id, b, s) then
+  -- Lane rules: Trash lane = destroy only, never sold. Junk lane = sell everything in it, no quality filter.
+  -- Any other lane keeps the safety filter (quest items, green+, unknown quality).
+  local Layout = LayoutMod()
+  local lane = Layout and Layout.ClassifyBagSlot and Layout.ClassifyBagSlot(b, s) or nil
+  if lane == "trash" then
     return false
+  end
+  if lane ~= "junk" then
+    local Trash = BetterBackpack.Modules.Trash
+    if Trash and Trash.Refuse and Trash.Refuse(id, b, s) then
+      return false
+    end
   end
   if SlotLocked(b, s) then
     return false
@@ -279,7 +288,7 @@ local function MailSubjectIsEmpty()
   if not ok or text == nil or text == "" then
     return true
   end
-  return not tostring(text):find("%S", 1, true)
+  return not tostring(text):find("%S")
 end
 
 local function SlotDisplayName(bag, slot)
@@ -344,6 +353,23 @@ local function TransferMail(bag, slot)
   return true
 end
 
+local function TransferAuction(bag, slot)
+  local b, s = ContainerAPI(bag, slot)
+  if SlotLocked(b, s) then
+    return false
+  end
+  if not PickupSlot(b, s) or not CursorHasSomething() then
+    return false
+  end
+  if ClickAuctionSellItemButton then
+    pcall(ClickAuctionSellItemButton)
+  end
+  if ClearCursor then
+    pcall(ClearCursor)
+  end
+  return true
+end
+
 local function TransferBank(bag, slot)
   local b, s = ContainerAPI(bag, slot)
   if SlotLocked(b, s) then
@@ -365,6 +391,9 @@ local function TransferOne(bag, slot, ctx)
   if ctx == "mail" then
     return TransferMail(bag, slot)
   end
+  if ctx == "auction" then
+    return TransferAuction(bag, slot)
+  end
   if ctx == "bank" then
     return TransferBank(bag, slot)
   end
@@ -377,6 +406,9 @@ local function ActionVerb(ctx)
   end
   if ctx == "mail" then
     return "Attach lane to mail"
+  end
+  if ctx == "auction" then
+    return "Put lane item in auction"
   end
   if ctx == "bank" then
     return "Deposit lane in bank"
@@ -400,6 +432,9 @@ function BulkTransfer.SlotShiftTooltipLine(ctx)
   end
   if ctx == "mail" then
     return "Shift+RMB = attach all merged stacks"
+  end
+  if ctx == "auction" then
+    return "RMB = put in auction sell slot"
   end
   return nil
 end
@@ -427,6 +462,21 @@ local function FinishMerchantPump(q)
   ))
   if q.diag and q.diag ~= "" then
     BulkPrint(q.diag)
+  end
+end
+
+--- Drop cached grid sig so the next Refresh always DoLayouts after a sell (no lit empty hole).
+local function InvalidateGridAndRefresh()
+  BetterBackpack._bbLastOccupiedCount = nil
+  BetterBackpack._bbGridSig = nil
+  local Layout = LayoutMod()
+  if not Layout then
+    return
+  end
+  if Layout.Relayout then
+    Layout.Relayout()
+  elseif Layout.Refresh then
+    Layout.Refresh()
   end
 end
 
@@ -468,10 +518,7 @@ local function PumpAsync()
     local q = pumpQueue
     pumpQueue = nil
     FinishMerchantPump(q)
-    local Layout = LayoutMod()
-    if Layout and Layout.Refresh then
-      Layout.Refresh()
-    end
+    InvalidateGridAndRefresh()
     return
   end
   PumpStep(12)
@@ -485,10 +532,7 @@ local function PumpAsync()
     local q = pumpQueue
     pumpQueue = nil
     FinishMerchantPump(q)
-    local Layout = LayoutMod()
-    if Layout and Layout.Refresh then
-      Layout.Refresh()
-    end
+    InvalidateGridAndRefresh()
   end
 end
 
@@ -557,10 +601,7 @@ local function StartQueue(ctx, slots, label, diag, syncMax)
     elseif q and BetterBackpack.Print then
       BulkPrint(string.format("moved %d / %d%s", q.sold or 0, q.total or 0, q.label and (" · " .. q.label) or ""))
     end
-    local Layout = LayoutMod()
-    if Layout and Layout.Refresh then
-      Layout.Refresh()
-    end
+    InvalidateGridAndRefresh()
     return true
   end
   if C_Timer and C_Timer.After then
@@ -700,7 +741,18 @@ function BulkTransfer.TransferSlot(bag, slot, ctx)
   if not ctx then
     return false
   end
-  return TransferOne(bag, slot, ctx)
+  local ok = TransferOne(bag, slot, ctx)
+  -- Single RMB sell/mail: bag API lags a tick — invalidate + short delay so empty cell packs ASAP.
+  if ok and (ctx == "merchant" or ctx == "mail") then
+    BetterBackpack._bbLastOccupiedCount = nil
+    BetterBackpack._bbGridSig = nil
+    if C_Timer and C_Timer.After then
+      C_Timer.After(0.05, InvalidateGridAndRefresh)
+    else
+      InvalidateGridAndRefresh()
+    end
+  end
+  return ok
 end
 
 function BulkTransfer.SlotQuality(bag, slot)
@@ -745,10 +797,7 @@ function BulkTransfer.RunSelfTest()
     local slots = StackMerge.CollectMergeGroup(0, 1, { { bag = 0, slot = 2 } })
     ok(type(slots) == "table" and #slots >= 1, "CollectMergeGroup hint path")
   end
-  if OOC() then
-    local noop = BulkTransfer.TransferMergeGroup(0, 1, nil)
-    ok(noop == false or noop == true, "TransferMergeGroup callable OOC")
-  end
+  -- Never call a transfer here: at a vendor/mail/bank/auction it would really sell or move bag 0 slot 1.
   return fail == 0, pass, fail, notes
 end
 

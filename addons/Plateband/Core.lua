@@ -12,6 +12,7 @@ local L = Plateband.L or {}
 local Config = Plateband.Config
 local Plates = Plateband.Modules.Plates
 local SessionLog = Plateband.Modules.SessionLog
+local SelfTest = Plateband.Modules.SelfTest
 
 local function EnsureDB()
   return Config.EnsureDB()
@@ -126,10 +127,9 @@ local function DumpRing()
   local slog = db.sessionLog or {}
   local nLines = type(slog.lines) == "table" and #slog.lines or 0
   Print(string.format(
-    L.DUMP_HEADER or "dump — errors=%d · sessionLog lines=%d · file=%s",
+    L.DUMP_HEADER or "dump — errors=%d · sessionLog lines=%d",
     #list,
-    nLines,
-    tostring(slog.fileOk)
+    nLines
   ))
   local p = db.profile
   Print(string.format(
@@ -141,7 +141,7 @@ local function DumpRing()
     tostring(Config.VERSION),
     tostring(nLines)
   ))
-  Print(L.LOG_HINT or "send Plateband.lua SavedVariables after /reload")
+  Print(L.LOG_HINT or "diagnostics are in SavedVariables after /reload")
   if db.lastDiagnose and db.lastDiagnose.card then
     print("|cffaaaaaa" .. tostring(db.lastDiagnose.card) .. "|r")
   elseif db.lastDiag and db.lastDiag.card then
@@ -192,21 +192,64 @@ local function DumpRing()
 end
 
 local bootFrame = CreateFrame("Frame")
+local loadAnnounced = false
 bootFrame:RegisterEvent("ADDON_LOADED")
 bootFrame:RegisterEvent("PLAYER_LOGIN")
+bootFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 bootFrame:SetScript("OnEvent", function(_, event, name)
   if event == "ADDON_LOADED" and name == addonName then
     EnsureDB()
-    if SessionLog and SessionLog.BeginSession then
-      SafeCall("session:begin", SessionLog.BeginSession)
+    if SessionLog and SessionLog.SyncRuntimeVersionFromInterface then
+      pcall(SessionLog.SyncRuntimeVersionFromInterface)
+    end
+    local reloadLogin = false
+    pcall(function()
+      reloadLogin = IsLoggedIn and IsLoggedIn()
+    end)
+    if reloadLogin then
+      if SessionLog and SessionLog.BeginSession then
+        SafeCall("session:begin", SessionLog.BeginSession)
+      end
+      if SessionLog and SessionLog.RecordChatLoaded then
+        SafeCall("session:chat_loaded", function()
+          SessionLog.RecordChatLoaded("reload")
+        end)
+      end
+      -- /reload does not fire PLAYER_LOGIN — must restart plate hooks here.
+      ApplyModuleState()
+      if not loadAnnounced then
+        loadAnnounced = true
+        Print(string.format(L.LOADED or "loaded v%s · /pb", tostring(Config.VERSION)))
+      end
     end
   elseif event == "PLAYER_LOGIN" then
     EnsureDB()
+    if SessionLog and SessionLog.SyncRuntimeVersionFromInterface then
+      pcall(SessionLog.SyncRuntimeVersionFromInterface)
+    end
     if SessionLog and SessionLog.BeginSession then
       SafeCall("session:begin", SessionLog.BeginSession)
     end
+    if SessionLog and SessionLog.RecordChatLoaded then
+      SafeCall("session:chat_loaded", function()
+        SessionLog.RecordChatLoaded("login")
+      end)
+    end
     ApplyModuleState()
-    Print(string.format(L.LOADED or "loaded v%s · /pb", tostring(Config.VERSION)))
+    if not loadAnnounced then
+      loadAnnounced = true
+      Print(string.format(L.LOADED or "loaded v%s · /pb", tostring(Config.VERSION)))
+    end
+  elseif event == "PLAYER_ENTERING_WORLD" then
+    if SessionLog and SessionLog.EnsureChatTruthCurrent then
+      SafeCall("session:chat_truth_pew", function()
+        SessionLog.EnsureChatTruthCurrent("reload")
+      end)
+    end
+    ApplyModuleState()
+    if Plates and Plates.Refresh then
+      SafeCall("plates:pew_refresh", Plates.Refresh)
+    end
   end
 end)
 
@@ -293,6 +336,41 @@ SlashCmdList.PLATEBAND = function(msg)
       Print(L.WATCH_OFF or "watch off")
     else
       Print("usage: /pb watch on|off  (currently " .. tostring(p.watchOn) .. ")")
+    end
+    return
+  end
+
+  if cmd == "tree" then
+    if Plates and Plates.DumpTree then
+      SafeCall("tree", Plates.DumpTree)
+    end
+    return
+  end
+
+  if cmd == "dev" then
+    local a = (rest or ""):lower()
+    if a == "on" or a == "1" then
+      p.silentTrace = true
+      p.autoDiag = true
+      Print(L.DEV_ON or "dev telemetry on")
+    elseif a == "off" or a == "0" then
+      p.silentTrace = false
+      p.autoDiag = false
+      Print(L.DEV_OFF or "dev telemetry off")
+    else
+      Print(string.format(L.DEV_USAGE or "usage: /pb dev on|off  (currently %s)", p.silentTrace and "on" or "off"))
+    end
+    return
+  end
+
+  if cmd == "selftest" then
+    if not SelfTest or not SelfTest.Run then
+      Print("SelfTest module missing")
+      return
+    end
+    local pass, fail = SafeCall("selftest", SelfTest.Run)
+    if pass and fail then
+      Print(string.format("selftest pass=%s fail=%s (see sessionLog)", tostring(pass), tostring(fail)))
     end
     return
   end

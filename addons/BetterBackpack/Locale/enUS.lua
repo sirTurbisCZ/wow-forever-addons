@@ -26,7 +26,7 @@ L.HELP_LINES = {
   "/bb dump — status + errors + actionTrace tail",
   "/bb bagkey — B-key hook + onBagKey trace (diagnose)",
   "/bb safe — safe mode (release to Blizzard)",
-  "/bb reset — restore defaults",
+  "/bb reset — reset settings + this character (other characters kept); /bb reset all — everything",
   "/bb selftest — CS-RMB wiring card (still need 1× manual combat RMB)",
   "/bb bags — reagent/free-space probe (no secret print)",
   "/bb frame [open] — print frame shown/size/strata (debug)",
@@ -35,7 +35,8 @@ L.STATUS_LINE = "enabled=%s · safe=%s · replace=%s · schema=%s · ver=%s · o
 L.ENABLED = "on — /bb opens BetterBackpack (B = Blizzard bags)"
 L.DISABLED = "off — Blizzard bags restored"
 L.SAFE_ON = "safe mode — Blizzard bags; /bb on to resume"
-L.CONFIG_RESET = "config reset to defaults"
+L.CONFIG_RESET = "settings + this character reset (other characters kept) — /bb reset all wipes everything"
+L.CONFIG_RESET_ALL = "all BetterBackpack data reset (every character)"
 L.NO_ERRORS = "no errors in ring"
 L.DUMP_HEADER = "dump — errors=%d · ver=%s"
 L.SORT_COMBAT = "sort: not in combat"
