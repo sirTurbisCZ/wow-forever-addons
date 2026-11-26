@@ -59,6 +59,8 @@ done <<< "$TGT_CARDS"
 # Friend WS — never skip friend=1 cards (prior bug short-circuited this).
 while IFS= read -r line; do
   [[ -z "$line" ]] && continue
+  [[ ${#line} -gt 400 ]] && continue
+  echo "$line" | rg -q '^\["export"\]' && continue
   if echo "$line" | rg -q 'friend=1' && echo "$line" | rg -q 'painted=0'; then
     if echo "$line" | rg -q 'tf=[1-9]|harv=[1-9]|miss=[1-9]'; then
       if echo "$line" | rg -q 'party=(party|raid)[0-9]'; then
@@ -69,6 +71,13 @@ while IFS= read -r line; do
     fi
   fi
 done <<< "$FRIEND_CARDS"
+
+while IFS= read -r line; do
+  [[ -z "$line" ]] && continue
+  if echo "$line" | rg -q 'PAINT ver=.*friend=1.*tfRows=[1-9].*painted=[1-9]'; then
+    echo "OK friendly_WS_paint: $(echo "$line" | cut -c1-120)"
+  fi
+done <<< "$PAINT_LINES"
 
 while IFS= read -r line; do
   [[ -z "$line" ]] && continue
