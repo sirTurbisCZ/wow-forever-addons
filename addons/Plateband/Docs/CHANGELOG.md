@@ -1,13 +1,13 @@
 # Plateband changelog
 
-## Release 0.2.94 — FlushChatLoadedExport on login/reload
+## Release 0.2.95 — ongoing L1 pulse (≤2s mtime)
 
-- **`FlushChatLoadedExport`** — resets throttle, writes L1 = **`ChatLoadedVersions`** on **`CHAT_LOADED`**; one **`C_Timer.After(0)`** fallback; pulse throttle unchanged.
+- **`PulseExportDiskTick`** — `C_Timer.NewTicker(2s)` + deferred disk write (not OnUpdate `io`); 1 write / 2s throttle.
 
-## Release 0.2.94 — HOTFIX: safe export io (no freeze)
+## Release 0.2.94 — safe io + reload L1 flush
 
-- **Max 1 disk L1 / 2s** — no **`C_Timer`** retry storms, no stacked OnUpdate/ticker pulses.
-- Single **`PlatebandExportDriver`**; SV **`chatTruthLine`** every tick; disk best-effort.
+- **Max 1 disk L1 / 2s** on pulse; **`FlushChatLoadedExport`** on login/`/reload` (throttle reset + ≤2s follow-up).
+- **`ChatLoadedVersions`** = **`Config.VERSION`** on L1; single **`PlatebandExportDriver`**.
 
 ## Release 0.2.93 — L1 = chat `Config.VERSION` only
 

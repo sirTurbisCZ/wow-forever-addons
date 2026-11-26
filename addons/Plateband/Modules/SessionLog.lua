@@ -233,12 +233,41 @@ local function TryExportDiskLine(line)
   return wrote
 end
 
---- SV every tick; disk L1 at most once per 2s (bypassThrottle=true ignores window).
-function Mod.ForceDiskExportL1(bypassThrottle)
+--- Ongoing ≤2s heartbeat: SV now; disk via C_Timer(0) — not OnUpdate io (Forever blocks).
+function Mod.PulseExportDiskTick()
+  local db = ns.Config.EnsureDB()
   local line = BumpChatTruthSV("EXPORT_PULSE", "pulse")
-  if not bypassThrottle and not ExportDiskThrottleOk() then
+  if not ExportDiskThrottleOk() then
     return false
   end
+  if exportDiskDeferPending then
+    return false
+  end
+  exportDiskDeferPending = true
+  if C_Timer and C_Timer.After then
+    C_Timer.After(0, function()
+      exportDiskDeferPending = false
+      if not ExportDiskThrottleOk() then
+        return
+      end
+      local l = db.chatTruthLine
+      if type(l) ~= "string" or l:sub(1, 9) ~= "live_ver=" then
+        l = line
+      end
+      TryExportDiskLine(l)
+    end)
+    return true
+  end
+  exportDiskDeferPending = false
+  return TryExportDiskLine(line)
+end
+
+--- SV every tick; disk L1 at most once per 2s (bypassThrottle=true ignores window).
+function Mod.ForceDiskExportL1(bypassThrottle)
+  if not bypassThrottle then
+    return Mod.PulseExportDiskTick()
+  end
+  local line = BumpChatTruthSV("EXPORT_PULSE", "pulse")
   return TryExportDiskLine(line)
 end
 
@@ -315,6 +344,7 @@ local exportDriverFrame
 local EXPORT_TICK = 2.0
 local EXPORT_DISK_MIN_SEC = 2.0
 local exportDiskLastGt = 0
+local exportDiskDeferPending = false
 local BumpChatTruthSV
 local ExportDiskThrottleOk
 local MarkExportDiskAttempt
@@ -657,7 +687,7 @@ function Mod.BuildChatTruthLine(src, load, seq)
 end
 
 function Mod.PulseExportDisk()
-  return Mod.ForceDiskExportL1(false)
+  return Mod.PulseExportDiskTick()
 end
 
 --- SV + disk export (chat truth line 1 + session tail).
@@ -686,7 +716,20 @@ local function StopExportTruthPulse()
   end
 end
 
+local function EnsureExportDriverTicker()
+  if exportTruthTicker or not C_Timer or not C_Timer.NewTicker then
+    return false
+  end
+  exportTruthTicker = C_Timer.NewTicker(EXPORT_TICK, function()
+    pcall(Mod.PulseExportDiskTick)
+  end)
+  return true
+end
+
 local function EnsureExportDriverFrame()
+  if exportTruthTicker then
+    return
+  end
   if exportDriverFrame or not CreateFrame or not GetTime then
     return
   end
@@ -699,7 +742,7 @@ local function EnsureExportDriverFrame()
       return
     end
     lastGt = gt
-    pcall(Mod.ForceDiskExportL1, false)
+    pcall(Mod.PulseExportDiskTick)
   end)
   pcall(exportDriverFrame.Show, exportDriverFrame)
 end
@@ -762,10 +805,12 @@ function Mod.ArmExportTruthPulse(force)
   local db = ns.Config.EnsureDB()
   db.exportPulseArmedAt = Now()
   if force then
-    pcall(Mod.FlushChatLoadedExport, "reload")
     Mod.ScheduleExportBurst()
   end
-  EnsureExportDriverFrame()
+  if not EnsureExportDriverTicker() then
+    EnsureExportDriverFrame()
+  end
+  pcall(Mod.PulseExportDiskTick)
 end
 
 function Mod.EnsureExportTruthTicker(force)

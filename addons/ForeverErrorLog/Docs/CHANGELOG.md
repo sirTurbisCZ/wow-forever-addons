@@ -1,5 +1,13 @@
 # ForeverErrorLog changelog
 
+## Release 0.1.24 — FElog driver → `PulseExportDiskTick`
+
+- Ongoing export uses Plateband deferred 2s tick (fresh L1 mtime).
+
+## Release 0.1.23 — FlushChatLoadedExport on reload/login
+
+- **`StampFelogReload` / `PLAYER_LOGIN`** call Plateband **`FlushChatLoadedExport`** (not raw export line).
+
 ## Release 0.1.23 — HOTFIX: delegate export to Plateband throttle
 
 - One **2s** driver; no WorldFrame/io ticker stack; no write retry loop.
