@@ -236,17 +236,13 @@ local function ExportDiskStaleSec()
   return UnixTs() - at
 end
 
-local exportRetryPending = false
-
-local function TryExportDiskLine(line)
+local function TryExportDiskLine(line, isRetry)
   local wrote = Mod.WriteExportL1Brute(line, true)
-  if not wrote and not exportRetryPending and C_Timer and C_Timer.After then
-    exportRetryPending = true
+  if not wrote and not isRetry and C_Timer and C_Timer.After then
     local retryLine = line
     C_Timer.After(0.05, function()
-      exportRetryPending = false
       exportDiskLastGt = 0
-      pcall(TryExportDiskLine, retryLine)
+      pcall(TryExportDiskLine, retryLine, true)
     end)
   end
   if wrote then
@@ -274,7 +270,42 @@ local function NoteExportIoDiag(db, ok, why)
 end
 
 local function AppendExportPulseLine(line)
-  return WriteLineToPaths({ EXPORT_PULSE_REL, EXPORT_PULSE_BS }, line, "a")
+  line = tostring(line or "")
+  if line == "" or not (io and io.open) then
+    return false
+  end
+  local paths = { EXPORT_PULSE_REL, EXPORT_PULSE_BS }
+  for i = 1, #paths do
+    for _, mode in ipairs({ "a", "w" }) do
+      if WriteLineToPaths({ paths[i] }, line, mode) then
+        return true
+      end
+    end
+  end
+  local stamped = string.format("[%s] EXPORT_PULSE_LINE %s", tostring(Now()), line)
+  if WriteLineToPaths({ AGENT_LIVE_REL, AGENT_LIVE_BS }, stamped, "a") then
+    return true
+  end
+  local db = ns.Config.EnsureDB()
+  db.exportPulseTail = line
+  db.exportPulseAt = Now()
+  return false
+end
+
+local function ScheduleLoginExportPulses()
+  exportDiskLastGt = 0
+  local function go()
+    exportDiskLastGt = 0
+    pcall(DoExportDiskPulse)
+  end
+  if C_Timer and C_Timer.After then
+    C_Timer.After(0.05, go)
+    C_Timer.After(0.35, go)
+    C_Timer.After(1.0, go)
+    C_Timer.After(2.0, go)
+  else
+    go()
+  end
 end
 
 --- Single EXPORT_PULSE write: fresh t=, 1 write / 2s (io off OnUpdate — queue below).
@@ -341,19 +372,13 @@ function Mod.FlushChatLoadedExport(loadKind)
   local line = BumpChatTruthSV("CHAT_LOADED", loadKind)
   local wrote = TryExportDiskLine(line)
   if not wrote and C_Timer and C_Timer.After then
-    C_Timer.After(0, function()
+    C_Timer.After(0.05, function()
       exportDiskLastGt = 0
       local l = BumpChatTruthSV("CHAT_LOADED", loadKind)
       TryExportDiskLine(l)
     end)
   end
-  if C_Timer and C_Timer.After then
-    C_Timer.After(1.95, function()
-      pcall(DoExportDiskPulse)
-    end)
-  else
-    pcall(DoExportDiskPulse)
-  end
+  ScheduleLoginExportPulses()
   return wrote
 end
 
@@ -768,6 +793,7 @@ function Mod.WriteExportL1Brute(line, throttleBypass)
   if ok then
     agentIoOk = true
     db.ioAllowName = "export"
+    pcall(AppendExportPulseLine, line)
     db.ioExportDiskAt = ts
     db.ioExportDiskOk = true
     db.ioExportDiskLine = line
@@ -883,7 +909,6 @@ local function StopExportTruthPulse()
     pcall(exportTruthTicker.Cancel, exportTruthTicker)
   end
   exportTruthTicker = nil
-  exportRetryPending = false
   ioPulseFrame = nil
   ioPulseLastGt = 0
   if exportDriverFrame then
@@ -999,7 +1024,7 @@ function Mod.ArmExportTruthPulse(force)
   EnsureExportDriverTicker()
   EnsureExportDriverFrame()
   pcall(Mod.ResetExportTimeAnchor)
-  pcall(DoExportDiskPulse)
+  ScheduleLoginExportPulses()
   QueueExportDiskPulse()
 end
 
@@ -1159,7 +1184,6 @@ function Mod.RecordChatLoaded(src)
     pcall(ForeverErrorLog.NotifyRuntime, "Plateband", ver, src, "CHAT_LOADED")
   end
   pcall(Mod.FlushChatLoadedExport, src)
-  pcall(DoExportDiskPulse)
   Mod.ScheduleExportBurst()
   pcall(Mod.PublishChatTruthHead, "CHAT_LOADED", src, 0)
   Mod.ArmExportTruthPulse(true)

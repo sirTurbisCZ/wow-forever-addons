@@ -39,10 +39,7 @@ if ! felog_export_l1_is_client_pulse "$L1"; then
   exit 1
 fi
 
-PULSE_AGE=9999
-if [[ -f "$PULSE" ]]; then
-  PULSE_AGE="$(felog_file_age_sec "$PULSE" 2>/dev/null || echo 9999)"
-fi
+PULSE_AGE="$(felog_export_pulse_age_sec 2>/dev/null || echo 9999)"
 if [[ ! "$PULSE_AGE" =~ ^[0-9]+$ ]] || [[ "$PULSE_AGE" -gt "$MAX_AGE" ]]; then
   echo "PROVE_L1 fail: export-pulse.log stale age=${PULSE_AGE}s max=${MAX_AGE}s (client DoExportDiskPulse not appending)"
   exit 1

@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## Release 0.3.03 — login pulse off load frame
+
+- **No `DoExportDiskPulse` on `RecordChatLoaded`/`Arm` sync path** — `ScheduleLoginExportPulses` at 0.05/0.35/1/2s.
+- **`export-pulse.log`** append `a`+`w` fallback; mirror **`EXPORT_PULSE_LINE`** on `agent-live.log`.
+
 ## Release 0.3.02 — honest prove + client export ticker
 
 - **`C_Timer.NewTicker(2s)`** primary **`DoExportDiskPulse`** (deferred OnUpdate backup); one io retry 0.05s.

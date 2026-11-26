@@ -261,6 +261,24 @@ felog_plateband_export_pulse_path() {
   printf '%s' "$(felog_wow_root)/Interface/AddOns/Plateband/Logs/export-pulse.log"
 }
 
+# Client pulse proof: export-pulse.log append, else agent-live EXPORT_PULSE_LINE tail.
+felog_export_pulse_age_sec() {
+  local pulse live age
+  pulse="$(felog_plateband_export_pulse_path)"
+  live="$(felog_wow_root)/Interface/AddOns/Plateband/Logs/agent-live.log"
+  if [[ -f "$pulse" ]]; then
+    age="$(felog_file_age_sec "$pulse" 2>/dev/null || echo 9999)"
+    printf '%s' "$age"
+    return 0
+  fi
+  if [[ -f "$live" ]] && rg -q 'EXPORT_PULSE_LINE' "$live" 2>/dev/null; then
+    age="$(felog_file_age_sec "$live" 2>/dev/null || echo 9999)"
+    printf '%s' "$age"
+    return 0
+  fi
+  printf '9999'
+}
+
 felog_restamp_line_t() {
   local line="$1" now="${2:-$(date +%s)}"
   python3 - "$line" "$now" <<'PY'
@@ -344,7 +362,7 @@ felog_export_l1_is_client_pulse() {
   feed="$(sed -n 's/.* feed=\([^ ]*\).*/\1/p' <<<"$line" | head -1)"
   [[ "$line" == live_ver=* ]] || return 1
   [[ "$feed" == "pb_bridge" ]] || return 1
-  [[ "$load" == "watch_sync" || "$load" == "host_toc_pulse" || "$load" == "watch_sync" ]] && return 1
+  [[ "$load" == "watch_sync" || "$load" == "host_toc_pulse" ]] && return 1
   [[ "$feed" == "host_toc_pulse" ]] && return 1
   if [[ "$src" == "EXPORT_PULSE" ]]; then
     [[ "$load" == "pulse" ]] && return 0
