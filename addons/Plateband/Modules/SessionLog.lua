@@ -242,24 +242,30 @@ local function RefreshExportPulseLine()
   return line
 end
 
---- OnUpdate schedules this; disk io only inside C_Timer(0) (Forever blocks io in OnUpdate).
-function Mod.PulseExportDiskTick()
+local function DoExportDiskPulse()
+  if not ExportDiskThrottleOk() then
+    return false
+  end
+  local line = RefreshExportPulseLine()
+  return TryExportDiskLine(line)
+end
+
+--- fromEvent=true: disk io in handler (Forever allows). OnUpdate: defer + event backup.
+function Mod.PulseExportDiskTick(fromEvent)
   BumpChatTruthSV("EXPORT_PULSE", "pulse")
   if not ExportDiskThrottleOk() then
     return false
   end
-  local function diskWrite()
-    if not ExportDiskThrottleOk() then
-      return false
-    end
-    local line = RefreshExportPulseLine()
-    return TryExportDiskLine(line)
+  if fromEvent then
+    return DoExportDiskPulse()
   end
   if C_Timer and C_Timer.After then
-    C_Timer.After(0, diskWrite)
+    C_Timer.After(0.05, function()
+      pcall(DoExportDiskPulse)
+    end)
     return true
   end
-  return diskWrite()
+  return DoExportDiskPulse()
 end
 
 --- SV every tick; disk L1 at most once per 2s (bypassThrottle=true ignores window).
@@ -286,7 +292,7 @@ function Mod.FlushChatLoadedExport(loadKind)
   end
   if C_Timer and C_Timer.After then
     C_Timer.After(1.95, function()
-      pcall(Mod.ForceDiskExportL1, false)
+      pcall(Mod.PulseExportDiskTick, true)
     end)
   end
   return wrote
@@ -341,6 +347,7 @@ local ioPulseLastGt = 0
 local worldPulseHooked = false
 local exportBurstAt = 0
 local exportDriverFrame
+local exportEventsRegistered = false
 local EXPORT_TICK = 2.0
 local EXPORT_DISK_MIN_SEC = 2.0
 local exportDiskLastGt = 0
@@ -710,10 +717,22 @@ local function StopExportTruthPulse()
   ioPulseFrame = nil
   ioPulseLastGt = 0
   if exportDriverFrame then
+    exportDriverFrame:UnregisterAllEvents()
     exportDriverFrame:SetScript("OnUpdate", nil)
+    exportDriverFrame:SetScript("OnEvent", nil)
     exportDriverFrame = nil
   end
+  exportEventsRegistered = false
 end
+
+local EXPORT_PULSE_EVENTS = {
+  "PLAYER_STARTED_MOVING",
+  "PLAYER_STOPPED_MOVING",
+  "PLAYER_REGEN_ENABLED",
+  "PLAYER_REGEN_DISABLED",
+  "ZONE_CHANGED",
+  "BAG_UPDATE_DELAYED",
+}
 
 local function EnsureExportDriverFrame()
   if exportDriverFrame or not CreateFrame or not GetTime then
@@ -721,6 +740,15 @@ local function EnsureExportDriverFrame()
   end
   local parent = WorldFrame or UIParent
   exportDriverFrame = CreateFrame("Frame", "PlatebandExportDriver", parent)
+  if not exportEventsRegistered then
+    exportEventsRegistered = true
+    for i = 1, #EXPORT_PULSE_EVENTS do
+      pcall(exportDriverFrame.RegisterEvent, exportDriverFrame, EXPORT_PULSE_EVENTS[i])
+    end
+    exportDriverFrame:SetScript("OnEvent", function()
+      pcall(Mod.PulseExportDiskTick, true)
+    end)
+  end
   local lastGt = GetTime()
   exportDriverFrame:SetScript("OnUpdate", function()
     local gt = GetTime()
@@ -728,7 +756,7 @@ local function EnsureExportDriverFrame()
       return
     end
     lastGt = gt
-    pcall(Mod.PulseExportDiskTick)
+    pcall(Mod.PulseExportDiskTick, false)
   end)
   pcall(exportDriverFrame.Show, exportDriverFrame)
 end
@@ -951,6 +979,7 @@ function Mod.RecordChatLoaded(src)
     pcall(ForeverErrorLog.NotifyRuntime, "Plateband", ver, src, "CHAT_LOADED")
   end
   pcall(Mod.FlushChatLoadedExport, src)
+  pcall(Mod.PulseExportDiskTick, true)
   Mod.ScheduleExportBurst()
   pcall(Mod.PublishChatTruthHead, "CHAT_LOADED", src, 0)
   Mod.ArmExportTruthPulse(true)
@@ -1052,12 +1081,13 @@ local function TryAppendAgentLive(stamped)
 end
 
 function Mod.FlushLiveExport()
+  exportDiskLastGt = 0
   local db = ns.Config.EnsureDB()
-  local seq = 0
-  if type(db.agentLive) == "table" then
-    seq = tonumber(db.agentLive.seq) or 0
-  end
-  return Mod.SyncLiveExportFile("FLUSH", "pulse", seq)
+  db.exportPulseSeq = (tonumber(db.exportPulseSeq) or 0) + 1
+  local line = Mod.BuildChatTruthLine("EXPORT_PULSE", "pulse", db.exportPulseSeq)
+  db.chatTruthLine = line
+  db.chatTruthAt = Now()
+  return TryExportDiskLine(line)
 end
 
 function Mod.ScheduleLiveFlush()

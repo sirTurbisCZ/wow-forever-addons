@@ -1,5 +1,9 @@
 # ForeverErrorLog changelog
 
+## Release 0.1.26 — export pulse from events
+
+- Felog driver calls **`PulseExportDiskTick(true)`**.
+
 ## Release 0.1.25 — sustained export via Plateband OnUpdate driver
 
 - FElog OnUpdate still nudges **`PulseExportDiskTick`**; primary **`PlatebandExportDriver`** frame.

@@ -594,7 +594,7 @@ end
 local function PulseLiveHeadFile()
   local sl = Plateband and Plateband.SessionLog
   if sl and type(sl.PulseExportDiskTick) == "function" then
-    pcall(sl.PulseExportDiskTick)
+    pcall(sl.PulseExportDiskTick, true)
     return
   end
   if sl and type(sl.ForceDiskExportL1) == "function" then

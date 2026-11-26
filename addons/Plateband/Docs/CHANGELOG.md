@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## Release 0.2.97 — event-driven export io + flush truth
+
+- **`PulseExportDiskTick(true)`** on movement/regen/zone/bag (io allowed); OnUpdate only defers.
+- **`FlushLiveExport`** uses **`ChatLoadedVersions`** line (not stale **`FLUSH`** metadata).
+
 ## Release 0.2.96 — sustained L1: OnUpdate scheduler only
 
 - Dropped **`C_Timer.NewTicker`** (stalls on Forever); **`PlatebandExportDriver`** OnUpdate → **`PulseExportDiskTick`** → **`C_Timer.After(0)`** io; 1 write / 2s.
