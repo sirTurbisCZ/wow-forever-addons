@@ -14,7 +14,7 @@ note() { echo "ANOMALY $1"; ANOM=1; }
 echo "WATCH_COVERAGE harmful=CARD.tf+miss,painted+PAINT.harv,miss,painted friendly=PAINT/CARD.friend ws=friend+tf sticky=paint_hold|paint_stale_cleared foreign=harv+miss>1 bleed=punit≠plate tgtSrc PLATES_LOAD+upvalues $(pb_export_session_line)"
 
 LOAD="$(pb_flushed_plates_load "$PB_SV" 2>/dev/null || rg 'PLATES_LOAD ok=1' "$PB_SV" 2>/dev/null | tail -1 || true)"
-if [[ -n "${PB_FLUSHED_VER:-}" && pb_ver_sort_ge "${PB_FLUSHED_VER}" "0.2.69" ]]; then
+if [[ -n "${PB_FLUSHED_VER:-}" ]] && pb_ver_sort_ge "${PB_FLUSHED_VER}" "0.2.69"; then
   if ! echo "$LOAD" | rg -q 'PLATES_LOAD ok=1'; then
     note "PLATES_LOAD_missing: session=${PB_FLUSHED_VER} export has no paint start line"
   elif echo "$LOAD" | rg -q 'paint=false'; then

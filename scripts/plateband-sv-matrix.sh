@@ -69,10 +69,13 @@ else
   check "tgt_bind" "WAIT"
 fi
 
+PAINT_FRIEND_WS="$(rg 'PAINT ver=.*friend=1' "$SV_DATA" 2>/dev/null | rg 'tfRows=[1-9].*painted=[1-9]' | tail -5 || true)"
 FRIEND="$(rg 'PLATEBAND_CARD.*friend=1' "$SV_DATA" 2>/dev/null | tail -8 || true)"
 FRIEND_TF="$(echo "$FRIEND" | rg 'friend=1.*tf=[1-9]' | tail -3 || true)"
 FRIEND_LAST="$(echo "$FRIEND" | tail -1)"
-if [[ -n "$FRIEND_TF" ]]; then
+if [[ -n "$PAINT_FRIEND_WS" ]] && echo "$PAINT_FRIEND_WS" | tail -2 | rg -q 'painted=[1-9]'; then
+  check "friendly_ws" "OK (PAINT friend tfRows)"
+elif [[ -n "$FRIEND_TF" ]]; then
   if echo "$FRIEND_TF" | rg -q 'painted=0'; then
     if echo "$FRIEND_LAST" | rg -q 'friend=1.*tf=[1-9].*painted=0'; then
       check "friendly_ws" "MISSING (recent tf>0 painted=0)"

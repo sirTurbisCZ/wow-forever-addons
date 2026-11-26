@@ -1,6 +1,12 @@
-# Playtest brief — BetterBackpack 1.2.6
+# Playtest brief — BetterBackpack 1.2.22
 
 Release gate — combat B, ESC, vendor/mail bulk, per-char prefs, English UI.
+
+**1.2.22**
+- Post-sell: `QueueBagRefresh` uses `Refresh` every tick; bulk/single sell invalidates grid + Relayout (no ~1.5s lit empty cell).
+
+**1.2.21**
+- Layout hotfix: forward-declare `InventoryOccupiedCount` (DoLayout nil crash).
 
 **1.2.6**
 - Custom lanes + assignments **per character** (schema 9); built-in lane toggles still account profile.

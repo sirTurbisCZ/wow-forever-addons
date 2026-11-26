@@ -1,26 +1,14 @@
-# Playtest brief — Plateband 0.1.15
+# Plateband brief — 0.3.01 (auras)
 
-Release gate — native DebuffList safe default + opt-in party/foreign DoT merge beside native on **enemy** nameplates.
+**Goal:** Weakened Soul on friendly plates + hostile DoT overlap/missing — prove via live PAINT/CARD, not guess.
 
-**0.1.15**
-- Version **0.1.15**; merge ships per `Docs/merge-design.md` (no name `SetPoint`; no DebuffList mutation).
-- Default **merge on** (`mergeMissing=true`, schema 7 migrates prior saves).
-- **`/pb merge off`** restores native-only.
+**Keep:** native DebuffList safe default; merge on for enemy foreign gaps; silentTrace PAINT feed; host export watch.
 
-**Smoke (solo)**
-1. `/reload` → chat `loaded v0.1.15` (mentions merge on by default).
-2. `/pb diagnose` → `merge=1`, personal DoTs on target plate, `native>0`, `fb=0` unless foreign omitted, `blocked=0`.
-3. Party/friend nameplates: name readable, not glued to bar (`/pb merge off` baseline).
+**Avoid:** taint on name/DebuffList; claiming matrix OK without hostile multi-paint samples.
 
-**Smoke (group + enemy target, default merge)**
-1. No slash needed — merge already on; `/pb merge off` then `on` still works.
-2. Target mob with party-applied DoT Blizzard omits from nameplate DebuffList.
-3. Icons appear **to the right** of native debuff row (same band); no duplicate personal icons.
-4. `/pb diagnose` → `merge=1`, `tf>0` when TargetFrame has hidden auras, `fb>0` when merge painted.
-5. `/pb merge off` → merge icons clear; native row unchanged.
+**Done when:**
+- Matrix `friendly_ws` + `friendly_ws_paint` OK with live `friend=1 painted>0 tfRows>0`
+- Matrix `own_foreign_paint` + overlap rows OK after mob pull with party DoTs
+- `plateband-sv-anomaly.sh` clean; no new `ADDON_ACTION_BLOCKED`
 
-**Regression**
-- Never `ADDON_ACTION_BLOCKED` from Plateband `SetPoint` on name/DebuffList during above steps.
-- `/pb safe` clears fallbacks; `/pb on` resumes.
-
-Dist zip: `./scripts/package-addon.sh Plateband` → `dist/Plateband-0.1.15.zip`.
+**Live check (no reload if already 0.3.01):** `./scripts/plateband-sv-matrix.sh` + anomaly after priest PW:S on friend + mob pull.

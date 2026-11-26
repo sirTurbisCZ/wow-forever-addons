@@ -2139,6 +2139,12 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
         n = CountPlateHarmfulShown(plate)
       end
     end
+  if n == 0 and lastPaintDebug then
+    local nv = tonumber(lastPaintDebug.nativeVis) or 0
+    if nv > n then
+      n = nv
+    end
+  end
     offX = n * (sz + pad)
   end
   local friendLayout = IsPlayerOrFriendPlate(unit, plate) or PlateUsesFriendlyHarmfulFilter(plate)
@@ -4557,6 +4563,17 @@ SilentTracePaint = function(why, unit, plate)
   if line and ns.SessionLog and ns.SessionLog.RecordPaint then
     pcall(ns.SessionLog.RecordPaint, line)
   end
+  local friendP = tonumber(lpd.friendPlate) or 0
+  local painted = tonumber(lpd.painted) or 0
+  local tfRows = tonumber(lpd.tfRows) or 0
+  if friendP == 1 or painted >= 2 or (friendP == 1 and tfRows > 0 and painted == 0) then
+    pcall(SnapshotDiagnose, "paint", {
+      silent = true,
+      forceSession = true,
+      unit = unit,
+      plate = plate,
+    })
+  end
 end
 
 SilentTraceSweep = function(why)
@@ -4996,6 +5013,14 @@ SnapshotDiagnose = function(reason, opts)
   local plate = nil
   local live = EnumerateLivePlates()
   local plateCount = #live
+  local lpd = lastPaintDebug or {}
+
+  if opts.plate then
+    plate = opts.plate
+  end
+  if opts.unit then
+    plateUnit = opts.unit
+  end
 
   if targetYes then
     plate = PlateFor("target") or plate
@@ -5007,6 +5032,9 @@ SnapshotDiagnose = function(reason, opts)
   if not plate and plateCount == 1 and live[1] then
     plate = live[1].plate
     plateUnit = plateUnit or live[1].unit
+  end
+  if not plateUnit and plate then
+    plateUnit = UnitTokenFromPlate(plate) or plateUnit
   end
 
   local ac = 0
@@ -5034,8 +5062,8 @@ SnapshotDiagnose = function(reason, opts)
     end
   end
 
-  local tf = 0
-  if targetYes then
+  local tf = tonumber(lpd.tfRows) or 0
+  if tf == 0 and targetYes then
     tf = #CollectTargetHarmfulRows(MaxIcons())
     if tf == 0 then
       tf = CountTargetFrameAuras()
@@ -5061,9 +5089,10 @@ SnapshotDiagnose = function(reason, opts)
   end
 
   local mergeOn = Profile().mergeMissing == true and "1" or "0"
-  local lpd = lastPaintDebug or {}
   local paintedDiag = fb
-  if diagUnit and tostring(lpd.unit or "") == tostring(diagUnit) then
+  if reason == "paint" and lpd.painted ~= nil then
+    paintedDiag = tonumber(lpd.painted) or paintedDiag
+  elseif diagUnit and tostring(lpd.unit or "") == tostring(diagUnit) then
     local lp = tonumber(lpd.painted) or 0
     if lp > paintedDiag then
       paintedDiag = lp

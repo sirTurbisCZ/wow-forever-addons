@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.3.01 — aura telemetry + overlap offset
+
+- **Paint CARD:** `SilentTracePaint` emits `PLATEBAND_CARD reason=paint` for friend WS + multi-paint samples (`tf` from `tfRows`).
+- **Layout:** `LayoutMergeBesideNative` uses `nativeVis` when native count is 0 (Tarantula-class overlap).
+- **Matrix:** `friendly_ws` OK from PAINT `friend=1 tfRows painted`; anomaly `PB_FLUSHED_VER` bash fix.
+
 ## Release 0.3.00 — deferred export io + pulse promote
 
 - **`QueueExportDiskPulse`**: `C_Timer.After(0)` off OnUpdate/OnEvent (Forever blocks `io` in frame scripts).
