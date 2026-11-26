@@ -1,5 +1,12 @@
 # Plateband changelog
 
+## Release 0.3.26 — restore friendly WS visibility (undo 0.3.25 lift)
+
+- **Revert:** remove **`LiftFriendlyAurasAboveName`** — `AurasFrame` `ClearAllPoints` made native + gap debuffs **vanish** while PAINT still logged `painted=1`.
+- **`SuppressFriendlyPlateConsumables`:** never `Hide` **`PlateButtonHarmful`**; scrape **BuffList only** (not all aura pools).
+- **Visible gaps:** friend fallback parents **`UnitFrame`**; merge row **`nameTop`** on `name.TOPLEFT` (+6); `Show` + frame level after layout.
+- **`EnsureNativeVisible`:** show/alpha **`AurasFrame`** + DebuffList (never hide DebuffList).
+
 ## Release 0.3.25 — lift friendly AurasFrame above name (Renia)
 
 - **Layout:** `LiftFriendlyAurasAboveName` re-anchors **`AurasFrame`** `BOTTOMLEFT` → **`name.TOPLEFT`** (+6px) when band is bar-flush / below name — native DebuffList row + gaps match mob “above name” band (no DebuffList SetPoint).

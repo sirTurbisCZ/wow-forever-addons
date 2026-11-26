@@ -10,7 +10,12 @@ if not plate then
     D.ClearFallback(unit)
     return 0
   end
-  local parent = (D.FallbackPaintParent and D.FallbackPaintParent(plate)) or D.FallbackParent(plate)
+  local friendRow = (D.MergeFriendPlatesEnabled and D.MergeFriendPlatesEnabled())
+    and (D.IsPlayerOrFriendPlate and D.IsPlayerOrFriendPlate(unit, plate)
+      or D.PlateUsesFriendlyHarmfulFilter and D.PlateUsesFriendlyHarmfulFilter(plate))
+  local parent = (friendRow and D.FriendFallbackPaintParent and D.FriendFallbackPaintParent(plate))
+    or (D.FallbackPaintParent and D.FallbackPaintParent(plate))
+    or D.FallbackParent(plate)
   if not parent then
     D.ClearFallback(unit)
     return 0

@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.3.25** (SV-primary telemetry; reload = TOC only)
+Version: **0.3.26** (SV-primary telemetry; reload = TOC only)
 
 ## Version / config truth (agent feed)
 
@@ -42,8 +42,8 @@ flowchart TD
   gate -->|PlateMatchesTarget OR IsTargetPlate| tf[CollectTargetHarmfulRows tgtSrc=1]
   gate -->|other plate while HasTarget| unit[nameplate unit mirror tgtSrc=0]
   tf --> parity[ReconcileTfHarmfulCoverage + ForceFill]
-  paint --> lift[LiftFriendlyAurasAboveName AurasFrame to name.TOP]
-  lift --> offy[MergeRowOffY / nameTop gapBand]
+  paint --> friend[nameTop on UnitFrame parent friend Show]
+  friend --> offy[MergeRowOffY hostile bar-flush only]
 ```
 
 ## Combat lockdown

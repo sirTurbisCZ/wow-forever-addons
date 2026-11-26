@@ -806,17 +806,23 @@ pb_client_ver() {
   fi
   line="$(pb_read_live_head_file "$(pb_live_head_log_path)" 2>/dev/null || true)"
   if [[ -n "$line" ]]; then
-    PB_VER_SOURCE="live_head_file"
-    PB_AGENT_SEQ="$(echo "$line" | cut -f2)"
-    printf '%s' "$(echo "$line" | cut -f1)"
-    return 0
+    head_v="$(echo "$line" | cut -f1)"
+    if [[ -z "$v" ]] || pb_ver_sort_ge "$head_v" "$v"; then
+      PB_VER_SOURCE="live_head_file"
+      PB_AGENT_SEQ="$(echo "$line" | cut -f2)"
+      v="$head_v"
+    fi
+    [[ -n "$v" ]] && printf '%s' "$v" && return 0
   fi
   line="$(pb_read_live_head_file "$(pb_repo_logs_dir)/live-head.log" 2>/dev/null || true)"
   if [[ -n "$line" ]]; then
-    PB_VER_SOURCE="live_head_mirror"
-    PB_AGENT_SEQ="$(echo "$line" | cut -f2)"
-    printf '%s' "$(echo "$line" | cut -f1)"
-    return 0
+    head_v="$(echo "$line" | cut -f1)"
+    if [[ -z "$v" ]] || pb_ver_sort_ge "$head_v" "$v"; then
+      PB_VER_SOURCE="live_head_mirror"
+      PB_AGENT_SEQ="$(echo "$line" | cut -f2)"
+      v="$head_v"
+    fi
+    [[ -n "$v" ]] && printf '%s' "$v" && return 0
   fi
   local wow_exp="${PB_AGENT_EXPORT:-}"
   [[ -n "$wow_exp" ]] || wow_exp="$(pb_agent_live_export_path)"
