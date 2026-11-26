@@ -1,5 +1,12 @@
 # Plateband changelog
 
+## Release 0.3.25 — lift friendly AurasFrame above name (Renia)
+
+- **Layout:** `LiftFriendlyAurasAboveName` re-anchors **`AurasFrame`** `BOTTOMLEFT` → **`name.TOPLEFT`** (+6px) when band is bar-flush / below name — native DebuffList row + gaps match mob “above name” band (no DebuffList SetPoint).
+- **Gaps:** friend `gapBand=nameTop|DebuffListLift|rightNativeLift`; merge parent `UnitFrame` for name-top row; `offX=0` when no live native icons.
+- **`EnsureNativeVisible`:** lifts on every friendly overlay tick (native WS visible above name).
+- **Agent:** playtest SV had **`CHAT_LOADED ver=0.3.22`** — `/reload` required before judging 0.3.24+ layout fixes.
+
 ## Release 0.3.24 — friend gap row above name (not below bar)
 
 - **Layout:** `MergeRowOffY` **never** applies `MERGE_ROW_BELOW_BAR` on party/friendly plates — gap icons align to **DebuffList above name** (same as mob plates); native-button delta only when live.

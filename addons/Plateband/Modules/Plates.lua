@@ -19,6 +19,8 @@ local PB = {
   OVERLAY_GAP_ABOVE = 2,
   -- Gap row below health bar when DebuffList BOTTOM is flush with bar (Forever party plates).
   MERGE_ROW_BELOW_BAR = 4,
+  -- Party/friendly harmful band above name text (mob-style row).
+  FRIEND_AURA_ABOVE_NAME = 6,
   GAP_CD_TICK_SEC = 3.5,
   FULL_REFRESH_DEBOUNCE = 0.75,
   PAINT_TARGET_SEC = 0.2,
@@ -2270,6 +2272,85 @@ local function LayoutGapIconsInFallback(mergeFb, painted, sz, pad)
   end
 end
 
+--- True when aura chrome sits in the below-name / bar-adjacent band (friend mis-layout).
+local function FriendlyAurasBelowNameBand(plate)
+  local uf = plate and plate.UnitFrame
+  local af = uf and uf.AurasFrame
+  local nameFS = PlateNameFS(plate)
+  local bar = HealthBar(plate)
+  if not af or not nameFS then
+    return false
+  end
+  local afB, nameT, barT
+  pcall(function()
+    afB = af:GetBottom()
+    nameT = nameFS:GetTop()
+  end)
+  pcall(function()
+    if bar then
+      barT = bar:GetTop()
+    end
+  end)
+  if type(afB) == "number" and type(nameT) == "number" and not IsSecret(afB) and not IsSecret(nameT) then
+    if afB < nameT - 3 then
+      return true
+    end
+  end
+  if type(afB) == "number" and type(barT) == "number" and not IsSecret(afB) and not IsSecret(barT) then
+    if afB <= barT + 3 then
+      return true
+    end
+  end
+  return false
+end
+
+--- Lift AurasFrame (native debuff row) above name — never SetPoint DebuffList itself (0.3.25).
+local function LiftFriendlyAurasAboveName(plate)
+  if not FriendlyAurasBelowNameBand(plate) then
+    return false
+  end
+  local uf = plate.UnitFrame
+  local af = uf and uf.AurasFrame
+  local nameFS = PlateNameFS(plate)
+  if not af or not nameFS or FrameIsGlobalChrome(af) then
+    return false
+  end
+  local ok = false
+  pcall(function()
+    af:ClearAllPoints()
+    af:SetPoint("BOTTOMLEFT", nameFS, "TOPLEFT", 0, PB.FRIEND_AURA_ABOVE_NAME)
+    ok = true
+  end)
+  return ok
+end
+
+local function FriendFallbackPaintParent(plate)
+  local uf = plate and plate.UnitFrame
+  if uf and not FrameIsGlobalChrome(uf) then
+    return uf
+  end
+  return FallbackPaintParent(plate)
+end
+
+local function AuraChromeAboveName(plate, frame)
+  if not frame then
+    return false
+  end
+  local nameFS = PlateNameFS(plate)
+  if not nameFS then
+    return true
+  end
+  local fT, nT
+  pcall(function()
+    fT = frame:GetTop()
+    nT = nameFS:GetTop()
+  end)
+  if type(fT) == "number" and type(nT) == "number" and not IsSecret(fT) and not IsSecret(nT) then
+    return fT >= nT - 2
+  end
+  return false
+end
+
 --- Vertical offset so gap icons share native debuff row (above name — same band as DebuffList).
 local function MergeRowOffY(plate, listFrame, friendLayout)
   if not plate then
@@ -2366,12 +2447,15 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
       n = 0
     end
     offX = n * (sz + pad)
+    if friendLayout and visN == 0 and rowN == 0 then
+      offX = 0
+    end
     if lastPaintDebug then
       lastPaintDebug.gapOffX = offX
     end
   end
-  local function finishAnchor(anchorFn)
-    local parent = FallbackPaintParent(plate)
+  local function finishAnchor(anchorFn, paintParent)
+    local parent = paintParent or FallbackPaintParent(plate)
     if parent then
       pcall(function()
         if mergeFb:GetParent() ~= parent then
@@ -2426,18 +2510,50 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
     end
     return
   end
+  local lifted = LiftFriendlyAurasAboveName(plate)
+  local nameFS = PlateNameFS(plate)
   local right = NativeBandRightAnchor(plate)
-  if right then
+  if right and (lifted or AuraChromeAboveName(plate, right)) then
     finishAnchor(function()
       mergeFb:SetPoint("LEFT", right, "RIGHT", pad, 0)
-      mergeFb:SetPoint("BOTTOM", right, "BOTTOM", 0, offY)
+      mergeFb:SetPoint("BOTTOM", right, "BOTTOM", 0, 0)
     end)
+    if lastPaintDebug then
+      lastPaintDebug.gapBand = lifted and "rightNativeLift" or "rightNative"
+      lastPaintDebug.gapRow = lifted and "friendLift" or "friendAbove"
+    end
+    return
+  end
+  local deb = NativeDebuffList(plate)
+  local band = deb or af
+  if lifted and band and not FrameIsGlobalChrome(band) then
+    finishAnchor(function()
+      mergeFb:SetPoint("BOTTOMLEFT", band, "BOTTOMLEFT", offX, 0)
+    end)
+    if lastPaintDebug then
+      lastPaintDebug.gapBand = "DebuffListLift"
+      lastPaintDebug.gapRow = "friendLift"
+    end
+    return
+  end
+  if nameFS then
+    finishAnchor(function()
+      mergeFb:SetPoint("BOTTOMLEFT", nameFS, "TOPLEFT", offX, PB.FRIEND_AURA_ABOVE_NAME)
+    end, FriendFallbackPaintParent(plate))
+    if lastPaintDebug then
+      lastPaintDebug.gapBand = "nameTop"
+      lastPaintDebug.gapRow = "friendLift"
+      lastPaintDebug.gapOffY = PB.FRIEND_AURA_ABOVE_NAME
+    end
     return
   end
   if af and not FrameIsGlobalChrome(af) then
     finishAnchor(function()
       mergeFb:SetPoint("BOTTOMLEFT", af, "BOTTOMLEFT", offX, offY)
     end)
+    if lastPaintDebug then
+      lastPaintDebug.gapBand = "AurasFrame"
+    end
     return
   end
 end
@@ -4932,6 +5048,10 @@ UpdateOverlay = function(unit, plate)
 
   overlayUpdates = overlayUpdates + 1
   EnsureNativeVisible(plate)
+  if MergeFriendPlatesEnabled() and plate
+    and (IsPlayerOrFriendPlate(unit, plate) or PlateUsesFriendlyHarmfulFilter(plate)) then
+    pcall(LiftFriendlyAurasAboveName, plate)
+  end
   pcall(SuppressFriendlyPlateConsumables, plate)
 
   -- Never use full AC overlay paint (duplicates personal / covers name).

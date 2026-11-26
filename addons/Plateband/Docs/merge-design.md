@@ -39,7 +39,7 @@ flowchart TD
 
 1. Native DebuffList untouched.
 2. **Paint row** parents via `FallbackPaintParent` → `AurasFrame` / `UnitFrame` only (never **child of** `DebuffList` — sibling overlap). `FallbackParent` still names native scrape anchor.
-3. Anchor: **SetPoint** beside rightmost native pool button; else **`DebuffListFrame` BOTTOMLEFT** + `gapOff` from `nativeN` when `nativeVis=0`; **`gapOffY`** via `MergeRowOffY` — **party/friendly always above-name band** (`gapOffY=0` or native delta; **no** below-bar drop). Hostile may still use **4px** below bar when list bottom is bar-flush. Never health-bar-top on hostiles. PAINT logs **`gapBand`** + **`gapOffY`** + **`gapRow`**. Party friend paint: **`PlateUnitBindingMatches`** — not `GetNamePlateForUnit` pointer equality (0.2.69 Renia WS).
+3. Anchor: hostile — beside rightmost native; else **`DebuffListFrame` BOTTOMLEFT** + `gapOff` / `MergeRowOffY` bar-flush. **Party/friendly (0.3.25):** **`LiftFriendlyAurasAboveName`** — `AurasFrame` → **`name.TOPLEFT`** when row is under bar; gap merge **`nameTop` / `DebuffListLift`** beside lifted native. Never **DebuffList** SetPoint · never health-bar-top on hostiles. PAINT **`gapBand`** + **`gapRow`**. Party: **`PlateUnitBindingMatches`** (0.2.69 Renia WS).
 4. `pcall` on paint + layout; debounce `UNIT_AURA` on target; **gap sticky** 3s hostile / **18s friend-party** (WS); refresh on hold; hostile merge **debuff band only** (never health-bar-top); merge offset when no rightmost native anchor (no overlap).
 
 ## Sources
