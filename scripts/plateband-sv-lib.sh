@@ -417,7 +417,7 @@ pb_sync_live_feed() {
     if [[ "${FELIVE_HOST_PATCH:-0}" == "1" ]]; then
       pb_refresh_export_line1_from_toc 2 2>/dev/null || true
     fi
-    pb_promote_export_pulse_line "${PB_EXPORT_PROMOTE_MAX_AGE:-5}" 2>/dev/null || true
+    pb_sync_export_l1_active "${PB_EXPORT_PROMOTE_MAX_AGE:-5}" 2>/dev/null || true
     # shellcheck source=scripts/felog-sv-lib.sh
     source "$(pb_lib_root)/scripts/felog-sv-lib.sh"
     felog_sync_repo_mirror 2>/dev/null || true

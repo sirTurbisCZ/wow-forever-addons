@@ -33,6 +33,7 @@ SV_FEED="$(echo "$SV_TRUTH" | sed -n 's/.* feed=\([^ ]*\).*/\1/p')"
 [[ -n "$SV_PB" ]] || SV_PB="$(echo "$SV_LINE" | sed -n 's/.*live_ver=\([0-9.]*\).*/\1/p')"
 
 DISK_EXP="$(felog_plateband_export_path)"
+pb_sync_export_l1_active "${MAX_AGE}" 2>/dev/null || true
 DISK_L1=""
 DISK_FEED=""
 DISK_AGE=9999

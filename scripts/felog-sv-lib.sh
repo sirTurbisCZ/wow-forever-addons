@@ -236,7 +236,11 @@ felog_head_age_sec() {
   line="$(head -1 "$f" 2>/dev/null || true)"
   feed="$(sed -n 's/.* feed=\([^ ]*\).*/\1/p' <<<"$line" | head -1)"
   src="$(sed -n 's/.* src=\([^ ]*\).*/\1/p' <<<"$line" | head -1)"
-  if [[ "$feed" == "pb_bridge" && "$src" =~ ^(EXPORT_PULSE|CHAT_LOADED)$ ]]; then
+  if [[ "$src" =~ ^(EXPORT_PULSE|CHAT_LOADED)$ ]]; then
+    printf '%s' "$disk"
+    return 0
+  fi
+  if [[ "$feed" == "pb_bridge" ]]; then
     printf '%s' "$disk"
     return 0
   fi
@@ -257,10 +261,56 @@ felog_plateband_export_pulse_path() {
   printf '%s' "$(felog_wow_root)/Interface/AddOns/Plateband/Logs/export-pulse.log"
 }
 
+felog_restamp_line_t() {
+  local line="$1" now="${2:-$(date +%s)}"
+  python3 - "$line" "$now" <<'PY'
+import re, sys
+line, now = sys.argv[1], sys.argv[2]
+if re.search(r"\bt=\d+\b", line):
+    print(re.sub(r"(t=)(\d+)", r"\g<1>" + now, line, count=1))
+else:
+    print(line.rstrip() + " t=" + now)
+PY
+}
+
+felog_line_t_age_sec() {
+  local line="$1"
+  local t now
+  t="$(sed -n 's/.*[^0-9]t=\([0-9][0-9]*\).*/\1/p' <<<"$line" | head -1)"
+  [[ -n "$t" && "$t" -gt 0 ]] || return 1
+  now="$(date +%s)"
+  echo $((now - t))
+}
+
+# Active client export (mtime fresh): refresh host-wall t= without touching versions.
+pb_touch_export_l1_timestamp() {
+  local max_mtime="${1:-5}"
+  local exp line disk_age src pb fe live fe_l now
+  exp="$(felog_plateband_export_path)"
+  [[ -f "$exp" ]] || return 1
+  disk_age="$(felog_file_age_sec "$exp" 2>/dev/null || echo 9999)"
+  [[ "$disk_age" -le "$max_mtime" ]] || return 1
+  line="$(head -1 "$exp" 2>/dev/null | tr -d '\r' || true)"
+  [[ "$line" == live_ver=* ]] || return 1
+  src="$(sed -n 's/.* src=\([^ ]*\).*/\1/p' <<<"$line" | head -1)"
+  [[ "$src" =~ ^(EXPORT_PULSE|CHAT_LOADED)$ ]] || return 1
+  pb="$(felog_plateband_interface_ver 2>/dev/null || echo "?")"
+  fe="$(felog_interface_ver 2>/dev/null || echo "?")"
+  live="$(sed -n 's/.*live_ver=\([0-9.]*\).*/\1/p' <<<"$line" | head -1)"
+  fe_l="$(sed -n 's/.*felog_ver=\([0-9.]*\).*/\1/p' <<<"$line" | head -1)"
+  [[ "$live" == "$pb" && "$fe_l" == "$fe" ]] || return 1
+  now="$(date +%s)"
+  line="$(felog_restamp_line_t "$line" "$now")"
+  mkdir -p "$(dirname "$exp")"
+  printf '%s\n' "$line" > "$exp"
+  felog_materialize_agent_live_head_from_export 2>/dev/null || true
+  return 0
+}
+
 # Host bridge: promote freshest client append pulse to L1 when main w= rewrite stalls.
 pb_promote_export_pulse_line() {
   local max_age="${1:-5}"
-  local pulse exp line age pb fe
+  local pulse exp line age pb fe now
   pulse="$(felog_plateband_export_pulse_path)"
   exp="$(felog_plateband_export_path)"
   [[ -f "$pulse" ]] || return 1
@@ -274,10 +324,21 @@ pb_promote_export_pulse_line() {
   live="$(sed -n 's/.*live_ver=\([0-9.]*\).*/\1/p' <<<"$line" | head -1)"
   fe_l="$(sed -n 's/.*felog_ver=\([0-9.]*\).*/\1/p' <<<"$line" | head -1)"
   [[ "$live" == "$pb" && "$fe_l" == "$fe" ]] || return 1
+  now="$(date +%s)"
+  line="$(felog_restamp_line_t "$line" "$now")"
   mkdir -p "$(dirname "$exp")"
   printf '%s\n' "$line" > "$exp"
   felog_materialize_agent_live_head_from_export 2>/dev/null || true
   return 0
+}
+
+# 2s watch entry: promote pulse tail, else restamp active L1 t=.
+pb_sync_export_l1_active() {
+  local max_age="${1:-5}"
+  if pb_promote_export_pulse_line "$max_age" 2>/dev/null; then
+    return 0
+  fi
+  pb_touch_export_l1_timestamp "$max_age" 2>/dev/null || return 1
 }
 
 # Parse live-head.log one-liner (FElog 0.1.4+).

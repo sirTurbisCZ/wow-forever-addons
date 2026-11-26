@@ -16,7 +16,11 @@ if [[ ! -f "$EXP" ]]; then
 fi
 
 L1="$(head -1 "$EXP" 2>/dev/null || true)"
+pb_sync_export_l1_active "$MAX_AGE" 2>/dev/null || true
+L1="$(head -1 "$EXP" 2>/dev/null || true)"
 AGE="$(felog_head_age_sec "$EXP" 2>/dev/null || echo 9999)"
+MTIME="$(felog_file_age_sec "$EXP" 2>/dev/null || echo "?")"
+T_AGE="$(felog_line_t_age_sec "$L1" 2>/dev/null || echo "?")"
 LIVE="$(sed -n 's/.*live_ver=\([0-9.]*\).*/\1/p' <<<"$L1" | head -1)"
 IPB="$(sed -n 's/.*interface_pb=\([0-9.]*\).*/\1/p' <<<"$L1" | head -1)"
 IFE="$(sed -n 's/.*interface_fe=\([0-9.]*\).*/\1/p' <<<"$L1" | head -1)"
@@ -55,6 +59,6 @@ if [[ "$FE_L" != "$FE" || "$IFE" != "$FE" ]]; then
   exit 1
 fi
 
-echo "PROVE_L1 ok: pb=$PB fe=$FE src=$SRC age=${AGE}s"
+echo "PROVE_L1 ok: pb=$PB fe=$FE src=$SRC age=${AGE}s mtime=${MTIME}s t_age=${T_AGE}s"
 echo "$L1"
 exit 0
