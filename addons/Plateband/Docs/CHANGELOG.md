@@ -1,5 +1,12 @@
 # Plateband changelog
 
+## Release 0.3.19 — merge-design sibling layout (Wyvern band)
+
+- **Parent:** gap row on `AurasFrame`/`UnitFrame` only — **not** a child of `DebuffList` (Forever clip/wrong row).
+- **Hostile anchor:** `SetPoint` to rightmost native pool kid, else `DebuffListFrame` **BOTTOMLEFT** + `gapOff` from **`nativeN`** when pools undercount `nativeVis`.
+- **No** hostile health-bar-top; `NativeBandRightAnchor` keeps pool rightmost without over-strict live gate.
+- PAINT **`gapBand=`** (`rightNative` / `DebuffList` / `AurasFrame`).
+
 ## Release 0.3.18 — hostile debuff row only (no bar-above)
 
 - **Layout:** hostile gap icons **never** anchor `healthBar:TOP` (above name); **`HostileDebuffBandFrame`** = DebuffList / AurasFrame / UF only.

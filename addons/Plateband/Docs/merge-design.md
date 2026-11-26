@@ -37,8 +37,8 @@ flowchart TD
 ## Layout
 
 1. Native DebuffList untouched.
-2. **Paint row** parents via `FallbackPaintParent` → health bar / `UnitFrame` only (never `DebuffList` — sibling overlap). `FallbackParent` still names native scrape anchor.
-3. Anchor: rightmost native aura from **pools** (debuff + hostile buff row); `AurasFrame` row fallback if no kid; health-bar `TOPLEFT` + **pixel offset** from `NativeAuraButtonLive` count when no rightmost anchor. PAINT logs **`nativeVis`** when `CountPlateHarmfulShown` undercounts live buttons. Party friend paint: **`PlateUnitBindingMatches`** — not `GetNamePlateForUnit` pointer equality (0.2.69 Renia WS).
+2. **Paint row** parents via `FallbackPaintParent` → `AurasFrame` / `UnitFrame` only (never **child of** `DebuffList` — sibling overlap). `FallbackParent` still names native scrape anchor.
+3. Anchor: **SetPoint** beside rightmost native pool button; else **`DebuffListFrame` BOTTOMLEFT** + `gapOff` from `nativeN` when `nativeVis=0`; never health-bar-top on hostiles. PAINT logs **`gapBand`** (`rightNative` / `DebuffList`) + **`nativeVis`**. Party friend paint: **`PlateUnitBindingMatches`** — not `GetNamePlateForUnit` pointer equality (0.2.69 Renia WS).
 4. `pcall` on paint + layout; debounce `UNIT_AURA` on target; **gap sticky** 3s hostile / **18s friend-party** (WS); refresh on hold; hostile merge **debuff band only** (never health-bar-top); merge offset when no rightmost native anchor (no overlap).
 
 ## Sources

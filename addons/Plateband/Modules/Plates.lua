@@ -1432,12 +1432,8 @@ FallbackParent = function(plate)
   return NativeDebuffList(plate) or NativeDebuffAnchorList(plate) or SafeFallbackParent(plate)
 end
 
---- Gap row parent — debuff row / AurasFrame / UF (never clip gap band in empty chrome).
+--- Gap row parent — AurasFrame / UnitFrame sibling (never parent into DebuffList — Forever clips).
 FallbackPaintParent = function(plate)
-  local deb = NativeDebuffList(plate)
-  if deb and not FrameIsGlobalChrome(deb) then
-    return deb
-  end
   local uf = plate and plate.UnitFrame
   local af = uf and uf.AurasFrame
   if af and not FrameIsGlobalChrome(af) then
@@ -1447,30 +1443,6 @@ FallbackPaintParent = function(plate)
     return uf
   end
   return SafeFallbackParent(plate)
-end
-
---- Hostile merge band — DebuffList / AurasFrame only (never health-bar-above chrome).
-HostileDebuffBandFrame = function(plate)
-  if not plate then
-    return nil
-  end
-  local deb = NativeDebuffList(plate)
-  if deb and not FrameIsGlobalChrome(deb) then
-    return deb
-  end
-  local uf = plate.UnitFrame
-  local af = uf and uf.AurasFrame
-  if af and not FrameIsGlobalChrome(af) then
-    return af
-  end
-  local row = NativeDebuffAnchorList(plate)
-  if row and not FrameIsGlobalChrome(row) then
-    return row
-  end
-  if uf and not FrameIsGlobalChrome(uf) then
-    return uf
-  end
-  return nil
 end
 
 PlateHarmfulBandExpected = function(plate, unit)
@@ -1494,8 +1466,6 @@ PlateHarmfulBandExpected = function(plate, unit)
   end
   return false
 end
-
--- forward: HostileDebuffBandFrame / PlateHarmfulBandExpected used from LayoutMergeBesideNative
 
 CollectTargetFrameButtons = function(out, maxN)
   maxN = maxN or MaxIcons()
@@ -2196,31 +2166,26 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
       end
     end
     rowN = CountNativeAuraRow(plate)
-    local n = visN
-    if visN > 0 and n == 0 then
-      n = rowN
-    end
-    if visN > 0 and not friendLayout and n == 0 then
+    local nativeN = lastPaintDebug and tonumber(lastPaintDebug.nativeN) or 0
+    local n = math.max(visN, nativeN, rowN)
+    if n == 0 then
       n = CountPlateHarmfulShown(plate)
     end
     if n == 0 and lastPaintDebug then
       local nv = tonumber(lastPaintDebug.nativeVis) or 0
-      if nv > 0 and nv > n then
+      if nv > 0 then
         n = nv
       end
     end
-    if visN == 0 and painted > 1 and not nativeHarm then
-      n = 0
-    end
-    if visN == 0 and nativeHarm then
+    if visN == 0 and (nativeHarm or nativeN > 0) then
       local ut = UnitTokenFromPlate(plate)
       local paintN = lastPaintDebug and math.max(tonumber(lastPaintDebug.tfRows) or 0, tonumber(lastPaintDebug.harv) or 0) or 0
       local apiN = ut and CountHarmfulAuraSlots(ut) or 0
       local cap = MaxIcons()
-      n = math.max(n, math.min(paintN, cap), math.min(apiN, cap))
-      if n < visN then
-        n = visN
-      end
+      n = math.max(n, nativeN, math.min(paintN, cap), math.min(apiN, cap))
+    end
+    if visN == 0 and painted > 1 and not nativeHarm and nativeN == 0 then
+      n = 0
     end
     offX = n * (sz + pad)
     if lastPaintDebug then
@@ -2228,19 +2193,56 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
     end
   end
   local function finishAnchor(anchorFn)
+    local parent = FallbackPaintParent(plate)
+    if parent then
+      pcall(function()
+        if mergeFb:GetParent() ~= parent then
+          mergeFb:SetParent(parent)
+        end
+        if parent.SetClipsChildren then
+          parent:SetClipsChildren(false)
+        end
+      end)
+    end
     mergeFb:ClearAllPoints()
     pcall(anchorFn)
     LayoutGapIconsInFallback(mergeFb, painted, sz, pad)
   end
-  local auraRow = NativeDebuffAnchorList(plate)
   local af = plate and plate.UnitFrame and plate.UnitFrame.AurasFrame
-  local right = nil
-  if visN > 0 or nativeHarm then
-    local cand = NativeBandRightAnchor(plate)
-    if cand and (NativeAuraButtonLive(cand) or nativeHarm) then
-      right = cand
+  if not friendLayout then
+    local right = NativeBandRightAnchor(plate)
+    if right then
+      finishAnchor(function()
+        mergeFb:SetPoint("LEFT", right, "RIGHT", pad, 0)
+        mergeFb:SetPoint("BOTTOM", right, "BOTTOM", 0, 0)
+      end)
+      if lastPaintDebug then
+        lastPaintDebug.gapBand = "rightNative"
+      end
+      return
     end
+    local deb = NativeDebuffList(plate)
+    if deb and not FrameIsGlobalChrome(deb) then
+      finishAnchor(function()
+        mergeFb:SetPoint("BOTTOMLEFT", deb, "BOTTOMLEFT", offX, 0)
+      end)
+      if lastPaintDebug then
+        lastPaintDebug.gapBand = "DebuffList"
+      end
+      return
+    end
+    if af and not FrameIsGlobalChrome(af) then
+      finishAnchor(function()
+        mergeFb:SetPoint("BOTTOMLEFT", af, "BOTTOMLEFT", offX, 0)
+      end)
+      if lastPaintDebug then
+        lastPaintDebug.gapBand = "AurasFrame"
+      end
+      return
+    end
+    return
   end
+  local right = NativeBandRightAnchor(plate)
   if right then
     finishAnchor(function()
       mergeFb:SetPoint("LEFT", right, "RIGHT", pad, 0)
@@ -2248,48 +2250,11 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
     end)
     return
   end
-  if auraRow and not FrameIsGlobalChrome(auraRow) then
-    pcall(function()
-      if mergeFb:GetParent() ~= auraRow then
-        mergeFb:SetParent(auraRow)
-      end
-      if auraRow.SetClipsChildren then
-        auraRow:SetClipsChildren(false)
-      end
-    end)
+  if af and not FrameIsGlobalChrome(af) then
     finishAnchor(function()
-      mergeFb:SetPoint("BOTTOMLEFT", auraRow, "BOTTOMLEFT", offX, 0)
+      mergeFb:SetPoint("BOTTOMLEFT", af, "BOTTOMLEFT", offX, 0)
     end)
     return
-  end
-  if friendLayout and af and not FrameIsGlobalChrome(af) then
-    finishAnchor(function()
-      mergeFb:SetPoint("TOPLEFT", af, "TOPLEFT", offX, 2)
-    end)
-    return
-  end
-  if not friendLayout then
-    local band = HostileDebuffBandFrame(plate)
-    if band and not FrameIsGlobalChrome(band) then
-      pcall(function()
-        if mergeFb:GetParent() ~= band then
-          mergeFb:SetParent(band)
-        end
-        if band.SetClipsChildren then
-          band:SetClipsChildren(false)
-        end
-      end)
-      finishAnchor(function()
-        mergeFb:SetPoint("BOTTOMLEFT", band, "BOTTOMLEFT", offX, 0)
-      end)
-      return
-    end
-  end
-  local bar = HealthBar(plate)
-  if friendLayout and bar then
-    finishAnchor(function()
-      mergeFb:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", offX, PB.OVERLAY_GAP_ABOVE)
-    end)
   end
 end
 
@@ -2707,10 +2672,9 @@ NativeBandRightAnchor = function(plate)
     CollectPlateBuffButtons(plate, buttons, MaxIcons())
     rightmost = PickRightmostAuraFrame(buttons)
   end
-  if rightmost and NativeAuraButtonLive(rightmost) then
+  if rightmost then
     return rightmost
   end
-  rightmost = nil
   if not list then
     return nil
   end
@@ -2736,9 +2700,6 @@ NativeBandRightAnchor = function(plate)
       end
       rightmost = PickRightmostAuraFrame(liveKids)
     end
-  end
-  if rightmost and not NativeAuraButtonLive(rightmost) then
-    return nil
   end
   return rightmost
 end
