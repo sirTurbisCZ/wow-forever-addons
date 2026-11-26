@@ -1,5 +1,10 @@
 # Plateband changelog
 
+## Release 0.2.94 — HOTFIX: safe export io (no freeze)
+
+- **Max 1 disk L1 / 2s** — no **`C_Timer`** retry storms, no stacked OnUpdate/ticker pulses.
+- Single **`PlatebandExportDriver`**; SV **`chatTruthLine`** every tick; disk best-effort.
+
 ## Release 0.2.93 — L1 = chat `Config.VERSION` only
 
 - **`ChatLoadedVersions`** / **`ResolveExportVersions`** — same source as **`loaded v%s`** chat line; no stamp/toc/metadata/`chatTruthLine` union.

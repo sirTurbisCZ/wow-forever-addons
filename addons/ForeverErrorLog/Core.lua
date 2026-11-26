@@ -61,7 +61,8 @@ local livePulseLastGt = 0
 local felogWorldPulseHooked = false
 local felogExportBurstAt = 0
 local felogExportDriver
-local FELOG_EXPORT_TICK = 1.95
+local FELOG_EXPORT_TICK = 2.0
+local felogExportDiskLastGt = 0
 
 local WriteLiveHeadFile
 local FlushAgentExportFiles
@@ -572,11 +573,6 @@ local function WritePlatebandExportLine(line)
       end
     end
   end
-  if C_Timer and C_Timer.After then
-    C_Timer.After(0, function()
-      WritePlatebandExportLine(line)
-    end)
-  end
   return false
 end
 
@@ -584,74 +580,33 @@ ForeverErrorLog.WritePlatebandExportL1 = WritePlatebandExportLine
 
 local function ScheduleFelogExportBurst()
   local now = Now()
-  if (now - felogExportBurstAt) < 5 then
+  if (now - felogExportBurstAt) < 10 then
     return
   end
   felogExportBurstAt = now
-  pcall(function()
-    WritePlatebandExportLine(FelogPlatebandExportLine())
-  end)
-  local delays = { 0.15, 0.35, 0.75, 1.5, 2, 4, 8 }
-  for i = 1, #delays do
-  local d = delays[i]
-    if C_Timer and C_Timer.After then
-      C_Timer.After(d, function()
-        pcall(function()
-          WritePlatebandExportLine(FelogPlatebandExportLine())
-        end)
-      end)
-    end
+  if C_Timer and C_Timer.After then
+    C_Timer.After(1.0, function()
+      pcall(PulseLiveHeadFile)
+    end)
   end
-end
-
-local function EnsureFelogWorldIoPulse()
-  if felogWorldPulseHooked or not WorldFrame or not GetTime then
-    return
-  end
-  felogWorldPulseHooked = true
-  local lastGt = GetTime()
-  local w = CreateFrame("Frame", nil, WorldFrame)
-  w:SetScript("OnUpdate", function()
-    local gt = GetTime()
-    if (gt - lastGt) < 2.0 then
-      return
-    end
-    lastGt = gt
-    pcall(PulseLiveHeadFile)
-  end)
-  pcall(w.Show, w)
 end
 
 local function PulseLiveHeadFile()
-  local bridgeLine = FelogPlatebandExportLine()
-  WritePlatebandExportLine(bridgeLine)
   local sl = Plateband and Plateband.SessionLog
-  if sl and type(sl.PulseExportDisk) == "function" then
-    pcall(sl.PulseExportDisk)
+  if sl then
+    if type(sl.RefreshChatTruthSV) == "function" then
+      pcall(sl.RefreshChatTruthSV, "FELOG_PULSE", "pulse")
+    end
+    if type(sl.ForceDiskExportL1) == "function" then
+      pcall(sl.ForceDiskExportL1)
+      return
+    end
+  end
+  if GetTime and (GetTime() - felogExportDiskLastGt) < 2.0 then
     return
   end
-  if sl and type(sl.PulseExportTruth) == "function" then
-    pcall(sl.PulseExportTruth)
-    return
-  end
-  if sl and type(sl.PublishChatTruthHead) == "function" then
-    local db = EnsureDB()
-    local lh = EnsureLiveHeadTable(db)
-    local seq = tonumber(lh.seq) or 0
-    pcall(sl.PublishChatTruthHead, "FELOG_PULSE", "pulse", seq)
-    return
-  end
-  local db = EnsureDB()
-  local lh = EnsureLiveHeadTable(db)
-  lh.felogVer = tostring(Config.VERSION or "?")
-  local pb = Plateband and Plateband.Config and Plateband.Config.VERSION
-  if pb then
-    lh.platebandVer = tostring(pb)
-  end
-  if (tonumber(lh.at) or 0) <= 0 then
-    lh.at = Now()
-  end
-  pcall(WriteLiveHeadFile, lh)
+  felogExportDiskLastGt = GetTime() or felogExportDiskLastGt
+  WritePlatebandExportLine(FelogPlatebandExportLine())
 end
 
 local function StopLivePulse()
@@ -698,34 +653,7 @@ local function ArmLivePulse(force)
   livePulseArmed = true
   pcall(PulseLiveHeadFile)
   ScheduleFelogExportBurst()
-  EnsureFelogWorldIoPulse()
   EnsureFelogExportDriver()
-
-  if not livePulseFrame and CreateFrame then
-    local parent = WorldFrame or UIParent
-    livePulseFrame = CreateFrame("Frame", "FelogIoPulse", parent)
-  end
-  if livePulseFrame then
-    livePulseLastGt = (GetTime and GetTime()) or livePulseLastGt
-    livePulseFrame:SetScript("OnUpdate", function()
-      if not GetTime then
-        return
-      end
-      local gt = GetTime()
-      if (gt - livePulseLastGt) < 2.0 then
-        return
-      end
-      livePulseLastGt = gt
-      pcall(PulseLiveHeadFile)
-    end)
-    pcall(livePulseFrame.Show, livePulseFrame)
-  end
-
-  if C_Timer and C_Timer.NewTicker and not livePulseTicker then
-    livePulseTicker = C_Timer.NewTicker(2.0, function()
-      pcall(PulseLiveHeadFile)
-    end)
-  end
 end
 
 local function EnsureLivePulseTicker(force)

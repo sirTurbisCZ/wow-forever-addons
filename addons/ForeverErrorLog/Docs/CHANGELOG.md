@@ -1,5 +1,9 @@
 # ForeverErrorLog changelog
 
+## Release 0.1.23 — HOTFIX: delegate export to Plateband throttle
+
+- One **2s** driver; no WorldFrame/io ticker stack; no write retry loop.
+
 ## Release 0.1.22 — export L1 = chat `Config.VERSION`
 
 - **`FelogChatLoadedVersions`** — matches **`loaded v%s`** / **`reloaded v%s`**; dropped stamp/toc/metadata **`FelogBestVersion`** for L1.

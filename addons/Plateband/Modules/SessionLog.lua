@@ -224,21 +224,22 @@ function Mod.ResolveExportVersions()
   return pbVer, feVer, pbVer, feVer
 end
 
---- Line 1 only — mirror SV chatTruthLine to agent-live-export.log (≤2s).
-function Mod.ForceDiskExportL1()
-  local db = ns.Config.EnsureDB()
-  db.exportPulseSeq = (tonumber(db.exportPulseSeq) or 0) + 1
-  local line = Mod.BuildChatTruthLine("EXPORT_PULSE", "pulse", db.exportPulseSeq)
-  db.chatTruthLine = line
-  db.chatTruthAt = Now()
-  db.exportPulseAt = Now()
-  local wrote = Mod.WriteExportL1Brute(line)
+--- SV every tick; disk L1 at most once per 2s (allowImmediate unused — always throttled).
+function Mod.ForceDiskExportL1(_allowImmediate)
+  local line = BumpChatTruthSV("EXPORT_PULSE", "pulse")
+  if not ExportDiskThrottleOk() then
+    return false
+  end
+  MarkExportDiskAttempt()
+  local wrote = Mod.WriteExportL1Brute(line, true)
   if wrote then
     pcall(Mod.PublishInterfaceTocStamp)
-  else
-    QueueDeferredExportWrite(line)
   end
   return wrote
+end
+
+function Mod.RefreshChatTruthSV(src, load)
+  return BumpChatTruthSV(src, load)
 end
 
 function Mod.LiveInterfaceVersions()
@@ -286,7 +287,12 @@ local ioPulseLastGt = 0
 local worldPulseHooked = false
 local exportBurstAt = 0
 local exportDriverFrame
-local EXPORT_TICK = 1.95
+local EXPORT_TICK = 2.0
+local EXPORT_DISK_MIN_SEC = 2.0
+local exportDiskLastGt = 0
+local BumpChatTruthSV
+local ExportDiskThrottleOk
+local MarkExportDiskAttempt
 local EXPORT_PULSE_REL = "Interface/AddOns/Plateband/Logs/export-pulse.log"
 local EXPORT_PULSE_BS = [[Interface\AddOns\Plateband\Logs\export-pulse.log]]
 local felogPending = {}
@@ -317,6 +323,36 @@ local function EnsureLogTable()
     db.sessionLog.lines = {}
   end
   return db.sessionLog
+end
+
+ExportDiskThrottleOk = function()
+  if not GetTime then
+    return true
+  end
+  return (GetTime() - exportDiskLastGt) >= EXPORT_DISK_MIN_SEC
+end
+
+MarkExportDiskAttempt = function()
+  if GetTime then
+    exportDiskLastGt = GetTime()
+  end
+end
+
+BumpChatTruthSV = function(src, load)
+  local db = ns.Config.EnsureDB()
+  db.exportPulseSeq = (tonumber(db.exportPulseSeq) or 0) + 1
+  local seq = db.exportPulseSeq
+  db.exportPulseAt = Now()
+  db.exportPulseN = seq
+  local line = Mod.BuildChatTruthLine(src or "EXPORT_PULSE", load or "pulse", seq)
+  db.chatTruthLine = line
+  db.chatTruthAt = Now()
+  local pbVer, feVer = Mod.ResolveExportVersions()
+  db.interfacePbVer = pbVer
+  db.interfaceFeVer = feVer
+  local log = EnsureLogTable()
+  log.export = line
+  return line
 end
 
 local function EnsureAgentLive(db)
@@ -478,50 +514,42 @@ local function WriteLineToPaths(paths, line, mode)
   return false
 end
 
-local function QueueDeferredExportWrite(line)
-  if not (C_Timer and C_Timer.After) then
-    return
-  end
-  local delays = { 0, 0.05, 0.2 }
-  for i = 1, #delays do
-    C_Timer.After(delays[i], function()
-      pcall(Mod.WriteExportL1Brute, line)
-    end)
-  end
-end
-
---- Bruteforce agent-live-export L1 — Forever may block io in OnUpdate; defer + multi-path.
-function Mod.WriteExportL1Brute(line)
+--- One L1 write per throttle window; no retries.
+function Mod.WriteExportL1Brute(line, throttleBypass)
   line = tostring(line or "")
-  if line == "" then
+  if line == "" or not (io and io.open) then
     return false
   end
-  local db = ns.Config.EnsureDB()
-  local paths = { AGENT_EXPORT_REL, AGENT_EXPORT_BS }
-  for i = 1, #paths do
-    for _, mode in ipairs({ "w", "wb" }) do
-      local f = TryOpen(paths[i], mode)
-      if f then
-        local ok = pcall(function()
-          f:write(line)
-          f:write("\n")
-          if f.flush then
-            f:flush()
-          end
-          f:close()
-        end)
-        if ok then
-          agentIoOk = true
-          db.ioAllowName = "export"
-          db.ioExportDiskAt = Now()
-          db.ioExportDiskOk = true
-          db.ioExportDiskLine = line
-          return true
-        end
-      end
-    end
+  if not throttleBypass and not ExportDiskThrottleOk() then
+    return false
   end
-  QueueDeferredExportWrite(line)
+  if not throttleBypass then
+    MarkExportDiskAttempt()
+  end
+  local db = ns.Config.EnsureDB()
+  local f = TryOpen(AGENT_EXPORT_REL, "w")
+  if not f then
+    f = TryOpen(AGENT_EXPORT_BS, "w")
+  end
+  if not f then
+    return false
+  end
+  local ok = pcall(function()
+    f:write(line)
+    f:write("\n")
+    if f.flush then
+      f:flush()
+    end
+    f:close()
+  end)
+  if ok then
+    agentIoOk = true
+    db.ioAllowName = "export"
+    db.ioExportDiskAt = Now()
+    db.ioExportDiskOk = true
+    db.ioExportDiskLine = line
+    return true
+  end
   return false
 end
 
@@ -603,49 +631,8 @@ function Mod.BuildChatTruthLine(src, load, seq)
   )
 end
 
---- Force disk mtime ≤2s — line 1 + optional tail; tries w then line-only w then append heartbeat.
 function Mod.PulseExportDisk()
-  local db = ns.Config.EnsureDB()
-  db.exportPulseSeq = (tonumber(db.exportPulseSeq) or 0) + 1
-  local seq = db.exportPulseSeq
-  db.exportPulseAt = Now()
-  db.exportPulseN = seq
-  local line = Mod.BuildChatTruthLine("EXPORT_PULSE", "pulse", seq)
-  db.chatTruthLine = line
-  db.chatTruthAt = Now()
-  local pbVer, feVer = Mod.ResolveExportVersions()
-  db.interfacePbVer = pbVer
-  db.interfaceFeVer = feVer
-  db.ioAllowName = nil
-  db.ioAllowLastProbe = 0
-  pcall(Mod.PublishInterfaceTocStamp)
-
-  local log = EnsureLogTable()
-  local body = line
-  if type(log.lines) == "table" and #log.lines > 0 then
-    local start = math.max(1, #log.lines - LIVE_TAIL_LINES + 1)
-    body = line .. "\n" .. table.concat(log.lines, "\n", start, #log.lines)
-  end
-  log.export = body
-
-  local wrote = Mod.WriteExportL1Brute(line)
-  if not wrote then
-    wrote = TryWriteWholeFile({ AGENT_EXPORT_REL, AGENT_EXPORT_BS }, body)
-  end
-  if not wrote then
-    wrote = WriteLineToPaths({ EXPORT_PULSE_REL, EXPORT_PULSE_BS }, line, "a")
-  end
-  if wrote then
-    agentIoOk = true
-    db.ioAllowName = "export"
-    db.ioExportDiskAt = Now()
-    db.ioExportDiskOk = true
-  else
-    db.ioExportDiskOk = false
-    db.ioExportDiskFailAt = Now()
-    DiscoverIoAllowlist(db)
-  end
-  return wrote
+  return Mod.ForceDiskExportL1(false)
 end
 
 --- SV + disk export (chat truth line 1 + session tail).
@@ -687,7 +674,7 @@ local function EnsureExportDriverFrame()
       return
     end
     lastGt = gt
-    pcall(Mod.ForceDiskExportL1)
+    pcall(Mod.ForceDiskExportL1, false)
   end)
   pcall(exportDriverFrame.Show, exportDriverFrame)
 end
@@ -723,50 +710,16 @@ function Mod.SyncLiveExportFile(src, load, seq)
   return wrote
 end
 
-local function EnsureWorldIoPulse()
-  if worldPulseHooked or not WorldFrame or not GetTime then
-    return
-  end
-  worldPulseHooked = true
-  local lastGt = GetTime()
-  if WorldFrame.HookScript then
-    WorldFrame:HookScript("OnUpdate", function(_, _)
-      local gt = GetTime()
-      if (gt - lastGt) < AGENT_PULSE_SEC then
-        return
-      end
-      lastGt = gt
-      pcall(Mod.PulseExportDisk)
-    end)
-    return
-  end
-  local w = CreateFrame("Frame", nil, WorldFrame)
-  w:SetScript("OnUpdate", function()
-    local gt = GetTime()
-    if (gt - lastGt) < AGENT_PULSE_SEC then
-      return
-    end
-    lastGt = gt
-    pcall(Mod.PulseExportDisk)
-  end)
-  pcall(w.Show, w)
-end
-
 function Mod.ScheduleExportBurst()
   local now = Now()
-  if (now - exportBurstAt) < 5 then
+  if (now - exportBurstAt) < 10 then
     return
   end
   exportBurstAt = now
-  pcall(Mod.PulseExportDisk)
-  local delays = { 0.15, 0.35, 0.75, 1.5, 2, 4, 8 }
-  for i = 1, #delays do
-    local d = delays[i]
-    if C_Timer and C_Timer.After then
-      C_Timer.After(d, function()
-        pcall(Mod.PulseExportDisk)
-      end)
-    end
+  if C_Timer and C_Timer.After then
+    C_Timer.After(1.0, function()
+      pcall(Mod.ForceDiskExportL1, true)
+    end)
   end
 end
 
@@ -783,37 +736,12 @@ function Mod.ArmExportTruthPulse(force)
   exportTruthArmed = true
   local db = ns.Config.EnsureDB()
   db.exportPulseArmedAt = Now()
-  pcall(Mod.ForceDiskExportL1)
-  pcall(Mod.PulseExportDisk)
-  Mod.ScheduleExportBurst()
-  EnsureWorldIoPulse()
+  pcall(Mod.RefreshChatTruthSV, "EXPORT_ARM", "reload")
+  pcall(Mod.ForceDiskExportL1, true)
+  if force then
+    Mod.ScheduleExportBurst()
+  end
   EnsureExportDriverFrame()
-
-  if not ioPulseFrame and CreateFrame then
-    local parent = WorldFrame or UIParent
-    ioPulseFrame = CreateFrame("Frame", "PlatebandIoPulse", parent)
-  end
-  if ioPulseFrame then
-    ioPulseLastGt = (GetTime and GetTime()) or ioPulseLastGt
-    ioPulseFrame:SetScript("OnUpdate", function()
-      if not GetTime then
-        return
-      end
-      local gt = GetTime()
-      if (gt - ioPulseLastGt) < AGENT_PULSE_SEC then
-        return
-      end
-      ioPulseLastGt = gt
-      pcall(Mod.PulseExportDisk)
-    end)
-    pcall(ioPulseFrame.Show, ioPulseFrame)
-  end
-
-  if C_Timer and C_Timer.NewTicker and not exportTruthTicker then
-    exportTruthTicker = C_Timer.NewTicker(AGENT_PULSE_SEC, function()
-      pcall(Mod.PulseExportDisk)
-    end)
-  end
 end
 
 function Mod.EnsureExportTruthTicker(force)
@@ -969,8 +897,8 @@ function Mod.RecordChatLoaded(src)
   if ForeverErrorLog and ForeverErrorLog.NotifyRuntime then
     pcall(ForeverErrorLog.NotifyRuntime, "Plateband", ver, src, "CHAT_LOADED")
   end
-  pcall(Mod.PublishInterfaceTocStamp)
-  pcall(Mod.PulseExportDisk)
+  pcall(Mod.RefreshChatTruthSV, "CHAT_LOADED", src)
+  pcall(Mod.ForceDiskExportL1, true)
   Mod.ScheduleExportBurst()
   pcall(Mod.PublishChatTruthHead, "CHAT_LOADED", src, 0)
   Mod.ArmExportTruthPulse(true)
@@ -1292,7 +1220,6 @@ local function DeferArmExportTruth(force)
   end
   if C_Timer and C_Timer.After then
     C_Timer.After(0, arm)
-    C_Timer.After(0.5, arm)
   else
     arm()
   end
@@ -1308,7 +1235,6 @@ if CreateFrame then
     end
     if event == "ADDON_LOADED" or event == "PLAYER_ENTERING_WORLD" then
       DeferArmExportTruth(true)
-      pcall(Mod.ForceDiskExportL1)
     end
   end)
 end
