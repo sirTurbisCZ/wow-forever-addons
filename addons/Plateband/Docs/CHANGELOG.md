@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.3.04 — export io probe + friend WS refill
+
+- **`ResetExportIoGate` + `ProbeExportL1Write`** on each pulse; **`TryWriteWholeFile`** fallback when line write fails; **15s login boost** bypasses export throttle.
+- **OnUpdate driver** calls **`DoExportDiskPulse`** directly (not queue).
+- **Friend paint:** `tfRows` from unit API when not targeting; mirror/foreign backfill before prune; hold sticky when harmful API still live (`paint_hold`).
+
 ## Release 0.3.03 — login pulse off load frame
 
 - **No `DoExportDiskPulse` on `RecordChatLoaded`/`Arm` sync path** — `ScheduleLoginExportPulses` at 0.05/0.35/1/2s.

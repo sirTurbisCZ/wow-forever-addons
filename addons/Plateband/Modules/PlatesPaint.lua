@@ -253,6 +253,10 @@ if not plate then
   D.lastPaintDebug.partyTok = partyAuraTok or "-"
   if useTargetSrc and D.HasTarget() then
     D.lastPaintDebug.tfRows = D.CountTargetHarmfulExpected("target", D.lastPaintDebug.harv)
+  elseif friendPlate and type(partyAuraTok or unit) == "string" then
+    local auraTok = partyAuraTok or unit
+    local apiN = D.CountHarmfulAuraSlots(auraTok)
+    D.lastPaintDebug.tfRows = math.max(apiN, D.CountTargetHarmfulExpected(auraTok, math.max(D.lastPaintDebug.harv or 0, #missing, apiN)))
   elseif type(unit) == "string" then
     D.lastPaintDebug.tfRows = D.CountTargetHarmfulExpected(partyAuraTok or unit, math.max(D.lastPaintDebug.harv or 0, #missing))
   else
@@ -263,6 +267,11 @@ if not plate then
     local retry = {}
     local skip = D.CopyKeySet(D.NativeShownKeySet(plate))
     pcall(D.EnsureUnitHarmfulParity, paintAuraTok, plate, retry, skip, maxN, stats)
+    pcall(D.CollectUnitHarmfulMirror, paintAuraTok, skip, retry, maxN, stats)
+    if #retry == 0 and (D.lastPaintDebug.tfRows or 0) > 0 then
+      pcall(D.CollectForeignAuraGaps, paintAuraTok, skip, retry, maxN, true, stats)
+      pcall(D.EnsureUnitHarmfulParity, paintAuraTok, plate, retry, skip, maxN, stats)
+    end
     if #retry > 0 then
       D.DedupeGapIcons(retry, maxN)
       for i = 1, #retry do
@@ -299,6 +308,17 @@ if not plate then
           end
           D.lastPaintDebug.miss = #missing
           D.lastPaintDebug.tfRows = D.CountTargetHarmfulExpected(auraUnit, #missing)
+        elseif (friendPlate or partyMerge) and (D.CountHarmfulAuraSlots(auraUnit) or 0) > 0 then
+          pcall(D.CollectUnitHarmfulMirror, auraUnit, skip, retry, maxN, stats)
+          if #retry > 0 then
+            for i = 1, #retry do
+              missing[i] = retry[i]
+            end
+            D.lastPaintDebug.miss = #missing
+          else
+            D.SilentTracePaint("paint_hold", unit, plate)
+            return heldN
+          end
         else
           D.gapSticky[unit] = nil
           D.ClearFallback(unit, false)

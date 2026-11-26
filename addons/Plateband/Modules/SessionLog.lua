@@ -311,14 +311,29 @@ end
 --- Single EXPORT_PULSE write: fresh t=, 1 write / 2s (io off OnUpdate — queue below).
 local function DoExportDiskPulse()
   HydrateExportTimeAnchor()
+  local loginBoost = GetTime and exportLoginBoostUntil > 0 and GetTime() <= exportLoginBoostUntil
   local stale = ExportDiskStaleSec()
-  if stale < EXPORT_DISK_MIN_SEC and not ExportDiskThrottleOk() then
+  if not loginBoost and stale < EXPORT_DISK_MIN_SEC and not ExportDiskThrottleOk() then
     return false
   end
   local db = ns.Config.EnsureDB()
+  pcall(ProbeExportL1Write)
   db.exportPulseSeq = (tonumber(db.exportPulseSeq) or 0) + 1
   local line = CommitChatTruthLine(Mod.BuildChatTruthLine("EXPORT_PULSE", "pulse", db.exportPulseSeq))
   local wrote = TryExportDiskLine(line)
+  if not wrote then
+    exportDiskLastGt = 0
+    line = CommitChatTruthLine(Mod.BuildChatTruthLine("EXPORT_PULSE", "pulse", db.exportPulseSeq))
+    wrote = TryWriteWholeFile({ AGENT_EXPORT_REL, AGENT_EXPORT_BS }, line) or false
+    if wrote then
+      db.chatTruthLine = line
+      db.ioExportDiskLine = line
+      db.ioExportDiskOk = true
+      db.ioAllowName = "export"
+      pcall(AppendExportPulseLine, line)
+      MarkExportDiskAttempt()
+    end
+  end
   local final = tostring(db.ioExportDiskLine or db.chatTruthLine or line)
   if wrote then
     NoteExportIoDiag(db, true, "ok")
@@ -438,6 +453,7 @@ local exportDiskLastGt = 0
 local memExportEpoch = nil
 local memExportGt = nil
 local exportPulseQueued = false
+local exportLoginBoostUntil = 0
 local BumpChatTruthSV
 local ExportDiskThrottleOk
 local MarkExportDiskAttempt
@@ -608,10 +624,40 @@ local function TryOpen(path, mode)
     return nil
   end
   local ok, f = pcall(io.open, path, mode)
-  if ok then
+  if ok and f then
     return f
   end
   return nil
+end
+
+function Mod.ResetExportIoGate()
+  local db = ns.Config.EnsureDB()
+  db.ioAllowName = nil
+  db.ioAllowLastProbe = 0
+  db.ioExportDiskOk = nil
+  db.ioExportDiskFailAt = nil
+  agentIoOk = nil
+end
+
+local function ProbeExportL1Write()
+  local db = ns.Config.EnsureDB()
+  pcall(Mod.ResetExportIoGate)
+  if not (io and io.open) then
+    db.ioExportDiskOk = false
+    db.exportIoProbeWhy = "no_io"
+    return false
+  end
+  local probe = string.format("live_ver=%s src=IO_PROBE load=probe t=%s feed=pb_bridge", tostring(ns.Config.VERSION), tostring(Now()))
+  if TryWriteWholeFile({ AGENT_EXPORT_REL, AGENT_EXPORT_BS }, probe) then
+    db.ioAllowName = "export"
+    db.ioExportDiskOk = true
+    db.exportIoProbeAt = Now()
+    db.exportIoProbeWhy = ""
+    return true
+  end
+  db.ioExportDiskOk = false
+  db.exportIoProbeWhy = "agent-live-export_open"
+  return false
 end
 
 --- Append-only probe — live feed must not depend on session.log truncate (Forever).
@@ -960,7 +1006,7 @@ local function EnsureExportDriverFrame()
       return
     end
     acc = acc - EXPORT_TICK
-    QueueExportDiskPulse()
+    pcall(DoExportDiskPulse)
   end)
   pcall(exportDriverFrame.Show, exportDriverFrame)
 end
@@ -1167,6 +1213,8 @@ function Mod.RecordChatLoaded(src)
   local ver = tostring(Plateband.Config and Plateband.Config.VERSION or "?")
   local db = ns.Config.EnsureDB()
   db.ioExportDiskLine = nil
+  pcall(Mod.ResetExportIoGate)
+  exportLoginBoostUntil = (GetTime and GetTime() or 0) + 15
   pcall(Mod.ResetExportTimeAnchor)
   local at = Now()
   db.runtimeVer = { ver = ver, at = at, src = "chat", load = src }
