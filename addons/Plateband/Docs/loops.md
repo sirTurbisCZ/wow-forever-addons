@@ -31,7 +31,7 @@ flowchart TD
   upd --> mergeFlag{mergeMissing?}
   mergeFlag -->|false /pb merge off| stop[Stop — Blizzard name+DebuffList untouched]
   mergeFlag -->|true opt-in| paint[PaintMergeMissing foreign+TF]
-  paint --> layout[LayoutMergeBesideNative + MergeRowIconSize TF lock]
+  paint --> layout[LayoutMergeBesideNative + LayoutGapIconsInFallback + MergeRowIconSize]
 ```
 
 ## Combat lockdown

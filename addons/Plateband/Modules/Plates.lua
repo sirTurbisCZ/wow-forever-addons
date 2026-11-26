@@ -2094,6 +2094,34 @@ RestoreNameShift = function(unit, plate)
 end
 
 
+local function LayoutGapIconsInFallback(mergeFb, painted, sz, pad)
+  painted = tonumber(painted) or 0
+  if painted <= 0 or not mergeFb then
+    return
+  end
+  pad = pad or PB.OVERLAY_PAD
+  if not sz or sz <= 0 then
+    sz = MergeRowIconSize(mergeFb._pbPlate, mergeFb)
+  end
+  local icons = mergeFb.icons
+  if type(icons) ~= "table" then
+    return
+  end
+  for i = 1, painted do
+    local slot = icons[i]
+    if slot and slot.SetPoint then
+      pcall(function()
+        slot:ClearAllPoints()
+        slot:SetSize(sz, sz)
+        slot:SetPoint("LEFT", mergeFb, "LEFT", (i - 1) * (sz + pad), 0)
+      end)
+    end
+  end
+  pcall(function()
+    mergeFb:SetSize(math.max(1, painted * (sz + pad)), sz)
+  end)
+end
+
 --- Opt-in merge layout: only move Plateband fallback frame — never name / DebuffList.
 LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
   painted = tonumber(painted) or 0
@@ -2106,18 +2134,10 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
 
   local sz, pad = MergeRowIconSize(plate, mergeFb)
   pad = pad or PB.OVERLAY_PAD
-  mergeFb:ClearAllPoints()
-  local right = NativeBandRightAnchor(plate)
-  if right then
-    pcall(function()
-      mergeFb:SetPoint("LEFT", right, "RIGHT", pad, 0)
-      mergeFb:SetPoint("BOTTOM", right, "BOTTOM", 0, 0)
-    end)
-    return
-  end
   local friendLayout = IsPlayerOrFriendPlate(unit, plate) or PlateUsesFriendlyHarmfulFilter(plate)
   local offX = 0
   local visN = 0
+  local rowN = 0
   if plate then
     local buttons = {}
     CollectPlateDebuffButtons(plate, buttons, MaxIcons())
@@ -2126,7 +2146,7 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
         visN = visN + 1
       end
     end
-    local rowN = CountNativeAuraRow(plate)
+    rowN = CountNativeAuraRow(plate)
     local n = visN
     if n == 0 then
       n = rowN
@@ -2142,13 +2162,26 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
         n = nv
       end
     end
-    if friendLayout and n == 0 and painted > 1 then
-      local paintedN = tonumber(lastPaintDebug and lastPaintDebug.painted) or painted
-      if paintedN > 1 then
-        n = 1
-      end
+    if visN == 0 and painted > 1 then
+      n = math.max(n, 1)
     end
     offX = n * (sz + pad)
+  end
+  mergeFb:ClearAllPoints()
+  local right = nil
+  if visN > 0 or rowN > 0 then
+    local cand = NativeBandRightAnchor(plate)
+    if cand and NativeAuraButtonLive(cand) then
+      right = cand
+    end
+  end
+  if right then
+    pcall(function()
+      mergeFb:SetPoint("LEFT", right, "RIGHT", pad, 0)
+      mergeFb:SetPoint("BOTTOM", right, "BOTTOM", 0, 0)
+    end)
+    LayoutGapIconsInFallback(mergeFb, painted, sz, pad)
+    return
   end
   local auraRow = NativeDebuffAnchorList(plate)
   if friendLayout and auraRow then
@@ -2186,6 +2219,7 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
       mergeFb:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", offX, PB.OVERLAY_GAP_ABOVE)
     end
   end)
+  LayoutGapIconsInFallback(mergeFb, painted, sz, pad)
 end
 
 ClearOverlay = function(unit)
@@ -2608,9 +2642,10 @@ NativeBandRightAnchor = function(plate)
     CollectPlateBuffButtons(plate, buttons, MaxIcons())
     rightmost = PickRightmostAuraFrame(buttons)
   end
-  if rightmost then
+  if rightmost and NativeAuraButtonLive(rightmost) then
     return rightmost
   end
+  rightmost = nil
   if not list then
     return nil
   end
@@ -2622,14 +2657,23 @@ NativeBandRightAnchor = function(plate)
       local harmfulKids = {}
       for i = 1, #kids do
         local child = kids[i]
-        if child and PlateButtonHarmful(child) then
+        if child and PlateButtonHarmful(child) and NativeAuraButtonLive(child) then
           harmfulKids[#harmfulKids + 1] = child
         end
       end
       rightmost = PickRightmostAuraFrame(harmfulKids)
     else
-      rightmost = PickRightmostAuraFrame(kids)
+      local liveKids = {}
+      for i = 1, #kids do
+        if NativeAuraButtonLive(kids[i]) then
+          liveKids[#liveKids + 1] = kids[i]
+        end
+      end
+      rightmost = PickRightmostAuraFrame(liveKids)
     end
+  end
+  if rightmost and not NativeAuraButtonLive(rightmost) then
+    return nil
   end
   return rightmost
 end
@@ -5025,6 +5069,15 @@ SnapshotDiagnose = function(reason, opts)
     local lp = tonumber(lpd.painted) or 0
     if lp > paintedDiag then
       paintedDiag = lp
+    end
+  end
+  local lpPaint = tonumber(lpd.painted) or 0
+  if lpPaint > paintedDiag then
+    local lpu = tostring(lpd.unit or "")
+    local du = tostring(diagUnit or "")
+    if lpu == "" or du == "" or lpu == du or OverlayUnitKey(diagUnit, plate) == lpu then
+      paintedDiag = lpPaint
+      fb = math.max(fb, lpPaint)
     end
   end
   local tgtSrcLive = lpd.tgtSrc

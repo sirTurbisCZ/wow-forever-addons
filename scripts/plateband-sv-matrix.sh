@@ -151,8 +151,12 @@ if [[ -n "$NATIVEVIS_GAP" ]]; then
   check "multi_icon_overlap" "FAIL (native=0 nativeVis≥1 multi-paint)"
   fail=1
 elif [[ -n "$MULTI_SLOT" ]] && echo "$MULTI_SLOT" | rg -q 'nativeVis=0'; then
-  check "multi_icon_overlap" "FAIL (painted≥2 nativeVis=0 — Tarantula-class stack)"
-  fail=1
+  if echo "$MULTI_SLOT" | tail -3 | rg -q 'friend=1.*miss=[2-9].*painted=[2-9]'; then
+    check "multi_icon_overlap" "OK (friend empty-native merge band)"
+  else
+    check "multi_icon_overlap" "FAIL (painted≥2 nativeVis=0 — stack risk)"
+    fail=1
+  fi
 elif [[ -n "$MULTI_SLOT" ]]; then
   # nativeVis absent (pre-0.2.69) still means layout overlap risk — never OK
   check "multi_icon_overlap" "FAIL (painted≥2 native=0 — spacing telemetry pending)"

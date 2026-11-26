@@ -1,5 +1,13 @@
 # Plateband changelog
 
+## Release 0.3.15 — multi-gap layout (nativeVis=0)
+
+- **`LayoutGapIconsInFallback`** — re-spread gap buttons after anchor; skip dead **right-anchor** when `nativeVis=0`.
+- **`NativeBandRightAnchor`** — live native buttons only (no pool ghost anchor).
+- **Empty-native multi-paint:** reserve one native slot width before gap row when `painted>1` && `visN=0`.
+- **CARD:** `painted` follows latest `lastPaintDebug` when unit matches (less CARD vs PAINT lag).
+- **Matrix:** friend `miss≥2 painted≥2 nativeVis=0` = merge band OK (not Tarantula hostile FAIL).
+
 ## Release 0.3.14 — friend NP harvest + PAINT samples
 
 - Re-resolve **`partyAuraTok`** for friend plates; harvest foreign gaps on party/raid token (not nameplate-only).
