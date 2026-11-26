@@ -245,8 +245,30 @@ local function TryExportDiskLine(line)
   return wrote
 end
 
---- Single EXPORT_PULSE write: fresh t=, 1 write / 2s (no nested C_Timer — idle stall).
+local function NoteExportIoDiag(db, ok, why)
+  if type(db.exportIoDiag) ~= "table" then
+    db.exportIoDiag = { ok = 0, fail = 0, lastWhy = "", lastOkGt = 0, lastFailGt = 0 }
+  end
+  local d = db.exportIoDiag
+  if ok then
+    d.ok = (tonumber(d.ok) or 0) + 1
+    d.lastOkGt = (GetTime and GetTime()) or 0
+    d.lastWhy = ""
+  else
+    d.fail = (tonumber(d.fail) or 0) + 1
+    d.lastFailGt = (GetTime and GetTime()) or 0
+    d.lastWhy = tostring(why or "?")
+  end
+  d.lastAt = Now()
+end
+
+local function AppendExportPulseLine(line)
+  return WriteLineToPaths({ EXPORT_PULSE_REL, EXPORT_PULSE_BS }, line, "a")
+end
+
+--- Single EXPORT_PULSE write: fresh t=, 1 write / 2s (io off OnUpdate — queue below).
 local function DoExportDiskPulse()
+  HydrateExportTimeAnchor()
   local stale = ExportDiskStaleSec()
   if stale < EXPORT_DISK_MIN_SEC and not ExportDiskThrottleOk() then
     return false
@@ -254,15 +276,41 @@ local function DoExportDiskPulse()
   local db = ns.Config.EnsureDB()
   db.exportPulseSeq = (tonumber(db.exportPulseSeq) or 0) + 1
   local line = CommitChatTruthLine(Mod.BuildChatTruthLine("EXPORT_PULSE", "pulse", db.exportPulseSeq))
-  return TryExportDiskLine(line)
+  local wrote = TryExportDiskLine(line)
+  local final = tostring(db.ioExportDiskLine or db.chatTruthLine or line)
+  if wrote then
+    NoteExportIoDiag(db, true, "ok")
+  else
+    NoteExportIoDiag(db, false, "export_open")
+  end
+  pcall(AppendExportPulseLine, final)
+  return wrote
+end
+
+local function QueueExportDiskPulse()
+  if exportPulseQueued then
+    return
+  end
+  exportPulseQueued = true
+  local function run()
+    exportPulseQueued = false
+    pcall(DoExportDiskPulse)
+  end
+  if C_Timer and C_Timer.After then
+    C_Timer.After(0, run)
+  else
+    run()
+  end
 end
 
 function Mod.ExportDiskPulse()
-  return DoExportDiskPulse()
+  QueueExportDiskPulse()
+  return true
 end
 
 function Mod.PulseExportDiskTick(_fromEvent)
-  return DoExportDiskPulse()
+  QueueExportDiskPulse()
+  return true
 end
 
 --- SV every tick; disk L1 at most once per 2s (bypassThrottle=true ignores window).
@@ -353,6 +401,7 @@ local EXPORT_DISK_MIN_SEC = 1.85
 local exportDiskLastGt = 0
 local memExportEpoch = nil
 local memExportGt = nil
+local exportPulseQueued = false
 local BumpChatTruthSV
 local ExportDiskThrottleOk
 local MarkExportDiskAttempt
@@ -390,13 +439,13 @@ local function RawWallEpoch()
 end
 
 local function HydrateExportTimeAnchor()
-  local db = ns.Config.EnsureDB()
-  if memExportEpoch and memExportGt then
+  if memExportEpoch and memExportGt and GetTime and GetTime() >= memExportGt then
     return
   end
+  local db = ns.Config.EnsureDB()
   local base = tonumber(db.exportUnixEpoch)
   local gt0 = tonumber(db.exportLoadGt)
-  if type(base) == "number" and base > 0 and type(gt0) == "number" then
+  if type(base) == "number" and base > 0 and type(gt0) == "number" and GetTime and GetTime() >= gt0 then
     memExportEpoch = base
     memExportGt = gt0
     return
@@ -404,20 +453,23 @@ local function HydrateExportTimeAnchor()
   pcall(Mod.ResetExportTimeAnchor)
 end
 
---- Forever: `time()`/`GetServerTime` often frozen — advance via in-memory `GetTime()` anchor (not stale SV).
+--- Forever: frozen `time()` — wall = memEpoch + (GetTime() - memGt); never hydrate bad SV gt0 > GetTime().
 local function UnixTs()
   if not GetTime then
     return RawWallEpoch()
   end
   HydrateExportTimeAnchor()
   if type(memExportEpoch) == "number" and memExportEpoch > 0 and type(memExportGt) == "number" then
-    return math.floor(memExportEpoch + (GetTime() - memExportGt))
+    local gt = GetTime()
+    if gt < memExportGt then
+      pcall(Mod.ResetExportTimeAnchor)
+      gt = GetTime()
+    end
+    return math.floor(memExportEpoch + (gt - memExportGt))
   end
-  local db = ns.Config.EnsureDB()
-  local base = tonumber(db.exportUnixEpoch)
-  local gt0 = tonumber(db.exportLoadGt)
-  if type(base) == "number" and base > 0 and type(gt0) == "number" then
-    return math.floor(base + (GetTime() - gt0))
+  pcall(Mod.ResetExportTimeAnchor)
+  if type(memExportEpoch) == "number" and type(memExportGt) == "number" then
+    return math.floor(memExportEpoch + (GetTime() - memExportGt))
   end
   return RawWallEpoch()
 end
@@ -673,11 +725,23 @@ function Mod.WriteExportL1Brute(line, throttleBypass)
   local seq = tonumber(db.exportPulseSeq) or tonumber(hint:match("seq=([^%s]+)")) or 0
   line = CommitChatTruthLine(Mod.BuildChatTruthLine(src, load, seq))
   db.interfacePbVer, db.interfaceFeVer = Mod.ChatLoadedVersions()
-  local f = TryOpen(AGENT_EXPORT_REL, "w")
-  if not f then
-    f = TryOpen(AGENT_EXPORT_BS, "w")
+  local f, openPath, openMode = nil, nil, nil
+  local tryPaths = { AGENT_EXPORT_REL, AGENT_EXPORT_BS }
+  local tryModes = { "w", "wb" }
+  for pi = 1, #tryPaths do
+    for mi = 1, #tryModes do
+      f = TryOpen(tryPaths[pi], tryModes[mi])
+      if f then
+        openPath, openMode = tryPaths[pi], tryModes[mi]
+        break
+      end
+    end
+    if f then
+      break
+    end
   end
   if not f then
+    NoteExportIoDiag(db, false, "agent-live-export_open")
     return false
   end
   line = CommitChatTruthLine(line)
@@ -696,12 +760,16 @@ function Mod.WriteExportL1Brute(line, throttleBypass)
     db.ioExportDiskAt = ts
     db.ioExportDiskOk = true
     db.ioExportDiskLine = line
+    db.ioExportPath = tostring(openPath or "")
+    db.ioExportMode = tostring(openMode or "")
     db.chatTruthLine = line
     db.chatTruthAt = ts
     local log = EnsureLogTable()
     log.export = line
+    NoteExportIoDiag(db, true, "agent-live-export")
     return true
   end
+  NoteExportIoDiag(db, false, "agent-live-export_write")
   return false
 end
 
@@ -836,7 +904,7 @@ local function EnsureExportDriverFrame()
   end
   pcall(exportDriverFrame.RegisterUnitEvent, exportDriverFrame, "UNIT_AURA", "player")
   exportDriverFrame:SetScript("OnEvent", function()
-    pcall(DoExportDiskPulse)
+    QueueExportDiskPulse()
   end)
   local acc = 0
   exportDriverFrame:SetScript("OnUpdate", function(_, elapsed)
@@ -845,7 +913,7 @@ local function EnsureExportDriverFrame()
       return
     end
     acc = acc - EXPORT_TICK
-    pcall(DoExportDiskPulse)
+    QueueExportDiskPulse()
   end)
   pcall(exportDriverFrame.Show, exportDriverFrame)
 end
@@ -907,7 +975,8 @@ function Mod.ArmExportTruthPulse(force)
     Mod.ScheduleExportBurst()
   end
   EnsureExportDriverFrame()
-  pcall(DoExportDiskPulse)
+  pcall(Mod.ResetExportTimeAnchor)
+  QueueExportDiskPulse()
 end
 
 function Mod.EnsureExportTruthTicker(force)
@@ -1169,12 +1238,8 @@ end
 
 function Mod.FlushLiveExport()
   exportDiskLastGt = 0
-  local db = ns.Config.EnsureDB()
-  db.exportPulseSeq = (tonumber(db.exportPulseSeq) or 0) + 1
-  local line = Mod.BuildChatTruthLine("EXPORT_PULSE", "pulse", db.exportPulseSeq)
-  db.chatTruthLine = line
-  db.chatTruthAt = Now()
-  return TryExportDiskLine(line)
+  QueueExportDiskPulse()
+  return true
 end
 
 function Mod.ScheduleLiveFlush()
@@ -1407,7 +1472,7 @@ if CreateFrame then
       if event == "PLAYER_ENTERING_WORLD" then
         EnsureExportDriverFrame()
         pcall(Mod.FlushChatLoadedExport, "login")
-        pcall(DoExportDiskPulse)
+        QueueExportDiskPulse()
       end
     end
   end)

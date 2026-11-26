@@ -226,13 +226,20 @@ felog_file_age_sec() {
   echo $((now - lm))
 }
 
-# min(disk_mtime_age, now - t= on line) — chat/runtime truth over stale host copies
+# Age for L1: pb_bridge client pulses — trust file mtime (GetTime-anchored t= may lag host wall).
+# Otherwise min(mtime, now − t=).
 felog_head_age_sec() {
   local f="$1"
   [[ -f "$f" ]] || return 1
-  local disk line t now logical
+  local disk line t now logical feed src
   disk="$(felog_file_age_sec "$f" 2>/dev/null || echo 9999)"
   line="$(head -1 "$f" 2>/dev/null || true)"
+  feed="$(sed -n 's/.* feed=\([^ ]*\).*/\1/p' <<<"$line" | head -1)"
+  src="$(sed -n 's/.* src=\([^ ]*\).*/\1/p' <<<"$line" | head -1)"
+  if [[ "$feed" == "pb_bridge" && "$src" =~ ^(EXPORT_PULSE|CHAT_LOADED)$ ]]; then
+    printf '%s' "$disk"
+    return 0
+  fi
   t="$(sed -n 's/.*[^0-9]t=\([0-9][0-9]*\).*/\1/p' <<<"$line" | head -1)"
   now="$(date +%s)"
   logical="$disk"
@@ -244,6 +251,33 @@ felog_head_age_sec() {
     fi
   fi
   printf '%s' "$disk"
+}
+
+felog_plateband_export_pulse_path() {
+  printf '%s' "$(felog_wow_root)/Interface/AddOns/Plateband/Logs/export-pulse.log"
+}
+
+# Host bridge: promote freshest client append pulse to L1 when main w= rewrite stalls.
+pb_promote_export_pulse_line() {
+  local max_age="${1:-5}"
+  local pulse exp line age pb fe
+  pulse="$(felog_plateband_export_pulse_path)"
+  exp="$(felog_plateband_export_path)"
+  [[ -f "$pulse" ]] || return 1
+  age="$(felog_file_age_sec "$pulse" 2>/dev/null || echo 9999)"
+  [[ "$age" -le "$max_age" ]] || return 1
+  line="$(tail -1 "$pulse" 2>/dev/null | tr -d '\r' || true)"
+  [[ "$line" == live_ver=* ]] || return 1
+  pb="$(felog_plateband_interface_ver 2>/dev/null || echo "?")"
+  fe="$(felog_interface_ver 2>/dev/null || echo "?")"
+  local live fe_l
+  live="$(sed -n 's/.*live_ver=\([0-9.]*\).*/\1/p' <<<"$line" | head -1)"
+  fe_l="$(sed -n 's/.*felog_ver=\([0-9.]*\).*/\1/p' <<<"$line" | head -1)"
+  [[ "$live" == "$pb" && "$fe_l" == "$fe" ]] || return 1
+  mkdir -p "$(dirname "$exp")"
+  printf '%s\n' "$line" > "$exp"
+  felog_materialize_agent_live_head_from_export 2>/dev/null || true
+  return 0
 }
 
 # Parse live-head.log one-liner (FElog 0.1.4+).

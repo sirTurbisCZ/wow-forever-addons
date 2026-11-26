@@ -25,6 +25,7 @@ WoW flushes `Plateband.lua` on logout/reload — treat WTF as archive; **watch r
 - **Live during play (0.2.78+):** primary head = `Plateband/Logs/agent-live-head.log` (`WriteAgentLiveHead` / `PublishChatTruthHead`; Forever io allowlist). Gate: `felog-live-gate.sh --max-age 2`. Older: `ForeverErrorLog/Logs/live-head.log` / `felog-live-head.log` when allowed; else **`felog_bridge_sv`** → repo `felog-plateband-live.log`; else Plateband SV mirror + `live-head.txt`.
 - **Never:** client `agent-live-export` or old PAINT lines for `live_ver`; never treat head lag as `reload_pending`.
 - **Live ver order:** `Plateband/Logs/agent-live-head.log` (≤2s on load) → `ForeverErrorLog/Logs/live-head.log` / bridge → `agent-live-export.log` → SV stamps. `interface_ver` = TOC on disk; `live_ver` / `felog_ver` on L1 = runtime **`Config.VERSION`** (same string as chat **`loaded v…`**).
+- **Export age (0.3.00+):** prove/gate uses **mtime** for `feed=pb_bridge` + `src=EXPORT_PULSE|CHAT_LOADED`; host may promote **`export-pulse.log`** tail when L1 `w=` stalls.
 - **Reload:** expect `CHAT_LOADED ver=… src=reload` in export/logs without logout; `SESSION_REPORT` within ~2s of session-watch.
 - **`agent-live.log`:** CARD/PAINT append each event (when client `io` works).
 - Gate/matrix **do not fail** on flush lag alone; paint rules still run on `agent-live.log` + SV.

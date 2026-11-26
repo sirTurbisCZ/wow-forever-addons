@@ -1,5 +1,9 @@
 # ForeverErrorLog changelog
 
+## Release 0.1.29 — pairs with Plateband 0.3.00 export defer
+
+- FElog **`PulseLiveHeadFile`** still delegates; host pulse promote unchanged.
+
 ## Release 0.1.28 — FElog pulse delegates `ExportDiskPulse` only
 
 ## Release 0.1.27 — relies on Plateband `DoExportDiskPulse` idle tick

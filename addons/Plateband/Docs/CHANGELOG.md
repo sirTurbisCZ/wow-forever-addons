@@ -1,5 +1,12 @@
 # Plateband changelog
 
+## Release 0.3.00 — deferred export io + pulse promote
+
+- **`QueueExportDiskPulse`**: `C_Timer.After(0)` off OnUpdate/OnEvent (Forever blocks `io` in frame scripts).
+- **`export-pulse.log`** append each pulse; host **`pb_promote_export_pulse_line`** (2s watch) promotes stale L1.
+- **`exportIoDiag`** ok/fail counters; anchor reset when SV **`exportLoadGt` > GetTime()**.
+- **`felog_head_age_sec`**: **`feed=pb_bridge`** uses mtime-only age for prove/gate.
+
 ## Release 0.2.99 — L1 rebuilt from Config every disk write
 
 - **`WriteExportL1Brute`** always **`BuildChatTruthLine`** from **`ChatLoadedVersions`**; **`t=`** = **`exportUnixEpoch + GetTime()`** (Forever frozen **`time()`**); **`StampExportLineT`** at **`fopen`**.
