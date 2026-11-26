@@ -4531,7 +4531,7 @@ BuildPaintTraceLine = function(why, unit, plate)
     tostring(lpd.nativeVis or "?"),
     tostring(lpd.harv or "?"),
     tostring(lpd.miss or "?"),
-    tostring(lpd.painted or fb),
+    tostring(math.max(tonumber(lpd.painted) or 0, fb)),
     tostring(tgtSrc),
     tostring(lpd.tfRows or "?"),
     tostring(lpd.friendPlate or "?"),

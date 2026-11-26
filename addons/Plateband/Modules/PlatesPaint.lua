@@ -233,7 +233,10 @@ if not plate then
   end
 
   local paintAuraTok = D.AuraUnitForPlate(unit, plate, useTargetSrc, partyAuraTok)
-  D.PruneInactiveGapRows(missing, paintAuraTok, maxN)
+  local friendHarmN = friendPlate and D.CountHarmfulAuraSlots(paintAuraTok) or 0
+  if not (friendPlate and (friendHarmN > 0 or (D.lastPaintDebug.tfRows or 0) > 0)) then
+    D.PruneInactiveGapRows(missing, paintAuraTok, maxN)
+  end
   D.ApplyGapSticky(unit, missing, useTargetSrc or friendPlate, paintAuraTok, friendPlate)
   if useTargetSrc and heavyTarget then
     local tfUiLate = D.CountTargetFrameAuras()
@@ -316,6 +319,9 @@ if not plate then
             end
             D.lastPaintDebug.miss = #missing
           else
+            D.lastPaintDebug.painted = heldN
+            D.lastPaintDebug.miss = 0
+            D.lastPaintDebug.tfRows = math.max(tonumber(D.lastPaintDebug.tfRows) or 0, D.CountHarmfulAuraSlots(auraUnit), heldN)
             D.SilentTracePaint("paint_hold", unit, plate)
             return heldN
           end
@@ -368,6 +374,21 @@ if not plate then
             missing[i] = retry[i]
           end
           D.lastPaintDebug.miss = #missing
+        elseif friendPlate and type(auraUnit) == "string" then
+          pcall(D.CollectUnitHarmfulMirror, auraUnit, skip, retry, maxN, stats)
+          pcall(D.CollectForeignAuraGaps, auraUnit, skip, retry, maxN, true, stats)
+          pcall(D.EnsureUnitHarmfulParity, auraUnit, plate, retry, skip, maxN, stats)
+          if #retry > 0 then
+            D.DedupeGapIcons(retry, maxN)
+            for i = 1, #retry do
+              missing[i] = retry[i]
+            end
+            D.lastPaintDebug.miss = #missing
+          else
+            D.lastPaintDebug.painted = 0
+            D.ClearFallback(unit, false)
+            return 0
+          end
         else
           D.lastPaintDebug.painted = 0
           D.ClearFallback(unit, false)
@@ -418,6 +439,20 @@ if not plate then
     else
       D.EnrichGapAuraEntry(missing[i], auraUnit)
       local okVis, cdSet = D.ApplyGapAuraVisual(slot, missing[i], auraUnit)
+      if not okVis and friendPlate then
+        local alts = { partyAuraTok, useTargetSrc and D.HasTarget() and "target" or nil, unit, paintAuraTok }
+        for ai = 1, #alts do
+          local alt = alts[ai]
+          if type(alt) == "string" and alt ~= "" and alt ~= auraUnit then
+            D.EnrichGapAuraEntry(missing[i], alt)
+            okVis, cdSet = D.ApplyGapAuraVisual(slot, missing[i], alt)
+            if okVis then
+              auraUnit = alt
+              break
+            end
+          end
+        end
+      end
       if cdSet then
         cdN = cdN + 1
       end

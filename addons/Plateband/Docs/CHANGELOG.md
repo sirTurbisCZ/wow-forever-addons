@@ -1,5 +1,12 @@
 # Plateband changelog
 
+## Release 0.3.08 — friend WS plate paint
+
+- Skip **`PruneInactiveGapRows`** when friend harmful API / `tfRows` says WS still live.
+- **`paint_hold`** + PAINT trace use **`fallback._painted`** (no `tfRows>0 painted=0` flake).
+- Friend gap paint: alt unit tokens on visual fail (party / target / nameplate).
+- Empty-missing friend path: mirror/foreign backfill before clear.
+
 ## Release 0.3.07 — chatTruthLine on every reload
 
 - **`RecordChatLoaded`** always bumps SV `chatTruthLine` (not only via disk); clears per-version disk gate.
