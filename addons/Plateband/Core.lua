@@ -193,33 +193,33 @@ local function DumpRing()
 end
 
 local bootFrame = CreateFrame("Frame")
+local loadAnnounced = false
 bootFrame:RegisterEvent("ADDON_LOADED")
 bootFrame:RegisterEvent("PLAYER_LOGIN")
 bootFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 bootFrame:SetScript("OnEvent", function(_, event, name)
   if event == "ADDON_LOADED" and name == addonName then
     EnsureDB()
-    if SessionLog and SessionLog.BeginSession then
-      SafeCall("session:begin", SessionLog.BeginSession)
-    end
-    if SessionLog and SessionLog.RecordChatLoaded then
-      SafeCall("session:chat_loaded", function()
-        SessionLog.RecordChatLoaded("reload")
-      end)
-    end
-    local function announceReload()
-      local ok = false
-      pcall(function()
-        ok = IsLoggedIn and IsLoggedIn()
-      end)
-      if ok then
+    local reloadLogin = false
+    pcall(function()
+      reloadLogin = IsLoggedIn and IsLoggedIn()
+    end)
+  if reloadLogin then
+      if SessionLog and SessionLog.BeginSession then
+        SafeCall("session:begin", SessionLog.BeginSession)
+      end
+      if SessionLog and SessionLog.RecordChatLoaded then
+        SafeCall("session:chat_loaded", function()
+          SessionLog.RecordChatLoaded("reload")
+        end)
+      end
+      if not loadAnnounced then
+        loadAnnounced = true
+        pcall(function()
+          SessionLog.SyncRuntimeVersionFromInterface()
+        end)
         Print(string.format(L.LOADED or "loaded v%s · /pb", tostring(Config.VERSION)))
       end
-    end
-    if C_Timer and C_Timer.After then
-      C_Timer.After(0, announceReload)
-    else
-      announceReload()
     end
   elseif event == "PLAYER_LOGIN" then
     EnsureDB()
@@ -232,7 +232,13 @@ bootFrame:SetScript("OnEvent", function(_, event, name)
       end)
     end
     ApplyModuleState()
-    Print(string.format(L.LOADED or "loaded v%s · /pb", tostring(Config.VERSION)))
+    if not loadAnnounced then
+      loadAnnounced = true
+      pcall(function()
+        SessionLog.SyncRuntimeVersionFromInterface()
+      end)
+      Print(string.format(L.LOADED or "loaded v%s · /pb", tostring(Config.VERSION)))
+    end
   elseif event == "PLAYER_ENTERING_WORLD" then
   if SessionLog and SessionLog.EnsureChatTruthCurrent then
       SafeCall("session:chat_truth_pew", function()

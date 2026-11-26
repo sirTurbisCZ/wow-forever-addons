@@ -1,5 +1,12 @@
 # Plateband changelog
 
+## Release 0.3.11 — Plates compile fix (200 locals / 60 upvalues)
+
+- **`PlatesTrace.lua`** chunk: `SilentTracePaint` / sweep / PAINT line build (60 upvalue cap).
+- **`Plates.lua`**: drop ~20 chunk `local function`s; trace forward decls removed → client compiles under 200 locals.
+- **Core**: one chat `loaded v%s` per session (reload vs login); `RecordChatLoaded` only on applicable path; sync ver before announce.
+- **PlatesPaint**: nil-safe `CountTargetFrameAuras` when deps incomplete.
+
 ## Release 0.3.10 — CHAT_LOADED disk version sync
 
 - **`SyncRuntimeVersionFromInterface`** on session start + CHAT_LOADED: max(mem, TOC meta, parsed Config.lua / Plateband.toc on disk).

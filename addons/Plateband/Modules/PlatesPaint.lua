@@ -254,7 +254,8 @@ if not plate then
   end
 
   D.lastPaintDebug.miss = #missing
-  D.lastPaintDebug.tfBtn = (useTargetSrc and heavyTarget) and D.CountTargetFrameAuras() or 0
+  local countTf = D.CountTargetFrameAuras
+  D.lastPaintDebug.tfBtn = (useTargetSrc and heavyTarget) and type(countTf) == "function" and countTf() or 0
   D.lastPaintDebug.unit = tostring(unit)
   D.lastPaintDebug.nativeN = nativeN
   D.lastPaintDebug.partyTok = partyAuraTok or "-"

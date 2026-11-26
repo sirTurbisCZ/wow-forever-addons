@@ -31,7 +31,7 @@ local PB = {
   SILENT_SWEEP_SEC = 2.0,
 }
 
-local function GapStickyBudget(friendPlate)
+GapStickyBudget = function(friendPlate)
   if friendPlate then
     return PB.GAP_STICKY_FRIEND_SEC or 18.0
   end
@@ -67,11 +67,11 @@ local overlayPending = {}
 local combatDeferredClears = {} -- nameplate units to clear after regen (no SetPoint in combat)
 local combatPendingPaint = {} -- [unit]=plate — first paint after regen (no layout in combat lockdown)
 
-local function PlayerInCombat()
+PlayerInCombat = function()
   return InCombatLockdown and InCombatLockdown()
 end
 
-local function SecurePaintLocked()
+SecurePaintLocked = function()
   return InCombatLockdown and InCombatLockdown()
 end
 
@@ -86,7 +86,6 @@ local AuraIsOurPersonalOnly
 local AuraIsPlayerOwned
 local AuraLooksForeign
 local BindUnit
-local BuildPaintTraceLine
 local ButtonAuraIcon
 local ButtonAuraIconAny
 local ClearFallback
@@ -203,9 +202,6 @@ local SaveNamePoints
 local ScrapeTargetFrameBrute
 local SetIconTexture
 local ShouldUseTargetAuraSource
-local SilentTraceEnabled
-local SilentTracePaint
-local SilentTraceSweep
 local SnapshotDiagnose
 local StopTicker
 local StopWatchTicker
@@ -764,7 +760,7 @@ CountNativeAuraRow = function(plate)
     + CountShownAuraKids(NativeBuffList(plate))
 end
 
-local function NativeAuraButtonLive(btn)
+NativeAuraButtonLive = function(btn)
   if not btn then
     return false
   end
@@ -774,7 +770,7 @@ local function NativeAuraButtonLive(btn)
   return not not (btn.Icon or btn.icon or btn.GetAuraInstance)
 end
 
-local function MergeAuraKeyInto(keys, data)
+MergeAuraKeyInto = function(keys, data)
   if type(keys) ~= "table" or type(data) ~= "table" then
     return
   end
@@ -795,7 +791,7 @@ local function MergeAuraKeyInto(keys, data)
 end
 
 --- Forever: pool buttons often fail SafeShown while still native — backfill unit API keys.
-local function AugmentNativeKeysFromUnitApi(plate, keys)
+AugmentNativeKeysFromUnitApi = function(plate, keys)
   if type(keys) ~= "table" or not plate then
     return
   end
@@ -818,7 +814,7 @@ local function AugmentNativeKeysFromUnitApi(plate, keys)
   end
 end
 
-local function CountPersonalHarmfulOnUnit(unit)
+CountPersonalHarmfulOnUnit = function(unit)
   if not unit or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
     return 0
   end
@@ -1248,7 +1244,7 @@ PlateUsesFriendlyHarmfulFilter = function(plate)
   return false
 end
 
-local function PlateButtonHarmful(btn)
+PlateButtonHarmful = function(btn)
   if not btn then
     return false
   end
@@ -1311,7 +1307,7 @@ local function PlateButtonHarmful(btn)
   return true
 end
 
-local function FilterPlateHarmfulButtons(buttons, maxN)
+FilterPlateHarmfulButtons = function(buttons, maxN)
   if type(buttons) ~= "table" then
     return
   end
@@ -1413,7 +1409,7 @@ CollectPlateDebuffButtons = function(plate, out, maxN)
 end
 
 --- Aura token for gap apply — never bind target auras to a non-target plate.
-local function AuraUnitForPlate(unit, plate, useTargetSrc, partyAuraTok)
+AuraUnitForPlate = function(unit, plate, useTargetSrc, partyAuraTok)
   if useTargetSrc and HasTarget() and plate and PlateMatchesTarget(plate) then
     return "target"
   end
@@ -1576,7 +1572,7 @@ local GAP_AURA_TEMPLATES = {
 local NATIVE_AURA_COUNTDOWN_FONT = "LayoutFont_Bold_Small_Outline"
 local nativeAuraTimerStyle
 
-local function ReadFontStringStyle(fs)
+ReadFontStringStyle = function(fs)
   if not fs or not fs.GetFont then
     return nil
   end
@@ -1691,7 +1687,7 @@ SampleNativeAuraTimerStyle = function()
   return nativeAuraTimerStyle
 end
 
-local function ScaledNativeFontSize(iconSz, baseSize, baseIcon)
+ScaledNativeFontSize = function(iconSz, baseSize, baseIcon)
   local sz = tonumber(iconSz) or IconSize()
   baseSize = tonumber(baseSize) or 7
   baseIcon = tonumber(baseIcon) or 18
@@ -1701,7 +1697,7 @@ local function ScaledNativeFontSize(iconSz, baseSize, baseIcon)
   return math.max(6, math.floor(baseSize * (sz / baseIcon) + 0.5))
 end
 
-local function ApplyNativeAuraDurationFont(fs, iconSz)
+ApplyNativeAuraDurationFont = function(fs, iconSz)
   if not fs or not fs.SetFont then
     return
   end
@@ -1715,7 +1711,7 @@ local function ApplyNativeAuraDurationFont(fs, iconSz)
   end)
 end
 
-local function ApplyNativeAuraCooldown(cd, iconSz)
+ApplyNativeAuraCooldown = function(cd, iconSz)
   if not cd then
     return
   end
@@ -1745,7 +1741,7 @@ local function ApplyNativeAuraCooldown(cd, iconSz)
   end)
 end
 
-local function StyleAuraStackFont(fs, iconSz)
+StyleAuraStackFont = function(fs, iconSz)
   if not fs or not fs.SetFont then
     return
   end
@@ -2418,7 +2414,7 @@ NativeShownKeySet = function(plate)
   return keys
 end
 
-local function AuraChromeWidth(frame)
+AuraChromeWidth = function(frame)
   if not frame then
     return nil
   end
@@ -2954,7 +2950,7 @@ ApplyGapSticky = function(unit, missing, isTarget, unitToken, friendPlate)
   end
 end
 
-local function CopyGapRow(row)
+CopyGapRow = function(row)
   if type(row) ~= "table" then
     return row
   end
@@ -4496,142 +4492,36 @@ TfSupplementSkipKeys = function(paintKeys, missing)
   return skip
 end
 
-SilentTraceEnabled = function()
-  local p = Profile()
-  -- Session PAINT follows silentTrace only (0.2.43; paintTraceOn is legacy chat gate).
-  if p.silentTrace ~= true then
-    return false
-  end
-  if p.paintTraceInCombat == false and PlayerInCombat() then
-    return false
-  end
-  return true
-end
-
-BuildPaintTraceLine = function(why, unit, plate)
-  if not SilentTraceEnabled() then
-    return nil
-  end
-  unit = OverlayUnitKey(unit, plate) or tostring(unit or "?")
-  local p = Profile()
-  local lpd = lastPaintDebug or {}
-  local fb = 0
-  if unit and fallbacks[unit] then
-    fb = tonumber(fallbacks[unit]._painted) or 0
-  end
-  local tgtSrc = ShouldUseTargetAuraSource(unit, plate) and 1 or 0
-  return string.format(
-    "PAINT ver=%s why=%s unit=%s tgt=%s merge=%s native=%s nativeVis=%s harv=%s miss=%s painted=%s tgtSrc=%s tfRows=%s friend=%s party=%s",
-    tostring(ns.Config.VERSION),
-    tostring(why or "?"),
-    tostring(unit),
-    HasTarget() and "1" or "0",
-    p.mergeMissing == true and "1" or "0",
-    tostring(lpd.nativeN or "?"),
-    tostring(lpd.nativeVis or "?"),
-    tostring(lpd.harv or "?"),
-    tostring(lpd.miss or "?"),
-    tostring(math.max(tonumber(lpd.painted) or 0, fb)),
-    tostring(tgtSrc),
-    tostring(lpd.tfRows or "?"),
-    tostring(lpd.friendPlate or "?"),
-    tostring(lpd.partyTok or "?")
-  )
-end
-
 SilentTracePaint = function(why, unit, plate)
-  if not SilentTraceEnabled() then
-    return
-  end
-  why = tostring(why or "?")
-  if why == "refresh" or why:match("^refresh") or why:match("^sweep") then
-    return
-  end
-  unit = OverlayUnitKey(unit, plate) or tostring(unit or "?")
-  local now = GetTime and GetTime() or 0
-  if (now - (lastPaintTraceAt[unit] or 0)) < PB.PAINT_TRACE_MIN_SEC then
-    return
-  end
-  local lpd = lastPaintDebug or {}
-  local sig = string.format(
-    "%s:%s:%s:%s",
-    tostring(lpd.miss or 0),
-    tostring(lpd.painted or 0),
-    tostring(lpd.harv or 0),
-    tostring(lpd.cdN or 0)
-  )
-  if lastPaintTraceSig[unit] == sig and (tonumber(lpd.painted) or 0) == 0 and (tonumber(lpd.miss) or 0) == 0 then
-    return
-  end
-  local friendP = tonumber(lpd.friendPlate) or 0
-  local tfRows = tonumber(lpd.tfRows) or 0
-  local missN = tonumber(lpd.miss) or 0
-  local paintedN = tonumber(lpd.painted) or 0
-  local fbN = 0
-  if unit and fallbacks[unit] then
-    fbN = tonumber(fallbacks[unit]._painted) or 0
-  end
-  if friendP == 1 and tfRows > 0 and paintedN == 0 and fbN > 0 then
-    lpd.painted = fbN
-    paintedN = fbN
-    sig = string.format("%s:%s:%s:%s", tostring(missN), tostring(paintedN), tostring(lpd.harv or 0), tostring(lpd.cdN or 0))
-  end
-  if friendP == 1 and tfRows > 0 and paintedN == 0 and missN > 0 and why == "paint" and fbN == 0 then
-    return
-  end
-  lastPaintTraceSig[unit] = sig
-  lastPaintTraceAt[unit] = now
-  local line = BuildPaintTraceLine(why, unit, plate)
-  if line and ns.SessionLog and ns.SessionLog.RecordPaint then
-    pcall(ns.SessionLog.RecordPaint, line)
-  end
-  paintedN = tonumber(lpd.painted) or 0
-  if friendP == 1 or paintedN >= 2 or (friendP == 1 and tfRows > 0 and paintedN == 0) then
-    pcall(SnapshotDiagnose, "paint", {
-      silent = true,
-      forceSession = true,
-      unit = unit,
-      plate = plate,
-    })
+  local td = Plateband.PlatesTraceDeps
+  local fn = td and td.SilentTracePaint
+  if fn then
+    fn(why, unit, plate)
   end
 end
 
-SilentTraceSweep = function(why)
-  if not SilentTraceEnabled() then
-    return
-  end
-  local now = GetTime and GetTime() or 0
-  if (now - lastSilentSweepAt) < PB.SILENT_SWEEP_SEC then
-    return
-  end
-  lastSilentSweepAt = now
-  local list = EnumerateLivePlates()
-  local swept = {}
-  if HasTarget() then
-    local tp = PlateFor("target")
-    local tu = NameplateUnitFor("target") or (tp and UnitTokenFromPlate(tp))
-    tu = OverlayUnitKey(tu, tp)
-    if tp then
-      SilentTracePaint(why or "sweep_tgt", tu, tp)
-      swept[tu or tostring(tp)] = true
-    end
-  end
-  for i = 1, #list do
-    if i > 3 then
-      break
-    end
-    local entry = list[i]
-    local u = OverlayUnitKey(entry.unit, entry.plate)
-    if u and not swept[u] and entry.plate then
-      if not IsPartyRaidMergePlate(u, entry.plate) and not IsTargetPlate(u, entry.plate) then
-        -- skip ambient friendly NPC / passerby plates in trace sweep
-      else
-        SilentTracePaint((why or "sweep") .. "_np", u, entry.plate)
-        swept[u] = true
-      end
-    end
-  end
-end
+Plateband.PlatesTraceDeps = {
+  PB = PB,
+  Config = ns.Config,
+  SessionLog = ns.SessionLog,
+  lastPaintDebug = lastPaintDebug,
+  fallbacks = fallbacks,
+  lastPaintTraceAt = lastPaintTraceAt,
+  lastPaintTraceSig = lastPaintTraceSig,
+  lastSilentSweepAt = lastSilentSweepAt,
+  Profile = Profile,
+  PlayerInCombat = PlayerInCombat,
+  OverlayUnitKey = OverlayUnitKey,
+  ShouldUseTargetAuraSource = ShouldUseTargetAuraSource,
+  HasTarget = HasTarget,
+  SnapshotDiagnose = SnapshotDiagnose,
+  EnumerateLivePlates = EnumerateLivePlates,
+  PlateFor = PlateFor,
+  NameplateUnitFor = NameplateUnitFor,
+  UnitTokenFromPlate = UnitTokenFromPlate,
+  IsPartyRaidMergePlate = IsPartyRaidMergePlate,
+  IsTargetPlate = IsTargetPlate,
+}
 
 --- Paint deps for PlatesPaint.lua (separate chunk — PaintMergeMissing 60 upvalue cap).
 Plateband.PlatesPaintDeps = {
@@ -4806,7 +4696,7 @@ ScheduleOverlayUpdate = function(unit, plate)
   end
 end
 
-local function WantsTickPaint(entry, index, mode)
+WantsTickPaint = function(entry, index, mode)
   local unit = entry.unit
   local plate = entry.plate
   if not unit or not plate then
