@@ -2,7 +2,8 @@
 
 ## Release 0.2.99 — L1 rebuilt from Config every disk write
 
-- **`WriteExportL1Brute`** always **`BuildChatTruthLine`** from **`ChatLoadedVersions`** (fresh **`t=`**); never reuse stale **`chatTruthLine`/`ioExportDiskLine`**.
+- **`WriteExportL1Brute`** always **`BuildChatTruthLine`** from **`ChatLoadedVersions`**; **`StampExportLineT`** via **`C_Date.GetServerTime()`** at **`fopen`** (gate **`t=`** age).
+- Export L1 only through **`WriteExportL1Brute`** (no **`TryWriteWholeFile`** body stomp).
 
 ## Release 0.2.98 — idle EXPORT_PULSE every 2s (direct io)
 

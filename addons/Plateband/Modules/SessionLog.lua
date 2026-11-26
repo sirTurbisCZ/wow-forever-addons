@@ -361,11 +361,30 @@ local function Trim(s, maxLen)
   return s
 end
 
-local function Now()
+local function UnixTs()
+  if C_Date and C_Date.GetServerTime then
+    local ok, n = pcall(C_Date.GetServerTime)
+    if ok and type(n) == "number" and n > 0 then
+      return math.floor(n)
+    end
+  end
   if time then
     return time()
   end
   return 0
+end
+
+local function Now()
+  return UnixTs()
+end
+
+local function StampExportLineT(line)
+  line = tostring(line or "")
+  local ts = tostring(UnixTs())
+  if line:find("t=", 1, true) then
+    return (line:gsub("(t=)(%d+)", "%1" .. ts, 1))
+  end
+  return line .. " t=" .. ts
 end
 
 local function EnsureLogTable()
@@ -597,6 +616,9 @@ function Mod.WriteExportL1Brute(line, throttleBypass)
   if not f then
     return false
   end
+  line = StampExportLineT(line)
+  db.chatTruthLine = line
+  log.export = line
   local ok = pcall(function()
     f:write(line)
     f:write("\n")
@@ -783,20 +805,16 @@ function Mod.SyncLiveExportFile(src, load, seq)
       and table.concat(log.lines, "\n", start, #log.lines)
       or ""
   local body = tail ~= "" and (line .. "\n" .. tail) or line
-  log.export = body
+  log.export = line
   logDirty = false
   local wrote = false
-  -- Always attempt disk write every pulse (Forever may unlock export after first successful open).
   db.ioAllowLastProbe = 0
-  if TryWriteWholeFile({ AGENT_EXPORT_REL, AGENT_EXPORT_BS }, body) then
-    agentIoOk = true
-    wrote = true
-    db.ioAllowName = "export"
-    db.ioExportDiskAt = Now()
-  else
+  wrote = Mod.WriteExportL1Brute(line, true) or false
+  if not wrote then
     DiscoverIoAllowlist(db)
   end
-  if TryWriteWholeFile({ AGENT_HEAD_REL, AGENT_HEAD_BS }, line) then
+  local headLine = StampExportLineT(line)
+  if TryWriteWholeFile({ AGENT_HEAD_REL, AGENT_HEAD_BS }, headLine) then
     wrote = true
   end
   return wrote
@@ -857,10 +875,10 @@ function Mod.WriteAgentLiveHead(line)
   end
   local wrote = false
   if allow == "export" or allow == "sv_only" then
-    wrote = TryWriteWholeFile({ AGENT_EXPORT_REL, AGENT_EXPORT_BS }, body) or wrote
+    wrote = Mod.WriteExportL1Brute(line, true) or wrote
   end
   if allow == "head" then
-    wrote = TryWriteWholeFile({ AGENT_HEAD_REL, AGENT_HEAD_BS }, line) or wrote
+    wrote = TryWriteWholeFile({ AGENT_HEAD_REL, AGENT_HEAD_BS }, StampExportLineT(line)) or wrote
   end
   if wrote then
     logDirty = false
