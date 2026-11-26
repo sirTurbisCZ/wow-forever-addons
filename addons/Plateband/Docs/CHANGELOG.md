@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.3.34 — friend HARMFUL only (revert HELPFUL gaps)
+
+- **`mergeFriendHelpful` default off** (schema 15 forces off): party/friend NP = **debuffs / negative effects only** (e.g. Weakened Soul) — **no** buff/HoT gap merge.
+- **`friendLeft`** layout + visibility stack (**0.3.31–0.3.32**) unchanged.
+- **`/pb food on|off`** still only affects native consumable **hide**, not gap paint.
+
 ## Release 0.3.33 — friend HELPFUL + optional food filter
 
 - **`mergeFriendHelpful`** (schema 14, default on): paint **HELPFUL** gaps on party/friend NP (HoTs, shields, buffs) in same **`friendLeft`** row as WS/debuffs.

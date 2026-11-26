@@ -39,7 +39,7 @@ flowchart TD
 
 1. Native DebuffList untouched.
 2. **Paint row** parents via `FallbackPaintParent` → `AurasFrame` / `UnitFrame` only (never **child of** `DebuffList` — sibling overlap). `FallbackParent` still names native scrape anchor.
-3. Anchor: hostile — beside rightmost native; else **`DebuffListFrame` BOTTOMLEFT** + `gapOff` / `MergeRowOffY` bar-flush. **Party/friendly:** **`gapBand=friendLeft`** — **`BOTTOMLEFT` lane `TOPLEFT`**; **HARMFUL + HELPFUL** gaps (`mergeFriendHelpful`); left growth includes native buff width. **`/pb food on`** hides consumable HELPFUL only. Never **DebuffList** SetPoint. Party: **`PlateUnitBindingMatches`**.
+3. Anchor: hostile — beside rightmost native; else **`DebuffListFrame` BOTTOMLEFT** + `gapOff` / `MergeRowOffY` bar-flush. **Party/friendly:** **`gapBand=friendLeft`** — **HARMFUL / negative effects only** (0.3.34); left growth like mobs. **`mergeFriendHelpful` off** by default. **`/pb food on`** native consumable hide only. Never **DebuffList** SetPoint.
 4. `pcall` on paint + layout; debounce `UNIT_AURA` on target; **gap sticky** 3s hostile / **18s friend-party** (WS); refresh on hold; hostile merge **debuff band only** (never health-bar-top); merge offset when no rightmost native anchor (no overlap).
 
 ## Sources
