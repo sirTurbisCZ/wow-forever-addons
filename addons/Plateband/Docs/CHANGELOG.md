@@ -1,5 +1,12 @@
 # Plateband changelog
 
+## Release 0.3.07 — chatTruthLine on every reload
+
+- **`RecordChatLoaded`** always bumps SV `chatTruthLine` (not only via disk); clears per-version disk gate.
+- **`ADDON_LOADED`** reload no longer requires `IsLoggedIn()` (Forever skipped truth during `/reload`).
+- **`EnsureChatTruthCurrent`** on `PLAYER_ENTERING_WORLD` when stored `live_ver` ≠ `Config.VERSION`.
+- **`SyncLiveExportFile`** uses **`CommitChatTruthLine`**.
+
 ## Release 0.3.06 — paint deps + friend merge offset
 
 - **`CountHarmfulAuraSlots`** wired into `PlatesPaintDeps` (0.3.04 regression caused `paint` nil @ line 258 → zero PAINT / session_zero_paint_streak).

@@ -396,6 +396,12 @@ function Mod.LoginDiskExportOnce(loadKind)
   exportDiskLastGt = 0
   pcall(Mod.ResetExportTimeAnchor)
   local db = ns.Config.EnsureDB()
+  local cfgVer = tostring((Plateband.Config and Plateband.Config.VERSION) or (ns.Config and ns.Config.VERSION) or "?")
+  if db.exportLoginDiskVer == cfgVer and db.ioExportDiskTried == true then
+    return db.ioExportDiskOk == true
+  end
+  db.exportLoginDiskVer = cfgVer
+  db.ioExportDiskTried = true
   local line = BumpChatTruthSV("CHAT_LOADED", loadKind)
   db.telemetryMode = "login_disk_once"
   if not (io and io.open) then
@@ -430,6 +436,19 @@ end
 
 function Mod.RefreshChatTruthSV(src, load)
   return BumpChatTruthSV(src, load)
+end
+
+--- Bump SV chatTruthLine when runtime Config.VERSION differs from stored line (reload PEW fallback).
+function Mod.EnsureChatTruthCurrent(loadKind)
+  loadKind = tostring(loadKind or "reload")
+  local db = ns.Config.EnsureDB()
+  local pbVer = tostring((Plateband.Config and Plateband.Config.VERSION) or (ns.Config and ns.Config.VERSION) or "?")
+  local line = tostring(db.chatTruthLine or "")
+  local live = line:match("live_ver=([%d%.]+)") or line:match("plateband_ver=([%d%.]+)") or ""
+  if live == pbVer and line ~= "" then
+    return line
+  end
+  return BumpChatTruthSV("CHAT_LOADED", loadKind)
 end
 
 function Mod.LiveInterfaceVersions()
@@ -1045,10 +1064,7 @@ end
 function Mod.SyncLiveExportFile(src, load, seq)
   local db = ns.Config.EnsureDB()
   local log = EnsureLogTable()
-  -- Fresh wall clock every call (ver may be unchanged; t= still moves).
-  local line = Mod.BuildChatTruthLine(src, load, seq)
-  db.chatTruthLine = line
-  db.chatTruthAt = Now()
+  local line = CommitChatTruthLine(Mod.BuildChatTruthLine(src, load, seq))
   local start = math.max(1, #log.lines - LIVE_TAIL_LINES + 1)
   local tail = (type(log.lines) == "table" and #log.lines > 0)
       and table.concat(log.lines, "\n", start, #log.lines)
@@ -1232,10 +1248,15 @@ end
 --- Runtime stamp — every load (login + /reload); SV + Logs before WTF flush.
 function Mod.RecordChatLoaded(src)
   src = tostring(src or "login")
-  local ver = tostring(Plateband.Config and Plateband.Config.VERSION or "?")
+  local ver = tostring((Plateband.Config and Plateband.Config.VERSION) or (ns.Config and ns.Config.VERSION) or "?")
   local db = ns.Config.EnsureDB()
   db.ioExportDiskLine = nil
+  db.ioExportDiskTried = nil
+  db.exportLoginDiskVer = nil
   pcall(Mod.ResetExportTimeAnchor)
+  pcall(function()
+    BumpChatTruthSV("CHAT_LOADED", src)
+  end)
   local at = Now()
   db.runtimeVer = { ver = ver, at = at, src = "chat", load = src }
   db.liveHead = string.format(
@@ -1252,7 +1273,10 @@ function Mod.RecordChatLoaded(src)
     pcall(ForeverErrorLog.NotifyRuntime, "Plateband", ver, src, "CHAT_LOADED")
   end
   pcall(Mod.LoginDiskExportOnce, src)
-  pcall(Mod.PublishChatTruthHead, "CHAT_LOADED", src, 0)
+  pcall(Mod.PublishChatTruthHead, "CHAT_LOADED", src, tonumber(db.exportPulseSeq) or 0)
+  pcall(function()
+    BumpChatTruthSV("CHAT_LOADED", src)
+  end)
   Mod.ArmExportTruthPulse(true)
 end
 
