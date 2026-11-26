@@ -207,10 +207,13 @@ local function QueryAddonMetadataVersion(addon)
   return nil
 end
 
---- Same strings as chat `loaded v%s` — runtime `Config.VERSION` only (no stamp/toc/metadata/SV).
+--- Same strings as chat `loaded v%s` — always live `Plateband.Config` / `ForeverErrorLog.Config`.
 function Mod.ChatLoadedVersions()
-  local pbVer = (ns.Config and ns.Config.VERSION) and tostring(ns.Config.VERSION) or "?"
+  local pbVer = tostring((Plateband.Config and Plateband.Config.VERSION) or (ns.Config and ns.Config.VERSION) or "?")
   local feVer = "?"
+  if C_AddOns and C_AddOns.LoadAddOn then
+    pcall(C_AddOns.LoadAddOn, "ForeverErrorLog")
+  end
   pcall(function()
     if ForeverErrorLog and ForeverErrorLog.Config and ForeverErrorLog.Config.VERSION then
       feVer = tostring(ForeverErrorLog.Config.VERSION)
@@ -565,10 +568,9 @@ local function WriteLineToPaths(paths, line, mode)
   return false
 end
 
---- One L1 write per throttle window; no retries.
+--- One L1 write per throttle window; always rebuild from Config.VERSION + fresh t=.
 function Mod.WriteExportL1Brute(line, throttleBypass)
-  line = tostring(line or "")
-  if line == "" or not (io and io.open) then
+  if not (io and io.open) then
     return false
   end
   if not throttleBypass and not ExportDiskThrottleOk() then
@@ -578,6 +580,16 @@ function Mod.WriteExportL1Brute(line, throttleBypass)
     MarkExportDiskAttempt()
   end
   local db = ns.Config.EnsureDB()
+  local hint = tostring(line or "")
+  local src = hint:match("src=([^%s]+)") or "EXPORT_PULSE"
+  local load = hint:match("load=([^%s]+)") or "pulse"
+  local seq = tonumber(db.exportPulseSeq) or tonumber(hint:match("seq=([^%s]+)")) or 0
+  line = Mod.BuildChatTruthLine(src, load, seq)
+  db.chatTruthLine = line
+  db.chatTruthAt = Now()
+  db.interfacePbVer, db.interfaceFeVer = Mod.ChatLoadedVersions()
+  local log = EnsureLogTable()
+  log.export = line
   local f = TryOpen(AGENT_EXPORT_REL, "w")
   if not f then
     f = TryOpen(AGENT_EXPORT_BS, "w")
@@ -663,9 +675,8 @@ function Mod.BuildChatTruthLine(src, load, seq)
   src = tostring(src or "CHAT_LOADED")
   load = tostring(load or "reload")
   seq = tonumber(seq) or 0
-  local pbVer, feVer, pbMeta, feMeta = Mod.ResolveExportVersions()
-  pbMeta = pbMeta or pbVer
-  feMeta = feMeta or feVer
+  local pbVer, feVer = Mod.ChatLoadedVersions()
+  local pbMeta, feMeta = pbVer, feVer
   return string.format(
     "live_ver=%s plateband_ver=%s felog_ver=%s seq=%s src=%s load=%s t=%s feed=pb_bridge interface_pb=%s interface_fe=%s meta_pb=%s meta_fe=%s",
     pbVer,
@@ -961,8 +972,9 @@ end
 --- Runtime stamp — every load (login + /reload); SV + Logs before WTF flush.
 function Mod.RecordChatLoaded(src)
   src = tostring(src or "login")
-  local ver = tostring(ns.Config and ns.Config.VERSION or "?")
+  local ver = tostring(Plateband.Config and Plateband.Config.VERSION or "?")
   local db = ns.Config.EnsureDB()
+  db.ioExportDiskLine = nil
   local at = Now()
   db.runtimeVer = { ver = ver, at = at, src = "chat", load = src }
   db.liveHead = string.format(

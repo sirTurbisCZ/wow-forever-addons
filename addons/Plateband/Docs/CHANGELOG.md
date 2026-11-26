@@ -1,5 +1,9 @@
 # Plateband changelog
 
+## Release 0.2.99 — L1 rebuilt from Config every disk write
+
+- **`WriteExportL1Brute`** always **`BuildChatTruthLine`** from **`ChatLoadedVersions`** (fresh **`t=`**); never reuse stale **`chatTruthLine`/`ioExportDiskLine`**.
+
 ## Release 0.2.98 — idle EXPORT_PULSE every 2s (direct io)
 
 - **`DoExportDiskPulse`** — no nested **`C_Timer.After`** (idle stall); **`NewTicker(2s)`** + OnUpdate + **`UNIT_AURA`** direct single-path write; throttle 1/2s.
