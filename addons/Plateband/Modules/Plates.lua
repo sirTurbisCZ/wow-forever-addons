@@ -2180,10 +2180,14 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
   local auraRow = NativeDebuffAnchorList(plate)
   local af = plate and plate.UnitFrame and plate.UnitFrame.AurasFrame
   local bar = HealthBar(plate)
+  local nativeHarm = false
+  if plate then
+    nativeHarm = (CountPlateHarmfulShown(plate) or 0) > 0 or rowN > 0
+  end
   local right = nil
-  if visN > 0 then
+  if visN > 0 or nativeHarm then
     local cand = NativeBandRightAnchor(plate)
-    if cand and NativeAuraButtonLive(cand) then
+    if cand and (NativeAuraButtonLive(cand) or nativeHarm) then
       right = cand
     end
   end
@@ -2214,7 +2218,18 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
     end)
     return
   end
-  if bar then
+  if not friendLayout and af and not FrameIsGlobalChrome(af) and nativeHarm then
+    pcall(function()
+      if mergeFb:GetParent() ~= af then
+        mergeFb:SetParent(af)
+      end
+    end)
+    finishAnchor(function()
+      mergeFb:SetPoint("BOTTOMLEFT", af, "BOTTOMLEFT", offX, 0)
+    end)
+    return
+  end
+  if bar and not nativeHarm then
     finishAnchor(function()
       mergeFb:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", offX, PB.OVERLAY_GAP_ABOVE)
     end)
@@ -2583,25 +2598,19 @@ NativeAuraMetrics = function(plate)
   return sz, pad
 end
 
---- Merge row uses one fixed size (profile iconSize) — never native/TF chrome sampling.
+--- Gap icons track native debuff chrome on this plate (same row band as personal DoTs).
 MergeRowIconSize = function(plate, fb)
-  local pad = PB.OVERLAY_PAD
-  local sz = IconSize()
-  if plate then
-    local bar = HealthBar(plate)
-    if bar then
-      pcall(function()
-        local bh = bar:GetHeight()
-        if type(bh) == "number" and not IsSecret(bh) and bh > 0 then
-          local cap = math.floor(bh * 0.92)
-          if cap >= 12 and sz > cap then
-            sz = cap
-          end
-        end
-      end)
-    end
+  local sz, pad = NativeAuraMetrics(plate)
+  local nativeSample = plate and SamplePlateNativeDebuffSize(plate)
+  if nativeSample then
+    sz = nativeSample
   end
   if fb then
+    if type(fb._pbLockedSz) == "number" and fb._pbLockedSz >= 12 and not nativeSample then
+      if fb._pbLockedSz < sz then
+        sz = fb._pbLockedSz
+      end
+    end
     fb._pbLockedSz = sz
   end
   return sz, pad
@@ -3107,7 +3116,7 @@ GapAuraLive = function(entry, unitToken)
   if entry.spellId or entry.auraInstanceID then
     return false
   end
-  return true
+  return false
 end
 
 PruneInactiveGapRows = function(rows, unitToken, maxN)

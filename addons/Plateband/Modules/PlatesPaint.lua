@@ -320,41 +320,31 @@ if not plate then
         end
       end
       if #stickyLive == 0 then
+        D.gapSticky[unit] = nil
         local retry = {}
         local skip = D.CopyKeySet(D.NativeShownKeySet(plate))
-        if (friendPlate or partyMerge) and type(auraUnit) == "string" then
-          pcall(D.EnsureUnitHarmfulParity, auraUnit, plate, retry, skip, maxN, stats)
+        if type(auraUnit) == "string" then
+          if friendPlate or partyMerge then
+            pcall(D.EnsureUnitHarmfulParity, auraUnit, plate, retry, skip, maxN, stats)
+            pcall(D.CollectUnitHarmfulMirror, auraUnit, skip, retry, maxN, stats)
+          end
+          if #retry == 0 then
+            pcall(D.CollectForeignAuraGaps, auraUnit, skip, retry, maxN, allowSecret, stats)
+            pcall(D.CollectPersonalAuraGaps, auraUnit, skip, retry, maxN, stats)
+            D.PruneInactiveGapRows(retry, auraUnit, maxN)
+          end
         end
         if #retry > 0 then
-          D.gapSticky[unit] = nil
+          D.DedupeGapIcons(retry, maxN)
           for i = 1, #retry do
             missing[i] = retry[i]
           end
           D.lastPaintDebug.miss = #missing
           D.lastPaintDebug.tfRows = D.CountTargetHarmfulExpected(auraUnit, #missing)
-        elseif (friendPlate or partyMerge) and (D.CountHarmfulAuraSlots(auraUnit) or 0) > 0 then
-          pcall(D.CollectUnitHarmfulMirror, auraUnit, skip, retry, maxN, stats)
-          if #retry > 0 then
-            for i = 1, #retry do
-              missing[i] = retry[i]
-            end
-            D.lastPaintDebug.miss = #missing
-          else
-            D.lastPaintDebug.painted = heldN
-            D.lastPaintDebug.miss = 0
-            D.lastPaintDebug.tfRows = math.max(tonumber(D.lastPaintDebug.tfRows) or 0, D.CountHarmfulAuraSlots(auraUnit), heldN)
-            D.SilentTracePaint("paint_hold", unit, plate)
-            return heldN
-          end
-        elseif type(auraUnit) == "string" and (D.CountHarmfulAuraSlots(auraUnit) or 0) > 0 then
-          D.lastPaintDebug.painted = heldN > 0 and heldN or 1
-          D.lastPaintDebug.miss = 1
-          D.SilentTracePaint("paint_hold", unit, plate)
-          return math.max(heldN, 1)
         else
-          D.gapSticky[unit] = nil
           D.ClearFallback(unit, false)
           D.lastPaintDebug.painted = 0
+          D.lastPaintDebug.miss = 0
           D.SilentTracePaint("paint_stale_cleared", unit, plate)
           return 0
         end
@@ -383,6 +373,10 @@ if not plate then
           return heldN
         else
           D.gapSticky[unit] = nil
+          D.ClearFallback(unit, false)
+          D.lastPaintDebug.painted = 0
+          D.SilentTracePaint("paint_stale_cleared", unit, plate)
+          return 0
         end
       end
     end
@@ -506,15 +500,23 @@ if not plate then
         end
       end)
     end
-    if painted == 0 and friendPlate and type(auraUnit) == "string" and (D.CountHarmfulAuraSlots(auraUnit) or 0) > 0 then
-      local prev = tonumber(fb._painted) or carryPaint or 0
-      if prev > 0 then
-        pcall(fb.Show, fb)
-        fb._painted = prev
-        D.lastPaintDebug.painted = prev
-        D.lastPaintDebug.miss = math.max(#missing, 1)
-        D.SilentTracePaint("paint_hold", unit, plate)
-        return prev
+    if painted == 0 and friendPlate and type(auraUnit) == "string" then
+      local sticky = D.gapSticky[unit]
+      if sticky and type(sticky.icons) == "table" and #sticky.icons > 0 then
+        local liveSticky = {}
+        for si = 1, #sticky.icons do
+          if D.GapAuraLive(sticky.icons[si], auraUnit) then
+            liveSticky[#liveSticky + 1] = sticky.icons[si]
+          end
+        end
+        if #liveSticky > 0 then
+          local n, _cdn = D.RefreshHeldGapFallback(unit, plate, fb, liveSticky, auraUnit)
+          if (n or 0) > 0 then
+            painted = n
+            D.SilentTracePaint("paint_hold", unit, plate)
+            return painted
+          end
+        end
       end
     end
     pcall(fb.Hide, fb)

@@ -1,5 +1,13 @@
 # Plateband changelog
 
+## Release 0.3.17 — stale paint_hold + native row band
+
+- **`paint_hold`:** no hold when sticky rows fail **`GapAuraLive`** — clear fallback (`paint_stale_cleared`); never keep icon because **other** `HARMFUL` slots remain on unit.
+- Sticky budget expiry clears fallback (no frozen swipe).
+- **`MergeRowIconSize`:** samples live native debuff chrome (`NativeAuraMetrics` / plate kids).
+- **Layout:** merge beside native band when plate has personal DoTs (`nativeHarm`); hostile **AurasFrame** row before bar-above fallback.
+- **`GapAuraLive`:** unverified rows never stick (strict false).
+
 ## Release 0.3.16 — hostile gap row + overlap gate
 
 - **False-positive fix:** `nativeVis=0` + `painted≥2` with **miss=painted** or `gapW≥` = spaced gap row (Patriarch-class), not matrix FAIL.

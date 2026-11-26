@@ -51,7 +51,7 @@ PLATEBAND_LIVE_VER=0.2.51 ./scripts/plateband-sv-gate.sh
 | Party WS no paint | PAINT `party=1` `tfRows>0` | `friendly_party_WS_no_paint` (anomaly) |
 | DoT overlap | PAINT `nativeVis=0` `painted≥2` `miss=painted` + `gapW` | OK = spread gap row; FAIL = `painted≥2 miss=1` |
 | Helpful bleed (PW:S on mob) | CARD `punit` vs plate, `friend=0` | unit mismatch + paint |
-| Sticky / expire | PAINT `paint_hold`, `paint_stale_cleared` | logged; stale = OK |
+| Sticky / expire | PAINT `paint_stale_cleared` after DoT drops | FAIL = `paint_hold` with dead aura |
 | FElog paint nil | ForeverErrorLog | only if SESSION = disk version |
 
 ```bash
