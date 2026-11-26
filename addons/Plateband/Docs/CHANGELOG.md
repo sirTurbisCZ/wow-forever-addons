@@ -1,5 +1,11 @@
 # Plateband changelog
 
+## Release 0.3.16 — hostile gap row + overlap gate
+
+- **False-positive fix:** `nativeVis=0` + `painted≥2` with **miss=painted** or `gapW≥` = spaced gap row (Patriarch-class), not matrix FAIL.
+- PAINT **`gapW` / `gapOff`** after `LayoutGapIconsInFallback`; hostile anchors **AurasFrame row** parent, no right-anchor unless `nativeVis>0`.
+- Matrix FAIL only **painted≥2 miss=1** (true stack risk).
+
 ## Release 0.3.15 — multi-gap layout (nativeVis=0)
 
 - **`LayoutGapIconsInFallback`** — re-spread gap buttons after anchor; skip dead **right-anchor** when `nativeVis=0`.

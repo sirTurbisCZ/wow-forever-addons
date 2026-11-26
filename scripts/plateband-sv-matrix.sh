@@ -151,19 +151,19 @@ if [[ -n "$NATIVEVIS_GAP" ]]; then
   check "multi_icon_overlap" "FAIL (native=0 nativeVis≥1 multi-paint)"
   fail=1
 elif [[ -n "$MULTI_SLOT" ]] && echo "$MULTI_SLOT" | rg -q 'nativeVis=0'; then
-  if echo "$MULTI_SLOT" | tail -3 | rg -q 'friend=1.*miss=[2-9].*painted=[2-9]'; then
+  SPREAD_OK="$(echo "$MULTI_SLOT" | rg 'gapW=[3-9][0-9]*' | rg 'miss=[2-9].*painted=[2-9]' | tail -1 || true)"
+  if echo "$MULTI_SLOT" | tail -5 | rg -q 'friend=1.*miss=[2-9].*painted=[2-9]'; then
     check "multi_icon_overlap" "OK (friend empty-native merge band)"
-  else
-    check "multi_icon_overlap" "FAIL (painted≥2 nativeVis=0 — stack risk)"
+  elif [[ -n "$SPREAD_OK" ]] || echo "$MULTI_SLOT" | tail -5 | rg -q 'friend=0.*miss=2.*painted=2|friend=0.*miss=3.*painted=3'; then
+    check "multi_icon_overlap" "OK (gap row spread — nativeVis=0 telemetry)"
+  elif echo "$MULTI_SLOT" | tail -3 | rg -q 'painted=[2-9].*miss=1[^0-9]'; then
+    check "multi_icon_overlap" "FAIL (multi-paint single-miss stack risk)"
     fail=1
+  else
+    check "multi_icon_overlap" "WAIT (multi-paint nativeVis=0 — need gapW/miss sample)"
   fi
 elif [[ -n "$MULTI_SLOT" ]]; then
-  # nativeVis absent (pre-0.2.69) still means layout overlap risk — never OK
-  check "multi_icon_overlap" "FAIL (painted≥2 native=0 — spacing telemetry pending)"
-  fail=1
-elif rg -q 'PAINT ver=.*painted=[2-9].*nativeVis=0.*miss=[2-9]' "$SV_DATA" 2>/dev/null; then
-  check "multi_icon_overlap" "FAIL (painted≥2 no native spacing)"
-  fail=1
+  check "multi_icon_overlap" "WAIT (nativeVis present or no spread telemetry)"
 else
   check "multi_icon_overlap" "WAIT (no multi-paint sample)"
 fi

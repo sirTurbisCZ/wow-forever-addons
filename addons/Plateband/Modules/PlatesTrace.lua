@@ -36,8 +36,12 @@ local function BuildPaintTraceLine(why, unit, plate)
   local tgtSrc = D.ShouldUseTargetAuraSource(unit, plate) and 1 or 0
   local cfg = D.Config
   local ver = cfg and cfg.VERSION or "?"
+  local gapW = lpd.gapW
+  if not gapW and lpd.gapSpread then
+    gapW = (tonumber(lpd.gapSz) or 18) * (tonumber(lpd.gapSpread) or 0)
+  end
   return string.format(
-    "PAINT ver=%s why=%s unit=%s tgt=%s merge=%s native=%s nativeVis=%s harv=%s miss=%s painted=%s tgtSrc=%s tfRows=%s friend=%s party=%s",
+    "PAINT ver=%s why=%s unit=%s tgt=%s merge=%s native=%s nativeVis=%s harv=%s miss=%s painted=%s tgtSrc=%s tfRows=%s friend=%s party=%s gapW=%s gapOff=%s",
     tostring(ver),
     tostring(why or "?"),
     tostring(unit),
@@ -51,7 +55,9 @@ local function BuildPaintTraceLine(why, unit, plate)
     tostring(tgtSrc),
     tostring(lpd.tfRows or "?"),
     tostring(lpd.friendPlate or "?"),
-    tostring(lpd.partyTok or "?")
+    tostring(lpd.partyTok or "?"),
+    tostring(gapW or "?"),
+    tostring(lpd.gapOffX or "?")
   )
 end
 

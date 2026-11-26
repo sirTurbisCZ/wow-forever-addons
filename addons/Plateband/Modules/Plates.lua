@@ -2120,6 +2120,10 @@ local function LayoutGapIconsInFallback(mergeFb, painted, sz, pad)
   pcall(function()
     mergeFb:SetSize(math.max(1, painted * (sz + pad)), sz)
   end)
+  if lastPaintDebug and painted > 0 then
+    lastPaintDebug.gapSpread = painted
+    lastPaintDebug.gapW = painted * (sz + pad)
+  end
 end
 
 --- Opt-in merge layout: only move Plateband fallback frame — never name / DebuffList.
@@ -2148,78 +2152,79 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
     end
     rowN = CountNativeAuraRow(plate)
     local n = visN
-    if n == 0 then
+    if visN > 0 and n == 0 then
       n = rowN
     end
-    if not IsPlayerOrFriendPlate(unit, plate) and not PlateUsesFriendlyHarmfulFilter(plate) then
-      if n == 0 then
-        n = CountPlateHarmfulShown(plate)
-      end
+    if visN > 0 and not friendLayout and n == 0 then
+      n = CountPlateHarmfulShown(plate)
     end
     if n == 0 and lastPaintDebug then
       local nv = tonumber(lastPaintDebug.nativeVis) or 0
-      if nv > n then
+      if nv > 0 and nv > n then
         n = nv
       end
     end
     if visN == 0 and painted > 1 then
-      n = math.max(n, 1)
+      n = 0
     end
     offX = n * (sz + pad)
+    if lastPaintDebug then
+      lastPaintDebug.gapOffX = offX
+    end
   end
-  mergeFb:ClearAllPoints()
+  local function finishAnchor(anchorFn)
+    mergeFb:ClearAllPoints()
+    pcall(anchorFn)
+    LayoutGapIconsInFallback(mergeFb, painted, sz, pad)
+  end
+  local auraRow = NativeDebuffAnchorList(plate)
+  local af = plate and plate.UnitFrame and plate.UnitFrame.AurasFrame
+  local bar = HealthBar(plate)
   local right = nil
-  if visN > 0 or rowN > 0 then
+  if visN > 0 then
     local cand = NativeBandRightAnchor(plate)
     if cand and NativeAuraButtonLive(cand) then
       right = cand
     end
   end
   if right then
-    pcall(function()
+    finishAnchor(function()
       mergeFb:SetPoint("LEFT", right, "RIGHT", pad, 0)
       mergeFb:SetPoint("BOTTOM", right, "BOTTOM", 0, 0)
     end)
-    LayoutGapIconsInFallback(mergeFb, painted, sz, pad)
     return
   end
-  local auraRow = NativeDebuffAnchorList(plate)
-  if friendLayout and auraRow then
+  if auraRow and not FrameIsGlobalChrome(auraRow) then
     pcall(function()
+      if mergeFb:GetParent() ~= auraRow then
+        mergeFb:SetParent(auraRow)
+      end
+      if auraRow.SetClipsChildren then
+        auraRow:SetClipsChildren(false)
+      end
+    end)
+    finishAnchor(function()
       mergeFb:SetPoint("BOTTOMLEFT", auraRow, "BOTTOMLEFT", offX, 0)
     end)
     return
   end
-  local af = plate and plate.UnitFrame and plate.UnitFrame.AurasFrame
-  if friendLayout and af then
-    pcall(function()
+  if friendLayout and af and not FrameIsGlobalChrome(af) then
+    finishAnchor(function()
       mergeFb:SetPoint("TOPLEFT", af, "TOPLEFT", offX, 2)
     end)
     return
   end
-  local bar = HealthBar(plate)
   if bar then
-    pcall(function()
+    finishAnchor(function()
       mergeFb:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", offX, PB.OVERLAY_GAP_ABOVE)
     end)
     return
   end
-  if auraRow then
-    pcall(function()
-      mergeFb:SetPoint("BOTTOMLEFT", auraRow, "BOTTOMLEFT", offX, 0)
-    end)
-    return
-  end
-  pcall(function()
-    local anchored = false
-    pcall(function()
-      anchored = mergeFb:GetPoint(1) ~= nil
-    end)
-    if not anchored and bar then
+  finishAnchor(function()
+    if bar then
       mergeFb:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", offX, PB.OVERLAY_GAP_ABOVE)
     end
   end)
-  LayoutGapIconsInFallback(mergeFb, painted, sz, pad)
 end
 
 ClearOverlay = function(unit)
