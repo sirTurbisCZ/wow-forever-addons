@@ -1426,21 +1426,7 @@ SuppressFriendlyPlateConsumables = function(plate)
     local poolBtns = {}
     HarvestAuraPoolButtons(pools, poolBtns, MaxIcons() * 2)
     for i = 1, #poolBtns do
-      local btn = poolBtns[i]
-      if btn and not IsLikelyBuffFrame(btn) then
-        local data
-        pcall(function()
-          if btn.GetAuraInstance then
-            local _, d = btn:GetAuraInstance()
-            data = d
-          end
-        end)
-        if type(data) == "table" and data.isHelpful and not data.isHarmful then
-          maybeHide(btn)
-        end
-      else
-        maybeHide(btn)
-      end
+      maybeHide(poolBtns[i])
     end
   end
   if hidden > 0 and lastPaintDebug then
@@ -4876,6 +4862,7 @@ UpdateOverlay = function(unit, plate)
 
   if SecurePaintLocked() then
     EnsureNativeVisible(plate)
+    pcall(SuppressFriendlyPlateConsumables, plate)
     local fb = fallbacks[unit]
     if fb and (tonumber(fb._painted) or 0) > 0 then
       local auraTok = AuraUnitForPlate(unit, plate, ShouldUseTargetAuraSource(unit, plate), nil)
@@ -5271,14 +5258,23 @@ SnapshotDiagnose = function(reason, opts)
     end
   end
   local tgtSrcLive = lpd.tgtSrc
-  if targetYes and plate then
+  if targetYes then
     local tu = plateUnit or NameplateUnitFor("target")
-    if ShouldUseTargetAuraSource(tu, plate) then
+    local diagPlate = plate
+    if not diagPlate and tu then
+      diagPlate = PlateFor(tu)
+    end
+    if not diagPlate and HasTarget() then
+      diagPlate = PlateFor("target")
+    end
+    if diagPlate and ShouldUseTargetAuraSource(tu, diagPlate) then
+      tgtSrcLive = 1
+    elseif tu and HasTarget() and IsTargetPlate(tu, diagPlate) then
       tgtSrcLive = 1
     else
       tgtSrcLive = 0
     end
-  elseif not targetYes then
+  else
     tgtSrcLive = 0
   end
   local card = string.format(

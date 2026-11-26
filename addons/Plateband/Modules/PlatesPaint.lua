@@ -78,13 +78,8 @@ if not plate then
   local missing = {}
   local stats = { personal = 0, foreign = 0 }
   local isTarget = D.PlateMatchesTarget(plate)
-  local useTargetSrc = isTarget and D.ShouldUseTargetAuraSource(unit, plate)
-  if useTargetSrc and not D.PlateMatchesTarget(plate) then
-    useTargetSrc = false
-  end
-  if not isTarget and D.HasTarget() then
-    useTargetSrc = false
-  end
+  -- ShouldUseTargetAuraSource includes IsTargetPlate (GUID/nameplate bind); do not require PlateMatchesTarget alone (0.3.22).
+  local useTargetSrc = D.ShouldUseTargetAuraSource(unit, plate)
 
   if partyAuraTok then
     friendPlate = true

@@ -1,5 +1,12 @@
 # Plateband changelog
 
+## Release 0.3.22 — hostile target tgtSrc (IsTargetPlate)
+
+- **Regression:** `PaintMergeMissing` gated `useTargetSrc` on `PlateMatchesTarget` only and forced `useTargetSrc=false` whenever `HasTarget()` but plate frame ≠ `PlateFor("target")` — hostile PAINT could show `tgt=1` `tgtSrc=0` while still painting from unit token (skips TF parity / `ReconcileTfHarmfulCoverage`).
+- **Fix:** `useTargetSrc = ShouldUseTargetAuraSource` (includes **GUID / `nameplateN` / `IsTargetPlate`** bind).
+- **CARD:** live `tgtSrc` when `plate=no` but `punit` + `PlateFor(target)` resolve.
+- **Watcher:** skip `hostile_tgtSrc0_HARMFUL` on `plate=no` + `painted>0` (stale `lpd.tgtSrc`, not harvest miss).
+
 ## Release 0.3.21 — hide friendly food HELPFUL on NP
 
 - **`hideFriendlyFoodBuffs`** (default on, schema 13): hide **individual** native buff buttons (Well Fed / food / drink patterns) on party+friendly nameplates — **not** DebuffList/SetPoint; harmful row (e.g. WS) untouched.

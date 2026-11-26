@@ -51,7 +51,12 @@ while IFS= read -r line; do
     note "hostile_HARMFUL_no_paint: $line"
   fi
   if echo "$line" | rg -q 'target=yes' && echo "$line" | rg -q 'tgtSrc=0' && echo "$line" | rg -q 'tf=[1-9]'; then
-    note "hostile_tgtSrc0_HARMFUL: $line"
+  # plate=no + painted>0: stale lpd.tgtSrc from pre-target paint, not a harvest miss (0.3.22 diagnose live tgtSrc).
+    if echo "$line" | rg -q 'plate=no' && echo "$line" | rg -q 'painted=[1-9]'; then
+      :
+    else
+      note "hostile_tgtSrc0_HARMFUL: $line"
+    fi
   fi
   if echo "$line" | rg -q 'target=yes' && echo "$line" | rg -q 'harv=0' && echo "$line" | rg -q 'tf=[2-9]'; then
     note "foreign_PARTY_harv_skipped: $line"

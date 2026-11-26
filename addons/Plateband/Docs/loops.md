@@ -1,6 +1,6 @@
 # Plateband — aura / layout loops
 
-Version: **0.3.21** (SV-primary telemetry; reload = TOC only)
+Version: **0.3.22** (SV-primary telemetry; reload = TOC only)
 
 ## Version / config truth (agent feed)
 
@@ -32,6 +32,16 @@ flowchart TD
   mergeFlag -->|false /pb merge off| stop[Stop — Blizzard name+DebuffList untouched]
   mergeFlag -->|true opt-in| paint[PaintMergeMissing foreign+TF]
   paint --> layout[LayoutMergeBesideNative + LayoutGapIconsInFallback + MergeRowIconSize]
+```
+
+## Hostile target harvest (`useTargetSrc`)
+
+```mermaid
+flowchart TD
+  paint[PaintMergeMissing] --> gate{ShouldUseTargetAuraSource}
+  gate -->|PlateMatchesTarget OR IsTargetPlate| tf[CollectTargetHarmfulRows tgtSrc=1]
+  gate -->|other plate while HasTarget| unit[nameplate unit mirror tgtSrc=0]
+  tf --> parity[ReconcileTfHarmfulCoverage + ForceFill]
 ```
 
 ## Combat lockdown
