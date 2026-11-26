@@ -593,12 +593,7 @@ end
 
 local function PulseLiveHeadFile()
   local sl = Plateband and Plateband.SessionLog
-  if sl and type(sl.ExportDiskPulse) == "function" then
-    pcall(sl.ExportDiskPulse)
-    return
-  end
-  if sl and type(sl.PulseExportDiskTick) == "function" then
-    pcall(sl.PulseExportDiskTick)
+  if sl and (type(sl.ExportDiskPulse) == "function" or type(sl.PulseExportDiskTick) == "function") then
     return
   end
   if GetTime and (GetTime() - felogExportDiskLastGt) < 2.0 then

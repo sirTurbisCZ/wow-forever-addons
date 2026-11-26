@@ -3,6 +3,7 @@
 ## Release 0.2.99 — L1 rebuilt from Config every disk write
 
 - **`WriteExportL1Brute`** always **`BuildChatTruthLine`** from **`ChatLoadedVersions`**; **`t=`** = **`exportUnixEpoch + GetTime()`** (Forever frozen **`time()`**); **`StampExportLineT`** at **`fopen`**.
+- Throttle marks **only on successful write**; **stale ≥2s** bypass; OnUpdate **elapsed** driver (no stalled NewTicker); FElog does not double-pulse Plateband.
 - Export L1 only through **`WriteExportL1Brute`** (no **`TryWriteWholeFile`** body stomp).
 
 ## Release 0.2.98 — idle EXPORT_PULSE every 2s (direct io)

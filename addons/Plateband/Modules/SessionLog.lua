@@ -227,10 +227,19 @@ function Mod.ResolveExportVersions()
   return pbVer, feVer, pbVer, feVer
 end
 
+local function ExportDiskStaleSec()
+  local db = ns.Config.EnsureDB()
+  local at = tonumber(db.ioExportDiskAt) or 0
+  if at <= 0 then
+    return 999
+  end
+  return UnixTs() - at
+end
+
 local function TryExportDiskLine(line)
-  MarkExportDiskAttempt()
   local wrote = Mod.WriteExportL1Brute(line, true)
   if wrote then
+    MarkExportDiskAttempt()
     pcall(Mod.PublishInterfaceTocStamp)
   end
   return wrote
@@ -238,7 +247,8 @@ end
 
 --- Single EXPORT_PULSE write: fresh t=, 1 write / 2s (no nested C_Timer — idle stall).
 local function DoExportDiskPulse()
-  if not ExportDiskThrottleOk() then
+  local stale = ExportDiskStaleSec()
+  if stale < EXPORT_DISK_MIN_SEC and not ExportDiskThrottleOk() then
     return false
   end
   local db = ns.Config.EnsureDB()
@@ -343,7 +353,7 @@ local exportBurstAt = 0
 local exportDriverFrame
 local exportEventsRegistered = false
 local EXPORT_TICK = 2.0
-local EXPORT_DISK_MIN_SEC = 2.0
+local EXPORT_DISK_MIN_SEC = 1.85
 local exportDiskLastGt = 0
 local BumpChatTruthSV
 local ExportDiskThrottleOk
@@ -616,11 +626,8 @@ function Mod.WriteExportL1Brute(line, throttleBypass)
   if not (io and io.open) then
     return false
   end
-  if not throttleBypass and not ExportDiskThrottleOk() then
+  if not throttleBypass and not ExportDiskThrottleOk() and ExportDiskStaleSec() < EXPORT_DISK_MIN_SEC then
     return false
-  end
-  if not throttleBypass then
-    MarkExportDiskAttempt()
   end
   local db = ns.Config.EnsureDB()
   local hint = tostring(line or "")
@@ -781,16 +788,6 @@ local EXPORT_PULSE_EVENTS = {
   "BAG_UPDATE_DELAYED",
 }
 
-local function EnsureExportDriverTicker()
-  if exportTruthTicker or not C_Timer or not C_Timer.NewTicker then
-    return false
-  end
-  exportTruthTicker = C_Timer.NewTicker(EXPORT_TICK, function()
-    pcall(DoExportDiskPulse)
-  end)
-  return true
-end
-
 local function EnsureExportDriverFrame()
   if exportDriverFrame or not CreateFrame or not GetTime then
     return
@@ -805,13 +802,13 @@ local function EnsureExportDriverFrame()
   exportDriverFrame:SetScript("OnEvent", function()
     pcall(DoExportDiskPulse)
   end)
-  local lastGt = GetTime()
-  exportDriverFrame:SetScript("OnUpdate", function()
-    local gt = GetTime()
-    if (gt - lastGt) < EXPORT_TICK then
+  local acc = 0
+  exportDriverFrame:SetScript("OnUpdate", function(_, elapsed)
+    acc = acc + (tonumber(elapsed) or 0)
+    if acc < EXPORT_TICK then
       return
     end
-    lastGt = gt
+    acc = acc - EXPORT_TICK
     pcall(DoExportDiskPulse)
   end)
   pcall(exportDriverFrame.Show, exportDriverFrame)
@@ -873,7 +870,6 @@ function Mod.ArmExportTruthPulse(force)
   if force then
     Mod.ScheduleExportBurst()
   end
-  EnsureExportDriverTicker()
   EnsureExportDriverFrame()
   pcall(DoExportDiskPulse)
 end
