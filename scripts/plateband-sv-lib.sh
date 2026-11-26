@@ -357,6 +357,20 @@ av = table_ver("agentLive", "ver")
 if av:
     add_cand(table_at("agentLive", "at"), av, "agentLive")
 
+ccv = re.search(r'\["configChatVer"\]\s*=\s*"([0-9.]+)"', t)
+if ccv:
+    add_cand(table_at("runtimeVer", "at"), ccv.group(1), "configChatVer")
+
+ctm = re.search(r'\["chatTruthLine"\]\s*=\s*"((?:\\.|[^"\\])*)"', t, re.S)
+if ctm:
+    cl = ctm.group(1).encode("utf-8").decode("unicode_escape")
+    vm = re.search(r"(?:live_ver|plateband_ver)=([0-9.]+)", cl)
+    tm = re.search(r"t=(\d+)", cl)
+    cam = re.search(r'\["chatTruthAt"\]\s*=\s*(\d+)', t)
+    ts = int(cam.group(1)) if cam else (int(tm.group(1)) if tm else 0)
+    if vm:
+        add_cand(ts, vm.group(1), "chatTruthLine")
+
 if cands:
     cands.sort(key=lambda x: x[0])
     _, ver, source = cands[-1]
@@ -564,6 +578,28 @@ pb_sv_chat_loaded_ver() {
   [[ -n "$v" ]] && printf '%s' "$v"
 }
 
+pb_sv_chat_truth_ver() {
+  local sv="$1"
+  [[ -f "$sv" ]] || return 1
+  python3 - "$sv" <<'PY' 2>/dev/null || true
+import re, pathlib, sys
+t = pathlib.Path(sys.argv[1]).read_text(errors="replace")
+m = re.search(r'\["chatTruthLine"\]\s*=\s*"((?:\\.|[^"\\])*)"', t, re.S)
+if not m:
+    sys.exit(0)
+cl = m.group(1).encode("utf-8").decode("unicode_escape")
+vm = re.search(r"(?:live_ver|plateband_ver)=([0-9.]+)", cl)
+if vm:
+    print(vm.group(1))
+PY
+}
+
+# One-line hint when Interface TOC ahead of in-session client (agent auto-sees TOC).
+pb_reload_hint_if_needed() {
+  [[ "${PB_RELOAD_PENDING:-no}" == yes && -n "${PB_RUNTIME_VER:-}" && -n "${PB_CLIENT_VER:-}" ]] || return 0
+  echo "reload_hint: /reload — Plateband ${PB_RUNTIME_VER} on disk (session ${PB_CLIENT_VER})"
+}
+
 pb_sv_agent_live_ver() {
   local sv="$1" v
   [[ -f "$sv" ]] || return 1
@@ -736,21 +772,37 @@ pb_felog_live_head_path() {
   printf '%s' "$(pb_wow_root)/Interface/AddOns/ForeverErrorLog/Logs/live-head.log"
 }
 
-# Live runtime — Logs/live-head.log → export → SV (never stale SV agentLive alone).
+# Live runtime — SV export/unified → live-head (stale head ignored when SV newer).
 pb_client_ver() {
   local sv="$1"
-  local line v feed_ver feed_src feed_ts sv_ts
+  local line v feed_ver feed_src feed_ts sv_ts unified uni_ver uni_ts truth_v head_v
+
+  unified="$(pb_unified_runtime_from_sv "$sv" 2>/dev/null || true)"
+  uni_ver="$(echo "$unified" | cut -f1)"
+  if [[ -n "$uni_ver" ]]; then
+    v="$uni_ver"
+    PB_VER_SOURCE="$(echo "$unified" | cut -f3)"
+    PB_AGENT_SEQ="$(echo "$unified" | cut -f2)"
+  fi
+  truth_v="$(pb_sv_chat_truth_ver "$sv" 2>/dev/null || true)"
+  if [[ -n "$truth_v" ]] && { [[ -z "$v" ]] || pb_ver_sort_ge "$truth_v" "$v"; }; then
+    v="$truth_v"
+    PB_VER_SOURCE="chatTruthLine"
+  fi
+
   line="$(pb_read_live_head_file "$(pb_felog_live_head_path)" 2>/dev/null || true)"
   if [[ -n "$line" ]]; then
-    PB_VER_SOURCE="felog_live_head"
-    PB_AGENT_SEQ="$(echo "$line" | cut -f2)"
-    PB_SESSION_LOAD="$(echo "$line" | cut -f4)"
-    v="$(echo "$line" | cut -f1)"
+    head_v="$(echo "$line" | cut -f1)"
     local pbv
     pbv="$(sed -n 's/.*plateband_ver=\([^ ]*\).*/\1/p' <(head -1 "$(pb_felog_live_head_path)" 2>/dev/null) 2>/dev/null || true)"
-    [[ -n "$pbv" ]] && v="$pbv"
-    printf '%s' "$v"
-    return 0
+    [[ -n "$pbv" ]] && head_v="$pbv"
+    if [[ -z "$v" ]] || pb_ver_sort_ge "$head_v" "$v"; then
+      PB_VER_SOURCE="felog_live_head"
+      PB_AGENT_SEQ="$(echo "$line" | cut -f2)"
+      PB_SESSION_LOAD="$(echo "$line" | cut -f4)"
+      v="$head_v"
+    fi
+    [[ -n "$v" ]] && printf '%s' "$v" && return 0
   fi
   line="$(pb_read_live_head_file "$(pb_live_head_log_path)" 2>/dev/null || true)"
   if [[ -n "$line" ]]; then
@@ -880,6 +932,12 @@ pb_sv_context() {
     else
       PB_RELOAD_PENDING=behind
     fi
+  fi
+  # In-session export can trail chatTruth until WTF flush; trust unified/export at Interface ver.
+  if [[ "$PB_RELOAD_PENDING" == yes ]] && [[ -n "$PB_RUNTIME_VER" && -n "$PB_CLIENT_VER" ]] \
+    && [[ "$PB_CLIENT_VER" == "$PB_RUNTIME_VER" ]]; then
+    PB_RELOAD_PENDING=no
+    PB_LIVE_VER="$PB_CLIENT_VER"
   fi
 
   if [[ -n "$PB_FLUSHED_VER" && -n "$PB_LIVE_VER" && "$PB_FLUSHED_VER" != "$PB_LIVE_VER" ]]; then

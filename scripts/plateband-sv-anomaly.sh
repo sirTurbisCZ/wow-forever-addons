@@ -8,6 +8,8 @@ source "$ROOT/scripts/plateband-sv-lib.sh"
 
 pb_sv_context || { echo "WATCH_COVERAGE idle (no SV file)"; exit 0; }
 
+pb_reload_hint_if_needed 2>/dev/null || true
+
 ANOM=0
 note() { echo "ANOMALY $1"; ANOM=1; }
 

@@ -438,17 +438,27 @@ function Mod.RefreshChatTruthSV(src, load)
   return BumpChatTruthSV(src, load)
 end
 
---- Bump SV chatTruthLine when runtime Config.VERSION differs from stored line (reload PEW fallback).
+--- Bump SV chatTruthLine when runtime Config.VERSION differs from stored line (PEW + reload).
 function Mod.EnsureChatTruthCurrent(loadKind)
   loadKind = tostring(loadKind or "reload")
   local db = ns.Config.EnsureDB()
   local pbVer = tostring((Plateband.Config and Plateband.Config.VERSION) or (ns.Config and ns.Config.VERSION) or "?")
+  local storedCfg = tostring(db.configChatVer or "")
   local line = tostring(db.chatTruthLine or "")
   local live = line:match("live_ver=([%d%.]+)") or line:match("plateband_ver=([%d%.]+)") or ""
-  if live == pbVer and line ~= "" then
+  if live == pbVer and storedCfg == pbVer and line ~= "" then
     return line
   end
-  return BumpChatTruthSV("CHAT_LOADED", loadKind)
+  db.configChatVer = pbVer
+  local at = Now()
+  db.runtimeVer = { ver = pbVer, at = at, src = "chat", load = loadKind }
+  db.liveHead = string.format("ver=%s seq=0 at=%s io=sv_only src=chat load=%s", pbVer, tostring(at), loadKind)
+  local out = BumpChatTruthSV("CHAT_LOADED", loadKind)
+  pcall(function()
+    Mod.Append(string.format("CHAT_LOADED ver=%s src=%s", pbVer, loadKind))
+    Mod.Append(string.format("RUNTIME_VER ver=%s src=chat load=%s", pbVer, loadKind))
+  end)
+  return out
 end
 
 function Mod.LiveInterfaceVersions()
@@ -1250,6 +1260,7 @@ function Mod.RecordChatLoaded(src)
   src = tostring(src or "login")
   local ver = tostring((Plateband.Config and Plateband.Config.VERSION) or (ns.Config and ns.Config.VERSION) or "?")
   local db = ns.Config.EnsureDB()
+  db.configChatVer = ver
   db.ioExportDiskLine = nil
   db.ioExportDiskTried = nil
   db.exportLoginDiskVer = nil

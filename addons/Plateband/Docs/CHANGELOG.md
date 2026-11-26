@@ -2,6 +2,8 @@
 
 ## Release 0.3.08 — friend WS plate paint
 
+- **`EnsureChatTruthCurrent` (PEW):** syncs `chatTruthLine` + `configChatVer` + `CHAT_LOADED` export when runtime ≠ SV.
+- **Host watch:** `pb_client_ver` prefers SV `chatTruthLine` / unified export over stale live-head; auto **`reload_hint`** when TOC ahead.
 - Skip **`PruneInactiveGapRows`** when friend harmful API / `tfRows` says WS still live.
 - **`paint_hold`** + PAINT trace use **`fallback._painted`** (no `tfRows>0 painted=0` flake).
 - Friend gap paint: alt unit tokens on visual fail (party / target / nameplate).

@@ -30,7 +30,14 @@ if [[ "$PB_FLUSH_LAG" != "yes" ]]; then
 fi
 
 fail=0
-check() { echo "  $1: $2"; [[ "$2" == "OK" ]] || fail=1; }
+check() {
+  if [[ "$2" == WAIT* && "${PB_RELOAD_PENDING:-no}" == yes ]]; then
+    echo "  $1: $2 (reload_pending — playbook only)"
+    return
+  fi
+  echo "  $1: $2"
+  [[ "$2" == "OK" ]] || fail=1
+}
 
 SV_DATA="$PB_SV"
 if [[ -f "${PB_AGENT_LOG:-}" ]]; then
