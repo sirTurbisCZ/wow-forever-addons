@@ -1,6 +1,6 @@
 --[[
   BetterBackpack.StackMerge — visual merge of stacks (v1).
-  Merge key: itemID + isLocked (locked lockboxes never merge with unlocked same ID).
+  Merge key: itemID (the transient isLocked slot flag is deliberately not part of it).
   One icon with summed count; click/RMB maps to the first real bag:slot.
   Other merged slots stay in inventory but are parked (not shown).
 ]]
@@ -84,30 +84,37 @@ local function StackCount(bag, slot, info)
   return 1
 end
 
---- true / false / nil when isLocked is secret or unknown (do not merge with others).
-local function SlotLockedFlag(info)
-  if type(info) ~= "table" then
-    return false
+--- Merge key: the itemID only. `isLocked` of a bag slot is the transient "item in use / held by the cursor" flag, NOT a
+--- lockbox property: keying on it split a stack into a second visual stack while one of its items was opening
+--- (clams: two icons for a moment, the stack jumped, then one vanished).
+-- Stacks the player split on purpose stay their own icon (so a part of a stack can be traded or sold): the slot that got
+-- the new stack is marked and shown separately until its item or count changes. Session only.
+local separate = {} -- ["bag:slot"] = { id, count }
+
+--- Mark the slot where a split-off stack was put down (count is recorded on first sight).
+function StackMerge.MarkSeparate(bag, slot, itemID)
+  if bag == nil or slot == nil or not itemID then
+    return
   end
-  local raw = info.isLocked
-  if raw == true or raw == 1 then
-    return true
-  end
-  if raw == false or raw == 0 or raw == nil then
-    return false
-  end
-  if Slots.IsSecret and Slots.IsSecret(raw) then
-    return nil
-  end
-  return false
+  separate[tostring(bag) .. ":" .. tostring(slot)] = { id = itemID }
 end
 
-local function MergeGroupKey(id, bag, slot, info)
-  local locked = SlotLockedFlag(info)
-  if locked == nil then
-    return id .. ":?:" .. tostring(bag) .. ":" .. tostring(slot)
+function StackMerge.ClearSeparate()
+  separate = {}
+end
+
+local function MergeGroupKey(id, bag, slot, count)
+  local k = tostring(bag) .. ":" .. tostring(slot)
+  local m = separate[k]
+  if m then
+    if m.id ~= id or (m.count and m.count ~= count) then
+      separate[k] = nil -- changed: merges again
+    else
+      m.count = m.count or count
+      return "S" .. k
+    end
   end
-  return id .. ":" .. (locked and "L" or "U")
+  return tostring(id)
 end
 
 local mergeAnchors = {} -- mergeKey → last stable representative bag:slot
@@ -250,7 +257,7 @@ function StackMerge.Collapse(list)
     if not id then
       noId[#noId + 1] = { bag = bag, slot = slot, displayCount = count }
     else
-      local key = MergeGroupKey(id, bag, slot, info)
+      local key = MergeGroupKey(id, bag, slot, count)
       local g = groups[key]
       if not g then
         g = {
@@ -364,7 +371,7 @@ function StackMerge.CollectMergeGroup(anchorBag, anchorSlot, mergedFromHint)
   if not anchorID then
     return single
   end
-  local anchorKey = MergeGroupKey(anchorID, anchorBag, anchorSlot, anchorInfo)
+  local anchorKey = MergeGroupKey(anchorID, anchorBag, anchorSlot, StackCount(anchorBag, anchorSlot, anchorInfo))
   local out = {}
   local ranges = Slots and Slots.InventoryBagRanges and Slots.InventoryBagRanges()
   if type(ranges) ~= "table" then
@@ -394,7 +401,7 @@ function StackMerge.CollectMergeGroup(anchorBag, anchorSlot, mergedFromHint)
           -- skip empty
         else
           local id, info = ResolveItemID(b, s)
-          if id and MergeGroupKey(id, b, s, info) == anchorKey then
+          if id and MergeGroupKey(id, b, s, StackCount(b, s, info)) == anchorKey then
             out[#out + 1] = { bag = b, slot = s }
           end
         end

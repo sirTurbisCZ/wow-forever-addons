@@ -1274,6 +1274,7 @@ local function SplitStack(self, b, s)
     return false
   end
   self.SplitStack = function(_, split)
+    Slots._bbSplitItem = Slots.ItemIDForBagSlot and Slots.ItemIDForBagSlot(b, s) or nil
     if C_Container and C_Container.SplitContainerItem then
       pcall(C_Container.SplitContainerItem, b, s, split)
     elseif SplitContainerItem then

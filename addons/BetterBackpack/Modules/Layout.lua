@@ -539,6 +539,11 @@ function Layout.DropOnLane(key)
   end
   local src = HeldDragSource()
   if not src then
+    -- An item on the cursor that did not come from a dragged bag slot (the new stack of a Shift+click split):
+    -- put it into a free bag slot; it lands in the lane of its item like the rest of its stack.
+    if key ~= TRASH and CursorHoldingItem() and Layout.PlaceCursorInFreeSlot then
+      return Layout.PlaceCursorInFreeSlot()
+    end
     return false
   end
   if key == TRASH then
@@ -607,6 +612,168 @@ function Layout.LaneUnderMouse()
   return nil
 end
 
+-- Free-slot drop button (next to the free-slot counter). The lanes only show occupied slots, so an item on the cursor
+-- (typically the new stack after Shift+click split) had no cell to be dropped into. While the cursor carries an item the
+-- button is shown; a click puts the item into the first free bag slot (the reagent bag is tried last).
+local freeDrop
+
+function Layout.PlaceCursorInFreeSlot()
+  if InCombatLockdown and InCombatLockdown() then
+    return false
+  end
+  if not CursorHoldingItem() then
+    return false
+  end
+  if not (C_Container and C_Container.PickupContainerItem) then
+    return false
+  end
+  local reagent = Slots.ReagentBagIndex and Slots.ReagentBagIndex() or 5
+  local ranges = Slots.PlayerBagRanges and Slots.PlayerBagRanges() or {}
+  local order = {}
+  for i = 1, #ranges do
+    if ranges[i].bag ~= reagent then
+      order[#order + 1] = ranges[i]
+    end
+  end
+  for i = 1, #ranges do
+    if ranges[i].bag == reagent then
+      order[#order + 1] = ranges[i]
+    end
+  end
+  local heldID
+  pcall(function()
+    local _, id = GetCursorInfo()
+    heldID = SafeNum(id)
+  end)
+  for i = 1, #order do
+    local bag = order[i].bag
+    for slot = 1, order[i].slots do
+      if not Slots.SlotOccupied(bag, slot) then
+        pcall(C_Container.PickupContainerItem, bag, slot)
+        if not CursorHoldingItem() then
+          -- A stack the player split off stays its own icon (see StackMerge.MarkSeparate).
+          if Slots._bbSplitItem and heldID and Slots._bbSplitItem == heldID then
+            local SM = Feat("StackMerge")
+            if SM and SM.MarkSeparate then
+              SM.MarkSeparate(bag, slot, heldID)
+            end
+            Slots._bbSplitItem = nil
+          end
+          if Slots.ClearDragSource then
+            Slots.ClearDragSource()
+          end
+          Layout.SetDropHints(false)
+          return true
+        end
+      end
+    end
+  end
+  if BetterBackpack.Print then
+    BetterBackpack.Print("no free bag slot for this item")
+  end
+  return false
+end
+
+local function EnsureFreeDrop()
+  if freeDrop or not main then
+    return freeDrop
+  end
+  local b = CreateFrame("Button", nil, main)
+  b:SetSize(128, 20)
+  b:SetFrameLevel((main:GetFrameLevel() or 200) + 60)
+  b:RegisterForClicks("AnyUp")
+  local bg = b:CreateTexture(nil, "BACKGROUND")
+  bg:SetAllPoints()
+  bg:SetColorTexture(1, 0.82, 0, 0.18)
+  local fs = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  fs:SetPoint("CENTER")
+  fs:SetText("+ drop in free slot")
+  local function go()
+    Layout.PlaceCursorInFreeSlot()
+  end
+  b:SetScript("OnClick", go)
+  b:SetScript("OnReceiveDrag", go)
+  b:SetScript("OnEnter", function(self)
+    if GameTooltip then
+      GameTooltip:SetOwner(self, "ANCHOR_TOP")
+      GameTooltip:SetText("Put the item in your hand into the first free bag slot", 1, 1, 1, 1, true)
+      GameTooltip:Show()
+    end
+  end)
+  b:SetScript("OnLeave", function()
+    if GameTooltip then
+      GameTooltip:Hide()
+    end
+  end)
+  b:Hide()
+  freeDrop = b
+  return b
+end
+
+-- While an item is on the cursor, the whole bag window catches the click: without it the click on an empty place of
+-- the window fell through to the game world and the game asked "destroy this item?".
+local dropCatcher
+
+local function EnsureDropCatcher()
+  if dropCatcher or not main then
+    return dropCatcher
+  end
+  local c = CreateFrame("Frame", nil, main)
+  c:SetAllPoints(main)
+  c:EnableMouse(true)
+  local function go()
+    if CursorHoldingItem() then
+      Layout.PlaceCursorInFreeSlot()
+    end
+  end
+  c:SetScript("OnReceiveDrag", go)
+  c:SetScript("OnMouseUp", go)
+  c:Hide()
+  dropCatcher = c
+  return c
+end
+
+local function UpdateDropCatcher(on)
+  local c = EnsureDropCatcher()
+  if not c then
+    return
+  end
+  if on then
+    if c:GetParent() ~= main then
+      c:SetParent(main)
+      c:SetAllPoints(main)
+    end
+    -- below the lanes (content +5/+40) and the slot buttons, above the bag background
+    c:SetFrameLevel((main:GetFrameLevel() or 200) + 10)
+    c:Show()
+  else
+    c:Hide()
+  end
+end
+
+local function UpdateFreeDrop()
+  local b = EnsureFreeDrop()
+  if not b then
+    return
+  end
+  UpdateDropCatcher(CursorHoldingItem() and main and main:IsShown() and (main:GetAlpha() or 0) > 0.5 and not (InCombatLockdown and InCombatLockdown()))
+  if CursorHoldingItem() and main and main:IsShown() and (main:GetAlpha() or 0) > 0.5 then
+    if b:GetParent() ~= main then
+      b:SetParent(main) -- the bag frame can be rebuilt
+    end
+    b:SetFrameLevel((main:GetFrameLevel() or 200) + 60)
+    b:ClearAllPoints()
+    if freeFs and freeFs:IsShown() then
+      b:SetPoint("LEFT", freeFs, "RIGHT", 10, 0)
+    else
+      b:SetPoint("BOTTOMLEFT", main, "BOTTOMLEFT", BF_OFFSET + 90, 6)
+    end
+    b:Show()
+  else
+    b:Hide()
+  end
+end
+
 local cursorWatch = CreateFrame("Frame")
 pcall(cursorWatch.RegisterEvent, cursorWatch, "CURSOR_CHANGED")
 pcall(cursorWatch.RegisterEvent, cursorWatch, "CURSOR_UPDATE")
@@ -618,6 +785,7 @@ cursorWatch:SetScript("OnEvent", function()
     end
     Layout.SetDropHints(false)
   end
+  pcall(UpdateFreeDrop)
 end)
 
 -- While open the frame only grows (new loot); collapse / search / using items never shrink it.
@@ -1410,6 +1578,72 @@ local function FillEmptyWells(on, startY, contentH, cols)
   end
 end
 
+-- Stable lane order while the bag stays open: a lane is sorted by bag position, so an item that appears (the contents of
+-- a clam, a loot) was inserted before older ones and pushed them one cell over. Entries seen in the previous layout keep
+-- their relative order; new ones go to the end. Reset when the bag is opened and after a sort / stack pass.
+local laneOrder = {}
+
+function Layout.ResetLaneOrder()
+  laneOrder = {}
+end
+
+local function EntryKey(e, nth)
+  if e.itemID then
+    -- Several entries of one item (a merged stack and stacks the player split off): the first is "i<id>", the others
+    -- also carry their slot so none of them is lost.
+    if nth and nth > 1 then
+      return "i" .. tostring(e.itemID) .. ":" .. tostring(e.bag) .. ":" .. tostring(e.slot)
+    end
+    return "i" .. tostring(e.itemID)
+  end
+  return "s" .. tostring(e.bag) .. ":" .. tostring(e.slot)
+end
+
+local function StableLane(key, list)
+  local prev = laneOrder[key]
+  local keyOf, byKey, nth = {}, {}, {}
+  for i = 1, #list do
+    local e = list[i]
+    local n = e.itemID and ((nth[e.itemID] or 0) + 1) or nil
+    if n then
+      nth[e.itemID] = n
+    end
+    local k = EntryKey(e, n)
+    keyOf[i] = k
+    byKey[k] = e
+  end
+  local out, seen = {}, {}
+  if prev then
+    for i = 1, #prev do
+      local k = prev[i]
+      if byKey[k] and not seen[k] then
+        out[#out + 1] = byKey[k]
+        seen[k] = true
+      end
+    end
+  end
+  for i = 1, #list do
+    if not seen[keyOf[i]] then
+      out[#out + 1] = list[i]
+      seen[keyOf[i]] = true
+    end
+  end
+  if #out ~= #list then
+    out = list -- never lose an entry
+  end
+  -- store the keys of the result in its order
+  local keys = {}
+  local idx = {}
+  for i = 1, #list do
+    idx[list[i]] = keyOf[i]
+  end
+  for i = 1, #out do
+    keys[i] = idx[out[i]]
+  end
+  laneOrder[key] = keys
+  return out
+end
+
 local function DoLayout()
   if not main or not content then
     return
@@ -1440,6 +1674,9 @@ local function DoLayout()
           local list = buckets[key] or {}
           if SM and SM.Collapse then
             list = SM.Collapse(list)
+          end
+          if #list > 1 and not IsFiltering() then
+            list = StableLane(key, list)
           end
           out[key] = list
         end
@@ -3391,6 +3628,9 @@ function Layout.ShowCombatMinimal()
 end
 
 function Layout.Show()
+  if not (main and main:IsShown() and (main:GetAlpha() or 0) > 0.5) then
+    Layout.ResetLaneOrder() -- opening the bag: start from the bag order again
+  end
   local inCombat = InCombatLockdown and InCombatLockdown()
   if inCombat then
     return Layout.ShowCombatMinimal()
@@ -3596,9 +3836,6 @@ function Layout.RefreshLight()
     return
   end
   local SM = Feat("StackMerge")
-  if SM and SM.RefreshMergedButtons then
-    SM.RefreshMergedButtons()
-  end
   Slots.ForEach(function(btn)
     if btn and btn:GetAlpha() > 0.5 and btn._bbBag ~= nil then
       Slots.SyncCooldown(btn, btn._bbBag, btn._bbSlot)
@@ -3608,6 +3845,11 @@ function Layout.RefreshLight()
       end
     end
   end)
+  -- After SyncVisual: it writes the count of the single slot, which would overwrite (or blank) the summed count of
+  -- a merged stack (the representative slot may hold only 1 while sibling stacks hold the rest).
+  if SM and SM.RefreshMergedButtons then
+    SM.RefreshMergedButtons()
+  end
 end
 
 function Layout.Refresh()

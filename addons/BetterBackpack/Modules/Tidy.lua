@@ -149,6 +149,9 @@ function Tidy.SortBags()
     return false
   end
 
+  if Layout and Layout.ResetLaneOrder then
+    Layout.ResetLaneOrder()
+  end
   sortBusy = true
   sortToken = sortToken + 1
   local token = sortToken
@@ -211,6 +214,9 @@ function Tidy.StackBags()
   end
   StackBagsOnce()
   StackBagsOnce()
+  if Layout and Layout.ResetLaneOrder then
+    Layout.ResetLaneOrder()
+  end
   if Layout and Layout.Refresh then
     Layout.Refresh()
   end

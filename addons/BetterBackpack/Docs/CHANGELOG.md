@@ -1,5 +1,14 @@
 # BetterBackpack changelog
 
+## Release 1.3.9 — stacks: opening, splitting and order
+
+- **Fix:** the count of a merged stack disappeared after using an item: the light refresh set the summed count and then `SyncVisual` overwrote it with the count of the one slot it sits on (blank when that slot held 1). The sum is now written after the slots are synced.
+- **Splitting a stack:** after Shift+click split the new stack was on the cursor, but the lanes show only occupied slots, so there was no cell to drop it into. While the cursor carries an item, a gold **+ drop in free slot** button appears next to the free-slot counter at the bottom of the bag; a click (or dropping on it) puts the item into the first free bag slot (the reagent bag is tried last, nothing happens in combat). The new stack then shows again as part of the merged stack.
+- **Split stacks stay split:** the stack you split off with Shift+click and put down through the free-slot button stays its own icon with its own count (instead of merging back into one icon with the sum), so you can trade or sell just that part. It merges again when its count or item changes (after the trade) or after `/reload`. `/bb stack off` turns the visual merge off completely.
+- **No "destroy this item?" prompt when dropping on an empty place:** while an item is on the cursor the whole bag window catches the click and puts the item into the first free bag slot (it lands in the lane of its item). Before, the click fell through to the game world. Dropping on a lane header does the same for an item that did not come from a dragged slot (a split stack).
+- **Stable lane order while the bag is open:** a lane is sorted by bag position, so the first item that appeared after opening a clam was inserted before older ones, the layout was redone and the stack jumped one cell over (it looked like a sort). Items that were already shown keep their relative order and new ones go to the end of the lane. The order starts from the bag order again when the bag is opened and after `/bb sort` or `/bb stack`.
+- **Fix:** using an item from a stack (for example opening clams) showed the stack in two slots for a moment, moved it and then one slot vanished. The stack merge key contained the slot's `isLocked` flag, which is only the transient "item in use / held by the cursor" state, so the slot being used briefly became its own stack. The merge key is now the item id alone.
+
 ## Release 1.3.8 — B works in combat again; no tooltips from the closed bag
 
 - **Fix (regression of 1.3.7):** parking the closed bag off-screen made it impossible to re-open it with **B** during combat (a frame with secure children cannot be moved in combat), so it seemed to open and close at once. The bag stays at its on-screen position again.
