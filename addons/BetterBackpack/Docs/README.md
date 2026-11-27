@@ -46,7 +46,7 @@ Long lists scroll with the mouse wheel; the scroll bar appears only when needed.
 
 ## Combat
 
-- **B** works in combat: the bag is kept ready (invisible, off-screen while closed) and shown with alpha only; no protected frames are created or moved.
+- **B** works in combat: the bag is kept ready (invisible while closed) and shown with alpha only; no protected frames are created or moved. While closed it shows no tooltips.
 - **Esc** closes open bags first; the next Esc opens the game menu.
 - Bags opened by a vendor, mailbox, auction house or bank close with that window if they were closed before.
 - Sorting, tidy and Trash work out of combat only.

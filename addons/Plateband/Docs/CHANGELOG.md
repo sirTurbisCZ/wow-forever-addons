@@ -1,5 +1,46 @@
 # Plateband changelog
 
+## Release 0.7.2 — AuraContainer row is the default
+
+- The row is now drawn by Blizzard's managed **AuraContainer** (`/pb ac`, default **on**). The client tracks the auras itself, so friendly units (party, players) work **in combat** and other casters' debuffs, countdown numbers and stacks are shown reliably. Verified in game on enemy and friendly plates in combat. `/pb ac off` returns to the previous Lua-drawn row; if the client has no AuraContainer the previous row is used automatically.
+
+## Release 0.7.1 — friendly debuffs up to 5 minutes
+
+- Debuffs on friendly units are shown only up to a total duration of **5 minutes** (was 10): Resurrection Sickness (10 min) and hour-long bonuses are no longer shown. Applies to the legacy row and the AuraContainer mode.
+
+## Release 0.7.0 — EXPERIMENTAL AuraContainer row (off by default)
+
+- **New experimental mode** `/pb ac on|off|status` (setting `useAuraContainer`, default **off**; schema 18). When on, each plate's row is drawn by Blizzard's managed **AuraContainer** instead of Plateband's own aura reading. The container tracks the unit's auras inside the client, so it is expected to keep working **in combat on friendly units** (party Weakened Soul, HoTs, shields), for other casters' debuffs and with a client-driven countdown. Not yet verified in game.
+- One row per plate, directly above the name, left-aligned with the health bar (same offset as the normal row; anchored out of combat only). Friendly plates: debuffs up to 10 min + helpful effects up to 60 s, food/drink and permanent buffs excluded by spell id (ids are learned out of combat). Enemy plates: debuffs from players/pets + dispellable/stealable buffs. Red / green / gold borders as before; the tooltip is the container's own.
+- While the mode owns a plate, Plateband's normal row on that plate is hidden and Blizzard's native debuff list is muted too (the container shows those debuffs); buff and crowd-control lists stay muted as before. `/pb ac off` brings everything back.
+- If the client has no AuraContainer (or refuses every filter), the normal row is used silently; `/pb ac status` says why. `/pb tree` lists the container of the target plate (bound unit, shown, number of buttons).
+
+## Release 0.6.15 — countdown from the end time
+
+- An icon whose aura reports no (or zero) total duration but a public end time now counts down the remaining time (Weakened Soul showed no number).
+
+## Release 0.6.14 — other casters in combat
+
+- In combat the client hides the fields of other casters' auras (secret), so the "is it from a player?" rule dropped every debuff but yours. A debuff on an enemy whose caster is **unknown** is now shown; only a debuff known to come from an NPC stays hidden. Rows built by the direct aura read keep their own aura data for the rules.
+
+## Release 0.6.13 — no icon on top of icon, Weakened Soul row re-anchored
+
+- **Overlap:** our row is anchored through a small spacer frame of our own. When native debuffs grow into the row (your own DoT added in combat, when the row cannot be re-anchored), the spacer widens and the row moves right of the last visible native icon. A row left on a recycled plate is hidden at once (also in combat), and only one row per plate is painted.
+- **Expired icons:** an icon whose aura is no longer on a readable unit disappears even when its stored time was unusable or still in the future (dispelled, shield absorbed). A reused slot no longer keeps the previous timer; when the times are secret the client duration object drives the swipe if available. The Weakened Soul placeholder never survives combat.
+- **Weakened Soul in combat:** the row is anchored again before combat after it was cleared (before, a cleared row kept the "anchored" flag without points and showed nothing). Target names with a realm suffix are matched; with no usable name the friendly target / mouseover is used. `/pb tree` shows each step of the last own cast, the last blocked action and our row's state.
+- Nameplate aura events inside the debounce window get one trailing repaint.
+
+## Release 0.6.12 — every caster, Weakened Soul in combat
+
+- **All auras of a unit are read directly** (one icon per aura instance) whenever the client returns them, so debuffs from several casters stay separate: your DoT no longer hides other players' DoTs, and the other way round. The older collectors remain as a fallback.
+- **Friendly units in combat:** the client does not let addons read their auras. Icons painted out of combat stay and expire from their stored times; your own **Power Word: Shield** cast puts **Weakened Soul** (15 s) on that unit's row (party/raid plates). The row is anchored out of combat so it can be shown in combat without touching the plate. The placeholder is dropped when combat ends and real data takes over.
+- `/pb tree` shows the last own cast (`last own cast:`).
+
+## Release 0.6.10 — no hour-long debuffs on friendly plates
+
+- Debuffs on friendly units are shown only when their total duration is 10 minutes or less: the client files the hour-long "Boosted Rest" bonus as a debuff and it was shown next to Weakened Soul.
+- `/pb tree` lists every aura of the target (name, duration, flags, kept/dropped), tries the party token first and reports read errors. On this client aura data of **friendly** units cannot be read while in combat ("Auras cannot be accessed when secret while tainted"); out of combat it works.
+
 ## Release 0.6.3 — debuffs from any player
 
 - Enemy plates show debuffs cast by **any player or player pet** (yours, party, strangers); NPC debuffs stay hidden. (`isFromPlayerOrPlayerPet` means "a player", not "me".)

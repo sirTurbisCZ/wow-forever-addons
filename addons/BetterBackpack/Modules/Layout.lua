@@ -720,15 +720,10 @@ local function PlaceOnScreen()
   end)
 end
 
--- The closed bag is kept "shown" at alpha 0 (warm shell, so B works in combat). Its headers and slots would
--- keep catching the mouse over the empty spot (stuck tooltips, hover) - park the shell off-screen while closed.
--- Opening re-anchors it (PlaceOnScreen / CombatPlaceFrame).
+-- The closed bag is kept "shown" at alpha 0 (warm shell, so B works in combat). It must stay at its on-screen
+-- position: a frame with secure children cannot be moved in combat, so a bag parked off-screen could not be
+-- re-opened with B during a fight. Instead, no tooltip may belong to a hidden bag.
 local function ParkOffscreen(frame)
-  pcall(function()
-    frame:ClearAllPoints()
-    frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -10000, 10000)
-  end)
-  -- A tooltip owned by something inside the bag would stay on screen (no OnLeave fires when it moves away).
   if GameTooltip and GameTooltip.GetOwner then
     local owner
     pcall(function()
@@ -1330,6 +1325,10 @@ local function EnsureSection(key)
   end)
   WireSectionHeader(key, header)
   header:SetScript("OnEnter", function(self)
+    -- The closed bag is an invisible shell over the screen: it must not show tooltips.
+    if combatVisuallyHidden then
+      return
+    end
     self.title:SetTextColor(1, 1, 1)
     local BT = Feat("BulkTransfer")
     local bulkLine = BT and BT.HeaderTooltipLine and BT.HeaderTooltipLine()

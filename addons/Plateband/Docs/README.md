@@ -24,7 +24,7 @@ Icons disappear when the effect expires. Hover an icon for the tooltip of the ef
 Debuffs cast by NPCs/mobs are not shown.
 
 **Friendly units** (players, party):
-- every debuff, whoever cast it (for example Weakened Soul, poisons, diseases),
+- every debuff, whoever cast it, with a total duration of **5 minutes or less** (for example Weakened Soul, poisons, diseases, curses; Resurrection Sickness and hour-long "debuffs" such as Boosted Rest are not shown),
 - helpful effects with a **total duration of 60 seconds or less** (HoTs, shields, short buffs).
 
 Food and drink, and long or permanent buffs (hour-long buffs, auras), are never added.
@@ -58,6 +58,7 @@ Optional: install **Forever Error Log** so Lua errors land in `/felog`.
 | `/pb watch on` / `off` | Print the card every ~2 s (off by default) |
 | `/pb selftest` | Quick check that the addon is wired correctly |
 | `/pb dev on` / `off` | Developer telemetry (off by default) |
+| `/pb ac on` / `off` / `status` | The row is drawn by Blizzard's AuraContainer (default **on**): works in combat on friendly units. `off` = the older Lua-drawn row; `status` says whether this client supports the container |
 
 Alias: `/plateband`.
 
@@ -73,6 +74,7 @@ Stored in `PlatebandDB.profile`:
 | `auraWatchPlates` | true | Repaint any plate when its auras change (not only the target). Turn off to save CPU; needs `/reload` |
 | `gapTooltip` | true | Tooltip on icon hover. Off = icons ignore the mouse (needs `/reload`) |
 | `iconSize` / `maxIcons` | 18 / 12 | Fallback icon size / most icons per row |
+| `useAuraContainer` | true | AuraContainer row (`/pb ac on/off`). Falls back to the older row when the client lacks the API |
 | `silentTrace`, `autoDiag` | false | Developer telemetry |
 
 ## Sending a bug report

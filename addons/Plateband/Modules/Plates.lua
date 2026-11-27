@@ -2202,7 +2202,16 @@ EnsureNativeVisible = function(plate)
       end
     end)
   end
-  restore(NativeDebuffList(plate))
+  local acOwns = ns.PlatesPaintDeps and ns.PlatesPaintDeps.AcOwnsPlate
+  if acOwns and acOwns(plate) then
+    -- Experimental AuraContainer row owns this plate: it shows the debuffs, the native copy is muted (alpha only).
+    local dl = NativeDebuffList(plate)
+    if dl and dl.SetAlpha then
+      pcall(dl.SetAlpha, dl, 0)
+    end
+  else
+    restore(NativeDebuffList(plate))
+  end
   if Profile().mergeMissing == true then
     MuteNativeBuffList(plate)
   else
@@ -2319,6 +2328,7 @@ ClearFallback = function(unit, keepSticky)
   fb:Hide()
   fb:ClearAllPoints()
   fb._painted = 0
+  fb._pbAnchored = nil -- points cleared: PreAnchorFriend must anchor it again before combat
   if not keepSticky then
     gapSticky[unit] = nil
   end
@@ -2592,6 +2602,32 @@ local function MergeRowOffY(plate, listFrame, friendLayout)
   return -PB.MERGE_ROW_BELOW_BAR
 end
 
+--- Y offset (from the health bar TOPLEFT) of a row sitting directly above the name text.
+--- Shared by the legacy row (LayoutMergeBesideNative) and the AuraContainer row (PlatesPaint.lua).
+PB.AboveNameRowY = function(plate, bar)
+  local y = PB.NAME_ROW_FALLBACK_Y
+  pcall(function()
+    local nameFS = PlateNameFS(plate)
+    local barTop = bar:GetTop()
+    local nameTop = nameFS and nameFS:GetTop()
+    local nameBottom = nameFS and nameFS:GetBottom()
+    local textH = nameFS and nameFS:GetStringHeight()
+    local function pubNum(v)
+      return type(v) == "number" and not IsSecret(v)
+    end
+    if pubNum(barTop) and pubNum(nameTop) and nameTop > barTop then
+      -- The name frame is often taller than its text: take the lower of "frame top" and
+      -- "frame bottom + text height" as the real top of the glyphs.
+      local top = nameTop
+      if pubNum(nameBottom) and pubNum(textH) and textH > 0 and (nameBottom + textH) < top then
+        top = nameBottom + textH
+      end
+      y = math.max(0, (top - barTop) + PB.NAME_ROW_GAP)
+    end
+  end)
+  return y
+end
+
 --- Opt-in merge layout: only move Plateband fallback frame — never name / DebuffList.
 LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
   painted = tonumber(painted) or 0
@@ -2670,9 +2706,37 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
     end
     mergeFb:ClearAllPoints()
     pcall(anchorFn)
+    -- Route the row through our own spacer frame: its width shifts the row right when native icons grow
+    -- into it (SetWidth on our frame works in combat, re-anchoring does not). See D.AvoidNativeOverlap.
+    pcall(function()
+      local p, rel, rp, x, y = mergeFb:GetPoint(1)
+      if p ~= "BOTTOMLEFT" or not rel then
+        return
+      end
+      local sp = mergeFb._pbSpacer
+      if not sp then
+        sp = CreateFrame("Frame", nil, mergeFb:GetParent())
+        sp:EnableMouse(false)
+        mergeFb._pbSpacer = sp
+      end
+      if sp:GetParent() ~= mergeFb:GetParent() then
+        sp:SetParent(mergeFb:GetParent())
+      end
+      sp:ClearAllPoints()
+      sp:SetPoint(p, rel, rp, x, y)
+      sp:SetSize(0.01, 1)
+      sp:Show()
+      mergeFb:ClearAllPoints()
+      mergeFb:SetPoint("BOTTOMLEFT", sp, "BOTTOMRIGHT", 0, 0)
+    end)
+    mergeFb._pbAnchored = true -- anchored out of combat: may be shown in combat without touching the plate
     LayoutGapIconsInFallback(mergeFb, painted, sz, pad)
     if friendLayout then
       BoostFriendGapChrome(mergeFb, plate, painted)
+    end
+    local avoid = ns.PlatesPaintDeps and ns.PlatesPaintDeps.AvoidNativeOverlap
+    if avoid then
+      pcall(avoid, mergeFb, plate)
     end
   end
   local af = plate and plate.UnitFrame and plate.UnitFrame.AurasFrame
@@ -2697,26 +2761,7 @@ LayoutMergeBesideNative = function(unit, plate, mergeFb, painted)
   end
   local bar = HealthBar(plate)
   if bar and not FrameIsGlobalChrome(bar) then
-    local y = PB.NAME_ROW_FALLBACK_Y
-    pcall(function()
-      local nameFS = PlateNameFS(plate)
-      local barTop = bar:GetTop()
-      local nameTop = nameFS and nameFS:GetTop()
-      local nameBottom = nameFS and nameFS:GetBottom()
-      local textH = nameFS and nameFS:GetStringHeight()
-      local function pubNum(v)
-        return type(v) == "number" and not IsSecret(v)
-      end
-      if pubNum(barTop) and pubNum(nameTop) and nameTop > barTop then
-        -- The name frame is often taller than its text: take the lower of "frame top" and
-        -- "frame bottom + text height" as the real top of the glyphs.
-        local top = nameTop
-        if pubNum(nameBottom) and pubNum(textH) and textH > 0 and (nameBottom + textH) < top then
-          top = nameBottom + textH
-        end
-        y = math.max(0, (top - barTop) + PB.NAME_ROW_GAP)
-      end
-    end)
+    local y = PB.AboveNameRowY(plate, bar)
     finishAnchor(function()
       mergeFb:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", 0, y)
     end, paintParent)
@@ -2810,6 +2855,7 @@ EnsureFallback = function(unit, plate)
         end
       end
       fb.icons = nil
+      pcall(fb.Hide, fb) -- replaced below by a new frame: the old one must not stay on screen
     else
       if fb:GetParent() ~= parent then
         pcall(fb.SetParent, fb, parent)
@@ -3581,6 +3627,7 @@ EnrichGapAuraEntry = function(entry, unitToken)
   if type(entry) ~= "table" or not unitToken or not C_UnitAuras then
     return entry
   end
+  entry._pbGone = nil
   if entry.auraInstanceID and C_UnitAuras.GetAuraDataByAuraInstanceID then
     local ok, data = pcall(C_UnitAuras.GetAuraDataByAuraInstanceID, unitToken, entry.auraInstanceID)
     if ok and type(data) == "table" then
@@ -3612,20 +3659,28 @@ EnrichGapAuraEntry = function(entry, unitToken)
     local primary = entry.isHelpful and "HELPFUL" or "HARMFUL"
     local secondary = entry.isHelpful and "HARMFUL" or "HELPFUL"
     local done = false
+    local readable, anySeen = true, false
     for _, filter in ipairs({ primary, secondary }) do
       for idx = 1, 40 do
         local ok, data = pcall(C_UnitAuras.GetAuraDataByIndex, unitToken, idx, filter)
+        if not ok then
+          readable = false
+        end
         if not ok or not data then
           break
         end
+        anySeen = true
         local match = false
-        pcall(function()
+        local okCmp = pcall(function()
           if entry.auraInstanceID and data.auraInstanceID == entry.auraInstanceID then
             match = true
           elseif entry.spellId and data.spellId == entry.spellId then
             match = true
           end
         end)
+        if not okCmp then
+          readable = false -- secret values: cannot tell, never call it gone
+        end
         if match then
           entry.expirationTime = data.expirationTime
           entry.duration = data.duration
@@ -3639,6 +3694,8 @@ EnrichGapAuraEntry = function(entry, unitToken)
         break
       end
     end
+    -- The unit's auras were readable and this aura is not among them: it is gone (GapAuraLive).
+    entry._pbGone = (readable and anySeen and not done and (entry.spellId ~= nil or entry.auraInstanceID ~= nil)) or nil
   end
   return entry
 end
@@ -3647,8 +3704,16 @@ GapAuraLive = function(entry, unitToken)
   if type(entry) ~= "table" then
     return false
   end
+  -- Own-cast placeholder (Weakened Soul from PW:S) only lives in combat; out of combat real data takes over.
+  if entry._pbSynthetic and not (InCombatLockdown and InCombatLockdown()) then
+    return false
+  end
   EnrichGapAuraEntry(entry, unitToken)
   local now = GetTime and GetTime() or 0
+  if entry._pbGone then
+    -- readable unit, aura not on it any more (dispelled / absorbed early, or a row without usable expiry)
+    return false
+  end
   local exp = entry.expirationTime
   if type(exp) == "number" and not IsSecret(exp) and exp > 0 then
     return now < exp
@@ -3781,6 +3846,11 @@ RefreshGapCooldownsOnly = function(unit, plate, fb, auraUnit)
       -- Aura expired: hide our own icon right away (a full repaint closes the gap in the row).
       pcall(slot.Hide, slot)
     end
+  end
+  -- Native debuffs added in combat (own DoT) grow into our row: shift it right via our spacer frame.
+  local avoid = ns.PlatesPaintDeps and ns.PlatesPaintDeps.AvoidNativeOverlap
+  if avoid then
+    pcall(avoid, fb, plate)
   end
   return painted, cdN
 end
@@ -5141,6 +5211,41 @@ ApplyGapAuraVisual = function(button, entry, unitToken)
         end
       end
     end)
+    if not cdSet and button.cooldown and type(exp) == "number" and not IsSecret(exp) and exp > 0 then
+      -- Aura reports no (or a zero) total duration but a public end time: count down the remaining time.
+      pcall(function()
+        local now = GetTime and GetTime() or 0
+        local left = exp - now
+        if left > 0.05 then
+          button.cooldown:SetCooldown(now, left)
+          button.cooldown:Show()
+          cdSet = true
+        end
+      end)
+    end
+    if not cdSet and button.cooldown then
+      -- Times unusable (secret): let the client drive the swipe from the aura itself when it can.
+      pcall(function()
+        local cd = button.cooldown
+        local aid = entry.auraInstanceID
+        if aid ~= nil and unitToken and C_UnitAuras and C_UnitAuras.GetAuraDuration and cd.SetCooldownFromDurationObject then
+          local durObj = C_UnitAuras.GetAuraDuration(unitToken, aid)
+          if durObj then
+            cd:SetCooldownFromDurationObject(durObj)
+            cd:Show()
+            cdSet = true
+          end
+        end
+      end)
+    end
+    if not cdSet and not auraInstanceOk and button.cooldown then
+      -- A reused slot must not keep the previous aura's timer.
+      pcall(function()
+        if button.cooldown.Clear then
+          button.cooldown:Clear()
+        end
+      end)
+    end
     entry._pbCd = cdSet
     local showCount = ok or auraInstanceOk
     pcall(function()
@@ -5244,6 +5349,8 @@ Plateband.PlatesTraceDeps = {
 
 --- Paint deps for PlatesPaint.lua (separate chunk — PaintMergeMissing 60 upvalue cap).
 Plateband.PlatesPaintDeps = {
+    NameplateUnitFor = NameplateUnitFor,
+    OverlayUnitKey = OverlayUnitKey,
     IsSecret = IsSecret,
     AuraIsOurPersonalOnly = AuraIsOurPersonalOnly,
     IsFriendlyConsumableAura = IsFriendlyConsumableAura,
@@ -5320,6 +5427,17 @@ Plateband.PlatesPaintDeps = {
     GapAuraLive = GapAuraLive,
     StickyRowsLiveOnUnit = StickyRowsLiveOnUnit,
     RefreshHeldGapFallback = RefreshHeldGapFallback,
+    -- 0.7.0 experimental AuraContainer row (PlatesPaint.lua)
+    Profile = Profile,
+    ModuleActive = ModuleActive,
+    HealthBar = HealthBar,
+    FrameIsGlobalChrome = FrameIsGlobalChrome,
+    NativeDebuffList = NativeDebuffList,
+    MuteNativeBuffList = MuteNativeBuffList,
+    AboveNameRowY = PB.AboveNameRowY,
+    ApplyNativeAuraCooldown = ApplyNativeAuraCooldown,
+    ApplyNativeAuraDurationFont = ApplyNativeAuraDurationFont,
+    StyleAuraStackFont = StyleAuraStackFont,
 }
 
 --- Thin delegate — body in Modules/PlatesPaint.lua.
@@ -5352,6 +5470,29 @@ UpdateOverlay = function(unit, plate)
   if not plate or IsForbiddenPlate(plate) then
     ClearOverlay(unit)
     return
+  end
+
+  -- 0.7.0 experimental (profile useAuraContainer): a Blizzard-managed AuraContainer row (PlatesPaint.lua).
+  -- When it owns the plate, the legacy collector row of that plate is hidden and bypassed (nothing drawn twice).
+  local acUpdate = ns.PlatesPaintDeps and ns.PlatesPaintDeps.AcUpdate
+  if acUpdate then
+    local okAc, acOwns = pcall(acUpdate, unit, plate)
+    if okAc and acOwns then
+      combatPendingPaint[unit] = nil
+      for k, fbA in pairs(fallbacks) do
+        if k == unit or fbA._pbPlate == plate then
+          if SecurePaintLocked() then
+            pcall(fbA.Hide, fbA) -- our own frame only
+            fbA._painted = 0
+          else
+            ClearFallback(k)
+          end
+        end
+      end
+      return
+    elseif not okAc and ns.RecordError then
+      ns.RecordError("ac:update", acOwns)
+    end
   end
 
   if SecurePaintLocked() then
@@ -5397,6 +5538,12 @@ UpdateOverlay = function(unit, plate)
     ClearFallback(unit, false)
     if ns.RecordError then
       ns.RecordError("paint", errPaint)
+    end
+  else
+    -- Party/raid plates get their (hidden) row anchored now, so it can be shown during combat.
+    local pre = ns.PlatesPaintDeps and ns.PlatesPaintDeps.PreAnchorFriend
+    if pre then
+      pcall(pre, unit, plate)
     end
   end
 end
@@ -5878,7 +6025,7 @@ MaybeAutoDiagnose = function(reason, force)
   pcall(SnapshotDiagnose, reason or "auto", {})
 end
 
-OnEvent = function(_, event, arg1)
+OnEvent = function(_, event, arg1, arg2, arg3, arg4)
   if event == "NAME_PLATE_UNIT_ADDED" then
     InvalidatePartyTokenCache()
     local unit = arg1
@@ -5913,8 +6060,19 @@ OnEvent = function(_, event, arg1)
     InvalidatePartyTokenCache()
     overlayPending[arg1] = nil
     combatPendingPaint[arg1] = nil
+    -- AuraContainer row of the recycled plate: hide it and drop the binding (our frames only, combat-safe).
+    local acDetach = ns.PlatesPaintDeps and ns.PlatesPaintDeps.AcDetach
+    if acDetach then
+      pcall(acDetach, arg1)
+    end
     if SecurePaintLocked() then
       combatDeferredClears[arg1] = true
+      -- The plate frame is recycled for another unit: hide our row now (Hide on our own frame only).
+      local fbR = fallbacks[arg1]
+      if fbR then
+        pcall(fbR.Hide, fbR)
+        fbR._painted = 0
+      end
     else
       ClearOverlay(arg1)
       overlays[arg1] = nil
@@ -5970,10 +6128,28 @@ OnEvent = function(_, event, arg1)
       RefreshAll()
       MaybeAutoDiagnose(event == "PLAYER_ENTERING_WORLD" and "pew" or "roster", true)
     end)
+  elseif event == "UNIT_SPELLCAST_SENT" or event == "UNIT_SPELLCAST_SUCCEEDED" then
+    local f = ns.PlatesPaintDeps and ns.PlatesPaintDeps.OnOwnCast
+    if f then
+      f(event, arg1, arg2, arg3, arg4)
+    end
   elseif event == "UNIT_AURA" then
     local unit = arg1
     if not unit then
       return
+    end
+    -- Diagnostic for /pb tree: can the EVENT path read this unit's auras while in combat?
+    if InCombatLockdown and InCombatLockdown() and type(unit) == "string" and unit ~= "player"
+      and C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
+      local now0 = GetTime and GetTime() or 0
+      PB.probeAt = PB.probeAt or {}
+      if (now0 - (PB.probeAt[unit] or 0)) > 2 then
+        PB.probeAt[unit] = now0
+        local okP, resP = pcall(C_UnitAuras.GetAuraDataByIndex, unit, 1, "HELPFUL")
+        PB.probeEvent = PB.probeEvent or {}
+        PB.probeEvent[unit] = string.format("COMBAT event on %s: %s", unit,
+          okP and (resP and "OK data" or "OK nil") or ("ERR " .. tostring(resP):sub(1, 60)))
+      end
     end
     if type(unit) == "string" and unit:match("^nameplate%d+") then
       -- New HoTs / party DoTs on non-target plates: repaint that plate (debounced per unit).
@@ -5983,6 +6159,19 @@ OnEvent = function(_, event, arg1)
       local now = GetTime and GetTime() or 0
       PB.auraAt = PB.auraAt or {}
       if (now - (PB.auraAt[unit] or 0)) < PB.PAINT_PARTY_SEC then
+        -- Debounced: one trailing repaint so the last change (a new native DoT) is not lost until the tick.
+        PB.auraTrail = PB.auraTrail or {}
+        if not PB.auraTrail[unit] and C_Timer and C_Timer.After then
+          PB.auraTrail[unit] = true
+          C_Timer.After(PB.PAINT_PARTY_SEC, function()
+            PB.auraTrail[unit] = nil
+            PB.auraAt[unit] = GetTime and GetTime() or 0
+            local np2 = PlateFor(unit)
+            if np2 and not IsForbiddenPlate(np2) then
+              pcall(ScheduleOverlayUpdate, unit, np2)
+            end
+          end)
+        end
         return
       end
       PB.auraAt[unit] = now
@@ -6078,6 +6267,11 @@ function Mod.Start()
   for i = 1, #events do
     pcall(eventFrame.RegisterEvent, eventFrame, events[i])
   end
+  -- Own Power Word: Shield casts -> Weakened Soul on that unit's row during combat (see PlatesPolicy.lua).
+  if eventFrame.RegisterUnitEvent then
+    pcall(eventFrame.RegisterUnitEvent, eventFrame, "UNIT_SPELLCAST_SENT", "player")
+    pcall(eventFrame.RegisterUnitEvent, eventFrame, "UNIT_SPELLCAST_SUCCEEDED", "player")
+  end
   if eventFrame.RegisterUnitEvent and Profile().auraWatchPlates == false then
     pcall(eventFrame.RegisterUnitEvent, eventFrame, "UNIT_AURA", "target", "focus")
   else
@@ -6093,6 +6287,10 @@ end
 function Mod.Stop()
   StopTicker()
   StopWatchTicker()
+  local acHide = ns.PlatesPaintDeps and ns.PlatesPaintDeps.AcHideAll
+  if acHide then
+    pcall(acHide)
+  end
   for unit in pairs(overlays) do
     ClearOverlay(unit)
   end
@@ -6118,6 +6316,33 @@ end
 
 function Mod.Refresh()
   RefreshAll()
+end
+
+--- /pb ac on|off: switch the experimental AuraContainer row and repaint every plate (legacy row comes back on off).
+function Mod.SetAuraContainer(on)
+  local acHide = ns.PlatesPaintDeps and ns.PlatesPaintDeps.AcHideAll
+  if not on and acHide then
+    pcall(acHide)
+  end
+  local live = EnumerateLivePlates()
+  for i = 1, #live do
+    if live[i].plate then
+      EnsureNativeVisible(live[i].plate)
+    end
+  end
+  lastFullRefreshAt = 0
+  if ModuleActive() then
+    RefreshAll()
+  end
+end
+
+--- /pb ac status: lines describing the container API on this client and the current containers.
+function Mod.AuraContainerStatus()
+  local fn = ns.PlatesPaintDeps and ns.PlatesPaintDeps.AcStatusLines
+  if not fn then
+    return { "ac: module missing (PlatesPaint.lua not loaded)" }
+  end
+  return fn()
 end
 
 --- /pb tree — which frames of the TARGET plate draw aura icons: one short line per native AurasFrame child
@@ -6173,7 +6398,7 @@ function Mod.DumpTree()
   end
   local uf = plate.UnitFrame
   local af = uf and uf.AurasFrame
-  P(string.format("tree: unit=%s friendPlate=%s", tostring(unit), tostring(IsPlayerOrFriendPlate(unit, plate))))
+  P(string.format("tree: v%s unit=%s friendPlate=%s", tostring(ns.Config and ns.Config.VERSION), tostring(unit), tostring(IsPlayerOrFriendPlate(unit, plate))))
   if af then
     local ok, kids = pcall(function()
       return { af:GetChildren() }
@@ -6197,6 +6422,149 @@ function Mod.DumpTree()
     end
   else
     P("  no AurasFrame")
+  end
+  -- Every aura of the plate's unit and what the rules do with it: name, duration, flags and kept/dropped.
+  do
+    local D = ns.PlatesPaintDeps
+    local friend = IsPlayerOrFriendPlate(unit, plate) or PlateUsesFriendlyHarmfulFilter(plate)
+    local seen = { HARMFUL = 0, HELPFUL = 0 }
+    -- Friendly units return no auras through "target"/"nameplateN" on this client; the party/raid token works.
+    local partyTok = ResolvePartyTokenForPlate and ResolvePartyTokenForPlate(plate)
+    local tokens = {}
+    if type(partyTok) == "string" then
+      tokens[#tokens + 1] = partyTok
+    end
+    tokens[#tokens + 1] = unit
+    tokens[#tokens + 1] = "target"
+    for _, tok in ipairs(tokens) do
+      if seen.HARMFUL + seen.HELPFUL > 0 then
+        break
+      end
+      for _, filter in ipairs({ "HARMFUL", "HELPFUL" }) do
+        for i = 1, 8 do
+          local ok, data = pcall(C_UnitAuras.GetAuraDataByIndex, tok, i, filter)
+          if not ok or type(data) ~= "table" then
+            break
+          end
+          seen[filter] = seen[filter] + 1
+          local line
+          pcall(function()
+            local row = { auraInstanceID = data.auraInstanceID, spellId = data.spellId, icon = data.icon }
+            local helpful = D and D.GapRowIsHelpful and D.GapRowIsHelpful(row, data, tok)
+            local list = { row }
+            local dropped = D and D.ApplyGapPolicy and D.ApplyGapPolicy(list, tok, friend and true or false, true) or 0
+            line = string.format("  %s %s dur=%s h/H=%s/%s type=%s -> %s",
+              filter:sub(1, 4), tostring(data.name), tostring(data.duration), tostring(data.isHelpful),
+              tostring(data.isHarmful), tostring(helpful), dropped == 0 and "KEPT" or "dropped")
+          end)
+          P(line or ("  " .. filter .. " " .. i .. " (unreadable)"))
+        end
+      end
+      P(string.format("  auras read on %s: HARM=%d HELP=%d (friend rules=%s)", tok, seen.HARMFUL, seen.HELPFUL, tostring(friend and true or false)))
+    end
+    local oc = ns.PlatesPaintDeps and ns.PlatesPaintDeps.lastOwnCast
+    P("  last own cast: " .. tostring(oc or "none (cast Power Word: Shield in combat)"))
+    P("  last blocked: " .. tostring(lastBlocked))
+    do
+      local key = OverlayUnitKey(NameplateUnitFor("target"), plate)
+      local fb = key and fallbacks[key]
+      local np = 0
+      pcall(function()
+        np = fb and fb:GetNumPoints() or 0
+      end)
+      P(string.format("  our row: key=%s exists=%s anchored=%s points=%d painted=%s shown=%s shift=%s",
+        tostring(key), tostring(fb ~= nil), tostring(fb and fb._pbAnchored), np, tostring(fb and fb._painted),
+        tostring(fb and fb:IsShown()), tostring(fb and fb._pbShift)))
+    end
+    -- Event-path probes recorded during combat (UNIT_AURA), and a timer-path probe printed next frame.
+    for u, text in pairs(PB.probeEvent or {}) do
+      P("  " .. text)
+    end
+    if C_Timer and C_Timer.After then
+      C_Timer.After(0, function()
+        for _, tk in ipairs(tokens) do
+          local okT, resT = pcall(C_UnitAuras.GetAuraDataByIndex, tk, 1, "HELPFUL")
+          P(string.format("  timer-path %s %s: %s", InCombatLockdown and InCombatLockdown() and "COMBAT" or "ooc", tk,
+            okT and (resT and "OK data" or "OK nil") or ("ERR " .. tostring(resT):sub(1, 60))))
+        end
+      end)
+    end
+    -- Which read API works for this unit? Show the ERROR text (friendly units may be restricted).
+    local combat = InCombatLockdown and InCombatLockdown() and "COMBAT" or "ooc"
+    P("  state: " .. combat)
+    for _, tok in ipairs(tokens) do
+      local parts = {}
+      for _, filter in ipairs({ "HARMFUL", "HELPFUL" }) do
+        local function probe(label, fn)
+          local ok, res = pcall(fn)
+          if ok then
+            return label .. "=" .. tostring(res)
+          end
+          return label .. "=ERR(" .. tostring(res):sub(1, 70) .. ")"
+        end
+        parts[#parts + 1] = filter:sub(1, 4) .. " "
+          .. probe("byIndex", function()
+            local d = C_UnitAuras.GetAuraDataByIndex(tok, 1, filter)
+            return d and "data" or "nil"
+          end)
+          .. " "
+          .. probe("slots", function()
+            return select("#", C_UnitAuras.GetAuraSlots(tok, filter)) - 1
+          end)
+      end
+      P("  API " .. tok .. ": " .. table.concat(parts, " | "))
+    end
+  end
+  -- Our icons on this plate: what each one holds (explains a missing countdown).
+  do
+    local fbx = fallbacks[unit] or fallbacks["target"]
+    P(string.format("  icons: row=%s slots=%s", fbx and "yes" or "NO", fbx and type(fbx.icons) == "table" and tostring(#fbx.icons) or "nil"))
+    if fbx and type(fbx.icons) == "table" then
+      for i = 1, #fbx.icons do
+        local b = fbx.icons[i]
+        local shown = false
+        pcall(function()
+          shown = b:IsShown()
+        end)
+        if shown then
+          local r = b._pbRow or {}
+          local function num(v)
+            if v == nil then
+              return "nil"
+            end
+            if IsSecret(v) then
+              return "SECRET"
+            end
+            return tostring(v)
+          end
+          local cdShown = false
+          pcall(function()
+            cdShown = b.cooldown and b.cooldown:IsShown() or false
+          end)
+          local left = "?"
+          if type(r.expirationTime) == "number" and not IsSecret(r.expirationTime) then
+            left = string.format("%.1f", r.expirationTime - (GetTime and GetTime() or 0))
+          end
+          P(string.format("  icon%d spell=%s dur=%s exp=%s left=%s synthetic=%s cooldownShown=%s helpful=%s",
+            i, num(r.spellId), num(r.duration), num(r.expirationTime), left, tostring(r._pbSynthetic),
+            tostring(cdShown), tostring(r.isHelpful)))
+        end
+      end
+    end
+  end
+  -- Experimental AuraContainer row of this plate (0.7.0): exists / bound / shown / buttons.
+  do
+    local acTree = ns.PlatesPaintDeps and ns.PlatesPaintDeps.AcTreeLines
+    if acTree then
+      local okT, lines = pcall(acTree, plate)
+      if okT and type(lines) == "table" then
+        for i = 1, #lines do
+          P(lines[i])
+        end
+      elseif not okT then
+        P("  AC: tree error " .. tostring(lines):sub(1, 100))
+      end
+    end
   end
   local fb = fallbacks[unit] or fallbacks["target"]
   local lpd = lastPaintDebug or {}
