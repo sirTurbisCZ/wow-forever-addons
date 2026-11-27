@@ -167,6 +167,8 @@ local function SpellInfo(id)
   return name, icon
 end
 
+local AURA_FILTERS = { "HELPFUL", "HARMFUL" }
+
 --- Aura data of the first present aura id (table, id) or nil. Presence is trusted; fields may be secret.
 local function ReadAura(ids, auraName)
   if not ids then
@@ -180,7 +182,7 @@ local function ReadAura(ids, auraName)
         return data, id
       end
     elseif C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
-      for _, filter in ipairs({ "HELPFUL", "HARMFUL" }) do
+      for _, filter in ipairs(AURA_FILTERS) do
         for n = 1, 40 do
           local ok, data = pcall(C_UnitAuras.GetAuraDataByIndex, "player", n, filter)
           if not ok or type(data) ~= "table" then
@@ -195,7 +197,7 @@ local function ReadAura(ids, auraName)
   end
   if auraName and C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
     -- ids differ between client builds: fall back to the localized aura name
-    for _, filter in ipairs({ "HELPFUL", "HARMFUL" }) do
+    for _, filter in ipairs(AURA_FILTERS) do
       for n = 1, 40 do
         local ok, data = pcall(C_UnitAuras.GetAuraDataByIndex, "player", n, filter)
         if not ok or type(data) ~= "table" then
@@ -330,10 +332,10 @@ local function SyncAB()
   if ab.stacks > 0 and ab.expires > 0 and now >= ab.expires then
     ClearAB()
   end
-  if ab.stacks > 0 and (now - (ab.lastCast or 0)) < 1.5 and not ReadAura(stacksEntry.auras, stacksEntry.localName) then
+  local data = ReadAura(stacksEntry.auras, stacksEntry.localName)
+  if ab.stacks > 0 and (now - (ab.lastCast or 0)) < 1.5 and not data then
     return -- just cast: give the aura time to appear before trusting its absence
   end
-  local data = ReadAura(stacksEntry.auras, stacksEntry.localName)
   if data then
     -- the aura can linger in the list for a moment after it ran out: an expiry in the past means "gone",
     -- never "start a new window"
@@ -922,7 +924,7 @@ local function OnEvent(_, event, a1, a2, a3)
       SafeUpdate()
     end
   elseif event == "UNIT_AURA" then
-    if a1 == "player" then
+    if a1 == "player" and not ticker then -- the 0.1 s ticker already refreshes while the HUD is shown
       SafeUpdate()
     end
   elseif event == "PLAYER_REGEN_DISABLED" then
@@ -966,6 +968,8 @@ local function SetEvents(on)
   else
     pcall(eventFrame.UnregisterAllEvents, eventFrame)
   end
+  -- Always listen: an inactive module ("none of N spells known" while spell data loads) must re-check.
+  pcall(eventFrame.RegisterEvent, eventFrame, "SPELLS_CHANGED")
 end
 
 -- ---------------------------------------------------------------------------
@@ -1127,7 +1131,7 @@ function Mod.Slash(rest)
     P("procs: debug " .. (debugOn and "on — every cast of yours prints id and name (/wf proc debug to stop)" or "off"))
   elseif rest == "auras" then
     local n = 0
-    for _, filter in ipairs({ "HELPFUL", "HARMFUL" }) do
+    for _, filter in ipairs(AURA_FILTERS) do
       for i = 1, 40 do
         local ok, d = pcall(C_UnitAuras.GetAuraDataByIndex, "player", i, filter)
         if not ok or type(d) ~= "table" then

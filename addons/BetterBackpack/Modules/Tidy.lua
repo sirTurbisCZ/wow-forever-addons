@@ -28,88 +28,94 @@ local function ClearCur()
   end
 end
 
+-- true only when the item really is on the cursor (pcall status alone says nothing).
 local function Pickup(bag, slot)
+  local ok
   if C_Container and C_Container.PickupContainerItem then
-    return pcall(C_Container.PickupContainerItem, bag, slot)
+    ok = pcall(C_Container.PickupContainerItem, bag, slot)
+  elseif PickupContainerItem then
+    ok = pcall(PickupContainerItem, bag, slot)
   end
-  if PickupContainerItem then
-    return pcall(PickupContainerItem, bag, slot)
+  if not ok then
+    return false
   end
-  return false
+  if CursorHasItem then
+    local has = CursorHasItem()
+    return has and true or false
+  end
+  return GetCursorInfo ~= nil and GetCursorInfo() ~= nil
 end
 
-local function SlotItemID(bag, slot)
-  if C_Container and C_Container.GetContainerItemID then
-    local ok, id = pcall(C_Container.GetContainerItemID, bag, slot)
-    if ok and type(id) == "number" and not Slots.IsSecret(id) then
-      return id
+-- Max stack per item id (ContainerItemInfo has no maxStack field). Unknown -> nil -> no merge.
+local maxStackCache = {}
+local function MaxStackFor(id)
+  local m = maxStackCache[id]
+  if m then
+    return m
+  end
+  if C_Item and C_Item.GetItemMaxStackCount then
+    local ok, v = pcall(C_Item.GetItemMaxStackCount, id)
+    if ok and type(v) == "number" and not Slots.IsSecret(v) and v > 0 then
+      maxStackCache[id] = v
+      return v
     end
   end
   return nil
 end
+Tidy.MaxStackFor = MaxStackFor
 
-local function SlotCount(bag, slot)
+-- One GetContainerItemInfo per slot per pass: { bag, slot, id, count } for partial stacks.
+local function ReadPartials(ranges)
+  local list = {}
   if not (C_Container and C_Container.GetContainerItemInfo) then
-    return 0
+    return list
   end
-  local ok, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
-  if not ok or type(info) ~= "table" then
-    return 0
-  end
-  local c = info.stackCount or info.Count
-  if type(c) == "number" and not Slots.IsSecret(c) then
-    return c
-  end
-  return 1
-end
-
-local function SlotMaxStack(bag, slot)
-  if C_Container and C_Container.GetContainerItemInfo then
-    local ok, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
-    if ok and type(info) == "table" then
-      local m = info.maxStack or info.stackSize
-      if type(m) == "number" and not (Slots.IsSecret and Slots.IsSecret(m)) and m > 1 then
-        return m
+  for ri = 1, #ranges do
+    local bag = ranges[ri].bag
+    local n = Slots.NumSlotsForBag(bag)
+    for slot = 1, n do
+      local ok, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
+      if ok and type(info) == "table" then
+        local id = info.itemID
+        local c = info.stackCount or info.Count
+        if type(id) == "number" and not Slots.IsSecret(id) and not info.isLocked then
+          if type(c) ~= "number" or Slots.IsSecret(c) then
+            c = 1
+          end
+          local max = MaxStackFor(id)
+          if max and c > 0 and c < max then
+            list[#list + 1] = { bag = bag, slot = slot, id = id, count = c, max = max }
+          end
+        end
       end
     end
   end
-  return 9999
+  return list
 end
 
 local function StackBagsOnce()
-  local bags = { 0, 1, 2, 3, 4 }
+  local ranges = Slots.InventoryBagRanges()
+  local list = ReadPartials(ranges)
   local merges = 0
-  for bi = 1, #bags do
-    local bag = bags[bi]
-    local n = Slots.NumSlotsForBag(bag)
-    for slot = 1, n do
-      local id = SlotItemID(bag, slot)
-      if id then
-        local count = SlotCount(bag, slot)
-        local maxStack = SlotMaxStack(bag, slot)
-        if count > 0 and count < maxStack then
-          for bj = bi, #bags do
-            local bag2 = bags[bj]
-            local n2 = Slots.NumSlotsForBag(bag2)
-            local start = (bj == bi) and (slot + 1) or 1
-            for slot2 = start, n2 do
-              if SlotItemID(bag2, slot2) == id then
-                local c2 = SlotCount(bag2, slot2)
-                if c2 > 0 and c2 < maxStack then
-                  ClearCur()
-                  if Pickup(bag, slot) then
-                    Pickup(bag2, slot2)
-                    merges = merges + 1
-                    if merges >= 50 then
-                      ClearCur()
-                      return merges
-                    end
-                  end
-                  ClearCur()
-                end
-              end
+  for i = 1, #list do
+    local a = list[i]
+    if not a.used then
+      for j = i + 1, #list do
+        local b = list[j]
+        if not b.used and b.id == a.id then
+          ClearCur()
+          if Pickup(a.bag, a.slot) then
+            Pickup(b.bag, b.slot)
+            a.used, b.used = true, true -- stale now; the next pass re-reads
+            merges = merges + 1
+            ClearCur()
+            if merges >= 50 then
+              return merges
             end
+            break
           end
+          ClearCur()
+          break -- source would not lift (locked); don't retry it against every partner
         end
       end
     end

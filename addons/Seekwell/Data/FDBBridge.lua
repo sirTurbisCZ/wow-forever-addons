@@ -33,12 +33,14 @@ local FOREVER_ID = 211000
 local SLICE_MS = 4
 local SLICE_N = 1500 -- entries per slice when debugprofilestop is missing
 local PTS_CAP = 60 -- converted world points per npc and continent group
-local SPAWN_LRU = 300
+local SPAWN_LRU = 600
 
 local st = { loaded = false, tried = false, failed = nil, waiting = false, folder = nil, ms = nil, kb = nil, noted = false }
 local gen = 0
 local epoch = 0 -- bumped when the indexes are reset: older sliced jobs stop
 local jobs = {} -- name -> { done, n, total }
+local fails = {} -- job name -> failed runs (a failed job may restart twice)
+local readyFns = {}
 local idx = {} -- npcItems, itemIds/itemLower, npcIds/npcLower, mapMobs, dng
 local spawnCache, spawnCount, spawnTick = {}, 0, 0
 local mapTypeCache = {}
@@ -160,6 +162,22 @@ local function After(fn)
   end
 end
 
+--- Calls fn() every time an index finishes building (a 'building' answer can be asked again).
+function F.OnReady(fn)
+  if type(fn) == "function" then
+    readyFns[#readyFns + 1] = fn
+  end
+end
+
+local function FireReady()
+  for _, fn in ipairs(readyFns) do
+    local ok, e = pcall(fn)
+    if not ok then
+      Err("onready", e)
+    end
+  end
+end
+
 -- sliced job runner: iterates t with next() in slices of ~SLICE_MS, calls each(k, v); done() at the end
 local function Job(name, t, each, done)
   if jobs[name] or type(t) ~= "table" then
@@ -198,6 +216,10 @@ local function Job(name, t, each, done)
     if not ok then
       j.done, j.failed = true, true
       Err("job." .. name, err)
+      fails[name] = (fails[name] or 0) + 1
+      if fails[name] < 2 and jobs[name] == j then
+        jobs[name] = nil -- the next request builds it again
+      end
       return
     end
     if j.done then
@@ -230,7 +252,7 @@ end
 
 local function ResetIndexes()
   epoch = epoch + 1
-  jobs, idx = {}, {}
+  jobs, idx, fails = {}, {}, {}
   spawnCache, spawnCount = {}, 0
   mapTypeCache = {}
 end
@@ -264,6 +286,7 @@ local function BuildNpcItems()
     if Seekwell.Registry and Seekwell.Registry.ClearCache then
       pcall(Seekwell.Registry.ClearCache)
     end
+    FireReady()
   end)
 end
 
@@ -282,6 +305,7 @@ local function BuildNames(kind)
     end
   end, function()
     idx[key] = { ids = ids, lower = lowers }
+    FireReady()
   end)
 end
 
@@ -375,6 +399,7 @@ local function BuildMapMobs()
     end
     idx.mapMobs = out
     gen = gen + 1
+    FireReady()
   end
   local function DoSpw()
     if spw then
@@ -730,7 +755,7 @@ F.Spawns = Guard("spawns", function(npcID)
         local pts = Map(m).points
         for i = 1, #c - 1, 2 do
           local x, y = tonumber(c[i]), tonumber(c[i + 1])
-          if x and y and #pts < PTS_CAP * 2 then
+          if x and y and #pts < PTS_CAP then
             x, y = x / 1000, y / 1000
             if x >= 0 and x <= 1 and y >= 0 and y <= 1 then
               pts[#pts + 1] = { x = x, y = y }
@@ -754,7 +779,9 @@ F.Spawns = Guard("spawns", function(npcID)
           if m then
             n = n + 1
             local pts = Map(m).points
-            pts[#pts + 1] = { x = x, y = y }
+            if #pts < PTS_CAP then
+              pts[#pts + 1] = { x = x, y = y }
+            end
           end
         end
       end

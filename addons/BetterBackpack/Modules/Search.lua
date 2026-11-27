@@ -13,6 +13,8 @@ local Config = BetterBackpack.Config
 local Slots = BetterBackpack.Modules.Slots
 
 local box, edit
+-- Typing is debounced (one DoLayout per pause, not per keystroke); SetQuery stays immediate.
+local typing = { pending = false }
 
 local function Profile()
   return Config.GetProfile()
@@ -50,6 +52,7 @@ end
 function Search.SetQuery(q)
   local p = Profile()
   p.searchQuery = type(q) == "string" and q or ""
+  typing.pending = false -- a command overrides any typed text still waiting
   local Layout = BetterBackpack.Modules.Layout
   if Layout and Layout.Relayout then
     Layout.Relayout()
@@ -104,8 +107,15 @@ function Search.Passes(bag, slot, info)
   return false
 end
 
+local function ApplyTyped()
+  typing.pending = false
+  if edit and (edit:GetText() or "") ~= Search.GetQuery() then
+    Search.SetQuery(edit:GetText() or "")
+  end
+end
+
 local function SyncEdit()
-  if edit then
+  if edit and not typing.pending then
     local cur = Search.GetQuery()
     if edit:GetText() ~= cur then
       edit:SetText(cur)
@@ -119,7 +129,14 @@ local function WireEdit(e)
   e:HookScript("OnTextChanged", function(self)
     local t = self:GetText() or ""
     if t ~= Search.GetQuery() then
-      Search.SetQuery(t)
+      if C_Timer and C_Timer.After then
+        if not typing.pending then
+          typing.pending = true
+          C_Timer.After(0.15, ApplyTyped)
+        end
+      else
+        Search.SetQuery(t)
+      end
     end
   end)
   e:HookScript("OnEscapePressed", function(self)

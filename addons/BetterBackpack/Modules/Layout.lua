@@ -628,7 +628,7 @@ function Layout.PlaceCursorInFreeSlot()
     return false
   end
   local reagent = Slots.ReagentBagIndex and Slots.ReagentBagIndex() or 5
-  local ranges = Slots.PlayerBagRanges and Slots.PlayerBagRanges() or {}
+  local ranges = (Slots.InventoryBagRanges and Slots.InventoryBagRanges()) or (Slots.PlayerBagRanges and Slots.PlayerBagRanges()) or {}
   local order = {}
   for i = 1, #ranges do
     if ranges[i].bag ~= reagent then
@@ -776,13 +776,13 @@ end
 
 local cursorWatch = CreateFrame("Frame")
 pcall(cursorWatch.RegisterEvent, cursorWatch, "CURSOR_CHANGED")
-pcall(cursorWatch.RegisterEvent, cursorWatch, "CURSOR_UPDATE")
 cursorWatch:SetScript("OnEvent", function()
   local ok, kind = pcall(GetCursorInfo)
   if not ok or kind ~= "item" then
     if Slots.ClearDragSource then
       Slots.ClearDragSource()
     end
+    Slots._bbSplitItem = nil -- a cancelled split must not mark a later normal drop as separate
     Layout.SetDropHints(false)
   end
   pcall(UpdateFreeDrop)
@@ -809,6 +809,13 @@ local function BagsMatchForHighlight(a, b)
   end
   local na, nb = SafeNum(a, nil), SafeNum(b, nil)
   return na ~= nil and nb ~= nil and na == nb
+end
+
+function Layout.BucketCmp(a, b)
+  if a.bag ~= b.bag then
+    return a.bag < b.bag
+  end
+  return a.slot < b.slot
 end
 
 local function CollectBuckets(unfiltered)
@@ -850,12 +857,7 @@ local function CollectBuckets(unfiltered)
     end
   end
   for _, list in pairs(buckets) do
-    table.sort(list, function(a, b)
-      if a.bag ~= b.bag then
-        return a.bag < b.bag
-      end
-      return a.slot < b.slot
-    end)
+    table.sort(list, Layout.BucketCmp)
   end
   return buckets
 end
@@ -1588,6 +1590,10 @@ function Layout.ResetLaneOrder()
 end
 
 local function EntryKey(e, nth)
+  if e.separate then
+    -- a split-off stack keeps its own key, so it never takes over the remembered place of the main stack
+    return "s" .. tostring(e.bag) .. ":" .. tostring(e.slot)
+  end
   if e.itemID then
     -- Several entries of one item (a merged stack and stacks the player split off): the first is "i<id>", the others
     -- also carry their slot so none of them is lost.
@@ -1604,7 +1610,7 @@ local function StableLane(key, list)
   local keyOf, byKey, nth = {}, {}, {}
   for i = 1, #list do
     local e = list[i]
-    local n = e.itemID and ((nth[e.itemID] or 0) + 1) or nil
+    local n = e.itemID and not e.separate and ((nth[e.itemID] or 0) + 1) or nil
     if n then
       nth[e.itemID] = n
     end
@@ -1924,6 +1930,9 @@ local function DoLayout()
     BetterBackpack._bbGridSig = VisibleGridSignature()
   end)
   layoutBusy = false
+  if Layout.SyncSlotMouse then
+    pcall(Layout.SyncSlotMouse) -- new slot buttons follow the visible state (a layout can run in the parked shell)
+  end
   if not ok and BetterBackpack.RecordError then
     BetterBackpack.RecordError("layout", err)
   end
@@ -3181,6 +3190,62 @@ local function FrameAlpha(f)
 end
 
 -- Open for B XOR: combat uses alpha + flag (Show may fail in lockdown).
+--- Slot buttons take clicks only while the bag is really visible (out of combat: protected frames cannot be changed in
+--- combat; the next out-of-combat park / layout fixes it).
+--- Every other mouse-enabled child of the bag frame (lane headers, title buttons, search box, the drop catcher...) is
+--- switched off while the bag is parked and restored afterwards, otherwise clicks under the invisible bag are swallowed.
+--- Frames that were not mouse-enabled before are left alone (marked with _bbParkMouse). Not protected, so it also works
+--- in combat; protected frames (the secure slot buttons) are handled by Slots.SetAllMouse.
+local function ShellMouse(frame, on, depth)
+  if not frame or depth > 6 or not frame.GetChildren then
+    return
+  end
+  local kids = { frame:GetChildren() }
+  for i = 1, #kids do
+    local c = kids[i]
+    local protected = false
+    if c.IsProtected then
+      local ok, v = pcall(c.IsProtected, c)
+      protected = ok and v and true or false
+    end
+    if not protected and c.EnableMouse then
+      if on then
+        if c._bbParkMouse then
+          c._bbParkMouse = nil
+          pcall(c.EnableMouse, c, true)
+        end
+      elseif c.IsMouseEnabled then
+        local ok, en = pcall(c.IsMouseEnabled, c)
+        if ok and en and not c._bbParkMouse then
+          c._bbParkMouse = true
+          pcall(c.EnableMouse, c, false)
+        end
+      end
+    end
+    if not protected then
+      ShellMouse(c, on, depth + 1)
+    end
+  end
+end
+
+function Layout.SyncShellMouse(visible)
+  local f = main or _G.BetterBackpackFrame
+  if f then
+    ShellMouse(f, visible and true or false, 0)
+  end
+end
+
+function Layout.SyncSlotMouse()
+  local visible = Layout.IsBagFrameVisible()
+  pcall(Layout.SyncShellMouse, visible)
+  if InCombatLockdown and InCombatLockdown() then
+    return
+  end
+  if Slots and Slots.SetAllMouse then
+    Slots.SetAllMouse(visible)
+  end
+end
+
 function Layout.IsBagFrameVisible()
   if combatVisuallyHidden then
     return false
@@ -3319,6 +3384,7 @@ local function RearmCombatParkFrame(f)
     f:SetAlpha(0)
     f:EnableMouse(false)
   end)
+  pcall(Layout.SyncSlotMouse)
   Layout.SyncBagUISpecialFrame()
 end
 
@@ -3420,6 +3486,7 @@ function Layout.EnsureCombatShell()
       f:EnableMouse(false)
     end)
     ParkOffscreen(f)
+    pcall(Layout.SyncSlotMouse)
     Layout.SyncBagUISpecialFrame()
     return true
   end
@@ -3444,6 +3511,7 @@ function Layout.EnsureCombatShell()
     f:EnableMouse(false)
   end)
   ParkOffscreen(f)
+  pcall(Layout.SyncSlotMouse)
   Layout.SyncBagUISpecialFrame()
   return true
 end
@@ -3536,6 +3604,9 @@ local function CombatPresentFrame(frame)
     end
   end)
   local inCombat = InCombatLockdown and InCombatLockdown()
+  if inCombat and Slots and Slots.SetAllMouse then
+    pcall(Slots.SetAllMouse, true) -- may be refused in lockdown; then the slots work again after combat
+  end
   pcall(function()
     if inCombat then
       frame:SetAlpha(1)
@@ -3555,6 +3626,7 @@ local function CombatPresentFrame(frame)
       content:EnableMouse(true)
     end)
   end
+  pcall(Layout.SyncShellMouse, true)
   pcall(Layout.Raise)
   pcall(ApplyCombinedBagsChrome, frame)
   pcall(Layout.RefreshCooldowns)
@@ -3599,6 +3671,7 @@ function Layout.CombatHide()
     frame:EnableMouse(false)
   end)
   ParkOffscreen(frame)
+  pcall(Layout.SyncSlotMouse)
   Layout.SyncBagUISpecialFrame()
   return not Layout.IsBagFrameVisible()
 end
@@ -3677,6 +3750,7 @@ function Layout.Show()
     main:SetAlpha(1)
     main:Show()
   end)
+  pcall(Layout.SyncSlotMouse) -- the bag is visible now: slots take clicks again
   pcall(PlaceOnScreen)
   ApplyCombinedBagsChrome(main)
   pcall(EnsureTitleChrome, main)
@@ -3889,6 +3963,38 @@ function Layout.RefreshCooldowns()
     if btn and btn:GetAlpha() > 0.5 and btn._bbBag ~= nil then
       Slots.SyncCooldown(btn, btn._bbBag, btn._bbSlot)
       Slots.SyncVisual(btn, btn._bbBag, btn._bbSlot)
+    end
+  end)
+  -- SyncVisual writes the count of one slot: restore the summed count of merged stacks.
+  local SM = Feat("StackMerge")
+  if SM and SM.RefreshMergedButtons then
+    SM.RefreshMergedButtons()
+  end
+end
+
+--- Cooldown spinners only (SPELL_UPDATE_COOLDOWN fires several times per global cooldown).
+function Layout.RefreshCooldownsOnly()
+  if not Layout.IsShown() then
+    return
+  end
+  Slots.ForEach(function(btn)
+    if btn and btn:GetAlpha() > 0.5 and btn._bbBag ~= nil then
+      Slots.SyncCooldown(btn, btn._bbBag, btn._bbSlot)
+    end
+  end)
+end
+
+--- Quest "!" markers only.
+function Layout.RefreshQuestBangs()
+  if not Layout.IsShown() then
+    return
+  end
+  if not Slots.SyncQuestBang then
+    return Layout.RefreshCooldowns()
+  end
+  Slots.ForEach(function(btn)
+    if btn and btn:GetAlpha() > 0.5 and btn._bbBag ~= nil then
+      Slots.SyncQuestBang(btn, btn._bbBag, btn._bbSlot)
     end
   end)
 end

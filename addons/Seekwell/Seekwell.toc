@@ -2,7 +2,7 @@
 ## Title: Seekwell
 ## Notes: What drops from your target (on a key), item tooltip sources, learning from your own loot, a wishlist per character.
 ## Author: tuma
-## Version: 0.5.5
+## Version: 0.5.6
 ## SavedVariables: SeekwellDB
 ## SavedVariablesPerCharacter: SeekwellCharDB
 ## OptionalDeps: ForeverErrorLog, TnnysMobLoot, ForeverDungeonJournal, ForeverDBData

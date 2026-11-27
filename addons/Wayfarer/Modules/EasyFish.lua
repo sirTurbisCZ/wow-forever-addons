@@ -753,7 +753,7 @@ end
 -- Settings section
 -------------------------------------------------------------------------------
 
-local capFrame, capOnKey
+local capFrame, capOnKey, capStop
 
 --- A full-screen frame that takes the next key while a key is being picked (shown only then).
 local function CaptureFrame()
@@ -771,6 +771,13 @@ local function CaptureFrame()
     end
   end)
   pcall(capFrame.EnableKeyboard, capFrame, true)
+  -- Combat starting while a key is being picked: drop the full-screen capture (hiding our own frame is allowed).
+  capFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+  capFrame:SetScript("OnEvent", function()
+    if capStop then
+      Safe("capture combat", capStop)
+    end
+  end)
   return capFrame
 end
 
@@ -846,6 +853,7 @@ function Mod.BuildSettings(sec, H)
     end
     capturing = false
     capOnKey = nil
+    capStop = nil
     if capFrame then
       capFrame:Hide()
     end
@@ -878,7 +886,12 @@ function Mod.BuildSettings(sec, H)
         return
       end
       capturing = true
+      capStop = Stop
       capOnKey = function(key)
+        if InCombat() then
+          Stop()
+          return
+        end
         if key == "ESCAPE" then
           Stop()
           return

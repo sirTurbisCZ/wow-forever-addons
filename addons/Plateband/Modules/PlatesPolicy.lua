@@ -623,6 +623,10 @@ local function TokenForName(name)
 end
 
 --- UNIT_SPELLCAST_SENT (unit, targetName, castGUID, spellID) / UNIT_SPELLCAST_SUCCEEDED (unit, castGUID, spellID)
+function D.ClearSentTargets()
+  wipe(sentTarget)
+end
+
 function D.OnOwnCast(event, unit, a, b, c)
   if unit ~= "player" then
     return
@@ -639,13 +643,13 @@ function D.OnOwnCast(event, unit, a, b, c)
     return
   end
   -- a = castGUID, b = spellID
-  if not IsPowerWordShield(b) then
-    return
-  end
   local guidOk = a ~= nil and not IsSecret(a)
   local targetName = guidOk and sentTarget[a] or nil
   if guidOk then
     sentTarget[a] = nil
+  end
+  if not IsPowerWordShield(b) then
+    return
   end
   local tok, how = TokenForName(targetName or nil)
   D.lastOwnCast = string.format("%s PW:S id=%s sentTarget=%s token=%s(%s)", combat and "COMBAT" or "ooc",

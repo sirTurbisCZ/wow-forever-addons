@@ -1,5 +1,17 @@
 # Seekwell changelog
 
+## Release 0.5.6 — fewer allocations, fixes from the audit
+
+- `Config.Get()` / `Learned` / `Char` return the checked saved-variable table after the first pass instead of building the default tables on every call (it is called on every ForeverDB lookup, tooltip, minimap tick and mouseover).
+- A saved hunt no longer loads ForeverDB during login (it loads about 20 s later, out of combat); the hunt's mob list is re-resolved when the wishlist or ForeverDB changed (learned data at most every 60 s), so starring an item or a finished ForeverDB load now adds pins.
+- Learned drop rate counts the kills that dropped an item, not the stack size (no more 100 % and "learned 5/3" for 2-3 cloth per kill; data saved earlier stays as it was).
+- Item source cache: 500 entries and a plain reset when full (the old oldest-entry scan walked all entries on every insert); ForeverDB spawn cache 600.
+- The settings / wishlist window skips rendering while it is hidden.
+- The "Got X" alert fires only from your own loot chat line, no longer for items merely shown in the loot window (a lost roll or a left item) that, with "remove on loot", also removed the wishlist star.
+- ForeverDB: the target panel and the search refresh when an index finishes building (they showed nothing until the next action); a failed index build is retried (twice) instead of staying "building"; spawn point cap applies per map for both sources.
+- Pruning old learned mobs also removes their learned spawn points, so SavedVariables stop growing.
+- Item search caches its id pool and requests at most 50 uncached item names per search (each id once); the mob search caches lowercased learned names; the item tooltip does its early exits before building lines.
+
 ## Release 0.5.5
 
 - **Loot lag with ForeverDB on: root cause fixed.** During a hunt the minimap ticker (10x per second) rebuilt the points of every source mob each tick (spawns merged from learned / ForeverDB / Classic with de-duplication, then clustered). With ForeverDB an item has up to 200 source mobs, so the main thread was busy all the time and loot / bag events were processed late. `Map.PointsForMap` is now cached per hunt and map and rebuilt only when spawns, ForeverDB, wishlist, learned data, hidden mobs or the filters changed; the minimap skips the redraw while position, zoom and data are unchanged.

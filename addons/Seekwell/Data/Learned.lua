@@ -73,8 +73,25 @@ local function Prune()
     return a.s < b.s
   end)
   local npc = Npcs()
+  local spawn = type(Store().spawn) == "table" and Store().spawn or nil
   for i = 1, #list - PRUNE_TO do
-    npc[list[i].id] = nil
+    local id = list[i].id
+    npc[id] = nil
+    if spawn then
+      for mapID, m in pairs(spawn) do
+        if type(m) == "table" then
+          m[id] = nil
+          m[tostring(id)] = nil
+        end
+      end
+    end
+  end
+  if spawn then
+    for mapID, m in pairs(spawn) do
+      if type(m) ~= "table" or next(m) == nil then
+        spawn[mapID] = nil
+      end
+    end
   end
   Store().count = PRUNE_TO
   index = nil -- rebuilt on next need

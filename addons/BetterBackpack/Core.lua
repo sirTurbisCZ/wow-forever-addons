@@ -157,7 +157,36 @@ local function WarmCombatShell(tag)
   SafeCall("ensure:" .. tostring(tag or "?"), Layout.EnsureMain)
 end
 
-local bagRefreshToken = 0
+-- One reused callback + pending flag per stage; a stage that fires early (a later event
+-- arrived) re-arms for the remainder, so refreshes run ~0.05 s / ~0.55 s after the LAST event.
+local bagQ = { last = 0, delays = { 0.05, 0.55 }, pending = {}, cb = {} }
+for i = 1, #bagQ.delays do
+  bagQ.cb[i] = function()
+    local wait = bagQ.delays[i] - (GetTime() - bagQ.last)
+    if wait > 0.005 then
+      C_Timer.After(wait, bagQ.cb[i])
+      return
+    end
+    bagQ.pending[i] = false
+    if InCombatLockdown and InCombatLockdown() then
+      return
+    end
+    if BetterBackpack._sortSuppressRefresh then
+      return
+    end
+    if not (Layout.IsShown and Layout.IsShown()) then
+      return
+    end
+    -- Always Layout.Refresh (it picks DoLayout vs RefreshLight via occ/sig);
+    -- RefreshLight-only left emptied sell cells lit.
+    if Layout.Refresh then
+      Layout.Refresh()
+    elseif Layout.RefreshLight then
+      Layout.RefreshLight()
+    end
+  end
+end
+
 local function QueueBagRefresh()
   if InCombatLockdown and InCombatLockdown() then
     if Layout and Layout.IsShown and Layout.IsShown() and Layout.RefreshCooldowns then
@@ -182,32 +211,12 @@ local function QueueBagRefresh()
     end
     return
   end
-  bagRefreshToken = bagRefreshToken + 1
-  local token = bagRefreshToken
-  -- Always Layout.Refresh (it already chooses DoLayout vs RefreshLight via occ/sig).
-  -- Early RefreshLight-only left emptied sell cells lit until the last tick (~1.5s).
-  local delays = { 0.05, 0.2, 0.55 }
-  for i = 1, #delays do
-    local d = delays[i]
-    C_Timer.After(d, function()
-      if token ~= bagRefreshToken then
-        return
-      end
-      if InCombatLockdown and InCombatLockdown() then
-        return
-      end
-      if BetterBackpack._sortSuppressRefresh then
-        return
-      end
-      if not (Layout.IsShown and Layout.IsShown()) then
-        return
-      end
-      if Layout.Refresh then
-        Layout.Refresh()
-      elseif Layout.RefreshLight then
-        Layout.RefreshLight()
-      end
-    end)
+  bagQ.last = GetTime()
+  for i = 1, #bagQ.delays do
+    if not bagQ.pending[i] then
+      bagQ.pending[i] = true
+      C_Timer.After(bagQ.delays[i], bagQ.cb[i])
+    end
   end
 end
 
@@ -419,8 +428,8 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
   end
 
   if event == "QUEST_ACCEPTED" or event == "QUEST_REMOVED" then
-    if Layout and Layout.IsShown and Layout.IsShown() and Layout.RefreshCooldowns then
-      SafeCall("questBang", Layout.RefreshCooldowns)
+    if Layout and Layout.IsShown and Layout.IsShown() and Layout.RefreshQuestBangs then
+      SafeCall("questBang", Layout.RefreshQuestBangs)
     end
     return
   end
@@ -430,8 +439,8 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
     if unit and unit ~= "player" then
       return
     end
-    if Layout and Layout.IsShown and Layout.IsShown() and Layout.RefreshCooldowns then
-      SafeCall("questBang", Layout.RefreshCooldowns)
+    if Layout and Layout.IsShown and Layout.IsShown() and Layout.RefreshQuestBangs then
+      SafeCall("questBang", Layout.RefreshQuestBangs)
     end
     return
   end
@@ -445,8 +454,8 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
   end
 
   if event == "SPELL_UPDATE_COOLDOWN" then
-    if Layout and Layout.IsShown and Layout.IsShown() and Layout.RefreshCooldowns then
-      Layout.RefreshCooldowns()
+    if Layout and Layout.IsShown and Layout.IsShown() and Layout.RefreshCooldownsOnly then
+      Layout.RefreshCooldownsOnly()
     end
     return
   end

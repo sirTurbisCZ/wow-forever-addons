@@ -13,6 +13,13 @@ local Config = ForeverErrorLog.Config
 
 local installed
 local originalHandler
+local ourHandler
+local inHandler = false
+local lastRawMsg, lastRawAt, lastEntry
+local lastPrintAt, suppressedPrints = -10, 0
+local PRINT_GAP = 2
+local ARCHIVE_TOP_N = 20
+local STACK_MAX = 1500
 local sessionBegun = false
 local ringReset = false
 local ARCHIVE_SESSIONS_MAX = 8
@@ -126,9 +133,27 @@ local function ArchiveErrorRing(list, loadKind)
     arch = {}
     db.errorArchive.sessions = arch
   end
-  local snap = {}
+  -- Archive only the most frequent entries (ties keep list order).
+  local order = {}
   for i = 1, #list do
-    snap[i] = CompactEntry(list[i])
+    order[i] = i
+  end
+  if #order > ARCHIVE_TOP_N then
+    table.sort(order, function(x, y)
+      local cx, cy = list[x].count or 1, list[y].count or 1
+      if cx ~= cy then
+        return cx > cy
+      end
+      return x < y
+    end)
+    for i = #order, ARCHIVE_TOP_N + 1, -1 do
+      order[i] = nil
+    end
+    table.sort(order)
+  end
+  local snap = {}
+  for i = 1, #order do
+    snap[i] = CompactEntry(list[order[i]])
   end
   arch[#arch + 1] = {
     at = Now(),
@@ -209,13 +234,14 @@ local function Record(msg, stack)
     return false
   end
   msg = Trim(msg, Config.MAX_MSG)
-  stack = Trim(stack or "", Config.MAX_MSG)
+  stack = Trim(stack or "", STACK_MAX)
   local list = db.errors
   for i = 1, #list do
     local e = list[i]
     if e.msg == msg then
       e.count = (e.count or 1) + 1
       e.last = Now()
+      lastEntry = e
       if stack ~= "" then
         e.stack = stack
       end
@@ -227,7 +253,7 @@ local function Record(msg, stack)
     end
   end
   local addon = AddonFromMessage(msg)
-  list[#list + 1] = {
+  local entry = {
     msg = msg,
     stack = stack,
     addon = addon,
@@ -235,11 +261,22 @@ local function Record(msg, stack)
     last = Now(),
     count = 1,
   }
+  list[#list + 1] = entry
+  lastEntry = entry
   while #list > Config.MAX_ERRORS do
     table.remove(list, 1)
   end
   AppendSession(string.format("ERROR [%s] %s", tostring(addon), msg))
-  Print(tostring(addon) .. ": " .. Trim(msg, 180))
+  -- At most one chat line per PRINT_GAP seconds; the rest is counted.
+  local t = GetTime and GetTime() or 0
+  if t - lastPrintAt >= PRINT_GAP then
+    lastPrintAt = t
+    local more = suppressedPrints > 0 and (" (+" .. suppressedPrints .. " more)") or ""
+    suppressedPrints = 0
+    Print(tostring(addon) .. ": " .. Trim(msg, 180) .. more)
+  else
+    suppressedPrints = suppressedPrints + 1
+  end
   return true
 end
 
@@ -366,7 +403,23 @@ local function InstallHandler()
     return
   end
 
-  seterrorhandler(function(msg)
+  ourHandler = function(msg)
+    if inHandler then
+      return -- forwarding chain came back to us: never loop
+    end
+    inHandler = true
+    local okH, resH = pcall(function()
+    local t = GetTime and GetTime() or 0
+    if lastEntry and type(msg) == "string" and msg == lastRawMsg and (t - lastRawAt) < 1 and EnsureDB().enabled then
+      -- same error again within 1 s: count it without taking a stack
+      lastEntry.count = (lastEntry.count or 1) + 1
+      lastEntry.last = Now()
+      lastRawAt = t
+      if EnsureDB().scriptErrors == true and originalHandler then
+        return originalHandler(msg)
+      end
+      return
+    end
     local stack = ""
     if debugstack then
       local ok, s = pcall(debugstack, 3)
@@ -376,6 +429,9 @@ local function InstallHandler()
     end
     local ok, captured = pcall(Record, msg, stack)
     captured = ok and captured == true
+    if captured and type(msg) == "string" then
+      lastRawMsg, lastRawAt = msg, t
+    end
     -- Forward to the original handler when the popup is wanted, capture is off, or capture failed.
     if EnsureDB().scriptErrors == true or not captured then
       if originalHandler then
@@ -385,12 +441,32 @@ local function InstallHandler()
         pcall(ScriptErrorsFrame.DisplayMessage, ScriptErrorsFrame, msg)
       end
     end
-  end)
+    end)
+    inHandler = false
+    if not okH then
+      error(resH, 0)
+    end
+    return resH
+  end
+  seterrorhandler(ourHandler)
+end
+
+--- Another addon may call seterrorhandler after us: forward to its handler and put ours back on top.
+local function EnsureHandlerOnTop()
+  if not ourHandler or type(geterrorhandler) ~= "function" or type(seterrorhandler) ~= "function" then
+    return
+  end
+  local cur = geterrorhandler()
+  if cur and cur ~= ourHandler then
+    originalHandler = cur
+    seterrorhandler(ourHandler)
+  end
 end
 
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
+frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:SetScript("OnEvent", function(_, event, name)
   if event == "ADDON_LOADED" and name == addonName then
     EnsureDB()
@@ -401,8 +477,11 @@ frame:SetScript("OnEvent", function(_, event, name)
     EnsureDB()
     pcall(BeginSession, "login")
     InstallHandler()
+    pcall(EnsureHandlerOnTop)
     pcall(ApplyScriptErrorsPref)
     PrintLoadedLine()
+  elseif event == "PLAYER_ENTERING_WORLD" then
+    pcall(EnsureHandlerOnTop)
   end
 end)
 

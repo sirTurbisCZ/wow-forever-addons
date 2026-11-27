@@ -487,7 +487,12 @@ local function PumpStep(limit)
   local ctx = pumpQueue.ctx
   limit = limit or 1
   local moved = 0
-  while #pumpQueue.slots > 0 and moved < limit do
+  while pumpQueue and #pumpQueue.slots > 0 and moved < limit do
+    -- bank / auction closed during the pump: stop, otherwise the rest would use or equip the items instead
+    if (ctx == "bank" or ctx == "auction") and DetectContext() ~= ctx then
+      pumpQueue.slots = {}
+      break
+    end
     local e = table.remove(pumpQueue.slots, 1)
     local b, s = e and e.bag, e and e.slot
     if b ~= nil and s ~= nil then
@@ -504,9 +509,9 @@ local function PumpStep(limit)
   return moved > 0
 end
 
-local function PumpAsync()
-  if not pumpQueue then
-    return
+local function PumpAsync(tok)
+  if not pumpQueue or (tok and tok ~= pumpQueue.token) then
+    return -- no queue, or a stale timer chain of an older queue
   end
   if not OOC() then
     local q = pumpQueue
@@ -524,7 +529,10 @@ local function PumpAsync()
   PumpStep(12)
   if #pumpQueue.slots > 0 then
     if C_Timer and C_Timer.After then
-      C_Timer.After(0.04, PumpAsync)
+      local t = pumpQueue.token
+      C_Timer.After(0.04, function()
+        PumpAsync(t)
+      end)
     else
       PumpAsync()
     end
@@ -605,7 +613,10 @@ local function StartQueue(ctx, slots, label, diag, syncMax)
     return true
   end
   if C_Timer and C_Timer.After then
-    C_Timer.After(0, PumpAsync)
+    local t = pumpToken
+    C_Timer.After(0, function()
+      PumpAsync(t)
+    end)
   else
     PumpAsync()
   end

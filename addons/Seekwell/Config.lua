@@ -6,7 +6,7 @@ local Config = Seekwell.Config
 
 local CURRENT_SCHEMA = 1
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
-Config.VERSION = "0.5.5"
+Config.VERSION = "0.5.6"
 
 local function SettingsDefaults()
   return {
@@ -84,13 +84,21 @@ local function Migrate(db, steps)
 end
 Config.Migrate = Migrate
 
+-- Config.Get() is called from hot paths (every ForeverDB lookup, tooltips, the minimap pins, alerts). The full pass builds
+-- the default tables and merges them, so it runs once per saved-variable table; later calls return the checked table.
+local ensuredDB, ensuredChar
+
 --- Ensure SeekwellDB exists, migrate, return it.
 function Config.EnsureDB()
   if type(SeekwellDB) ~= "table" then
     SeekwellDB = Defaults()
+    ensuredDB = SeekwellDB
     return SeekwellDB
   end
   local db = SeekwellDB
+  if ensuredDB == db and type(db.settings) == "table" and type(db.learned) == "table" and type(db.learned.npc) == "table" then
+    return db
+  end
   Migrate(db)
   if type(db.settings) ~= "table" then
     db.settings = SettingsDefaults()
@@ -100,15 +108,20 @@ function Config.EnsureDB()
   end
   db.schemaVersion = CURRENT_SCHEMA
   Fill(db.settings, SettingsDefaults())
+  ensuredDB = db
   return db
 end
 
 function Config.EnsureCharDB()
   if type(SeekwellCharDB) ~= "table" then
     SeekwellCharDB = CharDefaults()
+    ensuredChar = SeekwellCharDB
     return SeekwellCharDB
   end
   local c = SeekwellCharDB
+  if ensuredChar == c and type(c.wish) == "table" and type(c.wishMobs) == "table" then
+    return c
+  end
   Migrate(c, CHAR_MIGRATIONS)
   if type(c.wish) ~= "table" then
     c.wish = {}
@@ -117,6 +130,7 @@ function Config.EnsureCharDB()
     c.wishMobs = {} -- [npcID] = true: mobs wanted explicitly (UI/Alerts.lua)
   end
   c.schemaVersion = CURRENT_SCHEMA
+  ensuredChar = c
   return c
 end
 

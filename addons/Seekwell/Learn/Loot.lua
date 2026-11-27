@@ -128,7 +128,13 @@ function Loot.OnLootOpened()
             e.kills = e.kills + 1
           end
           if itemID then
-            e.items[itemID] = (e.items[itemID] or 0) + math.max(1, math.floor(src.qty))
+            -- count the kills that dropped the item, not the stack size (2-3 cloth from one kill is one drop)
+            e.gi = e.gi or {}
+            local k = src.guid .. "\0" .. itemID
+            if not e.gi[k] then
+              e.gi[k] = true
+              e.items[itemID] = (e.items[itemID] or 0) + 1
+            end
           end
         end
       end
