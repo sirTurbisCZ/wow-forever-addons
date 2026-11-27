@@ -1,0 +1,12 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+  <!-- the mixin table exists before the template; Map/WorldPins.lua fills it in place.
+       No textures here: Map/PinArt.lua creates them in OnLoad / OnAcquired and colours them with
+       SetVertexColor (no <Color> element can override the band colour). -->
+  <Script>SeekwellPinMixin = SeekwellPinMixin or {}</Script>
+  <Frame name="SeekwellPinTemplate" mixin="SeekwellPinMixin" virtual="true" enableMouse="true">
+    <Size x="20" y="20"/>
+    <Scripts>
+      <OnLoad method="OnLoad"/>
+    </Scripts>
+  </Frame>
+</Ui>

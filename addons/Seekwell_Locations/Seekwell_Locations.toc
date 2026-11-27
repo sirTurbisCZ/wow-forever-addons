@@ -1,0 +1,10 @@
+## Interface: 16001
+## Title: Seekwell Locations (Classic spawns)
+## Notes: Optional data for Seekwell: original Classic mob spawn points, so map pins show mobs you never looted. Loaded on demand.
+## Author: tuma
+## Version: 0.3.0
+## LoadOnDemand: 1
+## OptionalDeps: Seekwell
+## Category: Utility
+
+Data.lua
