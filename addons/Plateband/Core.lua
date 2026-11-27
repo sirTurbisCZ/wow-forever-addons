@@ -347,6 +347,34 @@ SlashCmdList.PLATEBAND = function(msg)
     return
   end
 
+  if cmd == "ac" then
+    -- EXPERIMENTAL (0.7.0): Blizzard-managed AuraContainer row instead of the collector row.
+    local a = (rest or ""):lower()
+    if a == "on" or a == "1" then
+      p.useAuraContainer = true
+      if Plates and Plates.SetAuraContainer then
+        SafeCall("ac:on", Plates.SetAuraContainer, true)
+      end
+      Print(L.AC_ON or "AuraContainer row on (experimental)")
+    elseif a == "off" or a == "0" then
+      p.useAuraContainer = false
+      if Plates and Plates.SetAuraContainer then
+        SafeCall("ac:off", Plates.SetAuraContainer, false)
+      end
+      Print(L.AC_OFF or "AuraContainer row off - legacy row")
+    elseif a ~= "status" and a ~= "" then
+      Print(L.AC_USAGE or "usage: /pb ac on|off|status")
+      return
+    end
+    local lines = Plates and Plates.AuraContainerStatus and SafeCall("ac:status", Plates.AuraContainerStatus)
+    if type(lines) == "table" then
+      for i = 1, #lines do
+        Print(lines[i])
+      end
+    end
+    return
+  end
+
   if cmd == "dev" then
     local a = (rest or ""):lower()
     if a == "on" or a == "1" then

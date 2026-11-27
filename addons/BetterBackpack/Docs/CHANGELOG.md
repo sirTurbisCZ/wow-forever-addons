@@ -1,8 +1,13 @@
 # BetterBackpack changelog
 
-## Release 1.3.7 — closed bag no longer catches the mouse
+## Release 1.3.8 — B works in combat again; no tooltips from the closed bag
 
-- The invisible "warm shell" of a closed bag is parked off-screen (it kept its headers and slots hoverable, leaving stuck lane tooltips such as "Deposit lane in bank" on the world). Opening re-anchors it; Settings opened with a closed bag centre on screen.
+- **Fix (regression of 1.3.7):** parking the closed bag off-screen made it impossible to re-open it with **B** during combat (a frame with secure children cannot be moved in combat), so it seemed to open and close at once. The bag stays at its on-screen position again.
+- The closed (invisible) bag no longer shows tooltips: headers and slots ignore hover while it is hidden, and a tooltip that belongs to the bag is hidden when the bag closes.
+
+## Release 1.3.7 — closed bag parked off-screen (superseded by 1.3.8)
+
+- Tried to park the invisible shell of a closed bag off-screen; this broke B in combat and was reverted in 1.3.8. Settings opened with a closed bag centre on screen (kept).
 
 ## Release 1.3.6 — scroll bar only when needed
 

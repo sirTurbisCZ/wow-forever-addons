@@ -322,6 +322,19 @@ if not plate then
   if not (friendPlate and (friendAuraN > 0 or (D.lastPaintDebug.tfRows or 0) > 0 or #missing > 0)) then
     D.PruneInactiveGapRows(missing, paintAuraTok, maxN)
   end
+  -- When the client returns the unit's auras, they are the authoritative source: one icon per aura instance
+  -- (several casters of one spell stay separate). The collectors above are only the fallback.
+  if type(paintAuraTok) == "string" then
+    local direct = D.CollectDirectAuras(paintAuraTok, plate, maxN)
+    if direct then
+      for i = #missing, 1, -1 do
+        missing[i] = nil
+      end
+      for i = 1, #direct do
+        missing[i] = direct[i]
+      end
+    end
+  end
   D.ApplyGapSticky(unit, missing, useTargetSrc or friendPlate, paintAuraTok, friendPlate)
   -- Rules (PlatesPolicy.lua): add short helpful / dispellable buffs, then drop everything the rules exclude.
   if type(paintAuraTok) == "string" then
@@ -563,6 +576,13 @@ if not plate then
     end
   end
 
+  -- One row per plate: a row left under another key (target key, recycled nameplateN) would be drawn at the
+  -- same spot as this one (icon on top of icon).
+  for k, other in pairs(D.fallbacks) do
+    if k ~= unit and other and other._pbPlate == plate and (tonumber(other._painted) or 0) > 0 then
+      D.ClearFallback(k)
+    end
+  end
   local fb = D.EnsureFallback(unit, plate)
   if not fb then
     D.lastPaintDebug.painted = 0
@@ -739,4 +759,768 @@ if not plate then
     D.SilentTracePaint("paint_sample", unit, plate)
   end
   return painted
+end
+
+-- =====================================================================================================
+-- EXPERIMENTAL (0.7.0): Blizzard-managed AuraContainer row. Profile `useAuraContainer` (default false),
+-- `/pb ac on|off|status`. Pattern from SKTools PartyFrames.lua (HoT reminders) and the 12.1 AuraContainer API.
+--
+-- The container tracks its unit's auras C-side: no aura reads, no timers, no math on possibly-secret values,
+-- so it can work on friendly units in combat, where C_UnitAuras is locked for addons. Per plate: one host
+-- frame of OUR OWN (child of the plate's UnitFrame), anchored out of combat directly above the name and
+-- left-aligned with the health bar (same offset as the legacy row); inside it two containers built out of
+-- combat: "friend" (debuffs <= 300 s, helpful <= 60 s minus food/drink/permanent spell ids) and "enemy"
+-- (debuffs from players/pets, dispellable/stealable buffs). Only one is shown. In combat only our own frames
+-- are shown/hidden and the unit is (re)bound. Everything is pcall'd; when the API or a group is refused the
+-- plate silently keeps the legacy row and `/pb ac status` says why.
+-- =====================================================================================================
+do
+  local AC = { hosts = {}, api = nil, apiWhy = "not probed yet", template = nil, buildFailed = nil,
+    lastErr = nil, errN = 0, learnedNew = 0, inCombatSkips = 0 }
+  D.AC = AC
+
+  local TEMPLATES = { "CustomAuraContainerTemplate", "ManagedAuraContainerTemplate" }
+  local FRIEND_DEBUFF_MAX_SEC = 300 -- same as PlatesPolicy FRIENDLY_DEBUFF_MAX_SEC
+  local FRIEND_HELPFUL_MAX_SEC = 60 -- same as PlatesPolicy HELPFUL_MAX_SEC
+  local LEARN_CAP = 400
+  local LEARN_EVERY_SEC = 3
+  -- Food / Drink aura ids (classic-era ids, best effort). The container cannot match names, so food is excluded
+  -- by spell id; the list grows from readable aura data out of combat (PlatebandDB.acExclude).
+  local FOOD_SEED = { 430, 431, 432, 433, 434, 435, 1127, 1129, 1131, 1133, 1135, 1137, 22734, 24355 }
+  local seedSet = {}
+  for i = 1, #FOOD_SEED do
+    seedSet[FOOD_SEED[i]] = true
+  end
+  local learnAt = {}
+
+  local function inCombat()
+    return InCombatLockdown and InCombatLockdown() and true or false
+  end
+
+  local function pub(v)
+    if v ~= nil and not D.IsSecret(v) then
+      return v
+    end
+    return nil
+  end
+
+  local function profile()
+    local ok, p = pcall(D.Profile)
+    return ok and type(p) == "table" and p or {}
+  end
+
+  local function acErr(where, err)
+    AC.errN = AC.errN + 1
+    AC.lastErr = tostring(where) .. ": " .. tostring(err):sub(1, 140)
+    if Plateband.RecordError then
+      pcall(Plateband.RecordError, "ac:" .. tostring(where), err)
+    end
+  end
+
+  local function wanted()
+    local p = profile()
+    if p.useAuraContainer ~= true or p.mergeMissing ~= true then
+      return false
+    end
+    local ok, active = pcall(D.ModuleActive)
+    return ok and active and true or false
+  end
+
+  local function learnedDB()
+    if type(PlatebandDB) ~= "table" then
+      return nil
+    end
+    if type(PlatebandDB.acExclude) ~= "table" then
+      PlatebandDB.acExclude = {}
+    end
+    return PlatebandDB.acExclude
+  end
+
+  local function excludeMap()
+    local m, n = {}, 0
+    for id in pairs(seedSet) do
+      m[id] = true
+      n = n + 1
+    end
+    local l = learnedDB()
+    if l then
+      for id in pairs(l) do
+        if type(id) == "number" and not m[id] then
+          m[id] = true
+          n = n + 1
+        end
+      end
+    end
+    return m, n
+  end
+
+  --- Does this client have the container type? Creates one hidden probe container (out of combat only).
+  local function probe()
+    if AC.api ~= nil then
+      return AC.api
+    end
+    if inCombat() then
+      AC.apiWhy = "not probed yet (in combat; probed after combat)"
+      return nil
+    end
+    local lastErr = "?"
+    for i = 1, #TEMPLATES do
+      local ok, c = pcall(CreateFrame, "AuraContainer", nil, UIParent, TEMPLATES[i])
+      if ok and c and c.AddAuraGroup and c.SetUnit then
+        pcall(c.Hide, c)
+        AC.probeFrame = c
+        AC.api = true
+        AC.template = TEMPLATES[i]
+        AC.apiWhy = "ok (" .. TEMPLATES[i] .. ")"
+        return true
+      end
+      lastErr = ok and (c and "frame has no AddAuraGroup/SetUnit" or "CreateFrame returned nil") or tostring(c)
+    end
+    AC.api = false
+    AC.apiWhy = "CreateFrame('AuraContainer', ..., '" .. TEMPLATES[1] .. "') failed: " .. lastErr:sub(1, 120)
+    return false
+  end
+
+  local function newContainer(parent)
+    local order = { AC.template }
+    for i = 1, #TEMPLATES do
+      if TEMPLATES[i] ~= AC.template then
+        order[#order + 1] = TEMPLATES[i]
+      end
+    end
+    local lastErr
+    for i = 1, #order do
+      local ok, c = pcall(CreateFrame, "AuraContainer", nil, parent, order[i])
+      if ok and c and c.AddAuraGroup then
+        return c
+      end
+      lastErr = ok and "no container" or c
+    end
+    return nil, lastErr
+  end
+
+  --- One AuraButton, called by the container (initializeFrame). Icon + duration swipe + countdown + stack
+  --- count + our 1px border; the container's own tooltip (mouse motion only, clicks pass to the plate).
+  --- Never SetTexCoord (Forever icons are masked), never a formatter for the stack count (SKTools: the engine
+  --- formats a secret count in Lua and the throw freezes the container), no SetScript (buttons may be forbidden).
+  local function initButton(c, button, size, kind)
+    c._pbButtons = c._pbButtons or {}
+    c._pbButtons[#c._pbButtons + 1] = button
+    local ok, err = pcall(function()
+      pcall(button.SetSize, button, size, size)
+      if button.SetMouseMotionEnabled then
+        pcall(button.SetMouseMotionEnabled, button, profile().gapTooltip ~= false)
+      end
+      if button.SetMouseClickEnabled then
+        pcall(button.SetMouseClickEnabled, button, false)
+      end
+      local icon = button:CreateTexture(nil, "ARTWORK")
+      icon:SetAllPoints(button)
+      if button.SetIcon then
+        pcall(button.SetIcon, button, icon)
+      end
+      local cd = CreateFrame("Cooldown", nil, button, "CooldownFrameTemplate")
+      cd:SetAllPoints(button)
+      pcall(cd.EnableMouse, cd, false)
+      pcall(cd.SetDrawBling, cd, false)
+      pcall(cd.SetReverse, cd, true)
+      pcall(cd.SetDrawSwipe, cd, true)
+      pcall(cd.SetSwipeColor, cd, 0, 0, 0, 0.5)
+      cd.noCooldownCount = true
+      if button.SetDurationCooldown then
+        pcall(button.SetDurationCooldown, button, cd)
+      end
+      -- Text above the swipe: font strings on the button itself would sit under the cooldown child frame.
+      local over = CreateFrame("Frame", nil, button)
+      over:SetAllPoints(button)
+      pcall(over.EnableMouse, over, false)
+      pcall(function()
+        over:SetFrameLevel((cd:GetFrameLevel() or 1) + 5)
+      end)
+      local dur = over:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+      dur:SetPoint("CENTER", button, "CENTER", 0, 0)
+      if D.ApplyNativeAuraDurationFont then
+        pcall(D.ApplyNativeAuraDurationFont, dur, size)
+      end
+      local durOk = button.SetDurationText and pcall(button.SetDurationText, button, dur) or false
+      if durOk then
+        pcall(cd.SetHideCountdownNumbers, cd, true)
+      else
+        pcall(dur.Hide, dur)
+        pcall(cd.SetHideCountdownNumbers, cd, false)
+        if D.ApplyNativeAuraCooldown then
+          pcall(D.ApplyNativeAuraCooldown, cd, size)
+        end
+      end
+      local count = over:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+      count:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 0, 0)
+      if D.StyleAuraStackFont then
+        pcall(D.StyleAuraStackFont, count, size)
+      end
+      local countOk = false
+      if button.SetApplicationCount then
+        countOk = pcall(button.SetApplicationCount, button, count)
+        if not countOk then
+          countOk = pcall(button.SetApplicationCount, button, count, {})
+        end
+      end
+      if D.ApplyGapBorder then
+        pcall(D.ApplyGapBorder, over, { isHelpful = kind == "helpful", _pbKind = kind == "purge" and "purge" or nil })
+      end
+      c._pbInit = string.format("icon=%s cd=%s durText=%s count=%s", tostring(button.SetIcon ~= nil),
+        tostring(button.SetDurationCooldown ~= nil), tostring(durOk), tostring(countOk))
+    end)
+    if not ok then
+      acErr("initializeFrame", err)
+    end
+  end
+
+  --- Rules -> container groups. Each group lists attempts, best filter first; the first one the client
+  --- accepts is used (an unknown filter token or candidate key may be refused).
+  local function groupSpecs(side)
+    if side == "friend" then
+      local ex = excludeMap()
+      return {
+        { key = "pbFD", kind = "debuff", tries = {
+          { filter = "HARMFUL", cf = { maxDuration = FRIEND_DEBUFF_MAX_SEC }, label = "HARMFUL maxDuration=300" },
+          { filter = "HARMFUL", label = "HARMFUL (no duration filter)" },
+        } },
+        { key = "pbFB", kind = "helpful", tries = {
+          { filter = "HELPFUL", cf = { maxDuration = FRIEND_HELPFUL_MAX_SEC, excludeSpellIDs = ex },
+            label = "HELPFUL maxDuration=60 excludeSpellIDs", usesExclude = true },
+          { filter = "HELPFUL", cf = { maxDuration = FRIEND_HELPFUL_MAX_SEC }, label = "HELPFUL maxDuration=60" },
+          { filter = "HELPFUL|RAID_IN_COMBAT", label = "HELPFUL|RAID_IN_COMBAT" },
+        } },
+      }
+    end
+    return {
+      { key = "pbED", kind = "debuff", tries = {
+        { filter = "HARMFUL", cf = { isFromPlayerOrPlayerPet = true }, label = "HARMFUL isFromPlayerOrPlayerPet" },
+        { filter = "HARMFUL|PLAYER", label = "HARMFUL|PLAYER (own only)" },
+      } },
+      { key = "pbEB", kind = "purge", tries = {
+        { filter = "HELPFUL|DISPELLABLE", label = "HELPFUL|DISPELLABLE" },
+        { filter = "HELPFUL|RAID_PLAYER_DISPELLABLE", label = "HELPFUL|RAID_PLAYER_DISPELLABLE" },
+        { filter = "HELPFUL", cf = { isStealable = true }, label = "HELPFUL isStealable" },
+      } },
+    }
+  end
+
+  local function addGroup(c, spec, size, pad, maxN)
+    local lastErr
+    for ti = 1, #spec.tries do
+      local t = spec.tries[ti]
+      for li = 1, 2 do
+        local layout = { elementWidth = size, elementHeight = size }
+        if li == 1 then
+          layout.elementSpacing = pad
+        end
+        local gk = spec.key .. ti .. (li == 1 and "s" or "")
+        local opts = {
+          maxFrameCount = maxN,
+          candidateFilters = t.cf,
+          sortMethod = AuraContainerSortMethod and AuraContainerSortMethod.Expiration or nil,
+          sortDirection = AuraContainerSortDirection and AuraContainerSortDirection.Normal or nil,
+          initializeFrame = function(button)
+            initButton(c, button, size, spec.kind)
+          end,
+          layout = layout,
+        }
+        local ok, err = pcall(c.AddAuraGroup, c, gk, t.filter, opts)
+        if ok then
+          return { key = gk, label = t.label .. (li == 1 and "" or " (no spacing)"), usesExclude = t.usesExclude }
+        end
+        lastErr = err
+      end
+    end
+    return nil, lastErr
+  end
+
+  local function hideHost(h)
+    if not h then
+      return
+    end
+    pcall(h.Hide, h)
+    for _, side in ipairs({ "friend", "enemy" }) do
+      local c = h._pbC[side]
+      if c then
+        pcall(c.Hide, c)
+        c._pbBound = nil
+      end
+    end
+    local was = h._pbActive
+    h._pbActive = false
+    if was and h._pbPlate then
+      local dl = D.NativeDebuffList and D.NativeDebuffList(h._pbPlate)
+      if dl and dl.SetAlpha then
+        pcall(dl.SetAlpha, dl, 1) -- give the native debuffs back
+      end
+    end
+  end
+
+  local function ensureHost(plate)
+    local h = AC.hosts[plate]
+    if h then
+      return h
+    end
+    if inCombat() then
+      return nil, "in combat"
+    end
+    local parent = D.FriendFallbackPaintParent and D.FriendFallbackPaintParent(plate)
+    if not parent then
+      return nil, "no plate parent"
+    end
+    local ok, f = pcall(CreateFrame, "Frame", nil, parent)
+    if not ok or not f then
+      return nil, f
+    end
+    pcall(f.EnableMouse, f, false)
+    pcall(f.SetSize, f, 1, 1)
+    pcall(f.Hide, f)
+    f._pbPlate = plate
+    f._pbAcHost = true
+    f._pbC = {} -- [side] = container ("friend" / "enemy")
+    AC.hosts[plate] = f
+    return f
+  end
+
+  --- Out of combat only: directly above the name, left-aligned with the health bar (legacy row offset).
+  local function anchorHost(h, plate)
+    local bar = D.HealthBar and D.HealthBar(plate)
+    if not bar or (D.FrameIsGlobalChrome and D.FrameIsGlobalChrome(bar)) then
+      return false, "no health bar"
+    end
+    local y = D.AboveNameRowY and D.AboveNameRowY(plate, bar) or 16
+    if h._pbAnchored and h._pbBar == bar and h._pbY == y then
+      return true
+    end
+    local ok, err = pcall(function()
+      h:ClearAllPoints() -- our own frame
+      h:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", 0, y)
+      local uf = plate.UnitFrame
+      local strata, lvl = "MEDIUM", 50
+      pcall(function()
+        strata = uf:GetFrameStrata() or strata
+        lvl = (uf:GetFrameLevel() or 0) + 25
+      end)
+      if strata == "BACKGROUND" or strata == "LOW" then
+        strata = "MEDIUM"
+      end
+      h:SetFrameStrata(strata)
+      h:SetFrameLevel(lvl)
+      -- The row sits above the name, outside the UnitFrame box: same unclipping as the legacy friendly row.
+      if uf and uf.SetClipsChildren then
+        pcall(uf.SetClipsChildren, uf, false)
+      end
+      if plate.SetClipsChildren then
+        pcall(plate.SetClipsChildren, plate, false)
+      end
+    end)
+    h._pbAnchored = ok and true or false
+    h._pbBar, h._pbY = bar, y
+    return ok, err
+  end
+
+  --- Out of combat only: both containers of a host (friend + enemy rules), hidden until a unit is bound.
+  local function ensureContainers(h, plate)
+    if h._pbBuilt then
+      return true
+    end
+    if AC.buildFailed then
+      return false, AC.buildFailed
+    end
+    if inCombat() then
+      return false, "in combat"
+    end
+    if not probe() then
+      return false, AC.apiWhy
+    end
+    local size, pad = 18, 2
+    pcall(function()
+      size, pad = D.MergeRowIconSize(plate)
+    end)
+    size, pad = tonumber(size) or 18, tonumber(pad) or 2
+    local maxN = D.MaxIcons and D.MaxIcons() or 12
+    for _, side in ipairs({ "friend", "enemy" }) do
+      if not h._pbC[side] then
+        local c, err = newContainer(h)
+        if not c then
+          AC.buildFailed = "container create failed: " .. tostring(err):sub(1, 100)
+          return false, AC.buildFailed
+        end
+        -- The template starts enabled; visibility gates its events and OnShow asks for a full refresh.
+        pcall(c.Hide, c)
+        pcall(c.SetSize, c, 1, 1)
+        pcall(c.EnableMouse, c, false)
+        pcall(c.SetPoint, c, "BOTTOMLEFT", h, "BOTTOMLEFT", 0, 0)
+        if c.SetFlowLayoutAxis and AnchorUtil and AnchorUtil.FlowLayoutAxis then
+          pcall(c.SetFlowLayoutAxis, c, AnchorUtil.FlowLayoutAxis.Horizontal)
+          pcall(c.SetFlowLayoutAnchorPoint, c, "BOTTOMLEFT")
+          if AnchorUtil.FlowDirection then
+            pcall(c.SetFlowLayoutGrowthDirection, c, AnchorUtil.FlowDirection.Right, AnchorUtil.FlowDirection.Up)
+          end
+          c._pbFlow = true
+        end
+        pcall(c.SetFlowLayoutPadding, c, 0, 0, 0, 0)
+        c._pbGroups = {}
+        c._pbSide = side
+        local errs = {}
+        local specs = groupSpecs(side)
+        for si = 1, #specs do
+          local g, gerr = addGroup(c, specs[si], size, pad, maxN)
+          if g then
+            c._pbGroups[#c._pbGroups + 1] = g
+          else
+            errs[#errs + 1] = specs[si].key .. ": " .. tostring(gerr):sub(1, 80)
+          end
+        end
+        c._pbGroupErr = #errs > 0 and table.concat(errs, "; ") or nil
+        if #c._pbGroups == 0 then
+          AC.buildFailed = "no aura group accepted (" .. side .. "): " .. tostring(c._pbGroupErr)
+          return false, AC.buildFailed
+        end
+        h._pbC[side] = c
+      end
+    end
+    h._pbBuilt = true
+    return true
+  end
+
+  --- Unit token the container follows. Friendly units: their party/raid token (aura data of friends is only
+  --- returned for those on this client); otherwise the nameplate token. Never "target" (it would follow the
+  --- next target on this plate).
+  local function bindToken(unit, plate, friend)
+    if friend and D.ResolvePartyTokenForPlate then
+      local pt = D.ResolvePartyTokenForPlate(plate)
+      if type(pt) == "string" and pt ~= "target" then
+        return pt
+      end
+    end
+    if type(unit) == "string" and unit:match("^nameplate%d+$") then
+      return unit
+    end
+    local t = D.UnitTokenFromPlate and D.UnitTokenFromPlate(plate)
+    if type(t) == "string" and t:match("^nameplate%d+$") then
+      return t
+    end
+    return nil
+  end
+
+  --- Re-applies the learned food/drink/permanent spell ids to every friendly buff group (out of combat).
+  local function applyExcludes()
+    if inCombat() then
+      return
+    end
+    local ex = excludeMap()
+    for _, h in pairs(AC.hosts) do
+      local c = h._pbC.friend
+      if c and c.SetAuraGroupCandidateFilters and type(c._pbGroups) == "table" then
+        for i = 1, #c._pbGroups do
+          local g = c._pbGroups[i]
+          if g.usesExclude then
+            local ok, err = pcall(c.SetAuraGroupCandidateFilters, c, g.key,
+              { maxDuration = FRIEND_HELPFUL_MAX_SEC, excludeSpellIDs = ex })
+            if not ok then
+              acErr("SetAuraGroupCandidateFilters", err)
+            end
+          end
+        end
+      end
+    end
+  end
+
+  --- Out of combat, readable friendly auras: remember spell ids of food/drink and of permanent buffs, which
+  --- the container cannot recognise by itself (it filters by id and duration, not by name).
+  local function learn(tok)
+    if inCombat() or not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then
+      return
+    end
+    local now = GetTime and GetTime() or 0
+    if (now - (learnAt[tok] or -100)) < LEARN_EVERY_SEC then
+      return
+    end
+    learnAt[tok] = now
+    local l = learnedDB()
+    if not l then
+      return
+    end
+    local n = 0
+    for _ in pairs(l) do
+      n = n + 1
+    end
+    local added = 0
+    for i = 1, 40 do
+      local ok, d = pcall(C_UnitAuras.GetAuraDataByIndex, tok, i, "HELPFUL")
+      if not ok or type(d) ~= "table" then
+        break
+      end
+      local sid = pub(d.spellId)
+      if type(sid) == "number" and l[sid] == nil and not seedSet[sid] and n + added < LEARN_CAP then
+        local why
+        if D.IsFriendlyConsumableAura and D.IsFriendlyConsumableAura(d) then
+          why = "food"
+        elseif pub(d.duration) == 0 then
+          why = "permanent"
+        end
+        if why then
+          l[sid] = why
+          added = added + 1
+        end
+      end
+    end
+    if added > 0 then
+      AC.learnedNew = AC.learnedNew + added
+      applyExcludes()
+    end
+  end
+
+  local function muteNativeDebuffs(plate)
+    local dl = D.NativeDebuffList and D.NativeDebuffList(plate)
+    if dl and dl.SetAlpha then
+      pcall(dl.SetAlpha, dl, 0)
+    end
+  end
+
+  --- Called from UpdateOverlay for every plate. true = the container row owns this plate (legacy row bypassed).
+  function D.AcUpdate(unit, plate)
+    local h = plate and AC.hosts[plate]
+    if not wanted() then
+      if h and h._pbActive then
+        hideHost(h)
+      end
+      return false
+    end
+    if not plate or AC.api == false or AC.buildFailed then
+      return false
+    end
+    local combat = inCombat()
+    if not h then
+      if combat then
+        AC.inCombatSkips = AC.inCombatSkips + 1 -- built after combat (REGEN repaint)
+        return false
+      end
+      if not probe() then
+        return false -- no container API on this client: legacy row, `/pb ac status` says why
+      end
+      local err
+      h, err = ensureHost(plate)
+      if not h then
+        acErr("host", err)
+        return false
+      end
+    end
+    if not combat then
+      local okA, whyA = anchorHost(h, plate)
+      if not okA then
+        h._pbWhy = "anchor: " .. tostring(whyA)
+        hideHost(h)
+        return false
+      end
+      local okB, whyB = ensureContainers(h, plate)
+      if not okB then
+        h._pbWhy = "build: " .. tostring(whyB)
+        hideHost(h)
+        return false
+      end
+    end
+    if not (h._pbAnchored and h._pbBuilt) then
+      return false
+    end
+    -- Side (friend / enemy rules): decided out of combat; in combat only for a new unit on this plate
+    -- (reaction checks may be secret in combat).
+    local side = h._pbSide
+    if not combat or h._pbUnitKey ~= unit or not side then
+      local friend = (D.IsPlayerOrFriendPlate and D.IsPlayerOrFriendPlate(unit, plate))
+        or (D.PlateUsesFriendlyHarmfulFilter and D.PlateUsesFriendlyHarmfulFilter(plate))
+      side = friend and "friend" or "enemy"
+    end
+    local c = h._pbC[side]
+    local tok = bindToken(unit, plate, side == "friend")
+    if not c or not tok then
+      h._pbWhy = c and "no unit token" or ("no " .. side .. " container")
+      hideHost(h)
+      return false
+    end
+    local other = h._pbC[side == "friend" and "enemy" or "friend"]
+    if other then
+      pcall(other.Hide, other)
+      other._pbBound = nil
+    end
+    if c._pbBound ~= tok or h._pbUnitKey ~= unit then
+      pcall(c.SetEnabled, c, true)
+      local ok, err = pcall(c.SetUnit, c, tok)
+      if not ok then
+        acErr("SetUnit", err)
+        h._pbWhy = "SetUnit(" .. tostring(tok) .. ") failed"
+        hideHost(h)
+        return false
+      end
+      c._pbBound = tok
+      if c.UpdateAllAuras then
+        pcall(c.UpdateAllAuras, c)
+      end
+    end
+    pcall(c.Show, c)
+    pcall(h.Show, h)
+    h._pbUnitKey, h._pbSide, h._pbActive, h._pbWhy = unit, side, true, nil
+    -- Native lists: buffs / crowd control muted exactly as in the legacy mode, plus the native debuffs
+    -- (this row shows them; alpha only, never moved).
+    if D.MuteNativeBuffList then
+      pcall(D.MuteNativeBuffList, plate)
+    end
+    muteNativeDebuffs(plate)
+    if not combat and side == "friend" then
+      learn(tok)
+    end
+    return true
+  end
+
+  function D.AcOwnsPlate(plate)
+    local h = plate and AC.hosts[plate]
+    return (h and h._pbActive and wanted()) and true or false
+  end
+
+  --- NAME_PLATE_UNIT_REMOVED: hide the row of the recycled plate (combat-safe: our frames only).
+  function D.AcDetach(unit)
+    for _, h in pairs(AC.hosts) do
+      if h._pbUnitKey == unit then
+        hideHost(h)
+        h._pbUnitKey = nil
+      end
+    end
+  end
+
+  function D.AcHideAll()
+    for _, h in pairs(AC.hosts) do
+      hideHost(h)
+      h._pbUnitKey = nil
+    end
+  end
+
+  local function countButtons(c)
+    local made, shown, forbidden = 0, 0, 0
+    local list = c and c._pbButtons or {}
+    for i = 1, #list do
+      local b = list[i]
+      made = made + 1
+      local forb = false
+      pcall(function()
+        forb = b.IsForbidden and b:IsForbidden() and true or false
+      end)
+      if forb then
+        forbidden = forbidden + 1
+      else
+        pcall(function()
+          if b:IsShown() then
+            shown = shown + 1
+          end
+        end)
+      end
+    end
+    return made, shown, forbidden
+  end
+
+  local function showStr(f)
+    local s, v = "?", "?"
+    pcall(function()
+      s = tostring(f:IsShown())
+      v = tostring(f:IsVisible())
+    end)
+    return s .. "/" .. v
+  end
+
+  local function groupLabels(c)
+    local parts = {}
+    for i = 1, #(c and c._pbGroups or {}) do
+      parts[#parts + 1] = c._pbGroups[i].key .. "=" .. c._pbGroups[i].label
+    end
+    return table.concat(parts, "; ")
+  end
+
+  function D.AcStatusLines()
+    local p = profile()
+    local lines = {}
+    if not inCombat() then
+      probe()
+    end
+    lines[#lines + 1] = string.format("ac: setting useAuraContainer=%s (merge=%s) -> mode %s",
+      tostring(p.useAuraContainer == true), tostring(p.mergeMissing == true), wanted() and "ON" or "off (legacy row)")
+    lines[#lines + 1] = string.format("ac: API AuraContainer: %s | flow layout=%s sort enums=%s",
+      tostring(AC.apiWhy), tostring(AnchorUtil ~= nil and AnchorUtil.FlowLayoutAxis ~= nil),
+      tostring(AuraContainerSortMethod ~= nil))
+    local nHost, nBuilt, nActive = 0, 0, 0
+    local sample
+    for _, h in pairs(AC.hosts) do
+      nHost = nHost + 1
+      if h._pbBuilt then
+        nBuilt = nBuilt + 1
+        sample = sample or h
+      end
+      if h._pbActive then
+        nActive = nActive + 1
+      end
+    end
+    lines[#lines + 1] = string.format("ac: plates with a row=%d built=%d active=%d combatSkips=%d", nHost, nBuilt,
+      nActive, AC.inCombatSkips)
+    if AC.buildFailed then
+      lines[#lines + 1] = "ac: build failed -> legacy row everywhere: " .. tostring(AC.buildFailed)
+    end
+    if sample then
+      lines[#lines + 1] = "ac: friend groups: " .. groupLabels(sample._pbC.friend)
+        .. (sample._pbC.friend and sample._pbC.friend._pbGroupErr and (" | refused: " .. sample._pbC.friend._pbGroupErr) or "")
+      lines[#lines + 1] = "ac: enemy groups: " .. groupLabels(sample._pbC.enemy)
+        .. (sample._pbC.enemy and sample._pbC.enemy._pbGroupErr and (" | refused: " .. sample._pbC.enemy._pbGroupErr) or "")
+    end
+    local _, nEx = excludeMap()
+    lines[#lines + 1] = string.format("ac: excluded buff ids=%d (seed %d, learned this session +%d)", nEx, #FOOD_SEED,
+      AC.learnedNew)
+    lines[#lines + 1] = string.format("ac: errors=%d last=%s", AC.errN, tostring(AC.lastErr or "-"))
+    return lines
+  end
+
+  --- /pb tree lines for one plate.
+  function D.AcTreeLines(plate)
+    local lines = {}
+    local p = profile()
+    local h = plate and AC.hosts[plate]
+    lines[#lines + 1] = string.format("  AC: mode=%s api=%s host=%s anchored=%s y=%s built=%s active=%s side=%s unitKey=%s why=%s",
+      wanted() and "on" or "off", tostring(AC.apiWhy), tostring(h ~= nil), tostring(h and h._pbAnchored),
+      h and h._pbY and string.format("%.1f", h._pbY) or "-", tostring(h and h._pbBuilt), tostring(h and h._pbActive),
+      tostring(h and h._pbSide), tostring(h and h._pbUnitKey), tostring(h and h._pbWhy or AC.buildFailed or "-"))
+    if p.useAuraContainer ~= true then
+      return lines
+    end
+    if h then
+      for _, side in ipairs({ "friend", "enemy" }) do
+        local c = h._pbC[side]
+        if c then
+          local made, shown, forbidden = countButtons(c)
+          local back, w, hh = "?", "?", "?"
+          pcall(function()
+            local u = c:GetUnit()
+            back = (u ~= nil and D.IsSecret(u)) and "SECRET" or tostring(u)
+          end)
+          pcall(function()
+            local cw, ch = c:GetWidth(), c:GetHeight()
+            w = D.IsSecret(cw) and "S" or string.format("%.0f", cw)
+            hh = D.IsSecret(ch) and "S" or string.format("%.0f", ch)
+          end)
+          lines[#lines + 1] = string.format("  AC %s: bound=%s GetUnit=%s shown/visible=%s size=%sx%s buttons made=%d shown=%d forbidden=%d flow=%s",
+            side, tostring(c._pbBound), back, showStr(c), w, hh, made, shown, forbidden, tostring(c._pbFlow))
+          if c._pbInit then
+            lines[#lines + 1] = "  AC " .. side .. " button init: " .. c._pbInit
+          end
+        end
+      end
+      lines[#lines + 1] = "  AC host shown/visible=" .. showStr(h)
+    end
+    local dl = D.NativeDebuffList and D.NativeDebuffList(plate)
+    local a = "?"
+    pcall(function()
+      a = string.format("%.1f", dl:GetAlpha())
+    end)
+    lines[#lines + 1] = string.format("  AC native DebuffList alpha=%s | errors=%d last=%s", a, AC.errN,
+      tostring(AC.lastErr or "-"))
+    return lines
+  end
 end

@@ -1458,6 +1458,11 @@ local function WireScripts(btn)
     if not self._bbBag or not self._bbSlot then
       return
     end
+    -- Invisible shell of a closed bag: no tooltip.
+    local LayoutMod = BetterBackpack.Modules.Layout
+    if LayoutMod and LayoutMod.IsBagFrameVisible and not LayoutMod.IsBagFrameVisible() then
+      return
+    end
     if self._bbSecure and not (InCombatLockdown and InCombatLockdown()) then
       Slots.SyncAttrs(self, self._bbBag, self._bbSlot)
     end

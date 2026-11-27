@@ -2,7 +2,7 @@
 
 Plateband = Plateband or {}
 
-local CURRENT_SCHEMA = 17
+local CURRENT_SCHEMA = 19
 local MAX_ERRORS = 40
 local MAX_MSG = 2000
 
@@ -12,7 +12,7 @@ local Config = Plateband.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.6.3"
+Config.VERSION = "0.7.2"
 
 local function ProfileDefaults()
   return {
@@ -37,6 +37,9 @@ local function ProfileDefaults()
     paintTraceInCombat = false,
     -- Auto-saved diagnose cards (dev): off by default.
     autoDiag = false,
+    -- 0.7.0 EXPERIMENTAL: Blizzard-managed AuraContainer row instead of the collector row (`/pb ac on|off`).
+    -- Blizzard AuraContainer row (works for friendly units in combat); falls back to the legacy row when the client lacks it.
+    useAuraContainer = true,
   }
 end
 
@@ -59,6 +62,9 @@ local function Defaults()
     },
     lastPaintTrace = nil,
     runtimeVer = { ver = "", at = 0, src = "" },
+    -- AuraContainer mode: buff spell ids the container must not show on friendly plates (food/drink, permanent),
+    -- learned from readable aura data out of combat. [spellId] = "food" | "permanent".
+    acExclude = {},
   }
 end
 
@@ -279,6 +285,25 @@ function Config.EnsureDB()
     from = 17
   end
 
+  -- 0.7.0: experimental AuraContainer row, off by default; learned exclude list for its friendly buff group.
+  if from < 18 then
+    EnsureProfile(db)
+    db.profile.useAuraContainer = false
+    if type(db.acExclude) ~= "table" then
+      db.acExclude = {}
+    end
+    db.schemaVersion = 18
+    from = 18
+  end
+
+  -- 0.7.2: the AuraContainer row becomes the default (verified in game: enemy and friendly plates, in combat).
+  if from < 19 then
+    EnsureProfile(db)
+    db.profile.useAuraContainer = true
+    db.schemaVersion = 19
+    from = 19
+  end
+
   EnsureProfile(db)
   EnsureSessionLog(db)
   if type(db.paintTrace) ~= "table" then
@@ -286,6 +311,9 @@ function Config.EnsureDB()
   end
   if type(db.errors) ~= "table" then
     db.errors = {}
+  end
+  if type(db.acExclude) ~= "table" then
+    db.acExclude = {}
   end
 
   return db
