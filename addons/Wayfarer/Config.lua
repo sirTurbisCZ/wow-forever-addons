@@ -6,7 +6,7 @@ local Config = Wayfarer.Config
 
 local CURRENT_SCHEMA = 1
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
-Config.VERSION = "0.2.12"
+Config.VERSION = "0.2.13"
 
 local function ProfileDefaults()
   return {
@@ -86,6 +86,11 @@ function Config.EnsureDB()
 end
 
 function Config.GetProfile()
+  -- Hot path (timer ticks, every nameplate update): skip the default-table merge once the database is ensured.
+  local db = WayfarerDB
+  if type(db) == "table" and db.schemaVersion == CURRENT_SCHEMA and type(db.profile) == "table" then
+    return db.profile
+  end
   return Config.EnsureDB().profile
 end
 

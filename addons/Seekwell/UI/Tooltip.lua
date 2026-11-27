@@ -118,11 +118,14 @@ local function OnItem(tooltip, data)
   if not itemID then
     return
   end
-  local lines = Tip.Lines(itemID)
-  if #lines == 0 or HasOurLine(tooltip) then
+  if HasOurLine(tooltip) then
     return
   end
   if s.tooltip.skipIfDropsShown ~= false and HasForeignDrops(tooltip) then
+    return
+  end
+  local lines = Tip.Lines(itemID)
+  if #lines == 0 then
     return
   end
   busy = true

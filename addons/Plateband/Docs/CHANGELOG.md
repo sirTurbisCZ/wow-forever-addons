@@ -1,5 +1,14 @@
 # Plateband changelog
 
+## Release 0.7.3 — less garbage and fewer scans per nameplate
+
+- `Config.GetProfile()` returns the saved profile directly instead of building and merging the 17-key default table on every call (it is called dozens of times per nameplate update).
+- `HasTarget()` answers at once when the game says there is no target (the normal state in cities) instead of scanning all nameplates (about 160 protected calls per call).
+- Old row mode no longer leaks a 12-button frame on every loading screen: the hidden frame is kept per plate token and reused.
+- Clearing our row no longer calls `ClearAllPoints` in combat (deferred until combat ends).
+- `UNIT_SPELLCAST_SENT` targets of Power Word: Shield are dropped on every success and at the end of combat (the table no longer grows all session).
+- The in-combat `UNIT_AURA` diagnostic probe runs only after `/pb tree` has been used.
+
 ## Release 0.7.2 — AuraContainer row is the default
 
 - The row is now drawn by Blizzard's managed **AuraContainer** (`/pb ac`, default **on**). The client tracks the auras itself, so friendly units (party, players) work **in combat** and other casters' debuffs, countdown numbers and stacks are shown reliably. Verified in game on enemy and friendly plates in combat. `/pb ac off` returns to the previous Lua-drawn row; if the client has no AuraContainer the previous row is used automatically.

@@ -222,6 +222,10 @@ local function CachedName(id)
   return nil
 end
 
+local idPool, idPoolGen
+local requested = {}
+local REQUEST_MAX = 50
+
 --- Items matching text (item link, id or part of a name): { {id=, name=} } best first, at most `limit`.
 --- Sources of names: Tinny's Classic item table, items you looted (learned), items of the Forever data,
 --- and the wishlist, using the client's cache; uncached ones are requested so a second try can find them.
@@ -265,40 +269,53 @@ function Wish.Find(text, limit)
     end
   end
   -- ids known from learned loot, the wishlist and the Forever data: names only from the client cache
-  local pool, n = {}, 0
-  local sdb = rawget(_G, "SeekwellDB")
-  local learned = type(sdb) == "table" and sdb.learned or nil
-  if learned and type(learned.npc) == "table" then
-    for _, e in pairs(learned.npc) do
-      if type(e.l) == "table" then
-        for itemID in pairs(e.l) do
-          if not pool[itemID] then
-            pool[itemID] = true
-            n = n + 1
+  local L = Seekwell.Learned
+  local g = L and L.generation or 0
+  if not idPool or idPoolGen ~= g then
+    idPool, idPoolGen = {}, g
+    local set = {}
+    local sdb = rawget(_G, "SeekwellDB")
+    local learned = type(sdb) == "table" and sdb.learned or nil
+    if learned and type(learned.npc) == "table" then
+      for _, e in pairs(learned.npc) do
+        if type(e) == "table" and type(e.l) == "table" then
+          for itemID in pairs(e.l) do
+            set[itemID] = true
           end
         end
       end
     end
-  end
-  for itemID in pairs(List()) do
-    pool[itemID] = true
-  end
-  local ff = rawget(_G, "TnnysMobLoot_Forever")
-  if type(ff) == "table" and type(ff.from) == "table" then
-    for itemID in pairs(ff.from) do
-      pool[itemID] = true
+    local ff = rawget(_G, "TnnysMobLoot_Forever")
+    if type(ff) == "table" and type(ff.from) == "table" then
+      for itemID in pairs(ff.from) do
+        set[itemID] = true
+      end
+    end
+    for itemID in pairs(set) do
+      if type(itemID) == "number" then
+        idPool[#idPool + 1] = itemID
+      end
     end
   end
   local request = C_Item and C_Item.RequestLoadItemDataByID
-  for itemID in pairs(pool) do
-    if type(itemID) == "number" then
-      local name = CachedName(itemID)
-      if name then
-        Add(itemID, name)
-      elseif request then
-        pcall(request, itemID)
-      end
+  local asked = 0
+  local function Consider(itemID)
+    local name = CachedName(itemID)
+    if name then
+      Add(itemID, name)
+    elseif request and asked < REQUEST_MAX and not requested[itemID] then
+      requested[itemID] = true
+      asked = asked + 1
+      pcall(request, itemID)
     end
+  end
+  for itemID in pairs(List()) do
+    if type(itemID) == "number" then
+      Consider(itemID)
+    end
+  end
+  for _, itemID in ipairs(idPool) do
+    Consider(itemID)
   end
   table.sort(out, function(a, b)
     local la, lb = a.name:lower(), b.name:lower()

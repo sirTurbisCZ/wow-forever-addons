@@ -164,6 +164,23 @@ local function MobIndex()
   return mobIndex
 end
 
+local learnedNames, learnedGen
+local function LearnedNames()
+  local L = Seekwell.Learned
+  local g = L and L.generation or 0
+  if learnedNames and learnedGen == g then
+    return learnedNames
+  end
+  learnedNames, learnedGen = {}, g
+  local l = Seekwell.Config.Learned()
+  for id, e in pairs(type(l.npc) == "table" and l.npc or {}) do
+    if type(e) == "table" and type(e.n) == "string" then
+      learnedNames[#learnedNames + 1] = { id = id, name = e.n, lower = e.n:lower() }
+    end
+  end
+  return learnedNames
+end
+
 --- Mobs whose name contains q (case-insensitive): { {id, name} } best first, at most cap; second value = capped.
 function B.SearchMobs(q, cap)
   cap = cap or SCAN_CAP
@@ -191,11 +208,8 @@ function B.SearchMobs(q, cap)
       out[#out + 1] = { id = id, name = name }
     end
   end
-  local l = Seekwell.Config.Learned()
-  for id, e in pairs(type(l.npc) == "table" and l.npc or {}) do
-    if type(e) == "table" and type(e.n) == "string" then
-      Try(id, e.n)
-    end
+  for _, e in ipairs(LearnedNames()) do
+    Try(e.id, e.name, e.lower)
   end
   for _, e in ipairs(MobIndex()) do
     Try(e.id, e.name, e.lower)
@@ -2201,6 +2215,18 @@ end
 if Seekwell.Window and Seekwell.Window.RegisterSection then
   Seekwell.Window.RegisterSection({ id = "search", label = "Search", build = Build, layout = Layout, fixed = true,
     mode = "browser", before = "wishlist" })
+end
+
+if Seekwell.RegisterStart then
+  Seekwell.RegisterStart("browser.fdbready", function()
+    if Seekwell.FDB and Seekwell.FDB.OnReady then
+      Seekwell.FDB.OnReady(function()
+        if sec and sec:IsShown() and Trim(query) ~= "" then
+          Run(true) -- an index finished: repeat the current search without resetting the scroll
+        end
+      end)
+    end
+  end)
 end
 
 if Seekwell.RegisterSlash then

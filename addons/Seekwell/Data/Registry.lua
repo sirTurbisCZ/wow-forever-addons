@@ -14,7 +14,7 @@ local R = {}
 Seekwell.Registry = R
 
 local LEARNED_MIN = 10 -- learned kills needed before your own rate replaces a Classic estimate
-local ITEM_LRU = 200
+local ITEM_LRU = 500
 local itemCache, itemCount, itemTick = {}, 0, 0
 R.LEARNED_MIN = LEARNED_MIN
 
@@ -221,17 +221,10 @@ function R.NpcDrops(npcID)
   return out
 end
 
+-- Cheap eviction: when the cache is full it is dropped as a whole (the old oldest-entry scan walked every entry on each
+-- insert, 60k steps for one filtered search).
 local function EvictItem()
-  local oldK, oldT
-  for k, e in pairs(itemCache) do
-    if not oldT or e.t < oldT then
-      oldK, oldT = k, e.t
-    end
-  end
-  if oldK then
-    itemCache[oldK] = nil
-    itemCount = itemCount - 1
-  end
+  itemCache, itemCount = {}, 0
 end
 
 local function BuildSources(itemID, limit)

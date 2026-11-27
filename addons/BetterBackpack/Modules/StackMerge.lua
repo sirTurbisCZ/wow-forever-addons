@@ -74,7 +74,7 @@ end
 
 local function StackCount(bag, slot, info)
   if type(info) == "table" then
-    for _, key in ipairs({ "stackCount", "Count", "quantity", "stack", "num" }) do
+    for _, key in ipairs(Slots.K.count) do
       local n = SafeNum(info[key])
       if n and n > 0 then
         return n
@@ -266,6 +266,7 @@ function StackMerge.Collapse(list)
           itemID = id,
           displayCount = count,
           mergedFrom = { { bag = bag, slot = slot } },
+          separate = key:sub(1, 1) == "S", -- a stack the player split off on purpose (own icon)
         }
         groups[key] = g
         order[#order + 1] = key

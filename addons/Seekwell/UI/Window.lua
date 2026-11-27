@@ -1022,8 +1022,8 @@ function Win.RegisterSection(def)
 end
 
 function Win.Refresh()
-  if not frame then
-    return
+  if not frame or not (frame.IsShown and frame:IsShown()) then
+    return -- hidden: the sections render again when the window is shown
   end
   for i = 1, #widgets do
     pcall(widgets[i])

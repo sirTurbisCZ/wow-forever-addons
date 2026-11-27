@@ -656,6 +656,12 @@ HasTarget = function()
   if PlateFor("target") then
     return true
   end
+  -- No target is the normal state (cities): a readable "false" answers at once instead of scanning all nameplates
+  -- (about 160 pcalls per call, and this runs many times per plate update).
+  local okE, exists = pcall(UnitExists, "target")
+  if okE and not IsSecret(exists) and exists == false then
+    return false
+  end
   if SafeUnitExists("target") then
     return true
   end
@@ -2326,6 +2332,12 @@ ClearFallback = function(unit, keepSticky)
     end
   end
   fb:Hide()
+  if SecurePaintLocked() then
+    -- ClearAllPoints is not allowed in combat: hide now, clear points after regen (PLAYER_REGEN_ENABLED -> ClearOverlay).
+    combatDeferredClears[unit] = true
+    fb._painted = 0
+    return
+  end
   fb:ClearAllPoints()
   fb._painted = 0
   fb._pbAnchored = nil -- points cleared: PreAnchorFriend must anchor it again before combat
@@ -5699,8 +5711,7 @@ RefreshAll = function(mode)
   end
   for unit in pairs(fallbacks) do
     if not live[unit] then
-      ClearFallback(unit)
-      fallbacks[unit] = nil
+      ClearFallback(unit) -- frame stays in fallbacks (hidden, reused by EnsureFallback): keys are bounded by plate tokens
     end
   end
   for u in pairs(lastOverlayPaintAt) do
@@ -6099,6 +6110,10 @@ OnEvent = function(_, event, arg1, arg2, arg3, arg4)
       MaybeAutoDiagnose("target", true)
     end)
   elseif event == "PLAYER_REGEN_ENABLED" then
+    local clrSent = ns.PlatesPaintDeps and ns.PlatesPaintDeps.ClearSentTargets
+    if clrSent then
+      clrSent()
+    end
     Defer(function()
       for u in pairs(combatDeferredClears) do
         combatDeferredClears[u] = nil
@@ -6139,7 +6154,7 @@ OnEvent = function(_, event, arg1, arg2, arg3, arg4)
       return
     end
     -- Diagnostic for /pb tree: can the EVENT path read this unit's auras while in combat?
-    if InCombatLockdown and InCombatLockdown() and type(unit) == "string" and unit ~= "player"
+    if PB.probeWanted and InCombatLockdown and InCombatLockdown() and type(unit) == "string" and unit ~= "player"
       and C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
       local now0 = GetTime and GetTime() or 0
       PB.probeAt = PB.probeAt or {}
@@ -6218,8 +6233,7 @@ function Mod.Start()
     overlays[unit] = nil
   end
   for unit in pairs(fallbacks) do
-    ClearFallback(unit)
-    fallbacks[unit] = nil
+    ClearFallback(unit) -- keep the hidden frame for reuse (no new 12-button frame per Start)
   end
   for u in pairs(nameShifts) do
     nameShifts[u] = nil
@@ -6298,8 +6312,7 @@ function Mod.Stop()
     overlays[unit] = nil
   end
   for unit in pairs(fallbacks) do
-    ClearFallback(unit)
-    fallbacks[unit] = nil
+    ClearFallback(unit) -- keep the hidden frame for reuse (no new 12-button frame per Start)
   end
   for unit in pairs(nameShifts) do
     RestoreNameShift(unit, PlateFor(unit))
@@ -6477,6 +6490,7 @@ function Mod.DumpTree()
         tostring(fb and fb:IsShown()), tostring(fb and fb._pbShift)))
     end
     -- Event-path probes recorded during combat (UNIT_AURA), and a timer-path probe printed next frame.
+    PB.probeWanted = true -- start recording the in-combat UNIT_AURA probe for the next /pb tree run
     for u, text in pairs(PB.probeEvent or {}) do
       P("  " .. text)
     end

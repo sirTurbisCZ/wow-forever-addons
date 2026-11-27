@@ -4,7 +4,7 @@ ForeverErrorLog = ForeverErrorLog or {}
 
 local CURRENT_SCHEMA = 5
 local MAX_ERRORS = 80
-local MAX_MSG = 4000
+local MAX_MSG = 1500
 local MAX_SESSION_LINES = 200
 local MAX_AGENT_EXPORT_LINES = 120
 
@@ -16,7 +16,7 @@ Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
 Config.MAX_SESSION_LINES = MAX_SESSION_LINES
 Config.MAX_AGENT_EXPORT_LINES = MAX_AGENT_EXPORT_LINES
-Config.VERSION = "0.2.0"
+Config.VERSION = "0.2.1"
 
 local function Defaults()
   return {

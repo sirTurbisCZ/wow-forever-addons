@@ -1,5 +1,11 @@
 # ForeverErrorLog changelog
 
+## Release 0.2.1 — survive handler replacement, less work per error
+
+- **Handler re-check:** if another addon calls `seterrorhandler` later, FElog (on `PLAYER_LOGIN` and `PLAYER_ENTERING_WORLD`) forwards to that handler as its original and installs itself again; a re-entrancy guard prevents forwarding loops.
+- **Chat:** at most one `[FElog]` line per 2 s, with a "(+N more)" counter for the errors held back.
+- **Repeats:** the same message within 1 s is only counted, before `debugstack` is taken. Messages are capped at 1500 characters (was 4000) and stacks at 1500; the archive of a previous session keeps its top 20 entries by count. The visible error list is unchanged.
+
 ## Release 0.2.0 — rewrite: working capture, persistent popup setting, dev telemetry opt-in
 
 - **Fix (critical):** every session-log write threw (`AppendLiveStream` was called before it was declared), so the error handler was installed late, the `[FElog]` chat line never appeared and nothing was recorded after the first error. `Core.lua` is rewritten without the dead export/pulse/version code (about 40 % of the old file); the handler is installed on `ADDON_LOADED`.

@@ -507,6 +507,18 @@ local function Build()
   return f
 end
 
+if Seekwell.RegisterStart then
+  Seekwell.RegisterStart("panel.fdbready", function()
+    if Seekwell.FDB and Seekwell.FDB.OnReady then
+      Seekwell.FDB.OnReady(function()
+        if frame and frame:IsShown() then
+          P.Refresh(true)
+        end
+      end)
+    end
+  end)
+end
+
 function P.Ensure()
   if not frame then
     frame = Build()

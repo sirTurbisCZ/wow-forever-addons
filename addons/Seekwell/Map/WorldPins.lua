@@ -122,6 +122,24 @@ local function Resolve(h)
   return mobs
 end
 
+-- hunt.mobs was resolved once when the hunt was set: re-resolve when the wishlist or ForeverDB changed (at once) or when
+-- new learned data came in (at most every 60 s, a loot must not trigger the whole resolve).
+local function FreshMobs(h)
+  local F, W, Ld = Seekwell.FDB, Seekwell.Wish, Seekwell.Learned
+  local sig = tostring(W and W.generation or 0) .. ":" .. tostring(F and F.Generation and F.Generation() or 0)
+  local lg = Ld and Ld.generation or 0
+  local now = (GetTime and GetTime()) or 0
+  if not h.mobs then
+    h.rsig, h.rlg, h.rt = sig, lg, now
+    return Resolve(h)
+  end
+  if h.rsig ~= sig or (h.rlg ~= lg and now - (h.rt or 0) > 60) then
+    h.rsig, h.rlg, h.rt = sig, lg, now
+    return Resolve(h)
+  end
+  return h.mobs
+end
+
 local function PositionCount(mobs)
   local cells, maps = 0, {}
   for npcID in pairs(mobs) do
@@ -183,7 +201,7 @@ function M.BuildPointsForMap(mapID)
   local s = S()
   local minPct = tonumber(s.minPct) or 0
   local hidden = Hidden()
-  for npcID, e in pairs(hunt.mobs or Resolve(hunt)) do
+  for npcID, e in pairs(FreshMobs(hunt)) do
     if not hidden[npcID] and (minPct <= 0 or e.p == nil or e.p >= minPct) then
       local pts = Seekwell.Spawns.ForMob(npcID, mapID)
       if #pts > 0 then
@@ -371,7 +389,14 @@ function M.Restore()
     Char().hunt = nil
     return false
   elseif type(h) == "table" and h.kind then
-    return M.Set(h.kind, h.id, true)
+    -- never load the big ForeverDB data during login: it is loaded a little later (and out of combat)
+    local ok = M.Set(h.kind, h.id, true, true)
+    if ok and Seekwell.FDB and Seekwell.FDB.Touch and C_Timer and C_Timer.After then
+      C_Timer.After(20, function()
+        pcall(Seekwell.FDB.Touch)
+      end)
+    end
+    return ok
   end
   return false
 end
@@ -393,8 +418,8 @@ function M.OnDataChanged()
   end
 end
 
-function M.Set(kind, id, quiet)
-  if Seekwell.FDB and Seekwell.FDB.Touch then
+function M.Set(kind, id, quiet, noLoad)
+  if not noLoad and Seekwell.FDB and Seekwell.FDB.Touch then
     pcall(Seekwell.FDB.Touch)
   end
   local label
@@ -481,7 +506,7 @@ end
 
 --- All npc ids of the active hunt (not hidden), for the minimap.
 function M.HuntMobs()
-  return hunt and (hunt.mobs or Resolve(hunt)) or nil
+  return hunt and FreshMobs(hunt) or nil
 end
 
 -- slash ------------------------------------------------------------------------------------------

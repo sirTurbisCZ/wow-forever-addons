@@ -1,5 +1,17 @@
 # BetterBackpack changelog
 
+## Release 1.3.10 — the closed bag no longer takes clicks, fewer refreshes
+
+- **Fix:** after a fight the closed bag is kept "shown" at alpha 0 (so B works in combat), and its slot buttons stayed mouse-enabled. Clicking anything that lies where the bag was last drawn (for example the quest tracker) picked up or used an invisible slot (a healing potion on the cursor). Not only the slot buttons: lane headers, title buttons, the search box and every other mouse-enabled part of the parked bag are switched off too (they swallowed clicks and did nothing, e.g. on the quest tracker after a fight). Everything takes clicks only while the bag is visible; they are switched off when the bag is parked (out of combat) and on again when it opens. If the bag is opened in combat the game may refuse the change until combat ends.
+- **Fix:** the bank / auction bulk transfer stops when the bank or auction house is closed during the transfer (the rest would have used or equipped the items) and a stale timer chain of an older transfer can no longer run next to the new one.
+- **Fix:** cooldown and quest events no longer overwrite the summed count of a merged stack. SPELL_UPDATE_COOLDOWN only updates cooldown spinners and quest events only the quest markers (before: a full redraw of every slot, several times per global cooldown).
+- **Fix:** a split-off stack keeps its own place in the lane order (it no longer takes over the main stack's remembered place); the free-slot drop also tries the reagent bag; a cancelled split no longer marks a later normal drop as separate.
+- Only CURSOR_CHANGED is listened to for the drop button (CURSOR_UPDATE fired on every cursor shape change).
+- **Fix:** the tidy / `/bb stack` merge pass treated every stack as having room (the item info has no max stack), so full stacks were "merged" and swapped by the server. It now uses the item's real max stack (unknown = skipped), checks that the pickup really put the item on the cursor, never reuses a source after a merge, reads each slot once per pass and includes the reagent bag.
+- Typing in the search box relayouts once per 0.15 s pause instead of on every keystroke (slash search stays immediate).
+- Bag events no longer allocate timers and closures per event: refreshes run ~0.05 s and ~0.55 s after the last event of a burst with reused callbacks (GET_ITEM_INFO_RECEIVED joins the same queue).
+- Less garbage per slot: no per-call closure in the reagent / keyring bag checks, constant key tables and the bucket sort comparator are shared.
+
 ## Release 1.3.9 — stacks: opening, splitting and order
 
 - **Fix:** the count of a merged stack disappeared after using an item: the light refresh set the summed count and then `SyncVisual` overwrote it with the count of the one slot it sits on (blank when that slot held 1). The sum is now written after the slots are synced.

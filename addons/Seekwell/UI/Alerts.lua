@@ -325,7 +325,11 @@ function A.OnLootOpened()
   end
 end
 
+local selfPrefixes
 local function SelfPrefixes()
+  if selfPrefixes then
+    return selfPrefixes
+  end
   local out = {}
   for _, g in ipairs({ "LOOT_ITEM_SELF", "LOOT_ITEM_SELF_MULTIPLE", "LOOT_ITEM_PUSHED_SELF", "LOOT_ITEM_PUSHED_SELF_MULTIPLE" }) do
     local v = Sec().Str(_G[g])
@@ -338,6 +342,7 @@ local function SelfPrefixes()
     out[1] = "You receive loot: "
     out[2] = "You receive item: "
   end
+  selfPrefixes = out
   return out
 end
 
@@ -363,8 +368,6 @@ ev:SetScript("OnEvent", Safe("alerts.event", function(_, event, arg1)
     A.CheckUnit("mouseover")
   elseif event == "NAME_PLATE_UNIT_ADDED" then
     A.CheckUnit(arg1)
-  elseif event == "LOOT_OPENED" then
-    A.OnLootOpened()
   elseif event == "CHAT_MSG_LOOT" then
     A.OnChatLoot(arg1)
   end
@@ -391,7 +394,6 @@ function A.Apply()
     end
   end
   if s.wantedDrop then
-    Reg("LOOT_OPENED")
     Reg("CHAT_MSG_LOOT")
   end
 end

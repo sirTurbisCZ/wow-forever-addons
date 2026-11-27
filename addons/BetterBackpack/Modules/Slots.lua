@@ -21,6 +21,13 @@ end
 
 Slots.IsSecret = IsSecret
 
+-- Constant key lists hoisted out of per-slot functions (no per-call table).
+Slots.K = {
+  count = { "stackCount", "Count", "quantity", "stack", "num" },
+  overlay = { "IconOverlay", "IconOverlay2" },
+  clear = { "IconOverlay", "IconOverlay2", "IconQuestTexture", "flash" },
+}
+
 local function SafeNum(v, fallback)
   if type(v) ~= "number" then
     return fallback
@@ -55,6 +62,9 @@ function Slots.IsKeyringBag(bag)
     return false
   end
   local key = Slots.KeyringBagIndex()
+  if type(bag) == "number" and not IsSecret(bag) and type(key) == "number" and not IsSecret(key) then
+    return bag == key
+  end
   local match = false
   pcall(function()
     if bag == key then
@@ -76,6 +86,9 @@ function Slots.IsReagentBag(bag)
     return false
   end
   local reb = Slots.ReagentBagIndex()
+  if type(bag) == "number" and not IsSecret(bag) and type(reb) == "number" and not IsSecret(reb) then
+    return bag == reb
+  end
   local match = false
   pcall(function()
     if bag == reb then
@@ -672,7 +685,7 @@ end
 
 local function ResolveStackCount(info, bag, slot)
   if type(info) == "table" then
-    for _, key in ipairs({ "stackCount", "Count", "quantity", "stack", "num" }) do
+    for _, key in ipairs(Slots.K.count) do
       local c = SafeNum(info[key], nil)
       if c and c >= 1 then
         return c
@@ -929,7 +942,7 @@ function Slots.SyncVisual(btn, bag, slot)
         fs:SetText("")
         fs:Hide()
       end
-      for _, key in ipairs({ "IconOverlay", "IconOverlay2" }) do
+      for _, key in ipairs(Slots.K.overlay) do
         local r = btn[key]
         if r and r.Hide then
           r:Hide()
@@ -1002,7 +1015,7 @@ function Slots.SyncVisual(btn, bag, slot)
       fs:SetTextColor(1, 1, 1, 1)
       fs:Show()
     end
-    for _, key in ipairs({ "IconOverlay", "IconOverlay2" }) do
+    for _, key in ipairs(Slots.K.overlay) do
       local r = btn[key]
       if r then
         pcall(function()
@@ -1623,6 +1636,18 @@ function Slots.Get(bag, slot)
   return buttons[Slots.BagSlotKey(bag, slot)]
 end
 
+--- Switch the mouse on / off for every slot button. A closed bag is kept shown at alpha 0 (warm shell); its slot buttons
+--- are still children of that frame and would swallow clicks (and use or pick up items) wherever the bag was drawn.
+function Slots.SetAllMouse(on)
+  on = on and true or false
+  Slots._bbMouseOn = on
+  for _, btn in pairs(buttons) do
+    if btn and btn.EnableMouse then
+      pcall(btn.EnableMouse, btn, on)
+    end
+  end
+end
+
 function Slots.ForEach(fn)
   for key, btn in pairs(buttons) do
     fn(btn, key)
@@ -1732,7 +1757,7 @@ local function NormalizeSlotVisual(btn)
       end
     end)
   end
-  for _, key in ipairs({ "IconOverlay", "IconOverlay2", "IconQuestTexture", "flash" }) do
+  for _, key in ipairs(Slots.K.clear) do
     local r = btn[key]
     if r and r.ClearAllPoints then
       pcall(function()
