@@ -1,0 +1,18 @@
+## Interface: 16001
+## Title: Wayfarer
+## Notes: Party and raid nameplate marks, a minimap button and one settings window. More tools to come.
+## Author: tuma
+## Version: 0.2.12
+## SavedVariables: WayfarerDB
+## OptionalDeps: ForeverErrorLog
+## DefaultState: enabled
+## Category: Utility
+
+Locale/enUS.lua
+Config.lua
+Modules/Minimap.lua
+Modules/PartyMarks.lua
+Modules/ProcHUD.lua
+Modules/EasyFish.lua
+Modules/Settings.lua
+Core.lua
