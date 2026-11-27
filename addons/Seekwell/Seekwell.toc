@@ -1,0 +1,45 @@
+## Interface: 16001
+## Title: Seekwell
+## Notes: What drops from your target (on a key), item tooltip sources, learning from your own loot, a wishlist per character.
+## Author: tuma
+## Version: 0.5.5
+## SavedVariables: SeekwellDB
+## SavedVariablesPerCharacter: SeekwellCharDB
+## OptionalDeps: ForeverErrorLog, TnnysMobLoot, ForeverDungeonJournal, ForeverDBData
+## DefaultState: enabled
+## Category: Utility
+
+Locale/enUS.lua
+Config.lua
+Util/Ext.lua
+Util/Secret.lua
+Data/TinnyBridge.lua
+Data/Learned.lua
+Data/Wishlist.lua
+Data/Registry.lua
+Learn/Loot.lua
+Learn/Position.lua
+Learn/Vendor.lua
+Learn/Quest.lua
+Data/Spawns.lua
+Data/Locations.lua
+Data/FDBBridge.lua
+Data/DJBridge.lua
+Map/PinArt.lua
+Map/Pins.xml
+Map/Cluster.lua
+Map/Waypoint.lua
+Map/WorldPins.lua
+Map/MinimapPins.lua
+Net/Share.lua
+UI/Tooltip.lua
+UI/Window.lua
+UI/TargetPanel.lua
+UI/Alerts.lua
+UI/ZoneView.lua
+UI/MapPreview.lua
+UI/ItemView.lua
+UI/Browser.lua
+Modules/Minimap.lua
+Core.lua
+Util/SelfTest.lua

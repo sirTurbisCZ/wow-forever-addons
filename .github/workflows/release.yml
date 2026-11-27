@@ -7,6 +7,8 @@ on:
       - "betterbackpack-v*"
       - "plateband-v*"
       - "wayfarer-v*"
+      - "seekwell-v*"
+      - "seekwell-locations-v*"
 
 permissions:
   contents: write
@@ -38,6 +40,14 @@ jobs:
             wayfarer-v*)
               ADDON="Wayfarer"
               VER="${TAG#wayfarer-v}"
+              ;;
+            seekwell-locations-v*)
+              ADDON="Seekwell_Locations"
+              VER="${TAG#seekwell-locations-v}"
+              ;;
+            seekwell-v*)
+              ADDON="Seekwell"
+              VER="${TAG#seekwell-v}"
               ;;
             *)
               echo "Unsupported tag: $TAG" >&2

@@ -1,0 +1,3 @@
+<Bindings>
+    <Binding name="SEEKWELL_TARGET" header="SEEKWELL" category="ADDONS">Seekwell_ShowTarget()</Binding>
+</Bindings>

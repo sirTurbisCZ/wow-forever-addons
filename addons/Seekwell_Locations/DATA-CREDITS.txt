@@ -1,0 +1,16 @@
+Seekwell Locations - data credits
+=================================
+
+Data.lua (mob zones and spawn points) is derived from the pfQuest unit / zone database
+(shagu, https://github.com/shagu/pfQuest), which is itself based on the CMaNGOS classic-db
+project (https://github.com/cmangos/classic-db). Both are GPL-3.0. It reached this addon via
+the author's earlier addon ForeverLootBrowser (Data/NpcLoc.lua), converted by a build script
+(coords rounded to 3 decimals, at most 40 points per npc, one zone per npc).
+
+Licence: GPL-3.0, see LICENSE.txt (https://www.gnu.org/licenses/gpl-3.0.html).
+
+Scope: the data covers ORIGINAL Classic (vanilla 1.12) spawns only. Mobs, spawns or zones that
+are new or moved on Forever are not in it, and points are approximate.
+
+This folder is optional. Deleting Seekwell_Locations does not affect Seekwell: map pins then
+fall back to positions learned from your own loot.
