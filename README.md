@@ -11,6 +11,7 @@ Install from [Releases](https://github.com/sirTurbisCZ/wow-forever-addons/releas
 | [ForeverErrorLog](addons/ForeverErrorLog/Docs/README.md) | `/felog` | Collects Lua errors from all addons into SavedVariables. The Blizzard error popup is off by default (`/felog ui on` brings it back). |
 | [Plateband](addons/Plateband/Docs/README.md) | `/pb` | One aura row above each nameplate's name: your debuffs and other players' debuffs on enemies, debuffs and short buffs on friendly units, dispellable enemy buffs. Colour-coded, with tooltips. |
 | [BetterBackpack](addons/BetterBackpack/Docs/README.md) | `/bb` | Category-lane bags with combat-safe item use, a Junk lane that sells everything in it, per-character rules and an auto-destroy Trash lane. |
+| [Wayfarer](addons/Wayfarer/Docs/README.md) | `/wf` | One minimap button and one settings window: party / raid nameplate marks, procs and timers (mage Arcane Blast meter), one-key fishing. |
 
 Each addon has its player documentation in `Docs/README.md` and its history in `Docs/CHANGELOG.md`.
 

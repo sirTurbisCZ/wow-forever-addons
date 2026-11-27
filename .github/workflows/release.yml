@@ -6,6 +6,7 @@ on:
       - "felog-v*"
       - "betterbackpack-v*"
       - "plateband-v*"
+      - "wayfarer-v*"
 
 permissions:
   contents: write
@@ -33,6 +34,10 @@ jobs:
             plateband-v*)
               ADDON="Plateband"
               VER="${TAG#plateband-v}"
+              ;;
+            wayfarer-v*)
+              ADDON="Wayfarer"
+              VER="${TAG#wayfarer-v}"
               ;;
             *)
               echo "Unsupported tag: $TAG" >&2
