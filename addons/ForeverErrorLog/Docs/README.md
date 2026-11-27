@@ -14,6 +14,9 @@ Expect `[FElog] loaded v… — N errors this session · popup off` in chat.
 
 | Command | What it does |
 |---------|----------------|
+| `/felog` | Open the error window (same as the minimap button) |
+| `/felog minimap` | Show or hide the minimap button |
+| `/felog taint on` / `/felog taint off` | Record blocked/forbidden addon actions (default on) |
 | `/felog help` | Help and status |
 | `/felog list` | Summary of this session's errors (last 15) |
 | `/felog dump` | Recent errors with stacks, printed to chat |
@@ -26,6 +29,12 @@ Expect `[FElog] loaded v… — N errors this session · popup off` in chat.
 | `/felog dev on` / `/felog dev off` | Developer telemetry (off by default) |
 
 Aliases: `/ferrors`, `/forevererrors`. `/felog history` and `/felog ls` are aliases of `archive` and `list`.
+
+## Error window
+
+`/felog` or a left-click on the minimap button opens a window with this session's errors, newest first, 20 per page. Click into the text, press Ctrl+A then Ctrl+C to copy the whole report (it starts with the client build, locale and addon versions) and paste it into a bug report. **This session** / **Previous** switch between the current and the last saved list, **Clear** empties the list shown, Esc closes. Drag the window or the minimap button to move them.
+
+Blocked or forbidden addon actions (taint) appear in the list as `[blocked] <addon> tried <function>`; `/felog taint off` stops that.
 
 ## Default behavior
 

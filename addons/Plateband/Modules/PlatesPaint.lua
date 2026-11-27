@@ -993,18 +993,22 @@ do
         } },
       }
     end
-    return {
-      { key = "pbED", kind = "debuff", tries = {
-        { filter = "HARMFUL", cf = { isFromPlayerOrPlayerPet = true }, label = "HARMFUL isFromPlayerOrPlayerPet" },
-        { filter = "HARMFUL|PLAYER", label = "HARMFUL|PLAYER (own only)" },
-      } },
-      { key = "pbEB", kind = "purge", tries = {
+    local pr = profile()
+    local specs = {}
+    specs[1] = { key = "pbED", kind = "debuff", tries = {
+      { filter = "HARMFUL", cf = { isFromPlayerOrPlayerPet = true }, label = "HARMFUL isFromPlayerOrPlayerPet" },
+      { filter = "HARMFUL|PLAYER", label = "HARMFUL|PLAYER (own only)" },
+    } }
+    if pr.enemyBuffs ~= false then
+      specs[#specs + 1] = { key = "pbEB", kind = "purge", tries = {
         { filter = "HELPFUL|DISPELLABLE", label = "HELPFUL|DISPELLABLE" },
         { filter = "HELPFUL|RAID_PLAYER_DISPELLABLE", label = "HELPFUL|RAID_PLAYER_DISPELLABLE" },
         { filter = "HELPFUL", cf = { isStealable = true }, label = "HELPFUL isStealable" },
-      } },
-    }
+      } }
+    end
+    return specs
   end
+  D.AcGroupSpecs = groupSpecs
 
   local function addGroup(c, spec, size, pad, maxN)
     local lastErr
@@ -1334,6 +1338,10 @@ do
         or (D.PlateUsesFriendlyHarmfulFilter and D.PlateUsesFriendlyHarmfulFilter(plate))
       side = friend and "friend" or "enemy"
     end
+    if side == "friend" and D.MergeFriendPlatesEnabled and not D.MergeFriendPlatesEnabled() then
+      hideHost(h) -- "Friendly plates" off in the settings window
+      return false
+    end
     local c = h._pbC[side]
     local tok = bindToken(unit, plate, side == "friend")
     if not c or not tok then
@@ -1371,6 +1379,29 @@ do
     muteNativeDebuffs(plate)
     if not combat and side == "friend" then
       learn(tok)
+    end
+    return true
+  end
+
+  --- Settings window: hover tooltips on the buttons that already exist (out of combat; later buttons read the
+  --- setting when they are created).
+  function D.AcApplyTooltips()
+    if inCombat() then
+      return false
+    end
+    local on = profile().gapTooltip ~= false
+    for _, h in pairs(AC.hosts) do
+      for _, side in ipairs({ "friend", "enemy" }) do
+        local c = h._pbC[side]
+        local list = c and c._pbButtons
+        if list then
+          for i = 1, #list do
+            if list[i].SetMouseMotionEnabled then
+              pcall(list[i].SetMouseMotionEnabled, list[i], on)
+            end
+          end
+        end
+      end
     end
     return true
   end

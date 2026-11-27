@@ -2,7 +2,7 @@
 ## Title: Forever Error Log
 ## Notes: Captures Lua errors from all addons into SavedVariables. /felog
 ## Author: tuma
-## Version: 0.2.1
+## Version: 0.3.0
 ## SavedVariables: ForeverErrorLogDB
 ## OptionalDeps: !BugGrabber
 ## DefaultState: enabled
@@ -11,3 +11,4 @@
 Locale/enUS.lua
 Config.lua
 Core.lua
+Modules/Window.lua

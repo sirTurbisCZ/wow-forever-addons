@@ -2,7 +2,7 @@
 ## Title: Plateband
 ## Notes: Nameplate aura row: party/own debuffs, short buffs, dispellable enemy buffs.
 ## Author: tuma
-## Version: 0.7.3
+## Version: 0.8.0
 ## SavedVariables: PlatebandDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled
@@ -16,4 +16,5 @@ Modules/Plates.lua
 Modules/PlatesTrace.lua
 Modules/PlatesPolicy.lua
 Modules/PlatesPaint.lua
+Modules/Settings.lua
 Core.lua

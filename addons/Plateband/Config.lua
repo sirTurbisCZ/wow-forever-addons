@@ -2,7 +2,7 @@
 
 Plateband = Plateband or {}
 
-local CURRENT_SCHEMA = 19
+local CURRENT_SCHEMA = 20
 local MAX_ERRORS = 40
 local MAX_MSG = 2000
 
@@ -12,7 +12,7 @@ local Config = Plateband.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.7.3"
+Config.VERSION = "0.8.0"
 
 local function ProfileDefaults()
   return {
@@ -40,6 +40,9 @@ local function ProfileDefaults()
     -- 0.7.0 EXPERIMENTAL: Blizzard-managed AuraContainer row instead of the collector row (`/pb ac on|off`).
     -- Blizzard AuraContainer row (works for friendly units in combat); falls back to the legacy row when the client lacks it.
     useAuraContainer = true,
+    -- 0.8.0: settings window. enemyBuffs off skips the dispellable-buff group.
+    enemyBuffs = true,
+    minimap = { show = true, angle = 230 },
   }
 end
 
@@ -302,6 +305,21 @@ function Config.EnsureDB()
     db.profile.useAuraContainer = true
     db.schemaVersion = 19
     from = 19
+  end
+
+  -- 0.8.0: settings window keys (defaults keep the behaviour unchanged).
+  if from < 20 then
+    EnsureProfile(db)
+    local p = db.profile
+    p.enemyDebuffs = nil -- (dropped before release: the client already shows own debuffs by default)
+    if type(p.enemyBuffs) ~= "boolean" then
+      p.enemyBuffs = true
+    end
+    if type(p.minimap) ~= "table" then
+      p.minimap = { show = true, angle = 230 }
+    end
+    db.schemaVersion = 20
+    from = 20
   end
 
   EnsureProfile(db)

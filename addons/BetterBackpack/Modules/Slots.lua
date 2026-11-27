@@ -488,6 +488,158 @@ local function EnsureCountFs(btn)
 end
 
 --[[
+  Corner texts: item level (top-left) and gold "BoE" (top-right). Everything lives in the Corner table
+  (one top-level local). Session cache keyed by item link, bounded; the tooltip scan runs at most once
+  per link and never in combat (in combat only the cache is read).
+]]
+local Corner = { cache = {}, n = 0, MAX = 500 }
+Slots.Corner = Corner
+
+local function CornerFs(btn, key, point, x, color)
+  local fs = btn[key]
+  if fs then
+    return fs
+  end
+  pcall(function()
+    fs = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+    if not fs then
+      return
+    end
+    local path, size = fs:GetFont()
+    if path and size then
+      fs:SetFont(path, size, "OUTLINE")
+    end
+    fs:ClearAllPoints()
+    fs:SetPoint(point, btn, point, x, -3)
+    fs:SetJustifyH(point == "TOPLEFT" and "LEFT" or "RIGHT")
+    fs:SetTextColor(color[1], color[2], color[3], 1)
+    if fs.SetDrawLayer then
+      fs:SetDrawLayer("OVERLAY", 7)
+    end
+    btn[key] = fs
+  end)
+  return btn[key]
+end
+
+function Corner.Ensure(btn)
+  return CornerFs(btn, "_bbIlvlFs", "TOPLEFT", 3, { 1, 1, 1 }), CornerFs(btn, "_bbBoeFs", "TOPRIGHT", -3, { 1, 0.82, 0 })
+end
+
+function Corner.Hide(btn)
+  local a, b = btn._bbIlvlFs, btn._bbBoeFs
+  if a then
+    a:SetText("")
+    a:Hide()
+  end
+  if b then
+    b:SetText("")
+    b:Hide()
+  end
+end
+
+function Corner.Enabled(key)
+  local ok, p = pcall(function()
+    return BetterBackpack.Config.GetProfile()
+  end)
+  return not (ok and type(p) == "table" and p[key] == false)
+end
+
+--- Cached static data for a link. Returns nil in combat when nothing is cached yet.
+function Corner.Entry(link)
+  local c = Corner.cache
+  local e = c[link]
+  if e then
+    return e
+  end
+  if InCombatLockdown and InCombatLockdown() then
+    return nil
+  end
+  if Corner.n >= Corner.MAX then
+    wipe(c)
+    Corner.n = 0
+  end
+  e = { gear = false }
+  local ok, _, _, _, loc, _, classID = pcall(C_Item.GetItemInfoInstant, link)
+  if ok and not IsSecret(classID) and not IsSecret(loc) and (classID == 2 or classID == 4) then
+    if type(loc) == "string" and loc ~= "" and loc ~= "INVTYPE_NON_EQUIP_IGNORE" and loc ~= "INVTYPE_BAG" then
+      e.gear = true
+    end
+  end
+  c[link] = e
+  Corner.n = Corner.n + 1
+  return e
+end
+
+local function ScanBoE(bag, slot)
+  local want = (type(ITEM_BIND_ON_EQUIP) == "string" and ITEM_BIND_ON_EQUIP) or "Binds when equipped"
+  if not (C_TooltipInfo and C_TooltipInfo.GetBagItem) then
+    return nil
+  end
+  local ok, data = pcall(C_TooltipInfo.GetBagItem, bag, slot)
+  if not ok or type(data) ~= "table" or type(data.lines) ~= "table" then
+    return nil
+  end
+  for i = 1, #data.lines do
+    local row = data.lines[i]
+    local t = type(row) == "table" and row.leftText or nil
+    if type(t) == "string" and not IsSecret(t) and t == want then
+      return true
+    end
+  end
+  return false
+end
+
+--- Paint item level / BoE for the slot (info = GetContainerItemInfo result or nil).
+function Corner.Update(btn, info, bag, slot)
+  local link = info and info.hyperlink
+  local wantLvl, wantBoe = Corner.Enabled("showItemLevel"), Corner.Enabled("showBoE")
+  if btn._bbGhost or type(link) ~= "string" or IsSecret(link) or not (wantLvl or wantBoe) then
+    Corner.Hide(btn)
+    return
+  end
+  local e = Corner.Entry(link)
+  if not e or not e.gear then
+    Corner.Hide(btn)
+    return
+  end
+  local lvlFs, boeFs = Corner.Ensure(btn)
+  local combat = InCombatLockdown and InCombatLockdown()
+  if wantLvl and e.level == nil and not combat then
+    local ok, lvl = pcall(C_Item.GetDetailedItemLevelInfo, link)
+    lvl = ok and SafeNum(lvl, nil) or nil
+    if lvl and lvl > 0 then
+      e.level = lvl
+    end
+  end
+  if lvlFs then
+    if wantLvl and e.level then
+      lvlFs:SetText(tostring(e.level))
+      lvlFs:Show()
+    else
+      lvlFs:SetText("")
+      lvlFs:Hide()
+    end
+  end
+  local quality = SafeNum(info.quality, 0)
+  local bound = info.isBound
+  if wantBoe and e.boe == nil and not combat and quality >= 2 and bound == false and not IsSecret(bound) then
+    local r = ScanBoE(bag, slot)
+    if r ~= nil then
+      e.boe = r
+    end
+  end
+  if boeFs then
+    if wantBoe and e.boe and quality >= 2 and bound == false then
+      boeFs:SetText("BoE")
+      boeFs:Show()
+    else
+      boeFs:SetText("")
+      boeFs:Hide()
+    end
+  end
+end
+
+--[[
   ContainerFrameItemButton look = ItemButtonTemplate state art + bags-item-slot64 well.
   Art is read once from a hidden ItemButtonTemplate (never guessed); fallbacks are the
   classic ItemButtonTemplate files. Applied at creation only (OOC for secure buttons).
@@ -942,6 +1094,7 @@ function Slots.SyncVisual(btn, bag, slot)
         fs:SetText("")
         fs:Hide()
       end
+      Corner.Hide(btn)
       for _, key in ipairs(Slots.K.overlay) do
         local r = btn[key]
         if r and r.Hide then
@@ -1041,6 +1194,7 @@ function Slots.SyncVisual(btn, bag, slot)
         end)
       end
     end
+    pcall(Corner.Update, btn, info, bag, slot)
     SyncBevelChrome(btn, true)
     Slots.SyncCooldown(btn, bag, slot)
     if Slots.Normalize then

@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: BetterBackpack
-## Notes: 1.3.10 — the closed bag no longer takes clicks (no more picking up items from an invisible bag).
+## Notes: 1.4.0 — item level and BoE shown on gear; the closed bag no longer takes clicks.
 ## Author: tuma
-## Version: 1.3.10
+## Version: 1.4.0
 ## SavedVariables: BetterBackpackDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled

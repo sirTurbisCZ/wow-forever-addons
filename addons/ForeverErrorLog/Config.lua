@@ -16,7 +16,7 @@ Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
 Config.MAX_SESSION_LINES = MAX_SESSION_LINES
 Config.MAX_AGENT_EXPORT_LINES = MAX_AGENT_EXPORT_LINES
-Config.VERSION = "0.2.1"
+Config.VERSION = "0.3.0"
 
 local function Defaults()
   return {
@@ -27,6 +27,11 @@ local function Defaults()
     scriptErrors = false,
     -- Default OFF: AgentFeed / live-head / session export for dev scripts (/felog dev on).
     devTelemetry = false,
+    -- 0.3.0: record ADDON_ACTION_BLOCKED / ADDON_ACTION_FORBIDDEN as errors.
+    captureTaint = true,
+    minimapHide = false,
+    minimap = { angle = 245 },
+    window = {},
     errors = {},
     errorArchive = {
       sessions = {},
@@ -147,6 +152,15 @@ function Config.EnsureDB()
   end
   if type(db.errorArchive) ~= "table" then
     db.errorArchive = { sessions = {} }
+  end
+  if db.captureTaint == nil then
+    db.captureTaint = true
+  end
+  if type(db.minimap) ~= "table" then
+    db.minimap = { angle = 245 }
+  end
+  if type(db.window) ~= "table" then
+    db.window = {}
   end
   EnsureSessionLog(db)
 

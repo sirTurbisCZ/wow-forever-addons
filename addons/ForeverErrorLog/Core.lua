@@ -1,6 +1,6 @@
 --[[
   Forever Error Log — lean capture of Lua errors into SavedVariables.
-  /felog help|list|dump|session|archive|clear|reset  (+ on|off, ui on|off, dev on|off)
+  /felog [window]|help|list|dump|session|archive|clear|reset|minimap  (+ on|off, ui|dev|taint on|off)
   Dev telemetry (AgentFeed / live head / session export) runs only after /felog dev on.
 ]]
 
@@ -228,7 +228,7 @@ local function AddonFromMessage(msg)
 end
 
 --- Store one error. Returns true when captured (false when capture is off).
-local function Record(msg, stack)
+local function Record(msg, stack, addonOverride)
   local db = EnsureDB()
   if not db.enabled then
     return false
@@ -252,7 +252,7 @@ local function Record(msg, stack)
       return true
     end
   end
-  local addon = AddonFromMessage(msg)
+  local addon = addonOverride or AddonFromMessage(msg)
   local entry = {
     msg = msg,
     stack = stack,
@@ -284,6 +284,18 @@ local function FormatEntry(e, i)
   local n = e.count and e.count > 1 and (" ×" .. e.count) or ""
   return string.format("%d. [%s]%s %s", i, e.addon or "?", n, e.msg or "?")
 end
+
+ForeverErrorLog.FormatEntry = FormatEntry
+
+--- Archive the live list, then wipe it. Returns how many entries were archived.
+local function ClearErrors()
+  local db = EnsureDB()
+  local n = ArchiveErrorRing(db.errors, "manual_clear")
+  wipe(db.errors)
+  db.lastExport = nil
+  return n
+end
+ForeverErrorLog.ClearErrors = ClearErrors
 
 local function ListSummary()
   local db = EnsureDB()
@@ -463,12 +475,52 @@ local function EnsureHandlerOnTop()
   end
 end
 
+--- Taint events may carry secret/nil values: stringify defensively.
+local function SafeStr(v)
+  if v == nil then
+    return "?"
+  end
+  local ok, s = pcall(tostring, v)
+  if ok and type(s) == "string" then
+    return s
+  end
+  return "?"
+end
+
+local lastTaintMsg, lastTaintAt, lastTaintEntry = nil, 0, nil
+
+--- ADDON_ACTION_BLOCKED / ADDON_ACTION_FORBIDDEN -> one error entry (bursts are counted, not repeated).
+local function OnTaint(kind, who, what)
+  local db = EnsureDB()
+  if db.captureTaint == false then
+    return
+  end
+  who, what = SafeStr(who), SafeStr(what)
+  local msg = string.format("[%s] %s tried %s", kind, who, what)
+  local t = GetTime and GetTime() or 0
+  if lastTaintEntry and msg == lastTaintMsg and (t - lastTaintAt) < 1 and db.enabled then
+    lastTaintEntry.count = (lastTaintEntry.count or 1) + 1
+    lastTaintEntry.last = Now()
+    lastTaintAt = t
+    return
+  end
+  if Record(msg, "", who) then
+    lastTaintMsg, lastTaintAt, lastTaintEntry = msg, t, lastEntry
+  end
+end
+
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
-frame:SetScript("OnEvent", function(_, event, name)
-  if event == "ADDON_LOADED" and name == addonName then
+pcall(frame.RegisterEvent, frame, "ADDON_ACTION_BLOCKED")
+pcall(frame.RegisterEvent, frame, "ADDON_ACTION_FORBIDDEN")
+frame:SetScript("OnEvent", function(_, event, name, arg2)
+  if event == "ADDON_ACTION_BLOCKED" then
+    pcall(OnTaint, "blocked", name, arg2)
+  elseif event == "ADDON_ACTION_FORBIDDEN" then
+    pcall(OnTaint, "forbidden", name, arg2)
+  elseif event == "ADDON_LOADED" and name == addonName then
     EnsureDB()
     pcall(BeginSession, "addon")
     InstallHandler()
@@ -605,8 +657,33 @@ SLASH_FOREVERERRORLOG3 = "/forevererrors"
 SlashCmdList.FOREVERERRORLOG = function(msg)
   msg = (msg or ""):match("^%s*(.-)%s*$") or ""
   local cmd, rest = msg:match("^(%S+)%s*(.*)$")
+  local W = ForeverErrorLog.Window
+  if msg == "" and W then
+    W.Toggle()
+    return
+  end
   cmd = (cmd or "help"):lower()
   local db = EnsureDB()
+
+  if (cmd == "window" or cmd == "minimap") and W then
+    if cmd == "window" then
+      W.Toggle()
+    else
+      W.ToggleMinimap()
+    end
+    return
+  end
+
+  if cmd == "taint" then
+    local a = (rest or ""):lower()
+    if a == "on" or a == "1" then
+      db.captureTaint = true
+    elseif a == "off" or a == "0" then
+      db.captureTaint = false
+    end
+    Print(string.format(L.TAINT_STATUS or "taint capture: %s — /felog taint on|off", tostring(db.captureTaint ~= false)))
+    return
+  end
 
   if cmd == "help" or cmd == "?" then
     local lines = L.HELP_LINES
@@ -652,9 +729,7 @@ SlashCmdList.FOREVERERRORLOG = function(msg)
   end
 
   if cmd == "clear" then
-    local n = ArchiveErrorRing(db.errors, "manual_clear")
-    wipe(db.errors)
-    db.lastExport = nil
+    local n = ClearErrors()
     Print(string.format(L.LOG_CLEARED or "log cleared (archived %d)", n))
     return
   end

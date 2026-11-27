@@ -6,7 +6,7 @@ local Config = Wayfarer.Config
 
 local CURRENT_SCHEMA = 1
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
-Config.VERSION = "0.2.13"
+Config.VERSION = "0.3.0"
 
 local function ProfileDefaults()
   return {
@@ -23,6 +23,7 @@ local function ProfileDefaults()
     procHUD = { -- owned by Modules/ProcHUD.lua (extend only this block)
       enabled = true,
       meter = true, -- Arcane Blast stack meter
+      upcoming = true, -- the next stack is shown dimmed while its cast runs
       procs = true, -- proc icons (Clearcasting, Missile Barrage, ...)
       dumpHint = true, -- Missiles / Barrage icons at max stacks
       actionGlow = false, -- own overlay over matching action bar buttons

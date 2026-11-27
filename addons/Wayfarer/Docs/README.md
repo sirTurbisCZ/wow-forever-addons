@@ -31,15 +31,21 @@ Pick a key in **Settings → Fishing** (click the button, press the key; **Clear
 
 Wayfarer never hooks the fish for you: press the key when you see or hear the splash. The key is a temporary override binding; your own key bindings are not changed, and the override is released when you turn the module off or clear the key. Binding changes wait until combat ends. By default the key is taken only while a fishing pole is equipped. While a cast runs, Wayfarer can raise the interact reach to the bobber and (optional **Louder splash**) play sound effects at full volume; both are put back when the cast ends. If another addon with its own one-key fishing is active, the settings and `/wf fish status` warn that the two may conflict; turn the other one off.
 
-### Procs and timers (mage)
+### Procs and timers (mage, shaman, druid, priest, warlock)
 
 A small HUD of its own (it never attaches to Blizzard frames):
 
 - **Arcane Blast meter:** 4 pips and a timer. In combat the game may hide your own stack count from addons, so the count is predicted from your Arcane Blast casts and corrected from the real aura whenever it is readable (always out of combat).
 - **At 4/4:** the meter pulses gold and shows a **dump** hint with the Arcane Wrath and Arcane Missiles icons. Optionally an extra glow frame is drawn over the matching action bar buttons (off by default; the buttons themselves are not touched).
 - **Proc icons:** Clearcasting, Missile Barrage and Presence of Mind, with the remaining time when readable. Spells this client does not know are skipped.
-- Only your own class is tracked; mage now, priest, shaman and druid later. For other classes the module does nothing (`/wf proc status` says why).
-- Place it: **Unlock** (or `/wf proc unlock`), **Test mode** shows fake 0–4 stacks out of combat, drag, then **Lock**. Scale 50–200 %.
+- **Other classes (proc icons only, no meter):** a proc icon is shown while its buff is up, with stacks and remaining time when readable.
+  - Shaman: Clearcasting (Elemental Focus), Flurry, Nature's Swiftness.
+  - Druid: Clearcasting (Omen of Clarity), Nature's Grace, Nature's Swiftness.
+  - Priest: Inner Focus, Spirit Tap, Power Infusion.
+  - Warlock: Shadow Trance (Nightfall).
+  - The buff is found by spell id or by name (English and Czech client text). The ids are not verified on Forever yet; if an icon does not appear, run `/wf proc auras` while the buff is up and report the id and name.
+- Only your own class is tracked. For other classes (warrior, rogue, hunter, paladin) the module does nothing (`/wf proc status` says why).
+- Place it: **Unlock** (or `/wf proc unlock`), **Test mode** shows fake 0–4 stacks (mage) and lights up the proc icons one by one, out of combat, drag, then **Lock**. Scale 50–200 %.
 - **Not verified in the Forever client yet:** the Arcane Blast window (assumed 18 s, as in the old Retinue) and whether a new cast refreshes it (assumed no). Both are learned from the real aura the first time it is readable and saved as `procHUD.abWindow` / `procHUD.abRefresh`; `/wf proc status` shows `default` or `learned`.
 
 ### Minimap button and settings
@@ -89,7 +95,7 @@ Stored in `WayfarerDB.profile`:
 
 ## Coming next
 
-- Procs and timers for priest, shaman and druid.
+- Nothing planned.
 ## Notes
 
 - Optional: **ForeverErrorLog** collects Lua errors.

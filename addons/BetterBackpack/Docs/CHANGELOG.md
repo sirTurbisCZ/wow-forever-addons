@@ -1,7 +1,8 @@
 # BetterBackpack changelog
 
-## Release 1.3.10 — the closed bag no longer takes clicks, fewer refreshes
+## Release 1.4.0 — item level and BoE on gear, the closed bag no longer takes clicks
 
+- **New (#35):** weapons and armor show their item level as a small number in the top-left corner of the slot, and unbound bind-on-equip gear of green quality or better shows a gold **BoE** in the top-right corner. Both can be turned off in Settings → Features. Results are cached per item link for the session; the tooltip is read at most once per item and never in combat (in combat only already known values are shown).
 - **Fix:** after a fight the closed bag is kept "shown" at alpha 0 (so B works in combat), and its slot buttons stayed mouse-enabled. Clicking anything that lies where the bag was last drawn (for example the quest tracker) picked up or used an invisible slot (a healing potion on the cursor). Not only the slot buttons: lane headers, title buttons, the search box and every other mouse-enabled part of the parked bag are switched off too (they swallowed clicks and did nothing, e.g. on the quest tracker after a fight). Everything takes clicks only while the bag is visible; they are switched off when the bag is parked (out of combat) and on again when it opens. If the bag is opened in combat the game may refuse the change until combat ends.
 - **Fix:** the bank / auction bulk transfer stops when the bank or auction house is closed during the transfer (the rest would have used or equipped the items) and a stale timer chain of an older transfer can no longer run next to the new one.
 - **Fix:** cooldown and quest events no longer overwrite the summed count of a merged stack. SPELL_UPDATE_COOLDOWN only updates cooldown spinners and quest events only the quest markers (before: a full redraw of every slot, several times per global cooldown).

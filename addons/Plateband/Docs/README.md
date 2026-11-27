@@ -46,7 +46,9 @@ Optional: install **Forever Error Log** so Lua errors land in `/felog`.
 
 | Command | What it does |
 |---------|----------------|
+| `/pb` | Open the settings window (same as the minimap button) |
 | `/pb help` | Help and status |
+| `/pb minimap` | Show or hide the minimap button |
 | `/pb on` / `/pb off` | Enable or disable Plateband. **The setting is saved** — turn it back on after testing. |
 | `/pb merge on` / `/pb merge off` | Aura row on/off (off = Blizzard's nameplate auras only) |
 | `/pb size <n>` | Icon size hint (12–32); normally the size follows Blizzard's icons |
@@ -62,7 +64,21 @@ Optional: install **Forever Error Log** so Lua errors land in `/felog`.
 
 Alias: `/plateband`.
 
-## Settings
+## Settings window
+
+Type `/pb` or left-click the minimap button (drag it to move it; `/pb minimap` hides or shows it).
+
+| Option | Meaning |
+|--------|---------|
+| Enable Plateband | Same as `/pb on` / `/pb off` |
+| Friendly plates | Show the row on friendly and party plates |
+| Enemy buffs row | Show dispellable / stealable buffs of enemies (gold border) |
+| Hover tooltips | Tooltip when you point at an icon |
+| Most icons per row | 1-16 |
+
+Enemy buffs row and Most icons per row are fixed when a plate's row is built, so the window shows "/reload needed" after you change them; plates that appear afterwards use the new value at once.
+
+## Settings (saved variables)
 
 Stored in `PlatebandDB.profile`:
 
@@ -73,6 +89,8 @@ Stored in `PlatebandDB.profile`:
 | `mergeFriendPlates` | true | Also on friendly and party plates |
 | `auraWatchPlates` | true | Repaint any plate when its auras change (not only the target). Turn off to save CPU; needs `/reload` |
 | `gapTooltip` | true | Tooltip on icon hover. Off = icons ignore the mouse (needs `/reload`) |
+| `enemyBuffs` | true | Dispellable / stealable enemy buffs (needs `/reload`) |
+| `minimap` | show, angle 215 | Minimap button state |
 | `iconSize` / `maxIcons` | 18 / 12 | Fallback icon size / most icons per row |
 | `useAuraContainer` | true | AuraContainer row (`/pb ac on/off`). Falls back to the older row when the client lacks the API |
 | `silentTrace`, `autoDiag` | false | Developer telemetry |

@@ -1,5 +1,13 @@
 # Plateband changelog
 
+## Release 0.8.0 — settings window (#33)
+
+- **Minimap button position (#37):** the radius follows the real minimap width (the Forever minimap is larger, the button used to float outside the ring) and the default angles differ per addon so the buttons do not overlap.
+- **Settings window**: `/pb` (no arguments) or the new **minimap button** (left-click, drag to move; `/pb minimap` hides or shows it). Checkboxes: Enable, Friendly plates, Enemy buffs row, Hover tooltips, and the most icons per row. Built on first open; nothing runs per frame. All `/pb` subcommands still work (`/pb help`).
+- **Enemy buffs row** off (`enemyBuffs`) hides the dispellable/stealable buff icons.
+- Enemy buffs and the icon count are fixed when a plate's row is built: after changing them the window says "/reload needed" (plates that appear later use the new value at once). Hover tooltips apply at once out of combat. "Friendly plates" now also applies to the AuraContainer row.
+- Schema 20: new profile keys `enemyBuffs`, `minimap`.
+
 ## Release 0.7.3 — less garbage and fewer scans per nameplate
 
 - `Config.GetProfile()` returns the saved profile directly instead of building and merging the 17-key default table on every call (it is called dozens of times per nameplate update).

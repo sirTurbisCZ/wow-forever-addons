@@ -1,5 +1,13 @@
 # ForeverErrorLog changelog
 
+## Release 0.3.0 — error window, minimap button, taint capture (#32)
+
+- **Minimap button position (#37):** the radius follows the real minimap width (the Forever minimap is larger, the button used to float outside the ring) and the default angles differ per addon so the buttons do not overlap.
+- **Window:** `/felog` (no argument) or the minimap button opens a draggable window with a copyable report (header with FElog version, client build, locale and loaded Forever addon versions, then the errors with stacks). Buttons: This session / Previous, page back/forward (20 entries per page), Clear, Close; Esc closes. Built on first open; nothing is created at login except the minimap button. Position is saved.
+- **Minimap button:** left-click toggles the window, hover shows the error count and the last 5 errors, drag to move; `/felog minimap` hides or shows it (`minimapHide`).
+- **Taint capture:** `ADDON_ACTION_BLOCKED` / `ADDON_ACTION_FORBIDDEN` are recorded as `[blocked] <addon> tried <function>` (repeats counted). `/felog taint on|off` (`captureTaint`, default on).
+- Existing subcommands are unchanged; `/felog help` still lists them.
+
 ## Release 0.2.1 — survive handler replacement, less work per error
 
 - **Handler re-check:** if another addon calls `seterrorhandler` later, FElog (on `PLAYER_LOGIN` and `PLAYER_ENTERING_WORLD`) forwards to that handler as its original and installs itself again; a re-entrancy guard prevents forwarding loops.

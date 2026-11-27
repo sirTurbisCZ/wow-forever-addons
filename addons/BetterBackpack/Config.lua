@@ -2,7 +2,7 @@
 
 BetterBackpack = BetterBackpack or {}
 
-local CURRENT_SCHEMA = 12
+local CURRENT_SCHEMA = 13
 local MAX_ERRORS = 40
 local MAX_MSG = 2000
 
@@ -12,7 +12,7 @@ local Config = BetterBackpack.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "1.3.10"
+Config.VERSION = "1.4.0"
 
 local function CharVendorDefaults()
   return {
@@ -56,6 +56,8 @@ local function ProfileDefaults()
     filterCategory = nil, -- nil / "all" = no filter; else category key
     customCategories = {}, -- { { id, name, itemIDs = {} } }
     hiddenDefaults = {}, -- { junk = true } → hide default lane (items → Other)
+    showItemLevel = true, -- item level number in the top-left corner of weapons / armor
+    showBoE = true, -- gold "BoE" in the top-right corner of unbound bind-on-equip gear
     stackMerge = true, -- visual merge same itemID + same isLocked
     fillEmptyWells = false, -- opt-in: empty slot wells in space freed by collapse / search
     pins = {}, -- { [itemID] = true } red ghost when not owned
@@ -378,6 +380,21 @@ function Config.EnsureDB()
     db.legacyRules = legacy
     db.schemaVersion = 12
     from = 12
+  end
+
+  -- 1.4.0: item level / BoE corner texts (#35), on by default.
+  if from < 13 then
+    EnsureProfile(db)
+    if type(db.profile) == "table" then
+      if db.profile.showItemLevel == nil then
+        db.profile.showItemLevel = true
+      end
+      if db.profile.showBoE == nil then
+        db.profile.showBoE = true
+      end
+    end
+    db.schemaVersion = 13
+    from = 13
   end
 
   EnsureProfile(db)
