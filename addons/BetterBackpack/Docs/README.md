@@ -32,6 +32,10 @@ Off by default (Settings → Lanes). Drop an item on the Trash header: it is des
 - **Settings → Trash** lists everything this character destroys; **Keep** removes an item from the list. Never destroys quest items, green or better quality, or the Hearthstone.
 - Works out of combat only.
 
+## Item level and BoE
+
+Weapons and armor show their item level as a small number in the top-left corner of the slot. Green or better gear that is not yet bound and binds when equipped shows a gold **BoE** in the top-right corner. Both labels can be switched off separately in Settings → Features. During combat only values already seen are shown; new items get their label after combat.
+
 ## Settings (`/bb settings`)
 
 | Section | What |
@@ -40,7 +44,7 @@ Off by default (Settings → Lanes). Drop an item on the Trash header: it is des
 | Custom lanes | Create, rename, delete your own lanes |
 | Trash | Destroy confirmation and the list of auto-destroyed items |
 | Learned | Every item you taught: icon, name, the lane it is in and its default lane, with **Forget** |
-| Features | Stack merge display, auto-sell and other toggles |
+| Features | Item level and BoE labels, stack merge display, auto-sell and other toggles |
 
 Long lists scroll with the mouse wheel; the scroll bar appears only when needed.
 

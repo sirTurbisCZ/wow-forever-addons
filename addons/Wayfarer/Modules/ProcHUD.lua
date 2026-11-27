@@ -1,5 +1,5 @@
 --[[
-  Wayfarer.ProcHUD — procs and time-based triggers of the player's own class (mage first).
+  Wayfarer.ProcHUD — procs and time-based triggers of the player's own class (mage: meter + procs; shaman, druid, priest, warlock: proc icons).
   - Arcane Blast meter: pips + timer. In combat the player's own aura stacks may be secret, so the count is
     predicted from UNIT_SPELLCAST_SUCCEEDED and re-synced from the real aura whenever it is readable.
   - At max stacks: pulse + "dump" hint (Arcane Wrath / Arcane Missiles icons, optional action button glow).
@@ -31,6 +31,7 @@ local ICON_SIZE, PIP_W, PIP_H, PIP_GAP = 28, 18, 10, 3
 local COLOR_PIP_EMPTY = { 0.22, 0.22, 0.26 }
 local COLOR_PIP_ON = { 0.45, 0.75, 1.00 }
 local COLOR_PIP_MAX = { 1.00, 0.82, 0.20 }
+local COLOR_PIP_INCOMING = { 0.45, 0.75, 1.00, 0.35 } -- the next stack while its cast is running
 
 --[[
   Per-class whitelist. kind:
@@ -53,18 +54,68 @@ local TRIGGERS = {
     },
     -- Arcane Wrath (talent, 3.5 s cast, 6 s cooldown): the spender to use at max stacks on WoW Forever (id seen in game).
     { key = "arcaneWrath", kind = "dump", name = "Arcane Wrath", spellID = 1326079, ids = { 1326079 } },
-    { key = "clearcasting", kind = "proc", name = "Clearcasting", spellID = 12536, auras = { 12536 } },
     {
+      -- the free-cast buff of the Arcane Concentration talent (Forever shows it as Clearcasting / Arcane Concentration)
+      key = "clearcasting", kind = "proc", name = "Clearcasting", spellID = 12536, auras = { 12536 },
+      names = { "Clearcasting", "Arcane Concentration", "Jasn\195\161 mysl", "Ark\195\161nn\195\173 koncentrace" },
+    },
+    {
+      -- names: the aura is also found by name (ids differ between client builds; English and Czech client text)
       key = "missileBarrage", kind = "proc", name = "Missile Barrage", spellID = 400589, auras = { 400589 },
-      glow = "arcaneMissiles",
+      names = { "Missile Barrage", "Palba st\197\153el" }, glow = "arcaneMissiles",
     },
     { key = "presenceOfMind", kind = "proc", name = "Presence of Mind", spellID = 12043, auras = { 12043 } },
   },
-  -- Later phases (structure ready, no entries yet): Inner Focus / Weakened Soul, Clearcasting (Elemental Focus),
-  -- Clearcasting / Nature's Grace. Add entries in the MAGE format above.
-  PRIEST = {},
-  SHAMAN = {},
-  DRUID = {},
+  -- Presence-only proc icons (#34). Aura ids are UNVERIFIED (from memory); the name list (English + Czech client
+  -- text) is the fallback, so a wrong id is harmless. Names confirmed on Forever (ForeverDB talents/coach data).
+  SHAMAN = {
+    {
+      key = "elementalFocus", kind = "proc", name = "Clearcasting", spellID = 16246, auras = { 16246 },
+      names = { "Elemental Focus", "Jasn\195\161 mysl", "\197\189iveln\195\169 soust\197\153ed\196\155n\195\173" },
+    },
+    {
+      key = "flurry", kind = "proc", name = "Flurry", spellID = 16257, auras = { 16257, 16277, 16278, 16279, 16280 },
+      names = { "P\197\153\195\173val" },
+    },
+    {
+      key = "naturesSwiftness", kind = "proc", name = "Nature's Swiftness", spellID = 16188, auras = { 16188 },
+      names = { "Rychlost p\197\153\195\173rody" },
+    },
+  },
+  DRUID = {
+    {
+      key = "clearcasting", kind = "proc", name = "Clearcasting", spellID = 16870, auras = { 16870 },
+      names = { "Omen of Clarity", "Jasn\195\161 mysl", "Znamen\195\173 jasnosti" },
+    },
+    {
+      key = "naturesGrace", kind = "proc", name = "Nature's Grace", spellID = 16886, auras = { 16886 },
+      names = { "Milost p\197\153\195\173rody" },
+    },
+    {
+      key = "naturesSwiftness", kind = "proc", name = "Nature's Swiftness", spellID = 17116, auras = { 17116 },
+      names = { "Rychlost p\197\153\195\173rody" },
+    },
+  },
+  PRIEST = {
+    {
+      key = "innerFocus", kind = "proc", name = "Inner Focus", spellID = 14751, auras = { 14751 },
+      names = { "Vnit\197\153n\195\173 soust\197\153ed\196\155n\195\173" },
+    },
+    {
+      key = "spiritTap", kind = "proc", name = "Spirit Tap", spellID = 15271, auras = { 15271 },
+      names = { "\196\140erp\195\161n\195\173 ducha" },
+    },
+    {
+      key = "powerInfusion", kind = "proc", name = "Power Infusion", spellID = 10060, auras = { 10060 },
+      names = { "P\197\153\195\173liv moci" },
+    },
+  },
+  WARLOCK = {
+    {
+      key = "shadowTrance", kind = "proc", name = "Shadow Trance", spellID = 17941, auras = { 17941 },
+      names = { "Nightfall", "St\195\173nov\195\189 trans" },
+    },
+  },
 }
 Mod.TRIGGERS = TRIGGERS
 
@@ -89,7 +140,8 @@ local test = { on = false, start = 0 }
 local ab = { stacks = 0, expires = 0, source = "none", auraExp = nil, auraStacks = nil, pendingCheck = nil }
 local seenAuraInCombat = false
 local debugOn = false
-local dbg = { casts = 0, matched = 0, lastId = nil, lastName = nil, auraSeen = false }
+local dbg = { casts = 0, matched = 0, lastId = nil, lastName = nil, auraSeen = false, starts = 0, startMatched = 0,
+  startUnreadable = 0, lastStartName = nil }
 local unlockedAt
 local lastTrace
 
@@ -171,6 +223,8 @@ local AURA_FILTERS = { "HELPFUL", "HARMFUL" }
 
 --- Aura data of the first present aura id (table, id) or nil. Presence is trusted; fields may be secret.
 local function ReadAura(ids, auraName)
+  local names = type(auraName) == "table" and auraName or (auraName and { auraName }) or nil
+  auraName = nil
   if not ids then
     return nil
   end
@@ -195,16 +249,21 @@ local function ReadAura(ids, auraName)
       end
     end
   end
-  if auraName and C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
-    -- ids differ between client builds: fall back to the localized aura name
+  if names and #names > 0 and C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
+    -- ids differ between client builds: fall back to the aura name
     for _, filter in ipairs(AURA_FILTERS) do
       for n = 1, 40 do
         local ok, data = pcall(C_UnitAuras.GetAuraDataByIndex, "player", n, filter)
         if not ok or type(data) ~= "table" then
           break
         end
-        if Str(data.name) == auraName then
-          return data, Num(data.spellId)
+        local nm = Str(data.name)
+        if nm then
+          for k = 1, #names do
+            if nm == names[k] then
+              return data, Num(data.spellId)
+            end
+          end
         end
       end
     end
@@ -226,7 +285,13 @@ local function VerifyTriggers()
   for i = 1, total do
     local t = list[i]
     local e = { key = t.key, kind = t.kind, name = t.name, ids = {}, auras = {}, maxStacks = t.maxStacks,
-      dump = t.dump, glow = t.glow }
+      dump = t.dump, glow = t.glow, names = {} }
+    if t.kind == "proc" then
+      e.names[1] = t.name
+      for _, nm in ipairs(t.names or {}) do
+        e.names[#e.names + 1] = nm
+      end
+    end
     for _, id in ipairs(t.ids or {}) do
       local n, ic = SpellInfo(id)
       if n then
@@ -247,13 +312,16 @@ local function VerifyTriggers()
       local _, ic = SpellInfo(t.spellID)
       e.icon = ic
     end
-    if e.kind == "stacks" and #e.auras == 0 and t.auras then
+    if (e.kind == "stacks" or e.kind == "proc") and #e.auras == 0 and t.auras then
       -- aura spells are often hidden from spell lookups; the cast ids decide, the aura is read by id or name
       for _, id in ipairs(t.auras) do
         e.auras[#e.auras + 1] = id
       end
     end
-    local usable = (e.kind == "dump" and #e.ids > 0) or (e.kind == "proc" and #e.auras > 0)
+    if e.kind == "proc" and e.localName then
+      e.names[#e.names + 1] = e.localName
+    end
+    local usable = (e.kind == "dump" and #e.ids > 0) or (e.kind == "proc" and (#e.auras > 0 or #e.names > 0))
       or (e.kind == "stacks" and #e.ids > 0 and #e.auras > 0)
     if usable then
       e.icon = e.icon or "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -292,6 +360,11 @@ end
 local function MaxStacks()
   return (stacksEntry and stacksEntry.maxStacks) or AB_MAX_STACKS
 end
+
+-- The stack aura is applied when the cast finishes: while the next Arcane Blast is being cast its pip is shown dimmed.
+-- incoming = time the cast started (cleared on success / stop / failure; a stuck value ends after INCOMING_MAX seconds).
+local incoming
+local INCOMING_MAX = 6
 
 local function ClearAB()
   ab.stacks, ab.expires, ab.source, ab.auraExp, ab.auraStacks, ab.pendingCheck, ab.absentSince = 0, 0, "none", nil, nil, nil, nil
@@ -653,7 +726,7 @@ local function BuildHUD()
 end
 
 local function SetPip(i, c)
-  meter.pips[i]:SetColorTexture(c[1], c[2], c[3], 1)
+  meter.pips[i]:SetColorTexture(c[1], c[2], c[3], c[4] or 1)
 end
 
 --- Is the dump spell worth showing right now? Wrath: off cooldown (secret = assume ready). Missiles: only with a
@@ -680,7 +753,7 @@ local function DumpUsable(e, procs)
   return true
 end
 
-local function RenderMeter(stacks, remain, show, procs)
+local function RenderMeter(stacks, remain, show, procs, upcoming)
   if not show then
     meter:Hide()
     return false
@@ -691,7 +764,13 @@ local function RenderMeter(stacks, remain, show, procs)
       meter.pips[i]:Hide()
     else
       meter.pips[i]:Show()
-      SetPip(i, i <= stacks and (stacks >= maxS and COLOR_PIP_MAX or COLOR_PIP_ON) or COLOR_PIP_EMPTY)
+      if i <= stacks then
+        SetPip(i, stacks >= maxS and COLOR_PIP_MAX or COLOR_PIP_ON)
+      elseif upcoming and i == stacks + 1 then
+        SetPip(i, COLOR_PIP_INCOMING)
+      else
+        SetPip(i, COLOR_PIP_EMPTY)
+      end
     end
   end
   meter.timer:SetText(remain and remain > 0 and string.format("%.1f", remain) or "")
@@ -741,7 +820,14 @@ local function RenderProcs(list, below)
     local e, data = list[i].e, list[i].data
     f:ClearAllPoints()
     f:SetPoint("TOPLEFT", root, "TOPLEFT", (i - 1) * (ICON_SIZE + 4), y)
-    f.icon:SetTexture(e.icon)
+    local tex = e.icon
+    if (not tex or tex == "Interface\\Icons\\INV_Misc_QuestionMark") and data then
+      local ic = data.icon
+      if ic and not IsSecret(ic) then
+        tex = ic
+      end
+    end
+    f.icon:SetTexture(tex)
     local apps = data and Num(data.applications)
     f.count:SetText(apps and apps > 1 and tostring(apps) or "")
     if f.cd then
@@ -814,9 +900,16 @@ Update = function()
     RefreshSettings()
   end
   if test.on then
-    local step = math.floor((Now() - test.start) / TEST_STEP) % (MaxStacks() + 1)
-    stacks = step
-    remain = Window() - ((Now() - test.start) % (TEST_STEP * (MaxStacks() + 1)))
+    local nProcEntries = 0
+    for _, e in ipairs(entries) do
+      if e.kind == "proc" then
+        nProcEntries = nProcEntries + 1
+      end
+    end
+    local cycle = math.max(MaxStacks(), nProcEntries) + 1
+    local step = math.floor((Now() - test.start) / TEST_STEP) % cycle
+    stacks = math.min(step, MaxStacks())
+    remain = Window() - ((Now() - test.start) % (TEST_STEP * cycle))
     local n = 0
     for _, e in ipairs(entries) do
       if e.kind == "proc" then
@@ -833,7 +926,7 @@ Update = function()
     if cfg.procs ~= false then
       for _, e in ipairs(entries) do
         if e.kind == "proc" then
-          local data = ReadAura(e.auras, e.localName)
+          local data = ReadAura(e.auras, e.names)
           if data then
             procs[#procs + 1] = { e = e, data = data }
           end
@@ -841,8 +934,12 @@ Update = function()
       end
     end
   end
-  local meterOn = cfg.meter ~= false and stacksEntry ~= nil and (stacks > 0 or test.on or unlocked)
-  local shown, dumps = RenderMeter(stacks, remain, meterOn, procs)
+  if incoming and Now() - incoming > INCOMING_MAX then
+    incoming = nil
+  end
+  local upcoming = incoming and cfg.upcoming ~= false and not test.on and stacks < MaxStacks()
+  local meterOn = cfg.meter ~= false and stacksEntry ~= nil and (stacks > 0 or upcoming or test.on or unlocked)
+  local shown, dumps = RenderMeter(stacks, remain, meterOn, procs, upcoming)
   local nProcs = RenderProcs(cfg.procs ~= false and procs or {}, shown)
   -- glow targets: dump spenders at max stacks + spenders named by present procs
   local glowList = {}
@@ -862,7 +959,7 @@ Update = function()
   else
     HideGlows()
   end
-  local any = shown or nProcs > 0 or unlocked
+  local any = shown or nProcs > 0 or unlocked or test.on
   root.bg:SetShown(unlocked)
   root.label:SetShown(unlocked)
   root:EnableMouse(unlocked)
@@ -886,7 +983,8 @@ end
 -- ---------------------------------------------------------------------------
 
 local EVENTS = {
-  "UNIT_SPELLCAST_SUCCEEDED", "UNIT_AURA", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED",
+  "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_STOP", "UNIT_SPELLCAST_FAILED",
+  "UNIT_SPELLCAST_INTERRUPTED", "UNIT_AURA", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED",
   "PLAYER_ENTERING_WORLD", "ACTIONBAR_SLOT_CHANGED", "ACTIONBAR_PAGE_CHANGED", "UPDATE_BONUS_ACTIONBAR",
   "SPELLS_CHANGED",
 }
@@ -920,7 +1018,42 @@ local function OnEvent(_, event, a1, a2, a3)
       Wayfarer.Print(string.format("procs debug: cast id=%s name=%s match=%s", tostring(sid), tostring(sid and SpellInfo(sid)), tostring(IsStacksCast(sid))))
     end
     if stacksEntry and IsStacksCast(sid) then
+      incoming = nil
       NoteCast()
+      SafeUpdate()
+    end
+  elseif event == "UNIT_SPELLCAST_START" then
+    if a1 ~= "player" or not stacksEntry then
+      return
+    end
+    dbg.starts = dbg.starts + 1
+    local sid = Num(a3) or Num(a2)
+    local match = sid and IsStacksCast(sid) or false
+    if not sid and UnitCastingInfo then
+      -- the spell id of the event is unreadable (secret in combat): ask the cast itself (name or spell id)
+      local ok, name, _, _, _, _, _, _, _, castSpell = pcall(UnitCastingInfo, "player")
+      if ok then
+        local nm = Str(name)
+        dbg.lastStartName = nm
+        if nm and castNames[nm] then
+          match = true
+        elseif Num(castSpell) then
+          match = IsStacksCast(Num(castSpell))
+        end
+        if not nm and not Num(castSpell) then
+          dbg.startUnreadable = dbg.startUnreadable + 1
+        end
+      end
+    end
+    if match then
+      dbg.startMatched = dbg.startMatched + 1
+      incoming = Now()
+      SafeUpdate()
+    end
+  elseif event == "UNIT_SPELLCAST_STOP" or event == "UNIT_SPELLCAST_FAILED" or event == "UNIT_SPELLCAST_INTERRUPTED" then
+    if a1 == "player" and incoming then
+      -- STOP also arrives right after a successful cast: the stack was already counted then
+      incoming = nil
       SafeUpdate()
     end
   elseif event == "UNIT_AURA" then
@@ -957,7 +1090,7 @@ local function SetEvents(on)
   end
   if on then
     for _, e in ipairs(EVENTS) do
-      if e == "UNIT_SPELLCAST_SUCCEEDED" or e == "UNIT_AURA" then
+      if e:find("^UNIT_SPELLCAST_") or e == "UNIT_AURA" then
         if not (eventFrame.RegisterUnitEvent and pcall(eventFrame.RegisterUnitEvent, eventFrame, e, "player")) then
           pcall(eventFrame.RegisterEvent, eventFrame, e)
         end
@@ -1076,11 +1209,12 @@ function Mod.Status()
   local learned = Num(cfg.abWindow)
   local refresh = cfg.abRefresh
   return string.format(
-    "on class=%s triggers=%d meter=%s stacks=%d (%s) window=%.1fs (%s) refresh=%s locked=%s test=%s scale=%d%% | casts seen %d, matched %d, last id=%s name=%s, aura ever read=%s",
+    "on class=%s triggers=%d meter=%s stacks=%d (%s) window=%.1fs (%s) refresh=%s locked=%s test=%s scale=%d%% | casts seen %d, matched %d, last id=%s name=%s, aura ever read=%s | casts starting %d, matched %d, unreadable %d, last name=%s",
     tostring(classFile), #entries, stacksEntry and (cfg.meter ~= false and "on" or "off") or "n/a", ab.stacks,
     ab.source, Window(), learned and "learned" or "default", refresh == nil and "default-" .. tostring(AB_REFRESH_ON_CAST_DEFAULT) or tostring(refresh),
     tostring(cfg.locked ~= false), tostring(test.on), tonumber(cfg.scale) or 100,
-    dbg.casts, dbg.matched, tostring(dbg.lastId), tostring(dbg.lastName), tostring(dbg.auraSeen))
+    dbg.casts, dbg.matched, tostring(dbg.lastId), tostring(dbg.lastName), tostring(dbg.auraSeen),
+    dbg.starts, dbg.startMatched, dbg.startUnreadable, tostring(dbg.lastStartName))
 end
 
 RefreshSettings = function()
@@ -1161,14 +1295,21 @@ function Mod.BuildSettings(sec, H)
     RefreshSettings()
   end)
   y = y - 28
-  H.Check(sec, "Arcane Blast stack meter", y, function()
+  H.Check(sec, "Arcane Blast stack meter (mage only)", y, function()
     return H.Profile().procHUD.meter ~= false
   end, function(on)
     H.Profile().procHUD.meter = on
     SafeUpdate()
   end)
   y = y - 28
-  H.Check(sec, "Proc icons (Clearcasting, Missile Barrage, ...)", y, function()
+  H.Check(sec, "Show the next stack dimmed while the cast runs", y, function()
+    return H.Profile().procHUD.upcoming ~= false
+  end, function(on)
+    H.Profile().procHUD.upcoming = on
+    SafeUpdate()
+  end)
+  y = y - 28
+  H.Check(sec, "Proc icons (Clearcasting, Missile Barrage, Flurry, ...)", y, function()
     return H.Profile().procHUD.procs ~= false
   end, function(on)
     H.Profile().procHUD.procs = on
@@ -1228,6 +1369,6 @@ function Mod.BuildSettings(sec, H)
     status:SetText("Status: " .. Mod.Status())
   end)
   y = y - 30
-  H.Note(sec, "Only your own class is tracked (mage now; priest, shaman and druid later). In combat the stack count is predicted from your casts and corrected from the real aura whenever the game lets addons read it. Chat: /wf proc help.", y)
+  H.Note(sec, "Only your own class is tracked. Mage: stack meter, dump hint and proc icons. Shaman, druid, priest and warlock: proc icons only (Clearcasting, Flurry, Nature's Swiftness, Nature's Grace, Inner Focus, Spirit Tap, Power Infusion, Shadow Trance), shown while the buff is up; other classes have nothing and the module stays off. In combat the stack count is predicted from your casts and corrected from the real aura whenever the game lets addons read it. Chat: /wf proc help.", y)
   return -y + 60
 end

@@ -2,7 +2,7 @@
 ## Title: Wayfarer
 ## Notes: Party and raid nameplate marks, a minimap button and one settings window. More tools to come.
 ## Author: tuma
-## Version: 0.2.13
+## Version: 0.3.0
 ## SavedVariables: WayfarerDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled

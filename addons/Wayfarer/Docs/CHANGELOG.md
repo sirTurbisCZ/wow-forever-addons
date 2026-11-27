@@ -1,5 +1,14 @@
 # Wayfarer changelog
 
+## Release 0.3.0 — procs for shaman, druid, priest and warlock
+
+- **Upcoming stack (#36):** while an Arcane Blast is being cast the next pip is shown dimmed (the stack is only applied when the cast finishes); it lights up on success and disappears on interrupt, failure or stop. Setting `procHUD.upcoming` (default on), checkbox in the Procs section.
+- **#34:** proc icons for more classes (icon only, no stack meter, shown while the buff is up): shaman (Clearcasting from Elemental Focus, Flurry, Nature's Swiftness), druid (Clearcasting from Omen of Clarity, Nature's Grace, Nature's Swiftness), priest (Inner Focus, Spirit Tap, Power Infusion) and warlock (Shadow Trance). Buffs are found by id or by name (English and Czech client text). The ids are unverified; use `/wf proc auras` in the game to check them. Dropped for lack of evidence on Forever: Elemental Mastery (not a spell there) and Tiger's Fury.
+- Test mode lights up all proc icons one by one, however many a class has. The settings window lists which classes have procs.
+- (#31) Missile Barrage icon, from the former 0.2.14:
+- The free-cast buff of the Arcane Concentration talent (Clearcasting icon) is also found by the names Clearcasting / Arcane Concentration (and the Czech texts), not only by id 12536.
+- **Fix (#31):** the Missile Barrage proc icon was not shown on Forever. A proc entry was dropped when the game gave no spell info for its aura id (the stack meter had a fallback, procs had none) and a proc was only searched by id. Proc entries are now kept, the aura is found by id or by name (English and Czech client text) and the icon is taken from the aura itself when the spell lookup has none. The icon does not depend on Arcane Blast stacks.
+
 ## Release 0.2.13 — less garbage per tick
 
 - `Config.GetProfile()` returns the saved profile directly instead of merging the default table on every call (timer ticks, nameplate updates).

@@ -9,7 +9,9 @@ L.PREFIX = "|cff7ec8e3[Plateband]|r"
 L.LOADED = "loaded v%s · /pb help"
 L.UNKNOWN_CMD = "unknown command — /pb help"
 L.HELP_LINES = {
+  "/pb — open the settings window (also the minimap button)",
   "/pb help — this help",
+  "/pb minimap — show/hide the minimap button",
   "/pb on|off — enable/disable the above-plate aura band",
   "/pb diagnose — compact status card (chat); SV always logs silently",
   "/pb dump — status + errors + last diagnose card",
@@ -43,4 +45,6 @@ L.DEV_OFF = "dev telemetry off"
 L.DEV_USAGE = "usage: /pb dev on|off  (currently %s)"
 L.AC_ON = "AuraContainer row ON (experimental) — containers are built out of combat; /pb tree shows them"
 L.AC_OFF = "AuraContainer row off — legacy row"
+L.RELOAD_NEEDED = "/reload needed to apply this setting to plates already on screen (new plates use it at once)"
+L.RELOAD_NOTE = "/reload needed: plates already built keep the old enemy buffs / debuff filter / icon count (new plates use the new setting at once)."
 L.AC_USAGE = "usage: /pb ac on|off|status"

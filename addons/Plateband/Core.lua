@@ -13,6 +13,7 @@ local Config = Plateband.Config
 local Plates = Plateband.Modules.Plates
 local SessionLog = Plateband.Modules.SessionLog
 local SelfTest = Plateband.Modules.SelfTest
+local Settings = Plateband.Modules.Settings
 
 local function EnsureDB()
   return Config.EnsureDB()
@@ -199,6 +200,9 @@ bootFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 bootFrame:SetScript("OnEvent", function(_, event, name)
   if event == "ADDON_LOADED" and name == addonName then
     EnsureDB()
+    if Settings and Settings.CreateMinimap then
+      SafeCall("minimap:create", Settings.CreateMinimap)
+    end
     if SessionLog and SessionLog.SyncRuntimeVersionFromInterface then
       pcall(SessionLog.SyncRuntimeVersionFromInterface)
     end
@@ -258,9 +262,24 @@ SLASH_PLATEBAND2 = "/plateband"
 SlashCmdList.PLATEBAND = function(msg)
   msg = (msg or ""):match("^%s*(.-)%s*$") or ""
   local cmd, rest = msg:match("^(%S+)%s*(.*)$")
-  cmd = (cmd or "help"):lower()
   local db = EnsureDB()
   local p = db.profile
+  if not cmd then
+    if Settings and Settings.Toggle then
+      SafeCall("settings:toggle", Settings.Toggle)
+    end
+    return
+  end
+  cmd = cmd:lower()
+
+  if cmd == "minimap" then
+    local on = not (Settings and Settings.MinimapShown and Settings.MinimapShown())
+    if Settings and Settings.SetMinimapShown then
+      SafeCall("minimap:set", Settings.SetMinimapShown, on)
+    end
+    Print(on and "minimap button shown" or "minimap button hidden")
+    return
+  end
 
   if cmd == "help" or cmd == "?" then
     local lines = L.HELP_LINES

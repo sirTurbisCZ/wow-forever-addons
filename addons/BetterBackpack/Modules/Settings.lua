@@ -757,7 +757,22 @@ local function PaintAutoSell(y)
   return y
 end
 
+local function CornerFeature(label, key)
+  return {
+    label = label,
+    get = function()
+      return Profile()[key] ~= false
+    end,
+    set = function(on)
+      Profile()[key] = on and true or false
+      RefreshBags()
+    end,
+  }
+end
+
 local FEATURES = {
+  CornerFeature("Show item level on weapons and armor", "showItemLevel"),
+  CornerFeature("Show BoE on unbound bind-on-equip gear", "showBoE"),
   {
     label = "Visual stack merge",
     get = function()
