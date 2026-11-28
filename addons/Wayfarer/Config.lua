@@ -6,7 +6,7 @@ local Config = Wayfarer.Config
 
 local CURRENT_SCHEMA = 1
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
-Config.VERSION = "0.3.1"
+Config.VERSION = "0.3.2"
 
 local function ProfileDefaults()
   return {

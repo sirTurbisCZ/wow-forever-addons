@@ -617,7 +617,7 @@ if Seekwell.RegisterSlash then
         pcall(B.Run)
       end
     else
-      Seekwell.Print("Forever content only: " .. (s.browser.foreverOnly and "on" or "off") .. " (/sw forever on|off)")
+      Seekwell.Print("Forever content only: " .. (s.browser.foreverOnly and "on" or "off") .. " (/sw forever on/off)")
       for _, l in ipairs(DJ.BridgeLines()) do
         Seekwell.Print("  " .. l)
       end
@@ -667,7 +667,7 @@ if Seekwell.RegisterStart then
           end
         end)
         y = y - 28
-        H.Check(sec, "Search: Forever content only (/sw forever on|off)", y, function()
+        H.Check(sec, "Search: Forever content only (/sw forever on/off)", y, function()
           return Seekwell.Config.Get().browser.foreverOnly
         end, function(on)
           Seekwell.Config.Get().browser.foreverOnly = on and true or false
@@ -689,5 +689,5 @@ end
 
 if Seekwell.L and type(Seekwell.L.HELP_LINES) == "table" then
   table.insert(Seekwell.L.HELP_LINES, "/sw dungeon [name] — Forever dungeons (bosses, loot, quests, entrance) from ForeverDungeonJournal")
-  table.insert(Seekwell.L.HELP_LINES, "/sw forever on|off — Search shows only Forever content; without an argument: active Forever bridges")
+  table.insert(Seekwell.L.HELP_LINES, "/sw forever on/off — Search shows only Forever content; without an argument: active Forever bridges")
 end

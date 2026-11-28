@@ -6,7 +6,7 @@ local Config = Seekwell.Config
 
 local CURRENT_SCHEMA = 1
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
-Config.VERSION = "0.6.0"
+Config.VERSION = "0.6.1"
 
 local function SettingsDefaults()
   return {

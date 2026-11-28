@@ -18,11 +18,11 @@ Wayfarer.Modules = Wayfarer.Modules or {}
 local Mod = {}
 Wayfarer.Modules.ProcHUD = Mod
 
--- Arcane Blast constants. NOT verified in the Forever client (taken from the old Retinue DecisionAuras):
+-- Arcane Blast constants. NOT verified in the Forever client (taken from an earlier addon):
 -- the real duration and refresh rule are learned from the aura whenever it is readable (saved in the profile).
 local AB_MAX_STACKS = 4
-local AB_WINDOW_DEFAULT = 18 -- seconds; Retinue used 18 s, SoD tooltips say 6 s. The aura duration wins once read.
-local AB_REFRESH_ON_CAST_DEFAULT = false -- Retinue: "window from first application, not refreshed"
+local AB_WINDOW_DEFAULT = 18 -- seconds; an earlier addon used 18 s, SoD tooltips say 6 s. The aura duration wins once read.
+local AB_REFRESH_ON_CAST_DEFAULT = false -- earlier addon: "window from first application, not refreshed"
 local TICK = 0.1
 local UNLOCK_MAX_SEC = 90 -- unlocked HUD locks itself again
 local ABSENT_SEC = 3 -- aura missing this long (in combat) = stacks are gone
@@ -42,7 +42,7 @@ local COLOR_PIP_INCOMING = { 0.45, 0.75, 1.00, 0.35 } -- the next stack while it
     "stacks" — stacking aura built by casts (meter); ids = cast spell ids (ranks), auras = aura ids
     "proc"   — aura shown as an icon while present; glow = key of a "dump" entry to highlight
     "dump"   — spender shown / highlighted at max stacks of the "stacks" entry (ids = ranks)
-  Ids come from the old Retinue (Forever ranks). Each id is checked with C_Spell.GetSpellInfo at runtime.
+  Ids are the Forever ranks. Each id is checked with C_Spell.GetSpellInfo at runtime.
 ]]
 local TRIGGERS = {
   MAGE = {
@@ -1396,11 +1396,11 @@ function Mod.SetTest(on)
   if on and not active then
     Wayfarer.Print("procs: test mode unavailable — " .. tostring(whyInactive))
     test.on = false
-    return false
+    return false, true
   end
   if on and InCombat() then
     Wayfarer.Print("procs: test mode only out of combat")
-    return false
+    return false, true
   end
   test.on = on and true or false
   test.start = Now()
@@ -1457,9 +1457,9 @@ end
 local AURA_FILTERS = { "HELPFUL", "HARMFUL" } -- /wf proc auras (was an undefined global)
 
 local HELP = {
-  "/wf proc on|off — procs and timers module",
+  "/wf proc on/off — procs and timers module",
   "/wf proc test — fake 0-4 stacks to place the HUD (again to stop)",
-  "/wf proc unlock|lock — drag the HUD / fix it",
+  "/wf proc unlock/lock — drag the HUD / fix it",
   "/wf proc reset — default position and scale",
   "/wf proc status — what is running and why",
   "/wf proc debug — print id and name of each cast (to find the right spell ids)",
@@ -1467,7 +1467,7 @@ local HELP = {
   "/wf proc diag — run in combat with a proc up: shows what the client lets the addon read",
   "/wf proc add <spellId> — let the combat proc icons (container) follow one more aura id",
   "/wf proc ids — the aura ids the container follows",
-  "/wf proc container on|off|refresh — container proc icons (works in combat) or own icons only",
+  "/wf proc container on/off/refresh — container proc icons (works in combat) or own icons only",
 }
 
 function Mod.Slash(rest)
@@ -1485,10 +1485,10 @@ function Mod.Slash(rest)
     Mod.Apply()
     P("procs: " .. (cfg.enabled and "on" or "off") .. (active and "" or (cfg.enabled and (" — " .. tostring(whyInactive)) or "")))
   elseif rest == "test" then
-    local on = Mod.SetTest(not test.on)
+    local on, refused = Mod.SetTest(not test.on)
     if on then
       P("procs: test mode on (/wf proc test to stop)")
-    elseif active then
+    elseif active and not refused then
       P("procs: test mode off")
     end
   elseif rest == "unlock" or rest == "lock" then
@@ -1639,7 +1639,7 @@ function Mod.Slash(rest)
     end
     P(string.format("procs: %d auras listed; stacks entry: %s", n, stacksEntry and (stacksEntry.localName or "?") or "none"))
   else
-    P("usage: /wf proc on|off|test|unlock|lock|reset|status|diag|add <id>|ids|container")
+    P("usage: /wf proc on/off/test/unlock/lock/reset/status/diag/add <id>/ids/container")
   end
   RefreshSettings()
 end

@@ -126,9 +126,15 @@ L.Load = Guard("load", function()
   return Loaded()
 end)
 
+local loadedAt = (GetTime and GetTime()) or 0
+local LOGIN_QUIET = 15 -- seconds after login in which the data is not loaded (never at login)
+
 local function Ensure()
   if state.loaded then
     return Data()
+  end
+  if GetTime and GetTime() - loadedAt < LOGIN_QUIET then
+    return nil -- a saved hunt asks at login: wait, the next redraw tries again
   end
   if L.Load() then
     return Data()
@@ -250,7 +256,7 @@ L.Slash = Guard("slash", function(rest)
   elseif cmd == "" or cmd == "status" then
     Print((L.Status()))
   else
-    Print("usage: /sw locations on|off|status")
+    Print("usage: /sw locations on/off/status")
   end
 end)
 

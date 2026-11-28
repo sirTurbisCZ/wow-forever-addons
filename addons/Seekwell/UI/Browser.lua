@@ -439,12 +439,24 @@ local function MobDrops(r)
   return r.drops
 end
 
+--- highest known drop chance over all sources of an item (unknown chance counts as 0); the list is capped by Registry
+local function BestChance(srcs)
+  local best = 0
+  for _, x in ipairs(srcs or {}) do
+    local p = tonumber(x.p) or 0
+    if p > best then
+      best = p
+    end
+  end
+  return best
+end
+
 local function ItemLocated(r)
   if r.loc == nil then
     r.loc = false
     local srcs = ItemSummary(r)
-    for i = 1, math.min(10, #srcs) do
-      if Located(srcs[i].npc) then
+    for i = 1, #srcs do
+      if srcs[i].npc and Located(srcs[i].npc) then
         r.loc = true
         break
       end
@@ -467,7 +479,7 @@ local function Keep(r, s)
       return false
     end
     local srcs = (minP > 0 or s.onlyLocated) and ItemSummary(r) or nil
-    if minP > 0 and not (srcs[1] and (tonumber(srcs[1].p) or 0) >= minP) then
+    if minP > 0 and BestChance(srcs) < minP then
       return false
     end
     if s.onlyLocated then
@@ -695,8 +707,10 @@ function B.SetMode(m)
   end
   BS().mode = m
   offset = 0
-  Pick()
-  Render()
+  if m == "dungeons" and Seekwell.FDB and Seekwell.FDB.Touch then
+    pcall(Seekwell.FDB.Touch) -- entrance-only dungeons come from the ForeverDB data
+  end
+  Run(false) -- the tab must list its entries right away, also with an empty search
 end
 
 --- The status line above the list.
@@ -2168,7 +2182,11 @@ local function BuildRight(s, H)
   hLink = H.Button(body, "Link", 312, -42, 60, function()
     if sel and sel.kind == "item" then
       local TP = Seekwell.TargetPanel
-      local _, link = TP and TP.ItemInfo and TP.ItemInfo(sel.id)
+      local link
+      if TP and TP.ItemInfo then
+        local _
+        _, link = TP.ItemInfo(sel.id) -- (second return value: `a and f()` would keep only the first one)
+      end
       link = link or ("item:" .. sel.id)
       local active = ChatEdit_GetActiveWindow and ChatEdit_GetActiveWindow()
       if active and ChatEdit_InsertLink then

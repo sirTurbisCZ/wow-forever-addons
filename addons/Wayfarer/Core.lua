@@ -102,7 +102,7 @@ SlashCmdList.WAYFARER = function(msg)
         Wayfarer.Settings.Refresh()
       end
     else
-      Print("usage: /wf marks on|off")
+      Print("usage: /wf marks on/off")
     end
     return
   end
@@ -114,7 +114,7 @@ SlashCmdList.WAYFARER = function(msg)
       M.Minimap.SetShown(rest == "on")
       Print(rest == "on" and L.MINIMAP_SHOWN or L.MINIMAP_HIDDEN)
     else
-      Print("usage: /wf minimap on|off|reset")
+      Print("usage: /wf minimap on/off/reset")
     end
     return
   end

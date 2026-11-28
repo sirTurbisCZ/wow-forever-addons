@@ -1,5 +1,12 @@
 # Seekwell changelog
 
+## Release 0.6.1 — help text and small fixes (#54)
+
+- **#58:** the Link button in the item view sends the full item link (the link was read with a truncated `a and f()` call and always fell back to `item:ID`); removed dead code in the pin art.
+- **#57:** the browser's minimum drop chance filter looks at the best chance over all sources of an item, not only the first (best-ranked) one, so an item with a low-chance Forever source ranked above a high-chance learned or Classic row is no longer hidden; "Only with known location" checks every source (was the first 10).
+- **#55:** item pages, tooltips and alerts apply the same LEARNED_MIN rule as the mob page (one learned kill no longer shows 100 % where the mob page shows the Classic estimate); the Dungeons tab lists its entries right after a click and loads ForeverDB; Seekwell_Locations is not loaded during the first 15 s after login (a saved hunt used to load it inside PLAYER_LOGIN); the usage line of `/sw share` uses slashes.
+- Help and usage lines use a slash instead of a pipe between words: the client reads `|r`, `|t`, `|n`, `|k` and similar as escape codes and swallowed part of the text (for example `on|off|reset`).
+
 ## Release 0.6.0 — audit round 2 fixes, wishlist tooltip line, roll alert, entrance-only dungeons
 
 Issues #45 (audit fixes and additions) and #46 (polish).

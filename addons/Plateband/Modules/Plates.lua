@@ -4148,7 +4148,7 @@ ButtonAuraIconAny = function(btn)
   return nil, false
 end
 
---- Retinue-style TF harvest (read-only). Forever 16001 paths 0.2.6 missed.
+--- TargetFrame harvest (read-only). Forever 16001 paths 0.2.6 missed.
 AuraIconPresent = function(icon)
   local present = false
   pcall(function()
@@ -5073,7 +5073,7 @@ AppendGapRow = function(skipKeys, out, maxN, stats, row, countForeign)
   end
 end
 
---- TF mirror minus plate skipKeys — party DoTs (Retinue CollectFromTargetFrame parity).
+--- TF mirror minus plate skipKeys — party DoTs (parity with the TargetFrame collection).
 CollectTargetFrameMissing = function(skipKeys, out, maxN, stats)
   local rows = CollectTargetHarmfulRows(maxN)
   for i = 1, #rows do

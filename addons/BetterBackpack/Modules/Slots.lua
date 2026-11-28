@@ -370,7 +370,97 @@ function Slots.ItemIDForBagSlot(bag, slot)
   return nil
 end
 
+--[[
+  Per-pass memo for container reads (#56). One bag refresh / layout reads the same slot many times (occupied check,
+  classification, stack merge, paint). Inside Slots.BeginPass() .. Slots.EndPass() Slots.Info(bag, slot) asks the client
+  once per slot. Never kept across frames or events: EndPass empties it (Slots.Pass runs the body under pcall so it
+  always runs), and it is off while in combat (the item may change between two reads there).
+]]
+Slots.P = { depth = 0, on = false, info = {}, occ = {} }
+
+function Slots.BeginPass()
+  local P = Slots.P
+  if P.depth == 0 then
+    P.on = not (InCombatLockdown and InCombatLockdown())
+  end
+  P.depth = P.depth + 1
+end
+
+function Slots.EndPass()
+  local P = Slots.P
+  if P.depth > 0 then
+    P.depth = P.depth - 1
+  end
+  if P.depth == 0 then
+    P.on = false
+    for k in pairs(P.info) do
+      P.info[k] = nil
+    end
+    for k in pairs(P.occ) do
+      P.occ[k] = nil
+    end
+  end
+end
+
+--- Run fn(...) as one pass; the memo is emptied afterwards even when fn errors (the error is raised again).
+function Slots.Pass(fn, ...)
+  Slots.BeginPass()
+  local ok, a = pcall(fn, ...)
+  Slots.EndPass()
+  if not ok then
+    error(a, 0)
+  end
+  return a
+end
+
+--- Memo key of a slot, nil when the memo is off or bag / slot are not plain numbers (secret values are no table keys).
+local function PassKey(bag, slot)
+  if not Slots.P.on or type(bag) ~= "number" or type(slot) ~= "number" or IsSecret(bag) or IsSecret(slot) then
+    return nil
+  end
+  return bag * 1000 + slot
+end
+
+--- C_Container.GetContainerItemInfo as a table or nil (a failing or non-table result is nil), memoized inside a pass.
+function Slots.Info(bag, slot)
+  if not (C_Container and C_Container.GetContainerItemInfo) then
+    return nil
+  end
+  local key = PassKey(bag, slot)
+  if key then
+    local m = Slots.P.info[key]
+    if m ~= nil then
+      return m or nil
+    end
+  end
+  local ok, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
+  if not ok or type(info) ~= "table" then
+    info = nil
+  end
+  if key then
+    Slots.P.info[key] = info or false
+  end
+  return info
+end
+
 function Slots.SlotOccupied(bag, slot)
+  local key = PassKey(bag, slot)
+  if key then
+    local m = Slots.P.occ[key]
+    if m ~= nil then
+      return m
+    end
+    local res = false
+    local info = Slots.Info(bag, slot)
+    if info and (info.itemID ~= nil or info.iconFileID ~= nil or info.hyperlink ~= nil) then
+      res = true
+    elseif C_Container and C_Container.GetContainerItemID then
+      local ok, id = pcall(C_Container.GetContainerItemID, bag, slot)
+      res = ok and id ~= nil
+    end
+    Slots.P.occ[key] = res
+    return res
+  end
   if C_Container and C_Container.GetContainerItemID then
     local ok, res = pcall(C_Container.GetContainerItemID, bag, slot)
     if ok and res ~= nil then
@@ -407,11 +497,15 @@ local function EnsureHost()
 end
 
 --[[
-  Secure mouse handler (#39): EnableMouse on a protected button is refused in combat, so a bag that was parked
-  (mouse off) out of combat and is opened in combat would have dead slots. A SecureHandlerStateTemplate frame
-  (created out of combat) holds a frame ref to every secure slot button; its state driver "[combat] 1; 0" runs the
-  restricted snippet at combat start and switches the mouse on for all of them. Out of combat Lua syncs as before
-  (Layout.SyncSlotMouse). Side effect: a closed (parked, alpha 0) bag takes clicks until combat ends.
+  Secure arming handler (#39, #53). Protected slot buttons cannot be shown, hidden or have their mouse switched in
+  combat from addon Lua, so a bag that is parked (closed) out of combat must be armed by secure code at combat
+  start. The parked bag hides its slot buttons (mouse stays ON, a hidden button takes no clicks and swallows nothing);
+  a SecureHandlerStateTemplate frame (created out of combat) holds a frame ref to every secure slot button and its
+  state driver "[combat] 1; 0" runs the restricted snippet at combat start: it only calls :Show() (the one call
+  every restricted environment allows; EnableMouse is not relied on, an unsupported call would abort the whole loop).
+  Opening the bag with the bag key in combat then only needs SetAlpha / EnableMouse on the unprotected bag frame.
+  Out of combat Lua syncs as usual (Layout.SyncSlotMouse -> Slots.SetAllMouse). A closed bag takes clicks while
+  combat lasts (it is not possible to hide it again in combat); the regen sync parks it.
 ]]
 Slots.MH = { n = 0 }
 Slots.MH.SNIPPET = [[
@@ -419,7 +513,7 @@ Slots.MH.SNIPPET = [[
   local n = self:GetAttribute("bbn") or 0
   for i = 1, n do
     local b = self:GetFrameRef("s" .. i)
-    if b then b:EnableMouse(true) end
+    if b then b:Show() end
   end
 ]]
 
@@ -952,9 +1046,10 @@ local function ResolveStackCount(info, bag, slot)
       end
     end
   end
-  if C_Container and C_Container.GetContainerItemInfo then
-    local ok, info2 = pcall(C_Container.GetContainerItemInfo, bag, slot)
-    if ok and type(info2) == "table" then
+  -- A given info table was already searched above (same data as a second read): only read again when there was none.
+  if type(info) ~= "table" then
+    local info2 = Slots.Info(bag, slot)
+    if info2 then
       local n = SafeNum(info2.stackCount or info2.Count, nil)
       if n and n >= 1 then
         return n
@@ -1142,18 +1237,13 @@ end
 
 Slots.SyncQuestBang = SyncQuestBang
 
-function Slots.SyncVisual(btn, bag, slot)
+--- noNormalize: the caller (Slots.Place, Layout.RefreshLight) normalizes once after the last visual change.
+function Slots.SyncVisual(btn, bag, slot, noNormalize)
   if not btn then
     return
   end
   pcall(function()
-    local info
-    if C_Container and C_Container.GetContainerItemInfo then
-      local ok, res = pcall(C_Container.GetContainerItemInfo, bag, slot)
-      if ok and type(res) == "table" then
-        info = res
-      end
-    end
+    local info = Slots.Info(bag, slot)
     local icon = btn.icon or btn.Icon
     local tex = ResolveIconTexture(info, bag, slot)
     EnsureSlotBackground(btn)
@@ -1193,7 +1283,7 @@ function Slots.SyncVisual(btn, bag, slot)
       end
       SyncBevelChrome(btn, false)
       Slots.SyncCooldown(btn, bag, slot)
-      if Slots.Normalize then
+      if Slots.Normalize and not noNormalize then
         Slots.Normalize(btn)
       end
       SyncQuestBang(btn, bag, slot)
@@ -1287,7 +1377,7 @@ function Slots.SyncVisual(btn, bag, slot)
     pcall(Corner.Update, btn, info, bag, slot)
     SyncBevelChrome(btn, true)
     Slots.SyncCooldown(btn, bag, slot)
-    if Slots.Normalize then
+    if Slots.Normalize and not noNormalize then
       Slots.Normalize(btn)
     end
     SyncBevelChrome(btn, true)
@@ -1317,6 +1407,14 @@ function Slots.SyncAttrs(btn, bag, slot)
   end
   local itemStr = b .. " " .. s
   local special = Context and Context.SpecialRmbContext and Context.SpecialRmbContext()
+  -- Attribute signature (#56): the same item string and special mode as the last apply = nothing to write. Every other
+  -- writer of these attributes (ClearRmbUse, Arm/ClearLmbUse) drops it, and so do parking and a forced re-sync.
+  local sig = itemStr .. "|" .. tostring(special)
+  if btn._bbAttrSig == sig then
+    pcall(btn.RegisterForClicks, btn, "AnyUp", "AnyDown")
+    return
+  end
+  btn._bbAttrSig = nil
   pcall(function()
     btn:RegisterForClicks("AnyUp", "AnyDown")
     btn:SetAttribute("useOnKeyDown", false)
@@ -1343,6 +1441,7 @@ function Slots.SyncAttrs(btn, bag, slot)
       btn:SetAttribute("*type2", "item")
       btn:SetAttribute("item2", itemStr)
     end
+    btn._bbAttrSig = sig
   end)
 end
 
@@ -1350,6 +1449,7 @@ function Slots.ClearRmbUse(btn)
   if not btn or not btn.SetAttribute or (InCombatLockdown and InCombatLockdown()) then
     return
   end
+  btn._bbAttrSig = nil
   pcall(function()
     btn:SetAttribute("type2", nil)
     btn:SetAttribute("*type2", nil)
@@ -1365,6 +1465,7 @@ function Slots.SyncAllAttrs()
   end
   for _, btn in pairs(buttons) do
     if btn and btn._bbSecure and btn._bbBag ~= nil and btn._bbSlot ~= nil then
+      btn._bbAttrSig = nil -- a forced re-sync really writes (bag open, after combat, special mode changed)
       Slots.SyncAttrs(btn, btn._bbBag, btn._bbSlot)
     end
   end
@@ -1377,6 +1478,7 @@ function Slots.ForceRestoreItemUse()
   for _, btn in pairs(buttons) do
     if btn and btn._bbSecure and btn._bbBag ~= nil and btn._bbSlot ~= nil then
       btn._bbSpecialRmb = nil
+      btn._bbAttrSig = nil
       Slots.SyncAttrs(btn, btn._bbBag, btn._bbSlot)
     end
   end
@@ -1413,6 +1515,7 @@ local function ArmLmbUse(self)
     return
   end
   local useMacro = string.format("/use %d %d", b, s)
+  self._bbAttrSig = nil
   pcall(function()
     self:SetAttribute("type1", "macro")
     self:SetAttribute("macrotext1", useMacro)
@@ -1425,6 +1528,7 @@ local function ClearLmbUse(self)
   if not self or (InCombatLockdown and InCombatLockdown()) then
     return
   end
+  self._bbAttrSig = nil
   pcall(function()
     self:SetAttribute("type1", nil)
     self:SetAttribute("macrotext1", nil)
@@ -1588,10 +1692,10 @@ local function WireScripts(btn)
     return
   end
   btn._bbWired = true
+  -- Moving items is allowed in combat (C_Container.PickupContainerItem is not protected); only the lane-teach
+  -- branch (saved settings + relayout) waits for the end of combat.
   local function pickup(self)
-    if InCombatLockdown and InCombatLockdown() then
-      return
-    end
+    local inCombat = InCombatLockdown and InCombatLockdown()
     if IsSpellTargetingItem() then
       return
     end
@@ -1602,7 +1706,7 @@ local function WireScripts(btn)
     local Layout = BetterBackpack.Modules.Layout
     local held = CursorItemID()
     -- Our item dropped on an item in another lane = teach that lane, no swap.
-    if held and dragSrc and self._bbLane and dragSrc.lane ~= self._bbLane
+    if not inCombat and held and dragSrc and self._bbLane and dragSrc.lane ~= self._bbLane
         and (held == true or held == dragSrc.itemID)
         and Layout and Layout.DropOnLane and Layout.DropOnLane(self._bbLane)
     then
@@ -1625,7 +1729,7 @@ local function WireScripts(btn)
       dragSrc = nil
     end
     if Layout and Layout.SetDropHints then
-      Layout.SetDropHints(dragSrc ~= nil)
+      pcall(Layout.SetDropHints, dragSrc ~= nil)
     end
   end
   btn:RegisterForClicks("AnyUp", "AnyDown")
@@ -1814,9 +1918,13 @@ function Slots.Acquire(bag, slot)
       btn:SetParent(EnsureHost())
     end)
     buttons[key] = nil
+    btn._bbPlParent, btn._bbAttrSig = nil, nil
     btn = nil
   end
   if btn then
+    if not btn._bbPlaced then
+      btn._bbAttrSig = nil -- re-acquired from the parked state: write the use attributes again (#56)
+    end
     if not inCombat and btn._bbSecure then
       Slots.SyncAttrs(btn, bag, slot)
     end
@@ -1881,16 +1989,104 @@ function Slots.Get(bag, slot)
   return buttons[Slots.BagSlotKey(bag, slot)]
 end
 
---- Switch the mouse on / off for every slot button. A closed bag is kept shown at alpha 0 (warm shell); its slot buttons
---- are still children of that frame and would swallow clicks (and use or pick up items) wherever the bag was drawn.
+--- Arm / park every slot button of the bag (name kept from 1.4.x). A closed bag is kept shown at alpha 0 (warm shell);
+--- its slot buttons would swallow clicks (and use or pick up items) wherever the bag was last drawn.
+--- Secure button registered with the secure handler (Slots.MH): mouse stays ON, parked = Hidden, armed = Shown (the
+--- state driver shows them again at combat start, so a bag opened with the bag key in combat works without any
+--- protected call from Lua). Other buttons (no handler, visual-only): mouse on / off as in 1.4.1.
+--- Protected buttons: out of combat only (the regen sync calls it again). Returns false in combat.
 function Slots.SetAllMouse(on)
   on = on and true or false
+  if InCombatLockdown and InCombatLockdown() then
+    return false
+  end
   Slots._bbMouseOn = on
   for _, btn in pairs(buttons) do
     if btn and btn.EnableMouse then
-      pcall(btn.EnableMouse, btn, on)
+      if btn._bbSecure and btn._bbMHRef then
+        if btn._bbPlaced then
+          pcall(btn.EnableMouse, btn, true)
+          if on then
+            pcall(btn.Show, btn)
+          else
+            pcall(btn.Hide, btn)
+          end
+        else
+          pcall(btn.EnableMouse, btn, false) -- unused button parked in the off-screen host
+        end
+      else
+        pcall(btn.EnableMouse, btn, (on and btn._bbPlaced) and true or false)
+        if btn.Show and not btn._bbSecure then
+          pcall(btn.Show, btn)
+        end
+      end
     end
   end
+  return true
+end
+
+--- Diagnostics (/bb slots): what every slot button looks like right now.
+function Slots.Diag()
+  local d = { total = 0, secure = 0, proxy = 0, placed = 0, shown = 0, mouse = 0, usable = 0, driver = false, refs = 0 }
+  d.driver = Slots.MH.frame ~= nil
+  d.refs = Slots.MH.n or 0
+  for _, btn in pairs(buttons) do
+    if btn then
+      d.total = d.total + 1
+      if btn._bbSecure then
+        d.secure = d.secure + 1
+      else
+        d.proxy = d.proxy + 1
+      end
+      if btn._bbPlaced then
+        d.placed = d.placed + 1
+        local shown = btn.IsShown and btn:IsShown() and true or false
+        local mouse = btn.IsMouseEnabled and btn:IsMouseEnabled() and true or false
+        if shown then
+          d.shown = d.shown + 1
+        end
+        if mouse then
+          d.mouse = d.mouse + 1
+        end
+        local t2 = btn.GetAttribute and btn:GetAttribute("type2")
+        local i2 = btn.GetAttribute and btn:GetAttribute("item2")
+        if shown and mouse and btn._bbSecure and t2 == "item" and type(i2) == "string" and i2:find("%d") then
+          d.usable = d.usable + 1
+        end
+      end
+    end
+  end
+  return d
+end
+
+--- True when every placed button already matches the wanted state (cheap check for the regular refresh).
+function Slots.ArmedMatches(on)
+  on = on and true or false
+  for _, btn in pairs(buttons) do
+    if btn and btn._bbPlaced then
+      local mouse = btn.IsMouseEnabled and btn:IsMouseEnabled() and true or false
+      if btn._bbSecure and btn._bbMHRef then
+        local shown = btn.IsShown and btn:IsShown() and true or false
+        if shown ~= on or not mouse then
+          return false
+        end
+      elseif mouse ~= on then
+        return false
+      end
+    end
+  end
+  return true
+end
+
+--- Visual-only buttons (created in combat or without the secure template) cannot use items; a layout out of combat
+--- replaces them with real secure buttons.
+function Slots.HasProxies()
+  for _, btn in pairs(buttons) do
+    if btn and not btn._bbSecure then
+      return true
+    end
+  end
+  return false
 end
 
 function Slots.ForEach(fn)
@@ -2073,23 +2269,28 @@ function Slots.Place(btn, parent, x, y, shown)
     parent = parent or EnsureHost()
     parent:Show()
     btn:Show()
-    btn:SetParent(parent)
-    btn:ClearAllPoints()
-    -- TOPLEFT + explicit 37×37 (dual-anchor stretched some ItemButtons unevenly).
-    btn:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -y)
-    NormalizeSlotVisual(btn)
+    -- Re-parent and re-anchor only when the place changed (#56); ParkUnused / Acquire keep these fields true.
+    local py = -y
+    if btn._bbPlParent ~= parent or btn._bbPlX ~= x or btn._bbPlY ~= py then
+      btn._bbPlParent = nil
+      btn:SetParent(parent)
+      btn:ClearAllPoints()
+      -- TOPLEFT + explicit 37×37 (dual-anchor stretched some ItemButtons unevenly).
+      btn:SetPoint("TOPLEFT", parent, "TOPLEFT", x, py)
+      btn._bbPlParent, btn._bbPlX, btn._bbPlY = parent, x, py
+    end
     -- No SetFrameStrata on slot buttons (Forever BLOCKED noise).
     local base = (parent.GetFrameLevel and parent:GetFrameLevel()) or 1
     btn:SetFrameLevel(base + 80)
     local mouseOn = shown and (btn._bbSecure or not inCombat)
     btn:EnableMouse(mouseOn and true or false)
+    btn._bbPlaced = shown and true or false
     if shown then
       btn:SetAlpha(1)
       btn:Show()
-      NormalizeSlotVisual(btn)
-      Slots.SyncVisual(btn, btn._bbBag, btn._bbSlot)
-      -- SetItemButtonQuality can resize IconBorder — normalize again after.
-      NormalizeSlotVisual(btn)
+      -- One Normalize per Place, after the last visual change (SyncVisual, quality border, attributes): it fixes the
+      -- Forever chrome drift SetItemButtonQuality leaves behind.
+      Slots.SyncVisual(btn, btn._bbBag, btn._bbSlot, true)
       btn:SetAlpha(1)
       btn:Show()
       if btn._bbSecure and not inCombat then
@@ -2110,13 +2311,23 @@ function Slots.ParkUnused(used)
   local inCombat = InCombatLockdown and InCombatLockdown()
   for _, btn in pairs(buttons) do
     if not used[btn] then
+      if btn._bbPlaced then
+        btn._bbAttrSig = nil -- parked: the next Acquire writes the use attributes again (#56)
+      end
+      btn._bbPlaced = false
       pcall(function()
         btn:SetAlpha(0)
         btn:EnableMouse(false)
         if not inCombat or not btn._bbSecure then
-          btn:ClearAllPoints()
-          btn:SetPoint("TOPLEFT", EnsureHost(), "TOPLEFT", 0, 0)
-          btn:SetParent(EnsureHost())
+          local h = EnsureHost()
+          -- Already parked there (the last Place / ParkUnused left it at the host's corner): nothing to move.
+          if btn._bbPlParent ~= h or btn._bbPlX ~= 0 or btn._bbPlY ~= 0 then
+            btn._bbPlParent = nil
+            btn:ClearAllPoints()
+            btn:SetPoint("TOPLEFT", h, "TOPLEFT", 0, 0)
+            btn:SetParent(h)
+            btn._bbPlParent, btn._bbPlX, btn._bbPlY = h, 0, 0
+          end
         end
       end)
     end

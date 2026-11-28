@@ -45,8 +45,8 @@ local function ResolveItemID(bag, slot)
   if not (C_Container and C_Container.GetContainerItemInfo) then
     return nil
   end
-  local ok, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
-  if not ok or type(info) ~= "table" then
+  local info = Slots.Info(bag, slot) -- memoized inside a layout / refresh pass (#56)
+  if not info then
     return nil
   end
   local id = SafeNum(info.itemID)

@@ -1057,7 +1057,7 @@ function Trash.RunTest(arg)
     return
   end
   if arg ~= "go" and not itemID then
-    Print("Usage: /bb trashtest [go|<itemID>]")
+    Print("Usage: /bb trashtest [go/<itemID>]")
     return
   end
   if not c then

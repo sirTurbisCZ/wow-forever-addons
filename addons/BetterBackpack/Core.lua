@@ -157,6 +157,34 @@ local function WarmCombatShell(tag)
   SafeCall("ensure:" .. tostring(tag or "?"), Layout.EnsureMain)
 end
 
+-- After combat (#53): re-assert the bag for its real visibility - secure slot buttons armed / parked, attributes
+-- current, visual-only proxies replaced, pending layout done, warm layout current. If the client still reports
+-- combat lockdown when the event runs, retry (bounded); a second light check follows after the dust settled.
+local function ResyncAfterCombat(attempt)
+  if InCombatLockdown and InCombatLockdown() then
+    if attempt < 12 and C_Timer and C_Timer.After then
+      C_Timer.After(0.5, function()
+        ResyncAfterCombat(attempt + 1)
+      end)
+    end
+    return
+  end
+  BetterBackpack._combatFrozen = false
+  SafeCall("regen:precreate", Slots.PreCreate)
+  SafeCall("regen:attrs", Slots.SyncAllAttrs)
+  WarmCombatShell("regen")
+  if Layout and Layout.RegenResync then
+    SafeCall("regen:resync", Layout.RegenResync)
+  end
+  if attempt == 0 and C_Timer and C_Timer.After then
+    C_Timer.After(0.5, function()
+      if Layout and Layout.EnsureArmed and not (InCombatLockdown and InCombatLockdown()) then
+        SafeCall("regen:armed", Layout.EnsureArmed)
+      end
+    end)
+  end
+end
+
 -- One reused callback + pending flag per stage; a stage that fires early (a later event
 -- arrived) re-arms for the remainder, so refreshes run ~0.05 s / ~0.55 s after the LAST event.
 local bagQ = { last = 0, delays = { 0.05, 0.55 }, pending = {}, cb = {} }
@@ -175,6 +203,10 @@ for i = 1, #bagQ.delays do
       return
     end
     if not (Layout.IsShown and Layout.IsShown()) then
+      -- Parked bag: keep the warm layout current so a bag opened in combat shows (and can use) the new items (#53).
+      if Layout and Layout.RefreshWarm then
+        SafeCall("warm", Layout.RefreshWarm)
+      end
       return
     end
     -- Always Layout.Refresh (it picks DoLayout vs RefreshLight via occ/sig);
@@ -200,7 +232,7 @@ local function QueueBagRefresh()
   if BetterBackpack._sortSuppressRefresh then
     return
   end
-  if not (Layout and Layout.IsShown and Layout.IsShown()) then
+  if not (Layout and Layout.IsShown and Layout.IsShown()) and not (Layout and Layout.RefreshWarm) then
     return
   end
   if not (C_Timer and C_Timer.After) then
@@ -425,7 +457,9 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
   if event == "GET_ITEM_INFO_RECEIVED" then
     -- Fires for every item the client loads anywhere (tooltips, chat, vendors); only bag items matter here.
     local itemId = ...
-    if Layout and Layout.BagHasItem and not Layout.BagHasItem(itemId) then
+    -- An id whose classification waited for item data (Layout.ClassCache pending) always refreshes the bag.
+    local arrived = Layout and Layout.ItemInfoArrived and Layout.ItemInfoArrived(itemId)
+    if not arrived and Layout and Layout.BagHasItem and not Layout.BagHasItem(itemId) then
       return
     end
     QueueBagRefresh()
@@ -520,6 +554,11 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
 
   if event == "PLAYER_REGEN_DISABLED" then
     BetterBackpack._combatFrozen = true
+    -- Slot buttons are armed by the secure state driver (Slots.MH); this covers a client that has not set the
+    -- lockdown yet at this event (a no-op otherwise).
+    if Layout and Layout.ArmForCombat then
+      SafeCall("regen:arm", Layout.ArmForCombat)
+    end
     return
   end
 
@@ -529,17 +568,7 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
     if OpenClose and OpenClose.ClearReplaceSuppress then
       OpenClose.ClearReplaceSuppress()
     end
-    SafeCall("regen:precreate", Slots.PreCreate)
-    SafeCall("regen:attrs", Slots.SyncAllAttrs)
-    WarmCombatShell("regen")
-    if Layout and Layout.IsShown and Layout.IsShown() and Layout.Refresh then
-      SafeCall("regen:layout", Layout.Refresh)
-    end
-    -- Always: a bag opened in combat could not re-enable the protected slot buttons, and a bag that stayed visible
-    -- never went through a park. Syncs the slot / shell mouse with the real visible state.
-    if Layout and Layout.SyncSlotMouse then
-      SafeCall("regen:mouse", Layout.SyncSlotMouse)
-    end
+    ResyncAfterCombat(0)
     return
   end
 
@@ -629,6 +658,9 @@ SlashCmdList.BETTERBACKPACK = function(msg)
   if cmd == "reset" then
     local all = (rest or ""):lower() == "all"
     Config.Reset(all and "all" or nil)
+    if Layout and Layout.WipeClassCache then
+      Layout.WipeClassCache()
+    end
     SafeCall("shutdown", OpenClose.ShutdownToBlizzard)
     Print(all and (L.CONFIG_RESET_ALL or "all BetterBackpack data reset (every character)")
       or (L.CONFIG_RESET or "settings + this character reset (other characters kept) — /bb reset all wipes everything"))
@@ -746,7 +778,7 @@ SlashCmdList.BETTERBACKPACK = function(msg)
     local id, cat = (rest or ""):match("^(%d+)%s+(%S+)")
     id = tonumber(id)
     if not id then
-      Print("usage: /bb assign <itemID> <cat|clear>")
+      Print("usage: /bb assign <itemID> <cat/clear>")
       return
     end
     if not cat or cat == "clear" or cat == "none" then
@@ -845,6 +877,18 @@ SlashCmdList.BETTERBACKPACK = function(msg)
     else
       Print("selftest FAIL")
     end
+    return
+  end
+
+  if cmd == "slots" then
+    local d = Slots.Diag and Slots.Diag() or {}
+    Print(string.format(
+      "slots: total=%s secure=%s proxy=%s placed=%s shown=%s mouse=%s usable=%s driver=%s refs=%s combat=%s bagVisible=%s",
+      tostring(d.total), tostring(d.secure), tostring(d.proxy), tostring(d.placed), tostring(d.shown),
+      tostring(d.mouse), tostring(d.usable), tostring(d.driver), tostring(d.refs),
+      tostring(InCombatLockdown and InCombatLockdown() and true or false),
+      tostring(Layout.IsBagFrameVisible and Layout.IsBagFrameVisible() and true or false)
+    ))
     return
   end
 

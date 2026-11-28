@@ -1060,7 +1060,7 @@ F.Slash = Guard("slash", function(rest)
   elseif cmd == "" or cmd == "status" then
     Note((F.Status()))
   else
-    Note("usage: /sw fdb status|on|off|reload")
+    Note("usage: /sw fdb status/on/off/reload")
   end
 end)
 
@@ -1082,5 +1082,5 @@ if Seekwell.RegisterStatus then
   end)
 end
 if Seekwell.L and type(Seekwell.L.HELP_LINES) == "table" then
-  table.insert(Seekwell.L.HELP_LINES, "/sw fdb [status|on|off|reload] — ForeverDB data addon (ForeverDBData): Forever drops, names, spawns")
+  table.insert(Seekwell.L.HELP_LINES, "/sw fdb [status/on/off/reload] — ForeverDB data addon (ForeverDBData): Forever drops, names, spawns")
 end

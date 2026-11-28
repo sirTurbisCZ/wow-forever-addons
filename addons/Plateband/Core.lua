@@ -344,6 +344,9 @@ SlashCmdList.PLATEBAND = function(msg)
       end)
     end
     ApplyModuleState()
+    if Settings and Settings.ApplyMinimap then
+      pcall(Settings.ApplyMinimap) -- the button follows the default (shown, default angle)
+    end
     Print(L.CONFIG_RESET or "settings reset")
     return
   end
@@ -364,7 +367,7 @@ SlashCmdList.PLATEBAND = function(msg)
       end
       Print(L.WATCH_OFF or "watch off")
     else
-      Print("usage: /pb watch on|off  (currently " .. tostring(p.watchOn) .. ")")
+      Print("usage: /pb watch on/off  (currently " .. tostring(p.watchOn) .. ")")
     end
     return
   end
@@ -392,7 +395,7 @@ SlashCmdList.PLATEBAND = function(msg)
       end
       Print(L.AC_OFF or "AuraContainer row off - legacy row")
     elseif a ~= "status" and a ~= "" then
-      Print(L.AC_USAGE or "usage: /pb ac on|off|status")
+      Print(L.AC_USAGE or "usage: /pb ac on/off/status")
       return
     end
     local lines = Plates and Plates.AuraContainerStatus and SafeCall("ac:status", Plates.AuraContainerStatus)
@@ -415,7 +418,7 @@ SlashCmdList.PLATEBAND = function(msg)
       p.autoDiag = false
       Print(L.DEV_OFF or "dev telemetry off")
     else
-      Print(string.format(L.DEV_USAGE or "usage: /pb dev on|off  (currently %s)", p.silentTrace and "on" or "off"))
+      Print(string.format(L.DEV_USAGE or "usage: /pb dev on/off  (currently %s)", p.silentTrace and "on" or "off"))
     end
     return
   end
@@ -485,7 +488,7 @@ SlashCmdList.PLATEBAND = function(msg)
       Print(L.MERGE_OFF or "merge off — native DebuffList only")
     else
       Print(string.format(
-        L.MERGE_USAGE or "usage: /pb merge on|off  (currently %s)",
+        L.MERGE_USAGE or "usage: /pb merge on/off  (currently %s)",
         p.mergeMissing and "on" or "off"
       ))
     end

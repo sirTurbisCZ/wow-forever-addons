@@ -8,7 +8,7 @@ Captures Lua errors from **all** addons into SavedVariables so you can share the
 2. Extract it to `World of Warcraft/_forever_/Interface/AddOns/ForeverErrorLog`.
 3. Enable the addon at character select. A newly installed addon needs a full game restart (`/reload` is not enough).
 
-Expect `[ForeverErrorLog] v0.3.1 · /felog` in chat (`· capture OFF (/felog on)` when capture is disabled).
+Expect `[ForeverErrorLog] v0.3.2 · /felog` in chat (`· capture OFF (/felog on)` when capture is disabled).
 
 ## Commands
 
@@ -61,7 +61,7 @@ You can also use `/felog list` and `/felog dump` for a quick view in chat.
 ## Notes
 
 - The Forever client has no `io` library, so addons cannot write files; everything goes to SavedVariables.
-- Developer telemetry (`/felog dev on`) lets other addons (for example Plateband) append diagnostic lines and live-head data to the session log. Nothing is sent anywhere.
+- Developer telemetry (`/felog dev on`) lets other addons (for example Plateband) append diagnostic lines and status data to the session log. Nothing is sent anywhere.
 
 ## Issues
 

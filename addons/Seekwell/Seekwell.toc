@@ -5,7 +5,7 @@
 ## X-Website: https://github.com/sirTurbisCZ/wow-forever-addons
 ## X-License: MIT
 ## IconTexture: Interface\Icons\INV_Misc_Spyglass_03
-## Version: 0.6.0
+## Version: 0.6.1
 ## SavedVariables: SeekwellDB
 ## SavedVariablesPerCharacter: SeekwellCharDB
 ## OptionalDeps: ForeverErrorLog, TnnysMobLoot, ForeverDungeonJournal, ForeverDBData

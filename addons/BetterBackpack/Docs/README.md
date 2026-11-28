@@ -26,6 +26,7 @@ Items are grouped into lanes: Junk, Consumables, Recipes, Materials, Gems, Gear,
 - **Shift+right-click** on a stacked icon at a vendor or mailbox moves **all** physical stacks of that item.
 - **Ctrl+Shift+right-click** on a lane header at a vendor, mailbox or bank moves the whole lane. The **Junk** lane sells everything in it, whatever its quality. Other lanes keep a safety filter (quest items, green or better, unknown quality are skipped). The **Trash** lane is never sold.
 - Optional **auto-sell** at the vendor (Settings → Features): grey items per character, optionally the whole Junk lane and items you marked.
+- After a bulk sell or auto-sell, chat shows one line: `Sold N items for Xg Ys Zc` (vendor price x stack count of what was really sold; `(N unknown)` when some item info was not loaded yet). The **Junk** lane header tooltip shows `Sell value: Xg Ys` for everything in the lane.
 
 ### Trash lane (destroy)
 
@@ -60,7 +61,8 @@ Long lists scroll with the mouse wheel; the scroll bar appears only when needed.
 - **Esc** closes open bags first; the next Esc opens the game menu.
 - Bags opened by a vendor, mailbox, auction house or bank close with that window if they were closed before.
 - Sorting, tidy and Trash work out of combat only.
-- Known limitation: a bag you close during combat stays invisible but still takes clicks where it was drawn until combat ends (its slot buttons are protected and cannot be switched off in combat). Out of combat a closed bag takes no clicks.
+- Right-click uses and left-click picks up / drops / swaps items in combat and after it, also when the bag was opened with **B** in combat.
+- Known limitation: a bag you close during combat stays invisible but still takes clicks where it was drawn until combat ends (its slot buttons are protected and cannot be hidden in combat). Out of combat a closed bag takes no clicks.
 - If you log in or `/reload` in combat before the bag has been built, **B** opens Blizzard's own bag instead.
 - The bank bulk deposit (Ctrl+Shift+RMB on a lane header at the bank) moves gear, bags and anything with an on-use effect with the cursor instead of "use item", and stops at the first slot that did not change.
 
@@ -70,6 +72,7 @@ Long lists scroll with the mouse wheel; the scroll bar appears only when needed.
 |---------|--------|
 | `/bb` | Toggle bags |
 | `/bb on` / `/bb off` | Enable, or restore Blizzard's bags |
+| `/bb slots` | Slot button counters for diagnosing combat use (placed / shown / mouse / usable) |
 | `/bb sort` / `/bb tidy` | Out-of-combat tidy (`SortBags` plus stack merge) |
 | `/bb settings` | Settings panel |
 | `/bb search <text>` | Filter by name or item id (empty clears) |

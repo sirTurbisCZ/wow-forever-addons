@@ -1,5 +1,10 @@
 # ForeverErrorLog changelog
 
+## Release 0.3.2 — repeat counters after clear/reset (#52)
+
+- Help and usage lines use a slash instead of a pipe between words (#54): the client reads `|r`, `|t`, `|n`, `|k` and similar as escape codes and swallowed part of the text.
+- **#52:** the "same error again within 1 s" counters are forgotten after `/felog clear` and `/felog reset` (a repeat right after was counted on the discarded entry and lost); the addon name taken from the error path is capped at 100 characters. Known limitation: when a second addon wraps the error handler after ours was re-installed on top, an even earlier wrapper is not called any more (the base handler still is).
+
 ## Release 0.3.1 — audit fixes (#42), polish (#46)
 
 - **Counts (#42):** a taint entry no longer receives the repeat count of a plain error that follows it (error, taint, same error within 1 s used to increment the taint entry).
@@ -33,90 +38,5 @@
 - **Developer telemetry** (`AgentFeed`, `NotifyRuntime`, `ApplyLiveHeadSnapshot`, live head, export strings) runs only after **`/felog dev on`** (default off). All file-writing code is gone: the Forever client has no `io`.
 - **SavedVariables schema 5:** `errorWipeTok` removed; session `export` strings are emptied unless dev telemetry is on.
 - TOC: `OptionalDeps: !BugGrabber` (stable load order). README rewritten.
-
-## Release 0.1.31 — session-clean error ring
-
-- **`ResetErrorRingOnChatLoaded(load)`** on `BeginSession`, `/reload` ADDON_LOADED, and **`PLAYER_LOGIN`** (idempotent via `errorWipeTok`).
-- Prior ring archived to **`errorArchive.sessions`** (max 8); **`PlatebandDB.errors`** cleared too.
-- Chat load line: **0 errors this session** (not historical 80-count).
-- **`/felog archive [dump]`** — inspect archived rings; **`/felog clear`** archives then wipes.
-
-## Release 0.1.30 — stop FelogExportDriver disk heartbeat
-
-- **`ArmLivePulse`** stops drivers only; no OnUpdate L1 writes when Plateband loaded (login export via **`LoginDiskExportOnce`**).
-- Pairs with Plateband **0.3.05** live-telemetry-options architecture.
-
-## Release 0.1.29 — pairs with Plateband 0.3.00 export defer
-
-- FElog **`PulseLiveHeadFile`** still delegates; host pulse promote unchanged.
-
-## Release 0.1.28 — FElog pulse delegates `ExportDiskPulse` only
-
-## Release 0.1.27 — relies on Plateband `DoExportDiskPulse` idle tick
-
-## Release 0.1.26 — export pulse from events
-
-- Felog driver calls **`PulseExportDiskTick(true)`**.
-
-## Release 0.1.25 — sustained export via Plateband OnUpdate driver
-
-- FElog OnUpdate still nudges **`PulseExportDiskTick`**; primary **`PlatebandExportDriver`** frame.
-
-## Release 0.1.24 — FElog driver → `PulseExportDiskTick`
-
-- Ongoing export uses Plateband deferred 2s tick (fresh L1 mtime).
-
-## Release 0.1.23 — FlushChatLoadedExport on reload/login
-
-- **`StampFelogReload` / `PLAYER_LOGIN`** call Plateband **`FlushChatLoadedExport`** (not raw export line).
-
-## Release 0.1.23 — HOTFIX: delegate export to Plateband throttle
-
-- One **2s** driver; no WorldFrame/io ticker stack; no write retry loop.
-
-## Release 0.1.22 — export L1 = chat `Config.VERSION`
-
-- **`FelogChatLoadedVersions`** — matches **`loaded v%s`** / **`reloaded v%s`**; dropped stamp/toc/metadata **`FelogBestVersion`** for L1.
-
-## Release 0.1.21 — disk L1 = Plateband chatTruthLine
-
-- **`PulseLiveHeadFile`** prefers **`PlatebandDB.chatTruthLine`**; **`WritePlatebandExportL1`** + deferred **`C_Timer`** io.
-
-## Release 0.1.20 — FelogExportDriver + BestVersion chat FE
-
-- **`FelogExportDriver`** 1.95s; **`FelogBestVersion`** — chat `Config.VERSION` beats stale stamp.
-
-## Release 0.1.19 — FelogResolveExportVersions (stamp/toc, no lastKnown)
-
-- Matches Plateband **`ResolveExportVersions`**; stamp-first for **0.2.90 / 0.1.19** interface truth.
-
-## Release 0.1.18 — fix export L1 live_ver=?
-
-- **`FelogLiveInterfaceVersions`** standalone (no Plateband delegate); **`Config.VERSION`** + metadata; never **`?`**.
-
-## Release 0.1.17 — FElog chat TOC + LoadAddOn Plateband for pb ver
-
-- **`FelogLiveInterfaceVersions`** — **`Config.VERSION`** (chat) first; **`C_AddOns.LoadAddOn("Plateband")`** so pb matches deployed toc without separate `/reload`; stamp + immediate export on FElog reload.
-
-## Release 0.1.16 — FElog TOC file read + metadata each WritePlatebandExportLine
-
-- Same **`FelogLiveInterfaceVersions`** as Plateband (disk .toc first, then **`GetAddOnMetadata`**); delegates to **`SessionLog.LiveInterfaceVersions`** when loaded.
-
-## Release 0.1.15 — FElog always writes export L1 from TOC each tick
-
-- **`PulseLiveHeadFile`** always **`WritePlatebandExportLine`** (GetAddOnMetadata) then Plateband **`PulseExportDisk`**; burst on reload; WorldFrame OnUpdate.
-
-## Release 0.1.14 — direct Plateband export write + GetTime OnUpdate
-
-- **`WritePlatebandExportLine`** when **`PulseExportDisk`** fails; **`FelogPlatebandExportLine`** from TOC metadata.
-- OnUpdate uses **`GetTime`** on **UIParent** child frame.
-
-## Release 0.1.13 — live pulse OnUpdate + PulseExportTruth bridge
-
-- **`ArmLivePulse`** OnUpdate 2s fallback; re-arm on `PLAYER_ENTERING_WORLD`; **`PulseLiveHeadFile`** → **`Plateband.SessionLog.PulseExportTruth`** when loaded.
-
-## Release 0.1.12 — ship with Plateband 0.2.83 export pulse
-
-- Version bump only; 2s **`EXPORT_PULSE`** disk + `t=` refresh lives in **`Plateband.SessionLog.PulseExportTruth`**.
 
 Earlier 0.1.x versions: internal development builds.

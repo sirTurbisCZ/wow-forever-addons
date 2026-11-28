@@ -25,11 +25,11 @@ L.HELP_LINES = {
   "/felog dump — recent errors with stacks (chat)",
   "/felog clear — clear the error log",
   "/felog reset — reset config + clear log",
-  "/felog on|off — enable/disable capture (off = errors go to the default handler)",
-  "/felog ui on|off — Blizzard scriptErrors popup (saved)",
-  "/felog dev on|off — dev telemetry (default off)",
+  "/felog on/off — enable/disable capture (off = errors go to the default handler)",
+  "/felog ui on/off — Blizzard scriptErrors popup (saved)",
+  "/felog dev on/off — dev telemetry (default off)",
   "/felog [settings] — open the error window · /felog minimap — toggle the minimap button",
-  "/felog taint on|off — record blocked/forbidden addon actions (default on)",
+  "/felog taint on/off — record blocked/forbidden addon actions (default on)",
 }
 L.LIST_HEADER = "%d error(s) — last 15:"
 L.DUMP_HINT = "send WTF/.../SavedVariables/ForeverErrorLog.lua after /reload (sessionLog + errors)"
@@ -37,11 +37,11 @@ L.CAPTURE_ON = "capture on"
 L.CAPTURE_OFF = "capture off — errors go to the default handler"
 L.UI_ON = "scriptErrors popup on"
 L.UI_OFF = "scriptErrors popup off (capture still runs)"
-L.UI_STATUS = "scriptErrors preference: %s — /felog ui on|off"
+L.UI_STATUS = "scriptErrors preference: %s — /felog ui on/off"
 L.STATUS_LINE = "stored: %d · enabled=%s · schema=%s"
 L.DEV_ON = "dev telemetry on"
 L.DEV_OFF = "dev telemetry off"
-L.DEV_STATUS = "dev telemetry: %s — /felog dev on|off"
+L.DEV_STATUS = "dev telemetry: %s — /felog dev on/off"
 L.BUGGRABBER = "hooked into BugGrabber"
 L.NO_SETHANDLER = "seterrorhandler missing — use /console scriptErrors 1 at least"
-L.TAINT_STATUS = "taint capture: %s — /felog taint on|off"
+L.TAINT_STATUS = "taint capture: %s — /felog taint on/off"

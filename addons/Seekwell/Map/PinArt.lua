@@ -132,16 +132,7 @@ local function Layout(a, s)
   local g = math.floor((s - ringPad) * 0.72 + 0.5)
   a.glyph:SetSize(g, g)
   a.glow:SetSize(s * 1.6, s * 1.6)
-  if false then
-    local sh = math.max(2, math.floor(s * 0.4 + 0.5))
-    a.shine:SetSize(sh, sh)
-    a.shine:ClearAllPoints()
-    a.shine:SetPoint("CENTER", a.disc, "CENTER", -s * 0.12, s * 0.12)
-    a.shine:SetVertexColor(1, 1, 1, 0.75)
-    a.shine:Show()
-  else
-    a.shine:Hide()
-  end
+  a.shine:Hide() -- (the highlight of the first silver pin look is not used any more)
   a.cur = s
 end
 

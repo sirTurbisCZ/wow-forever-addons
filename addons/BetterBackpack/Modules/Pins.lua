@@ -99,13 +99,18 @@ local function OwnedItemIDs()
   for i = 1, #ranges do
     local bag, n = ranges[i].bag, ranges[i].slots
     for slot = 1, n do
-      if Slots.SlotOccupied(bag, slot) and C_Container and C_Container.GetContainerItemID then
-        local ok, id = pcall(C_Container.GetContainerItemID, bag, slot)
-        if ok then
-          id = SafeNum(id)
-          if id then
-            owned[id] = true
+      if Slots.SlotOccupied(bag, slot) then
+        -- The layout pass already read this slot (Slots.Info is memoized there, #56); ask the id API only without it.
+        local info = Slots.Info and Slots.Info(bag, slot)
+        local id = info and SafeNum(info.itemID)
+        if not id and C_Container and C_Container.GetContainerItemID then
+          local ok, res = pcall(C_Container.GetContainerItemID, bag, slot)
+          if ok then
+            id = SafeNum(res)
           end
+        end
+        if id then
+          owned[id] = true
         end
       end
     end
@@ -183,7 +188,7 @@ end
 function Pins.Layout(parent, startY, cols)
   cols = cols or 8
   local list = Pins.List()
-  local owned = OwnedItemIDs()
+  local owned = #list > 0 and OwnedItemIDs() or {} -- only pinned ids are looked up in it
   local missing = {}
   for i = 1, #list do
     local id = list[i]

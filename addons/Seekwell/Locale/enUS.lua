@@ -20,10 +20,10 @@ L.HELP_LINES = {
   "/sw target — show what drops from your target (also a key: Key Bindings > AddOns > Seekwell)",
   "/sw status — version, data sources, learned data, wishlist",
   "/sw probe — which client APIs are available",
-  "/sw minimap on|off|reset — the minimap button",
+  "/sw minimap on/off/reset — the minimap button",
   "/sw reset — restore default settings (learned data and wishlist stay)",
   "/sw reset learned — forget all learned loot data",
-  "/sw dev on|off — debug output",
+  "/sw dev on/off — debug output",
 }
 L.CONFIG_RESET = "settings reset"
 L.LEARNED_RESET = "learned data cleared"

@@ -591,6 +591,10 @@ local function FinishMerchantPump(q)
   if q.diag and q.diag ~= "" then
     BulkPrint(q.diag)
   end
+  local SV = BetterBackpack.Modules.SellValue
+  if SV and SV.Announce then
+    SV.Announce(q.tally)
+  end
 end
 
 --- Drop cached grid sig so the next Refresh always DoLayouts after a sell (no lit empty hole).
@@ -642,8 +646,15 @@ local function PumpStep(limit)
     end
     local Slots = SlotsMod()
     if b ~= nil and s ~= nil and Slots and Slots.SlotOccupied and Slots.SlotOccupied(b, s) then
+      -- sell value is read from the slot BEFORE the sale; counted only when the sale was verified
+      local SV = BetterBackpack.Modules.SellValue
+      local measured = ctx == "merchant" and SV and SV.Measure and SV.Measure(b, s) or nil
       local ok, pending = TransferOne(b, s, ctx)
       if ok then
+        if ctx == "merchant" and SV and SV.Add then
+          pumpQueue.tally = pumpQueue.tally or SV.NewTally()
+          SV.Add(pumpQueue.tally, measured)
+        end
         moved = moved + 1
         pumpQueue.sold = (pumpQueue.sold or 0) + 1
         pumpQueue.pending = pending
