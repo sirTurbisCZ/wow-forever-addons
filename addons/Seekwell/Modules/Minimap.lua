@@ -58,6 +58,7 @@ local function ShowTooltip(self)
   GameTooltip:SetText(L.TIP_TITLE or "Seekwell", 1, 1, 1)
   GameTooltip:AddLine(L.TIP_LEFT or "", 0.8, 0.8, 0.8)
   GameTooltip:AddLine(L.TIP_RIGHT or "", 0.8, 0.8, 0.8)
+  GameTooltip:AddLine(L.TIP_SHIFT or "Shift+left-click: target drops", 0.8, 0.8, 0.8)
   GameTooltip:AddLine(L.TIP_DRAG or "", 0.8, 0.8, 0.8)
   GameTooltip:Show()
 end

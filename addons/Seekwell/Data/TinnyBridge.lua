@@ -62,14 +62,18 @@ end
 
 --- { forever = n, starter = n, foreverFrom = n } (counted once, on request only).
 function T.Counts()
-  if not counts then
-    counts = {
-      forever = CountKeys(Sub(Forever(), "npc")),
-      starter = CountKeys(Sub(Starter(), "npc")),
-      foreverFrom = CountKeys(Sub(Forever(), "from")),
-    }
+  if counts then
+    return counts
   end
-  return counts
+  local c = {
+    forever = CountKeys(Sub(Forever(), "npc")),
+    starter = CountKeys(Sub(Starter(), "npc")),
+    foreverFrom = CountKeys(Sub(Forever(), "from")),
+  }
+  if c.forever > 0 or c.starter > 0 or c.foreverFrom > 0 then
+    counts = c -- an empty answer (Tinny data absent at first use) is not kept
+  end
+  return c
 end
 
 -- "itemID:percent:drops:kills,..." -> { {id, p, d, k}, ... }, max kills
@@ -167,6 +171,9 @@ function T.GetNpc(npcID)
     return e.v or nil
   end
   local v = Parse(npcID)
+  if not v and not (Forever() or Starter()) then
+    return nil -- Tinny data absent: do not remember "unknown"
+  end
   if npcCount >= LRU_MAX then
     Evict()
   end
@@ -230,20 +237,24 @@ local itemNames -- lazily built { {id, name, lower} } from Starter.item (Classic
 --- Items whose name contains `lower` (already lowercase), from Tinny's Starter item table: { {id=, name=} }.
 function T.FindItems(lower, limit)
   limit = limit or 40
-  if not itemNames then
-    itemNames = {}
+  local names = itemNames
+  if not names then
+    names = {}
     local it = Sub(Starter(), "item")
     if it then
       for id, e in pairs(it) do
         local name = type(e) == "table" and e[2]
         if type(id) == "number" and type(name) == "string" and name ~= "" then
-          itemNames[#itemNames + 1] = { id = id, name = name, lower = name:lower() }
+          names[#names + 1] = { id = id, name = name, lower = name:lower() }
         end
       end
     end
+    if #names > 0 then
+      itemNames = names -- an empty result (Tinny data absent at first use) is not kept
+    end
   end
   local out = {}
-  for _, e in ipairs(itemNames) do
+  for _, e in ipairs(names) do
     if e.lower:find(lower, 1, true) then
       out[#out + 1] = { id = e.id, name = e.name }
       if #out >= limit * 4 then
@@ -255,6 +266,9 @@ function T.FindItems(lower, limit)
 end
 
 --- Forget parsed entries (e.g. after Tinny data appeared later).
+T.generation = 0
+
 function T.ClearCache()
+  T.generation = T.generation + 1
   npcCache, npcCount, counts, itemNames = {}, 0, nil, nil
 end

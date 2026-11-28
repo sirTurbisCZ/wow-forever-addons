@@ -5,6 +5,8 @@
   - At max stacks: pulse + "dump" hint (Arcane Wrath / Arcane Missiles icons, optional action button glow).
   - Proc icons (Clearcasting, Missile Barrage, Presence of Mind) from a per-class whitelist; every spell id is
     verified at runtime and unknown ids are skipped.
+  Proc icons are drawn by Wayfarer.ProcContainer (a Blizzard AuraContainer, works in combat) when it is available;
+  ProcHUD's own icons are the fallback (and test mode). Procs are still read here for the dump hint and the glows.
   Own frames only, parented and anchored to UIParent. Blizzard frames are only read (action button geometry,
   out of combat), never anchored to or changed. The ticker runs only while the HUD is shown.
   /wf proc help|on|off|test|unlock|lock|reset|status
@@ -27,6 +29,8 @@ local ABSENT_SEC = 3 -- aura missing this long (in combat) = stacks are gone
 local TEST_MAX_SEC = 30 -- test mode switches itself off
 local TEST_STEP = 1.2 -- seconds per fake stack in test mode
 local ICON_SIZE, PIP_W, PIP_H, PIP_GAP = 28, 18, 10, 3
+local LEARN_CAP = 40 -- saved proc aura ids learned out of combat (profile.procHUD.learnedIds)
+local CONTAINER_MAX = 8 -- icons the container row is sized for
 
 local COLOR_PIP_EMPTY = { 0.22, 0.22, 0.26 }
 local COLOR_PIP_ON = { 0.45, 0.75, 1.00 }
@@ -63,6 +67,8 @@ local TRIGGERS = {
       -- names: the aura is also found by name (ids differ between client builds; English and Czech client text)
       key = "missileBarrage", kind = "proc", name = "Missile Barrage", spellID = 400589, auras = { 400589 },
       names = { "Missile Barrage", "Palba st\197\153el" }, glow = "arcaneMissiles",
+      -- in combat auras are secret, but the game lights up Arcane Missiles while the proc is up (readable)
+      overlay = { 5143, 5144, 5145, 8416, 8417, 10211, 10212, 25345 },
     },
     { key = "presenceOfMind", kind = "proc", name = "Presence of Mind", spellID = 12043, auras = { 12043 } },
   },
@@ -113,6 +119,7 @@ local TRIGGERS = {
   WARLOCK = {
     {
       key = "shadowTrance", kind = "proc", name = "Shadow Trance", spellID = 17941, auras = { 17941 },
+      overlay = { 686, 695, 705, 1088, 1106, 7641, 11659, 11660, 11661, 25307 }, -- Shadow Bolt lights up
       names = { "Nightfall", "St\195\173nov\195\189 trans" },
     },
   },
@@ -144,6 +151,7 @@ local dbg = { casts = 0, matched = 0, lastId = nil, lastName = nil, auraSeen = f
   startUnreadable = 0, lastStartName = nil }
 local unlockedAt
 local lastTrace
+local procCount = 0 -- proc entries of the player's class (VerifyTriggers)
 
 local function Cfg()
   return Wayfarer.Config.GetProfile().procHUD
@@ -192,6 +200,11 @@ local function Guard(context, fn, ...)
   end
 end
 
+--- The AuraContainer module (Modules/ProcContainer.lua); nil when it is not loaded.
+local function PCm()
+  return Wayfarer.ProcContainer
+end
+
 --- name, icon of a spell id, or nil when the client does not know it.
 local function SpellInfo(id)
   local name, icon
@@ -219,52 +232,122 @@ local function SpellInfo(id)
   return name, icon
 end
 
-local AURA_FILTERS = { "HELPFUL", "HARMFUL" }
+local NAME_RETRY = 1 -- seconds between aura-list scans while nothing was found by name
 
---- Aura data of the first present aura id (table, id) or nil. Presence is trusted; fields may be secret.
-local function ReadAura(ids, auraName)
-  local names = type(auraName) == "table" and auraName or (auraName and { auraName }) or nil
-  auraName = nil
-  if not ids then
-    return nil
+--[[
+  One aura pass per Update, shared by every entry: the player's auras are read into two reusable maps
+  (spell id -> data, name -> data), cleared and refilled in place. The pass is lazy: it only runs when an entry
+  cannot be answered by GetPlayerAuraBySpellID (the by-name fallback, or no id API). While the last pass found
+  nothing, a ticker update repeats it at most every NAME_RETRY seconds; an event-driven update (forceScan) always
+  does, so a buff that appears while the HUD is hidden (no ticker) is still seen at once.
+]]
+local pass = { seq = 0, doneSeq = -1, help = false, harm = false, skipped = false, at = -100, hit = false,
+  byId = {}, byName = {} }
+local forceScan = false
+
+local function ScanFilter(filter)
+  local byId, byName = pass.byId, pass.byName
+  for n = 1, 40 do
+    local ok, data = pcall(C_UnitAuras.GetAuraDataByIndex, "player", n, filter)
+    if not ok or type(data) ~= "table" then
+      break
+    end
+    local id = Num(data.spellId)
+    if id and byId[id] == nil then
+      byId[id] = data
+    end
+    local nm = Str(data.name)
+    if nm and byName[nm] == nil then
+      byName[nm] = data
+    end
   end
-  for i = 1, #ids do
-    local id = ids[i]
-    if C_UnitAuras and C_UnitAuras.GetPlayerAuraBySpellID then
-      local ok, data = pcall(C_UnitAuras.GetPlayerAuraBySpellID, id)
-      if ok and type(data) == "table" then
-        return data, id
-      end
-    elseif C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
-      for _, filter in ipairs(AURA_FILTERS) do
-        for n = 1, 40 do
-          local ok, data = pcall(C_UnitAuras.GetAuraDataByIndex, "player", n, filter)
-          if not ok or type(data) ~= "table" then
-            break
-          end
-          if Num(data.spellId) == id then
-            return data, id
-          end
-        end
+end
+
+--- Make the maps of this Update ready; false when there is nothing to look in (no API, or the scan is rate-limited).
+local function EnsurePass(harmful, mustScan)
+  if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then
+    return false
+  end
+  if pass.doneSeq ~= pass.seq then
+    pass.doneSeq = pass.seq
+    pass.help, pass.harm, pass.skipped = false, false, false
+    for k in pairs(pass.byId) do
+      pass.byId[k] = nil
+    end
+    for k in pairs(pass.byName) do
+      pass.byName[k] = nil
+    end
+    if not mustScan and not forceScan and not pass.hit and Now() - pass.at < NAME_RETRY then
+      pass.skipped = true
+    else
+      pass.at, pass.hit = Now(), false
+      ScanFilter("HELPFUL")
+      pass.help = true
+    end
+  end
+  if pass.skipped then
+    return false
+  end
+  if harmful and not pass.harm then
+    pass.harm = true
+    ScanFilter("HARMFUL")
+  end
+  return true
+end
+
+-- Spells the game lights up (proc glow) while a proc is up: readable in combat although the auras are secret there.
+local overlays = {}
+
+local function OverlayUp(e)
+  if not e.overlay then
+    return false
+  end
+  for i = 1, #e.overlay do
+    local id = e.overlay[i]
+    if overlays[id] then
+      return true
+    end
+    local f = C_SpellActivationOverlay and C_SpellActivationOverlay.IsSpellOverlayed
+    if f then
+      local ok, v = pcall(f, id)
+      if ok and v == true then
+        return true
       end
     end
   end
-  if names and #names > 0 and C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
+  return false
+end
+
+--- Aura data of the first present aura id (table, id) or nil. Presence is trusted; fields may be secret.
+--- harmful: also look through the debuffs in the shared pass (only the stack aura needs that; procs are buffs).
+local function ReadAura(ids, auraName, harmful)
+  local names = type(auraName) == "table" and auraName or (auraName and { auraName }) or nil
+  if not ids then
+    return nil
+  end
+  local api = C_UnitAuras and C_UnitAuras.GetPlayerAuraBySpellID
+  for i = 1, #ids do
+    local id = ids[i]
+    if api then
+      local ok, data = pcall(api, id)
+      if ok and type(data) == "table" then
+        return data, id
+      end
+    elseif EnsurePass(harmful, true) then
+      local data = pass.byId[id]
+      if data then
+        pass.hit = true
+        return data, id
+      end
+    end
+  end
+  if names and #names > 0 and EnsurePass(harmful) then
     -- ids differ between client builds: fall back to the aura name
-    for _, filter in ipairs(AURA_FILTERS) do
-      for n = 1, 40 do
-        local ok, data = pcall(C_UnitAuras.GetAuraDataByIndex, "player", n, filter)
-        if not ok or type(data) ~= "table" then
-          break
-        end
-        local nm = Str(data.name)
-        if nm then
-          for k = 1, #names do
-            if nm == names[k] then
-              return data, Num(data.spellId)
-            end
-          end
-        end
+    for k = 1, #names do
+      local data = pass.byName[names[k]]
+      if data then
+        pass.hit = true
+        return data, Num(data.spellId)
       end
     end
   end
@@ -277,6 +360,7 @@ end
 
 local function VerifyTriggers()
   entries, byKey, stacksEntry, castIds, castNames = {}, {}, nil, {}, {}
+  procCount = 0
   local list = classFile and TRIGGERS[classFile]
   if not list then
     return 0, 0
@@ -285,7 +369,7 @@ local function VerifyTriggers()
   for i = 1, total do
     local t = list[i]
     local e = { key = t.key, kind = t.kind, name = t.name, ids = {}, auras = {}, maxStacks = t.maxStacks,
-      dump = t.dump, glow = t.glow, names = {} }
+      dump = t.dump, glow = t.glow, names = {}, overlay = t.overlay }
     if t.kind == "proc" then
       e.names[1] = t.name
       for _, nm in ipairs(t.names or {}) do
@@ -312,6 +396,15 @@ local function VerifyTriggers()
       local _, ic = SpellInfo(t.spellID)
       e.icon = ic
     end
+    if not e.icon and t.overlay then
+      for _, id in ipairs(t.overlay) do
+        local n, ic = SpellInfo(id)
+        if n and ic then
+          e.icon = ic -- the icon of the spell the proc makes glow is better than a question mark
+          break
+        end
+      end
+    end
     if (e.kind == "stacks" or e.kind == "proc") and #e.auras == 0 and t.auras then
       -- aura spells are often hidden from spell lookups; the cast ids decide, the aura is read by id or name
       for _, id in ipairs(t.auras) do
@@ -321,7 +414,7 @@ local function VerifyTriggers()
     if e.kind == "proc" and e.localName then
       e.names[#e.names + 1] = e.localName
     end
-    local usable = (e.kind == "dump" and #e.ids > 0) or (e.kind == "proc" and (#e.auras > 0 or #e.names > 0))
+    local usable = (e.kind == "dump" and #e.ids > 0) or (e.kind == "proc" and (#e.auras > 0 or #e.names > 0 or e.overlay ~= nil))
       or (e.kind == "stacks" and #e.ids > 0 and #e.auras > 0)
     if usable then
       e.icon = e.icon or "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -338,7 +431,46 @@ local function VerifyTriggers()
       end
     end
   end
+  -- the container follows the aura ids of the proc entries plus the ids learned earlier (saved)
+  local seed = {}
+  for _, e in ipairs(entries) do
+    if e.kind == "proc" then
+      procCount = procCount + 1
+      for _, id in ipairs(e.auras) do
+        seed[#seed + 1] = id
+      end
+    end
+  end
+  local pcm = PCm()
+  if pcm and procCount > 0 then
+    pcm.AddIds(seed)
+    pcm.AddIds(Cfg().learnedIds)
+  end
   return #entries, total
+end
+
+--- Remember a proc aura id seen out of combat (readable): the container needs ids, it cannot match by name.
+--- Returns "added", "known", "full" or "invalid"; the id is saved (bounded) and applied to the container.
+local function RememberId(id)
+  local pcm = PCm()
+  id = Num(id)
+  if not pcm or not id or id <= 0 then
+    return "invalid"
+  end
+  if pcm.HasId(id) then
+    return "known"
+  end
+  local cfg = Cfg()
+  if type(cfg.learnedIds) ~= "table" then
+    cfg.learnedIds = {}
+  end
+  local saved = cfg.learnedIds
+  if #saved >= LEARN_CAP then
+    return "full"
+  end
+  saved[#saved + 1] = id
+  pcm.AddId(id)
+  return "added"
 end
 
 -- ---------------------------------------------------------------------------
@@ -364,6 +496,7 @@ end
 -- The stack aura is applied when the cast finishes: while the next Arcane Blast is being cast its pip is shown dimmed.
 -- incoming = time the cast started (cleared on success / stop / failure; a stuck value ends after INCOMING_MAX seconds).
 local incoming
+local incomingSid, incomingGuid -- identity of the cast that set incoming (nil when unreadable)
 local INCOMING_MAX = 6
 
 local function ClearAB()
@@ -405,7 +538,7 @@ local function SyncAB()
   if ab.stacks > 0 and ab.expires > 0 and now >= ab.expires then
     ClearAB()
   end
-  local data = ReadAura(stacksEntry.auras, stacksEntry.localName)
+  local data = ReadAura(stacksEntry.auras, stacksEntry.localName, true)
   if ab.stacks > 0 and (now - (ab.lastCast or 0)) < 1.5 and not data then
     return -- just cast: give the aura time to appear before trusting its absence
   end
@@ -868,19 +1001,35 @@ local function StartTicker()
   end)
 end
 
+local function StopPulse()
+  if meter and meter.pulse and meter.pulse:IsPlaying() then
+    meter.pulse:Stop()
+  end
+end
+
 local function HideAll()
   StopTicker()
   HideGlows()
+  local pcm = PCm()
+  if pcm then
+    pcm.Hide() -- our own container: hiding it is allowed in combat
+  end
   if root then
-    if meter and meter.pulse and meter.pulse:IsPlaying() then
-      meter.pulse:Stop()
-    end
+    StopPulse()
     root:Hide()
   end
 end
 
+--- Root size while the container row is in use: fixed (meter slot + one icon row), so the position never jumps.
+local function containerSize()
+  local w = math.max(stacksEntry and (meter:GetWidth() or 0) or 0, math.min(procCount, CONTAINER_MAX) * (ICON_SIZE + 4))
+  local h = (stacksEntry and (PIP_H + 8 + 4) or 0) + ICON_SIZE
+  return w, h
+end
+
 Update = function()
   local cfg = Cfg()
+  pass.seq = pass.seq + 1
   if not active then
     HideAll()
     return
@@ -894,6 +1043,7 @@ Update = function()
   local unlocked = cfg.locked == false
   local stacks, remain = 0, nil
   local procs = {}
+  local pcm = PCm()
   if test.on and Now() - test.start > TEST_MAX_SEC then
     test.on = false
     Wayfarer.Print("procs: test mode ended")
@@ -929,6 +1079,12 @@ Update = function()
           local data = ReadAura(e.auras, e.names)
           if data then
             procs[#procs + 1] = { e = e, data = data }
+            local sid = Num(data.spellId)
+            if sid and pcm and not pcm.HasId(sid) and not InCombat() then
+              RememberId(sid) -- readable out of combat: the container follows this id from now on
+            end
+          elseif OverlayUp(e) then
+            procs[#procs + 1] = { e = e } -- no aura data (secret in combat): the proc glow tells it is up
           end
         end
       end
@@ -940,7 +1096,18 @@ Update = function()
   local upcoming = incoming and cfg.upcoming ~= false and not test.on and stacks < MaxStacks()
   local meterOn = cfg.meter ~= false and stacksEntry ~= nil and (stacks > 0 or upcoming or test.on or unlocked)
   local shown, dumps = RenderMeter(stacks, remain, meterOn, procs, upcoming)
-  local nProcs = RenderProcs(cfg.procs ~= false and procs or {}, shown)
+  -- The container draws the proc icons when it is there (built out of combat only); then our own icons stay hidden.
+  local useContainer = false
+  if pcm and procCount > 0 and cfg.container ~= false and cfg.procs ~= false and not test.on then
+    if not pcm.IsBuilt() and not pcm.Failed() and not InCombat() then
+      Guard("container build", pcm.Build, root, { size = ICON_SIZE, x = 0, y = stacksEntry and -(PIP_H + 8 + 4) or 0 })
+    end
+    useContainer = pcm.IsActive()
+  end
+  if pcm then
+    pcm.SetShown(useContainer)
+  end
+  local nProcs = RenderProcs((cfg.procs ~= false and not useContainer) and procs or {}, shown)
   -- glow targets: dump spenders at max stacks + spenders named by present procs
   local glowList = {}
   if cfg.actionGlow and not test.on then
@@ -964,18 +1131,32 @@ Update = function()
   root.label:SetShown(unlocked)
   root:EnableMouse(unlocked)
   if any then
-    local w = math.max(shown and (meter:GetWidth() or 0) or 0, nProcs * (ICON_SIZE + 4))
-    local h = (shown and (PIP_H + 8) or 0) + (nProcs > 0 and (ICON_SIZE + (shown and 4 or 0)) or 0)
+    local w, h
+    if useContainer then
+      w, h = containerSize()
+    else
+      w = math.max(shown and (meter:GetWidth() or 0) or 0, nProcs * (ICON_SIZE + 4))
+      h = (shown and (PIP_H + 8) or 0) + (nProcs > 0 and (ICON_SIZE + (shown and 4 or 0)) or 0)
+    end
     root:SetSize(math.max(w, 40), math.max(h, PIP_H + 8))
     root:Show()
     StartTicker()
+  elseif useContainer then
+    -- Nothing of ours to draw, but the container row lives in the root: keep it shown, no ticker needed.
+    StopTicker()
+    StopPulse()
+    local w, h = containerSize()
+    root:SetSize(math.max(w, 40), math.max(h, PIP_H + 8))
+    root:Show()
   else
     HideAll()
   end
 end
 
 local function SafeUpdate()
+  forceScan = true -- event-driven: always look at the real auras (the ticker is rate-limited instead)
   Guard("update", Update)
+  forceScan = false
 end
 
 -- ---------------------------------------------------------------------------
@@ -986,7 +1167,7 @@ local EVENTS = {
   "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_STOP", "UNIT_SPELLCAST_FAILED",
   "UNIT_SPELLCAST_INTERRUPTED", "UNIT_AURA", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED",
   "PLAYER_ENTERING_WORLD", "ACTIONBAR_SLOT_CHANGED", "ACTIONBAR_PAGE_CHANGED", "UPDATE_BONUS_ACTIONBAR",
-  "SPELLS_CHANGED",
+  "SPELLS_CHANGED", "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW", "SPELL_ACTIVATION_OVERLAY_GLOW_HIDE",
 }
 
 local function IsStacksCast(spellID)
@@ -1021,6 +1202,13 @@ local function OnEvent(_, event, a1, a2, a3)
       incoming = nil
       NoteCast()
       SafeUpdate()
+    elseif stacksEntry and incoming and not sid then
+      -- The spell id is secret (combat) but the START of an Arcane Blast was matched: count the stack here.
+      -- Assumes the successful cast is the one that started (an instant spell succeeding mid-cast with a secret
+      -- id would be miscounted; the next readable aura sync corrects it).
+      incoming = nil
+      NoteCast()
+      SafeUpdate()
     end
   elseif event == "UNIT_SPELLCAST_START" then
     if a1 ~= "player" or not stacksEntry then
@@ -1048,12 +1236,41 @@ local function OnEvent(_, event, a1, a2, a3)
     if match then
       dbg.startMatched = dbg.startMatched + 1
       incoming = Now()
+      incomingSid, incomingGuid = sid, Str(a2)
       SafeUpdate()
     end
   elseif event == "UNIT_SPELLCAST_STOP" or event == "UNIT_SPELLCAST_FAILED" or event == "UNIT_SPELLCAST_INTERRUPTED" then
+    -- STOP also arrives right after a successful cast (the stack was already counted) and for every other spell
+    -- of the player: only the stop of the cast that set incoming clears it.
     if a1 == "player" and incoming then
-      -- STOP also arrives right after a successful cast: the stack was already counted then
-      incoming = nil
+      local guid, sid = Str(a2), Num(a3) or Num(a2)
+      local same
+      if guid and incomingGuid then
+        same = guid == incomingGuid
+      elseif sid and incomingSid then
+        same = sid == incomingSid
+      elseif UnitCastingInfo then
+        -- unreadable: keep it unless nothing is being cast any more
+        local ok, name = pcall(UnitCastingInfo, "player")
+        same = ok and name == nil
+      else
+        same = true
+      end
+      if same then
+        incoming = nil
+        SafeUpdate()
+      end
+    end
+  elseif event == "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW" or event == "SPELL_ACTIVATION_OVERLAY_GLOW_HIDE" then
+    local id = Num(a1)
+    dbg.overlayRaw = (dbg.overlayRaw or 0) + 1 -- every glow event, also when the spell id is unreadable (secret)
+    if debugOn then
+      Wayfarer.Print(string.format("procs debug: %s spell=%s", event == "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW" and "glow ON" or "glow OFF",
+        id and (tostring(id) .. " " .. tostring(SpellInfo(id))) or "unreadable (secret)"))
+    end
+    if id then
+      overlays[id] = event == "SPELL_ACTIVATION_OVERLAY_GLOW_SHOW" or nil
+      dbg.overlayEvents = (dbg.overlayEvents or 0) + 1
       SafeUpdate()
     end
   elseif event == "UNIT_AURA" then
@@ -1070,8 +1287,12 @@ local function OnEvent(_, event, a1, a2, a3)
     SafeUpdate()
   elseif event == "PLAYER_REGEN_ENABLED" then
     seenAuraInCombat = false
+    local pcm = PCm()
+    if pcm then
+      pcm.Flush() -- ids added during combat
+    end
     MaybeScan()
-    SafeUpdate()
+    SafeUpdate() -- also builds the container when it is not built yet
   elseif event == "SPELLS_CHANGED" then
     Mod.Apply()
   elseif event == "ACTIONBAR_SLOT_CHANGED" or event == "ACTIONBAR_PAGE_CHANGED" or event == "UPDATE_BONUS_ACTIONBAR" then
@@ -1081,6 +1302,10 @@ local function OnEvent(_, event, a1, a2, a3)
     buttonsDirty = true
     MaybeScan()
     SafeUpdate()
+    local pcm = PCm()
+    if event == "PLAYER_ENTERING_WORLD" and pcm then
+      pcm.Refresh()
+    end
   end
 end
 
@@ -1183,6 +1408,10 @@ function Mod.SetTest(on)
   return test.on
 end
 
+function Mod.HasIncoming()
+  return incoming ~= nil
+end
+
 function Mod.IsTesting()
   return test.on
 end
@@ -1208,13 +1437,15 @@ function Mod.Status()
   end
   local learned = Num(cfg.abWindow)
   local refresh = cfg.abRefresh
-  return string.format(
-    "on class=%s triggers=%d meter=%s stacks=%d (%s) window=%.1fs (%s) refresh=%s locked=%s test=%s scale=%d%% | casts seen %d, matched %d, last id=%s name=%s, aura ever read=%s | casts starting %d, matched %d, unreadable %d, last name=%s",
+  local pcm = PCm()
+  return (string.format(
+    "on class=%s triggers=%d meter=%s stacks=%d (%s) window=%.1fs (%s) refresh=%s locked=%s test=%s scale=%d%% | casts seen %d, matched %d, last id=%s name=%s, aura ever read=%s | casts starting %d, matched %d, unreadable %d, last name=%s | glow events %d",
     tostring(classFile), #entries, stacksEntry and (cfg.meter ~= false and "on" or "off") or "n/a", ab.stacks,
     ab.source, Window(), learned and "learned" or "default", refresh == nil and "default-" .. tostring(AB_REFRESH_ON_CAST_DEFAULT) or tostring(refresh),
     tostring(cfg.locked ~= false), tostring(test.on), tonumber(cfg.scale) or 100,
     dbg.casts, dbg.matched, tostring(dbg.lastId), tostring(dbg.lastName), tostring(dbg.auraSeen),
-    dbg.starts, dbg.startMatched, dbg.startUnreadable, tostring(dbg.lastStartName))
+    dbg.starts, dbg.startMatched, dbg.startUnreadable, tostring(dbg.lastStartName), dbg.overlayEvents or 0))
+    .. (pcm and (" | " .. pcm.Status() .. (cfg.container == false and " (off)" or "")) or "")
 end
 
 RefreshSettings = function()
@@ -1222,6 +1453,8 @@ RefreshSettings = function()
     Wayfarer.Settings.Refresh()
   end
 end
+
+local AURA_FILTERS = { "HELPFUL", "HARMFUL" } -- /wf proc auras (was an undefined global)
 
 local HELP = {
   "/wf proc on|off — procs and timers module",
@@ -1231,12 +1464,18 @@ local HELP = {
   "/wf proc status — what is running and why",
   "/wf proc debug — print id and name of each cast (to find the right spell ids)",
   "/wf proc auras — list your current auras with ids",
+  "/wf proc diag — run in combat with a proc up: shows what the client lets the addon read",
+  "/wf proc add <spellId> — let the combat proc icons (container) follow one more aura id",
+  "/wf proc ids — the aura ids the container follows",
+  "/wf proc container on|off|refresh — container proc icons (works in combat) or own icons only",
 }
 
 function Mod.Slash(rest)
   rest = (rest or ""):match("^%s*(.-)%s*$") or ""
   local cfg = Cfg()
   local P = Wayfarer.Print
+  local addId = rest:match("^add%s+(%d+)$")
+  local cmode = rest:match("^container%s*(%a*)$")
   if rest == "" or rest == "help" then
     for _, l in ipairs(HELP) do
       P(l)
@@ -1263,6 +1502,129 @@ function Mod.Slash(rest)
   elseif rest == "debug" then
     debugOn = not debugOn
     P("procs: debug " .. (debugOn and "on — every cast of yours prints id and name (/wf proc debug to stop)" or "off"))
+  elseif rest == "diag" then
+    -- Run this IN COMBAT with the proc up: what the client lets the addon read right now.
+    local function flagv(fn)
+      local f = C_Secrets and C_Secrets[fn]
+      if not f then
+        return "n/a"
+      end
+      local ok, v = pcall(f)
+      return ok and tostring(v) or "error"
+    end
+    P(string.format("diag: combat=%s ShouldAurasBeSecret=%s ShouldCooldownsBeSecret=%s",
+      tostring(InCombat()), flagv("ShouldAurasBeSecret"), flagv("ShouldCooldownsBeSecret")))
+    P(string.format("diag: GetPlayerAuraBySpellID=%s GetAuraDataByIndex=%s IsSpellOverlayed=%s glow events readable=%d (all=%d)",
+      tostring(C_UnitAuras and C_UnitAuras.GetPlayerAuraBySpellID ~= nil), tostring(C_UnitAuras and C_UnitAuras.GetAuraDataByIndex ~= nil),
+      tostring(C_SpellActivationOverlay and C_SpellActivationOverlay.IsSpellOverlayed ~= nil), dbg.overlayEvents or 0, dbg.overlayRaw or 0))
+    local pcm = PCm()
+    if pcm then
+      P("diag: " .. pcm.Status() .. (cfg.container == false and " (switched off)" or ""))
+      local list, parts = pcm.GetIds(), {}
+      for _, id in ipairs(list) do
+        parts[#parts + 1] = tostring(id)
+        if #parts == 14 or id == list[#list] then
+          P("diag: container ids " .. table.concat(parts, ","))
+          parts = {}
+        end
+      end
+      for _, l in ipairs(pcm.Details()) do
+        P("diag: " .. l)
+      end
+    end
+    for _, e in ipairs(entries) do
+      if e.kind == "proc" then
+        local byId, byIdErr = "-", ""
+        for _, id in ipairs(e.auras) do
+          local ok, d = pcall(C_UnitAuras.GetPlayerAuraBySpellID, id)
+          byId = ok and (type(d) == "table" and "table" or tostring(d)) or "error"
+          if not ok then
+            byIdErr = tostring(d):sub(1, 60)
+          end
+          if ok and type(d) == "table" then
+            break
+          end
+        end
+        local data = ReadAura(e.auras, e.names)
+        P(string.format("diag: %s aura-by-id=%s%s found=%s glow=%s", e.key, byId, byIdErr ~= "" and (" (" .. byIdErr .. ")") or "",
+          tostring(data ~= nil), tostring(OverlayUp(e))))
+      end
+    end
+    -- Blizzard's Cooldown Manager (tracked buffs) shows procs in combat: can the addon see its icons?
+    local V = rawget(_G, "BuffIconCooldownViewer")
+    P(string.format("diag: C_CooldownViewer=%s BuffIconCooldownViewer=%s", tostring(C_CooldownViewer ~= nil), tostring(V ~= nil)))
+    if V then
+      local frames = {}
+      local okF, list = pcall(function()
+        if V.GetItemFrames then
+          return V:GetItemFrames()
+        end
+        return { V:GetChildren() }
+      end)
+      if okF and type(list) == "table" then
+        frames = list
+      end
+      local shown, lines = 0, 0
+      for _, f in ipairs(frames) do
+        local okS, vis = pcall(function()
+          return f:IsShown()
+        end)
+        if okS and vis then
+          shown = shown + 1
+          if lines < 6 then
+            lines = lines + 1
+            local okI, sid = pcall(function()
+              if f.GetSpellID then
+                return f:GetSpellID()
+              end
+              return f.cooldownInfo and f.cooldownInfo.spellID
+            end)
+            P(string.format("diag: viewer icon shown spell=%s", okI and (Num(sid) and tostring(Num(sid)) or "unreadable") or "error"))
+          end
+        end
+      end
+      P(string.format("diag: viewer frames=%d shown=%d (turn the Cooldown Manager on in the game options and track the buff)", #frames, shown))
+    end
+    local listed, secretN = 0, 0
+    local ok0, d0 = pcall(C_UnitAuras.GetAuraDataByIndex, "player", 1, "HELPFUL")
+    P("diag: GetAuraDataByIndex(player,1,HELPFUL) -> " .. (ok0 and (type(d0) == "table" and ("table id=" .. tostring(Num(d0.spellId)) .. " name=" .. tostring(Str(d0.name))) or tostring(d0)) or ("ERROR " .. tostring(d0):sub(1, 80))))
+  elseif addId then
+    local r = RememberId(tonumber(addId))
+    local pcm = PCm()
+    local msgs = {
+      added = "added (applied to the container" .. (InCombat() and " after combat)" or ")"),
+      known = "already followed",
+      full = string.format("list full (%d learned ids)", LEARN_CAP),
+      invalid = "not usable (container module missing or bad id)",
+    }
+    P(string.format("procs: aura id %s %s", addId, msgs[r] or r))
+    if pcm and r == "added" then
+      P("procs: " .. pcm.Status())
+    end
+  elseif rest == "ids" then
+    local pcm = PCm()
+    local list = pcm and pcm.GetIds() or {}
+    local parts = {}
+    for _, id in ipairs(list) do
+      parts[#parts + 1] = tostring(id) .. "=" .. tostring(SpellInfo(id) or "?")
+    end
+    P(string.format("procs: container ids (%d): %s", #list, #parts > 0 and table.concat(parts, ", ") or "none"))
+  elseif cmode then
+    local pcm = PCm()
+    if not pcm then
+      P("procs: container module missing")
+    elseif cmode == "on" or cmode == "off" then
+      cfg.container = cmode == "on"
+      if cmode == "on" then
+        pcm.Reset() -- a failed build is tried again out of combat
+      end
+      SafeUpdate()
+      P("procs: container " .. cmode .. " — " .. pcm.Status())
+    elseif cmode == "refresh" then
+      P("procs: container refresh " .. (pcm.Refresh() and "done" or "not possible") .. " — " .. pcm.Status())
+    else
+      P("procs: " .. pcm.Status() .. (cfg.container == false and " (switched off)" or ""))
+    end
   elseif rest == "auras" then
     local n = 0
     for _, filter in ipairs(AURA_FILTERS) do
@@ -1277,7 +1639,7 @@ function Mod.Slash(rest)
     end
     P(string.format("procs: %d auras listed; stacks entry: %s", n, stacksEntry and (stacksEntry.localName or "?") or "none"))
   else
-    P("usage: /wf proc on|off|test|unlock|lock|reset|status")
+    P("usage: /wf proc on|off|test|unlock|lock|reset|status|diag|add <id>|ids|container")
   end
   RefreshSettings()
 end

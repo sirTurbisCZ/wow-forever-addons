@@ -1,5 +1,23 @@
 # Seekwell changelog
 
+## Release 0.6.0 — audit round 2 fixes, wishlist tooltip line, roll alert, entrance-only dungeons
+
+Issues #45 (audit fixes and additions) and #46 (polish).
+
+- **#45 Spawns are converted lazily.** `FDB.HasSpawns(npc)` answers "has positions" from key presence only (no coordinate conversion); the browser's Located / Coverage / source ordering for up to 200 mobs use it (`Spawns.HasAny`). `FDB.SpawnsOn(npc, map)` converts only the requested map (cached per npc and map); `FDB.Spawns(npc)` still returns all maps. The spawn cache is reset when full (600) instead of scanning for the oldest entry.
+- **#45 Wishlist search** keeps an id -> lowercase name table for the learned / Tinny item ids (resolved once, rebuilt with the learned data or when Tinny's data changes) and scans that instead of asking the client for every id on every search.
+- **#45 ForeverDB map index:** the two stages (spm, then spw) are checked separately and each retried (twice) after a failure; before, a failed second stage was never started again.
+- **#45 A saved hunt is resolved once** at start (the second resolve in the first refresh is gone) and the saved hunt no longer forces a ForeverDB load 20 s after login: the data loads on the first search, the first map open with a hunt, or (after a 20 s quiet period) the first minimap pin that needs it; never in combat.
+- **#45 Learned data pruning** (full scan + sort) is deferred by one frame out of the loot-window event.
+- **#45 Settings repair:** a wrong-typed settings block (`settings.map = "x"`) is replaced by its defaults; the map and tooltip code check their block on use.
+- **#45 Alerts:** "Got" also covers crafted / created items and won rolls (all from the client's own message strings, any language; formats that start with the item are matched whole; a secret chat text is skipped).
+- **#45 New:** a gold `Seekwell: wishlist 3/20` (or `wishlist, done`) line on tooltips of wishlist items (`tooltip.wish`, default on, checkbox in Settings).
+- **#45 New:** "Wanted: <item> is up for roll" toast when a roll starts for a wishlist item you do not own (START_LOOT_ROLL, registered only while alerts and wanted-drop alerts are on; no auto-roll).
+- **#45 New:** the Dungeons tab lists ForeverDB dungeons the Dungeon Journal lacks (all of them without ForeverDungeonJournal) as entrance-only pages with a pin, waypoint and hunt. The data loads when the tab is used, never at login; nothing changes without ForeverDB.
+- **#45 Minor:** the error de-duplication restarts after 200 distinct errors instead of stopping; Tinny item names / counts and unknown npcs are not cached while Tinny's data is absent; the Dungeon Journal index is not built in combat (first out-of-combat call builds it).
+- ForeverDB_Full is not added to the data folder candidates: its global is `ForeverDBFull`, so it can never satisfy the `ForeverDB` data check.
+- **#46 Polish:** `.toc` gets `X-Website`, `X-License` and `IconTexture` (Seekwell_Locations 0.3.1: `X-Website`, `X-License`, `Group`); login line `[Seekwell] vX.Y.Z · /sw`; one minimap tooltip text; `/sw reset` prints "settings reset"; the README starts with the install block, has no hard-coded version and no longer carries the 0.2.0 feature list (it is below in this file).
+
 ## Release 0.5.6 — fewer allocations, fixes from the audit
 
 - `Config.Get()` / `Learned` / `Char` return the checked saved-variable table after the first pass instead of building the default tables on every call (it is called on every ForeverDB lookup, tooltip, minimap tick and mouseover).
@@ -15,7 +33,7 @@
 ## Release 0.5.5
 
 - **Loot lag with ForeverDB on: root cause fixed.** During a hunt the minimap ticker (10x per second) rebuilt the points of every source mob each tick (spawns merged from learned / ForeverDB / Classic with de-duplication, then clustered). With ForeverDB an item has up to 200 source mobs, so the main thread was busy all the time and loot / bag events were processed late. `Map.PointsForMap` is now cached per hunt and map and rebuilt only when spawns, ForeverDB, wishlist, learned data, hidden mobs or the filters changed; the minimap skips the redraw while position, zoom and data are unchanged.
-- ForeverDB data is on by default again (the 0.5.4 opt-in is reverted: the owner wants the data, the lag came from the minimap ticker). The setting key stays `forever.fdbData` (true by default; `/sw fdb off` to turn it off).
+- ForeverDB data is on by default again (the 0.5.4 opt-in is reverted: the lag came from the minimap ticker, not from the data). The setting key stays `forever.fdbData` (true by default; `/sw fdb off` to turn it off).
 
 ## Release 0.5.4
 

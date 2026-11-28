@@ -246,7 +246,10 @@ local function Located(npc)
   if v == nil then
     v = false
     local Sp = Seekwell.Spawns
-    if Sp and Sp.MapsForMob then
+    if Sp and Sp.HasAny then
+      local ok, has = pcall(Sp.HasAny, npc)
+      v = ok and has and true or false
+    elseif Sp and Sp.MapsForMob then
       local ok, lst = pcall(Sp.MapsForMob, npc)
       v = ok and type(lst) == "table" and #lst > 0 or false
     end
@@ -263,6 +266,35 @@ end
 local FTAG = " |cffe6b422F|r"
 local function DJ()
   return Seekwell.DJ
+end
+
+local ENTRANCE_ONLY = "entrance only \226\128\148 install ForeverDungeonJournal for bosses"
+
+--- Entrance-only dungeon (ForeverDB, not in the Dungeon Journal): ids are negative session positions in FDB.Dungeons().
+local function FdbDungeon(id)
+  id = tonumber(id)
+  if not (id and id < 0) then
+    return nil
+  end
+  local F = Seekwell.FDB
+  if not (F and F.Dungeons) then
+    return nil
+  end
+  local ok, lst = pcall(F.Dungeons)
+  local e = ok and type(lst) == "table" and lst[-id] or nil
+  return type(e) == "table" and e or nil
+end
+B.FdbDungeon = FdbDungeon
+
+--- What the map hunt takes for a dungeon: its list position, or the name for an entrance-only one.
+local function DungeonArg(kind, id)
+  if kind == "dungeon" then
+    local fe = FdbDungeon(id)
+    if fe then
+      return fe.name
+    end
+  end
+  return id
 end
 
 local function IsForever(kind, id)
@@ -578,6 +610,25 @@ local function Run(rerun)
     for _, e in ipairs(ok and lst or {}) do
       dungs[#dungs + 1] = { kind = "dungeon", id = e.index, name = e.name }
     end
+    -- ForeverDB dungeons the journal lacks (or all of them without the journal): entrance-only pages
+    local F = Seekwell.FDB
+    if F and F.Dungeons and F.Enabled and F.Enabled() then
+      if s.mode == "dungeons" and F.Touch then
+        pcall(F.Touch) -- the Dungeons tab is a real need; never loaded at login
+      end
+      local okF, fl = pcall(F.Dungeons)
+      local ql = q:lower()
+      for i, e in ipairs(okF and type(fl) == "table" and fl or {}) do
+        if e.mapID and e.name and (ql == "" or e.name:lower():find(ql, 1, true)) then
+          local okG, have = pcall(function()
+            return D and D.Get(e.name)
+          end)
+          if not (okG and have) then
+            dungs[#dungs + 1] = { kind = "dungeon", id = -i, name = e.name, fdb = true }
+          end
+        end
+      end
+    end
   end
   itemsRes, mobsRes, dungRes = Filter(items, s), Filter(mobs, s), Filter(dungs, s)
   if not rerun then
@@ -655,8 +706,8 @@ function B.StatusText()
   local ni, nm = #itemsRes, #mobsRes
   local filtered = s.onlyLocated or s.onlyWish or (s.minPct or 0) > 0
   if s.mode == "dungeons" then
-    if not (DJ() and DJ().Available()) then
-      return "Dungeons come from the ForeverDungeonJournal addon, which is not loaded."
+    if not (DJ() and DJ().Available()) and #dungRes == 0 then
+      return "Dungeons come from the ForeverDungeonJournal addon (not loaded) or the ForeverDB data (entrances only)."
     end
     return string.format("%d dungeon(s)%s", #dungRes, q ~= "" and (" match \"" .. q .. "\"") or "")
   end
@@ -702,9 +753,9 @@ local function AutoPin(kind, id)
   end
   local M = Seekwell.Map
   if M and M.Set then
-    pcall(M.Set, kind, id, true)
+    pcall(M.Set, kind, DungeonArg(kind, id), true)
   elseif M and M.Hunt then
-    pcall(M.Hunt, kind, id)
+    pcall(M.Hunt, kind, DungeonArg(kind, id))
   end
 end
 
@@ -984,6 +1035,19 @@ end
 local DUNGEON_ICON = "Interface\\Icons\\INV_Misc_Key_03"
 
 local function FillDungeonRow(r, e)
+  local fe = FdbDungeon(e.id)
+  if fe then
+    r.kind, r.mob, r.item = "dungeon", nil, nil
+    r.icon:SetTexture(DUNGEON_ICON)
+    r.l1:SetText(fe.name .. FTAG)
+    r.l1:SetTextColor(0.95, 0.55, 1)
+    r.l2:SetText((IV().MapName(fe.mapID) or ("map " .. tostring(fe.mapID))) .. " \194\183 " .. ENTRANCE_ONLY)
+    r.l2:SetTextColor(0.65, 0.65, 0.65)
+    r.star:Hide()
+    r.own:Hide()
+    r.pin:SetShown(true)
+    return
+  end
   local d = DJ() and DJ().Get(e.id)
   r.kind, r.mob, r.item = "dungeon", nil, nil
   r.icon:SetTexture(DUNGEON_ICON)
@@ -1103,7 +1167,10 @@ function B.ZonesFor(kind, id)
   local Sp = Seekwell.Spawns
   local npcs, ents = {}, {}
   local D = DJ()
-  if kind == "dungeon" then
+  local fe = kind == "dungeon" and FdbDungeon(id) or nil
+  if fe then
+    -- entrance-only page: the point is added below (after Zone is defined)
+  elseif kind == "dungeon" then
     local e = D and D.Get(id)
     if e then
       ents[1] = e.name
@@ -1142,6 +1209,10 @@ function B.ZonesFor(kind, id)
     end
     return z
   end
+  if fe and fe.mapID then
+    local z = Zone(fe.mapID)
+    z.points[#z.points + 1] = { x = fe.x, y = fe.y, label = "Dungeon entrance: " .. fe.name, src = "entrance", dungeon = fe.name }
+  end
   for _, n in ipairs(npcs) do
     local label = R.NpcName(n.npc) or ("npc " .. tostring(n.npc))
     if n.p then
@@ -1172,7 +1243,7 @@ function B.ZonesFor(kind, id)
       end
     end
   end
-  for _, name in ipairs(ents) do
+  for _, name in ipairs(D and ents or {}) do
     local ok, m, x, y, label, learned = pcall(D.Entrance, name)
     if ok and m then
       local z = Zone(m)
@@ -1498,6 +1569,12 @@ local function DetailRowsMob(id, width)
 end
 
 local function DetailRowsDungeon(id, width)
+  local fe = FdbDungeon(id)
+  if fe then
+    FillDRow(1, 0, width, "text", { l1 = ENTRANCE_ONLY, l2 = "ForeverDB data \194\183 " .. (IV().MapName(fe.mapID) or ("map " .. tostring(fe.mapID))),
+      r = 0.9, g = 0.85, b = 0.5 })
+    return 1, -DROW_H, "Entrance only \194\183 ForeverDB data"
+  end
   local p = DJ() and DJ().Page(id)
   local n, y = 0, 0
   if not p then
@@ -1543,7 +1620,8 @@ end
 
 local function HeaderDungeon(id)
   local D = DJ()
-  local e = D and D.Get(id)
+  local fe = FdbDungeon(id)
+  local e = (not fe) and D and D.Get(id) or nil
   hName:SetText((e and e.name or "dungeon") .. (e and e.level and (" (" .. e.level .. ")") or "") .. "  |cffe6b422Forever|r")
   hName:SetTextColor(0.95, 0.55, 1)
   hIcon:SetTexture(DUNGEON_ICON)
@@ -1553,7 +1631,12 @@ local function HeaderDungeon(id)
   hLink:Hide()
   hOwn:Hide()
   if hDJ then
-    hDJ:SetShown(D and D.Opener() ~= nil or false)
+    hDJ:SetShown((not fe) and D and D.Opener() ~= nil or false)
+  end
+  if fe then
+    hName:SetText(fe.name .. "  |cffe6b422Forever|r")
+    hInfo:SetText("entrance: " .. (IV().MapName(fe.mapID) or ("map " .. tostring(fe.mapID))) .. " \194\183 " .. ENTRANCE_ONLY)
+    return
   end
   local m, learned
   if D and e then
@@ -2097,7 +2180,7 @@ local function BuildRight(s, H)
   end)
   bMap = H.Button(body, "Show on map", 0, -70, 104, function()
     if sel and Seekwell.Map and Seekwell.Map.Hunt then
-      Seekwell.Map.Hunt(sel.kind, sel.id)
+      Seekwell.Map.Hunt(sel.kind, DungeonArg(sel.kind, sel.id))
     end
   end)
   bClear = H.Button(body, "Clear map", 108, -70, 84, function()

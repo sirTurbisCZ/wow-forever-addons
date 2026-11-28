@@ -103,12 +103,26 @@ function Tip.Lines(itemID)
   return out
 end
 
+--- { text, r, g, b } "Seekwell: wishlist 3/20" (have/wanted) or "Seekwell: wishlist, done" for a wishlist item, else nil.
+function Tip.WishLine(itemID)
+  local W = Seekwell.Wish
+  if not (W and W.Has and W.Has(itemID)) then
+    return nil
+  end
+  local have, want = W.Count_(itemID), W.Qty(itemID)
+  if have >= want then
+    return { PREFIX .. " wishlist, done", 1, 0.82, 0 }
+  end
+  return { string.format("%s wishlist %d/%d", PREFIX, have, want), 1, 0.82, 0 }
+end
+
 local function OnItem(tooltip, data)
   if busy or not tooltip then
     return
   end
-  local s = Seekwell.Config.Get()
-  if not s.tooltip.enabled then
+  local ts = Seekwell.Config.Block("tooltip")
+  local dropsOn, wishOn = ts.enabled, ts.wish ~= false
+  if not (dropsOn or wishOn) then
     return
   end
   if tooltip.IsForbidden and tooltip:IsForbidden() then
@@ -121,10 +135,16 @@ local function OnItem(tooltip, data)
   if HasOurLine(tooltip) then
     return
   end
-  if s.tooltip.skipIfDropsShown ~= false and HasForeignDrops(tooltip) then
-    return
+  local lines = {}
+  local w = wishOn and Tip.WishLine(itemID)
+  if w then
+    lines[1] = w
   end
-  local lines = Tip.Lines(itemID)
+  if dropsOn and not (ts.skipIfDropsShown ~= false and HasForeignDrops(tooltip)) then
+    for _, l in ipairs(Tip.Lines(itemID)) do
+      lines[#lines + 1] = l
+    end
+  end
   if #lines == 0 then
     return
   end

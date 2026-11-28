@@ -12,7 +12,7 @@ local Config = Plateband.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "0.8.0"
+Config.VERSION = "0.8.1"
 
 local function ProfileDefaults()
   return {
@@ -346,7 +346,7 @@ function Config.GetProfile()
   -- Hot path (dozens of calls per nameplate update): EnsureDB builds the default tables and merges them every time, so
   -- a database that was already ensured (current schema, profile table) is returned directly.
   local db = PlatebandDB
-  if type(db) == "table" and db.schemaVersion == CURRENT_SCHEMA and type(db.profile) == "table" then
+  if type(db) == "table" and type(db.schemaVersion) == "number" and db.schemaVersion >= CURRENT_SCHEMA and type(db.profile) == "table" then
     return db.profile
   end
   return Config.EnsureDB().profile

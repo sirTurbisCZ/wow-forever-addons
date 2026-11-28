@@ -5,16 +5,17 @@ Captures Lua errors from **all** addons into SavedVariables so you can share the
 ## Install
 
 1. Download the latest `ForeverErrorLog-*.zip` from [Releases](https://github.com/sirTurbisCZ/wow-forever-addons/releases).
-2. Extract so the folder `ForeverErrorLog` sits in `World of Warcraft/_forever_/Interface/AddOns/`.
-3. Enable the addon at character select (if needed) and `/reload` in game.
+2. Extract it to `World of Warcraft/_forever_/Interface/AddOns/ForeverErrorLog`.
+3. Enable the addon at character select. A newly installed addon needs a full game restart (`/reload` is not enough).
 
-Expect `[FElog] loaded v… — N errors this session · popup off` in chat.
+Expect `[ForeverErrorLog] v0.3.1 · /felog` in chat (`· capture OFF (/felog on)` when capture is disabled).
 
 ## Commands
 
 | Command | What it does |
 |---------|----------------|
-| `/felog` | Open the error window (same as the minimap button) |
+| `/felog` | Open or close the error window (same as the minimap button) |
+| `/felog settings` | Open the error window |
 | `/felog minimap` | Show or hide the minimap button |
 | `/felog taint on` / `/felog taint off` | Record blocked/forbidden addon actions (default on) |
 | `/felog help` | Help and status |
@@ -32,13 +33,13 @@ Aliases: `/ferrors`, `/forevererrors`. `/felog history` and `/felog ls` are alia
 
 ## Error window
 
-`/felog` or a left-click on the minimap button opens a window with this session's errors, newest first, 20 per page. Click into the text, press Ctrl+A then Ctrl+C to copy the whole report (it starts with the client build, locale and addon versions) and paste it into a bug report. **This session** / **Previous** switch between the current and the last saved list, **Clear** empties the list shown, Esc closes. Drag the window or the minimap button to move them.
+`/felog` or a left-click on the minimap button opens a window with this session's errors, newest first, 20 per page. Click into the text, press Ctrl+A then Ctrl+C to copy the whole report (it starts with the issues link, client build, locale and addon versions) and paste it into a bug report. **This session** / **Previous** switch between the current and the last saved list, **Clear** empties the list shown (on **Previous** it asks for a second click), a page that is too long ends with a "page truncated" line, Esc closes. Drag the window or the minimap button to move them.
 
 Blocked or forbidden addon actions (taint) appear in the list as `[blocked] <addon> tried <function>`; `/felog taint off` stops that.
 
 ## Default behavior
 
-- Errors are **collected** into `ForeverErrorLogDB`; a short `[FElog]` line appears in chat for each **new** error.
+- Errors are **collected** into `ForeverErrorLogDB`; a short `[ForeverErrorLog]` line appears in chat for each **new** error.
 - The Blizzard error popup is **off** by default (it queues old errors and is painful to dismiss). `/felog ui on` turns it back on and stays on.
 - Identical errors are counted, not repeated.
 - Every `/reload` or login starts a fresh error list; the previous one is moved to the archive (`/felog archive`).
@@ -47,7 +48,7 @@ Blocked or forbidden addon actions (taint) appear in the list as `[blocked] <add
 
 ## Sharing a bug
 
-1. Reproduce the error (or wait until it appears — chat shows the `[FElog]` line).
+1. Reproduce the error (or wait until it appears — chat shows the `[ForeverErrorLog]` line).
 2. `/reload` once (or log out) so SavedVariables are written to disk.
 3. Send this file:
 
@@ -61,6 +62,10 @@ You can also use `/felog list` and `/felog dump` for a quick view in chat.
 
 - The Forever client has no `io` library, so addons cannot write files; everything goes to SavedVariables.
 - Developer telemetry (`/felog dev on`) lets other addons (for example Plateband) append diagnostic lines and live-head data to the session log. Nothing is sent anywhere.
+
+## Issues
+
+Bug reports and ideas: [github.com/sirTurbisCZ/wow-forever-addons/issues](https://github.com/sirTurbisCZ/wow-forever-addons/issues).
 
 ## Troubleshooting
 

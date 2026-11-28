@@ -1,6 +1,6 @@
 --[[
   Plateband — above-plate shared harmful / DoT band.
-  /pb help|on|off|diagnose|dump|safe|reset|size|watch
+  /pb settings|help|on|off|diagnose|dump|safe|reset|size|watch
 ]]
 
 local addonName = ...
@@ -200,6 +200,9 @@ bootFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 bootFrame:SetScript("OnEvent", function(_, event, name)
   if event == "ADDON_LOADED" and name == addonName then
     EnsureDB()
+    if Settings and Settings.CaptureBaseline then
+      SafeCall("settings:baseline", Settings.CaptureBaseline)
+    end
     if Settings and Settings.CreateMinimap then
       SafeCall("minimap:create", Settings.CreateMinimap)
     end
@@ -223,7 +226,7 @@ bootFrame:SetScript("OnEvent", function(_, event, name)
       ApplyModuleState()
       if not loadAnnounced then
         loadAnnounced = true
-        Print(string.format(L.LOADED or "loaded v%s · /pb", tostring(Config.VERSION)))
+        Print(string.format(L.LOADED or "v%s · /pb", tostring(Config.VERSION)))
       end
     end
   elseif event == "PLAYER_LOGIN" then
@@ -242,7 +245,7 @@ bootFrame:SetScript("OnEvent", function(_, event, name)
     ApplyModuleState()
     if not loadAnnounced then
       loadAnnounced = true
-      Print(string.format(L.LOADED or "loaded v%s · /pb", tostring(Config.VERSION)))
+      Print(string.format(L.LOADED or "v%s · /pb", tostring(Config.VERSION)))
     end
   elseif event == "PLAYER_ENTERING_WORLD" then
     if SessionLog and SessionLog.EnsureChatTruthCurrent then
@@ -271,6 +274,13 @@ SlashCmdList.PLATEBAND = function(msg)
     return
   end
   cmd = cmd:lower()
+
+  if cmd == "settings" then
+    if Settings and Settings.Toggle then
+      SafeCall("settings:toggle", Settings.Toggle)
+    end
+    return
+  end
 
   if cmd == "minimap" then
     local on = not (Settings and Settings.MinimapShown and Settings.MinimapShown())
@@ -334,7 +344,7 @@ SlashCmdList.PLATEBAND = function(msg)
       end)
     end
     ApplyModuleState()
-    Print(L.CONFIG_RESET or "config reset to defaults")
+    Print(L.CONFIG_RESET or "settings reset")
     return
   end
 

@@ -41,6 +41,13 @@ local function Trim(s, maxLen)
 end
 
 local function DB()
+  -- Fast path (repeated errors call this often): an already ensured database is returned as is.
+  local db = PlatebandDB
+  local cur = ns.Config.CURRENT_SCHEMA
+  if type(db) == "table" and type(db.profile) == "table" and type(db.schemaVersion) == "number"
+    and cur and db.schemaVersion >= cur then
+    return db
+  end
   return ns.Config.EnsureDB()
 end
 

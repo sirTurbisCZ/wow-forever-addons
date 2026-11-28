@@ -1,5 +1,16 @@
 # Wayfarer changelog
 
+## Release 0.3.1 — audit fixes and polish
+
+- **Proc icons in combat (#47):** in combat the player's auras are secret on this client, so aura-based proc icons did not show while fighting. Procs that make a spell glow are now also read from the proc glow (SPELL_ACTIVATION_OVERLAY_GLOW_SHOW / HIDE and C_SpellActivationOverlay.IsSpellOverlayed), which is readable in combat: Missile Barrage (glow on Arcane Missiles) and Shadow Trance (glow on Shadow Bolt). `/wf proc status` shows the number of glow events. Procs without a glow (Clearcasting / Arcane Concentration, Flurry, ...) can only be shown when the client lets addons read auras.
+- **Proc icons in combat, second part (#47):** the proc icons are now drawn by a Blizzard-managed aura container (`Modules/ProcContainer.lua`), which shows icon, duration swipe and stack count from C code, so the addon never has to read the secret aura. It follows the aura ids of your class's procs plus ids learned automatically whenever a proc is readable out of combat (saved, at most 40, `procHUD.learnedIds`). It is built out of combat only; if this client has no such container or refuses it, the old icons are used as before (test mode always uses them). New: `/wf proc add <spellId>`, `/wf proc ids`, `/wf proc container on|off|refresh`; `/wf proc diag` and `/wf proc status` show the container state. NOT verified in the game yet: whether the container shows the player's own auras in combat on this client (see README, "Procs in combat"). `/wf proc auras` no longer fails (its filter list was undefined).
+- **#44 Procs:** one aura pass per update, shared by all entries (reusable maps by spell id and by name, no new tables per tick; the by-name fallback is repeated at most once a second while nothing is found, buffs only unless the Arcane Blast stack aura is looked up); the 10 Hz ticker no longer scans the aura list for every missing proc.
+- **#44** The "incoming" pip is only cleared by the stop, failure or interrupt of the cast that set it (cast GUID or spell id; when unreadable it stays unless nothing is being cast).
+- **#44** A successful Arcane Blast whose spell id is secret (combat) now counts its stack when its START was recognised (assumes the successful cast is the one that started).
+- **#44** Saved data with a wrong type for a settings block (for example `procHUD = true`) is repaired with the defaults; `GetProfile` checks the blocks too.
+- **#44** Party marks: roster changes are coalesced into one refresh 0.2 s later. The Party marks section shows a hint while friendly nameplates are off.
+- **#46 Polish:** shorter addon notes, `X-Website`, `X-License` and `IconTexture` in the .toc; login line `[Wayfarer] vX.Y.Z · /wf`; `/wf settings`; `/wf reset` prints "settings reset"; minimap tooltip "Drag: move"; README: install first, Issues link, fishing overlap note, no version in the heading, no "Coming next".
+
 ## Release 0.3.0 — procs for shaman, druid, priest and warlock
 
 - **Upcoming stack (#36):** while an Arcane Blast is being cast the next pip is shown dimmed (the stack is only applied when the cast finishes); it lights up on success and disappears on interrupt, failure or stop. Setting `procHUD.upcoming` (default on), checkbox in the Procs section.

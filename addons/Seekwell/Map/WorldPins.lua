@@ -42,7 +42,7 @@ local function Print(...)
 end
 
 local function S()
-  return Seekwell.Config.Get().map
+  return Seekwell.Config.Block("map")
 end
 
 local function Char()
@@ -106,6 +106,8 @@ local function Resolve(h)
     local e = type(h.id) == "string" and Seekwell.DJ and Seekwell.DJ.Get(h.id)
     if e then
       ents[e.name] = true
+    elseif type(h.id) == "string" and Seekwell.FDB and Seekwell.FDB.Entrance and Seekwell.FDB.Entrance(h.id) then
+      ents[h.id] = true -- entrance-only dungeon of the ForeverDB data (no Dungeon Journal page)
     end
   elseif h.kind == "mob" then
     mobs[h.id] = {}
@@ -124,11 +126,14 @@ end
 
 -- hunt.mobs was resolved once when the hunt was set: re-resolve when the wishlist or ForeverDB changed (at once) or when
 -- new learned data came in (at most every 60 s, a loot must not trigger the whole resolve).
-local function FreshMobs(h)
+local function Stamp()
   local F, W, Ld = Seekwell.FDB, Seekwell.Wish, Seekwell.Learned
   local sig = tostring(W and W.generation or 0) .. ":" .. tostring(F and F.Generation and F.Generation() or 0)
-  local lg = Ld and Ld.generation or 0
-  local now = (GetTime and GetTime()) or 0
+  return sig, Ld and Ld.generation or 0, (GetTime and GetTime()) or 0
+end
+
+local function FreshMobs(h)
+  local sig, lg, now = Stamp()
   if not h.mobs then
     h.rsig, h.rlg, h.rt = sig, lg, now
     return Resolve(h)
@@ -159,6 +164,8 @@ end
 -- source mob merged from learned / ForeverDB / Classic, then clustered) is expensive, so the result is cached per
 -- hunt and map and rebuilt only when the data, the wishlist or the filters changed.
 local ptsCache = {}
+local fdbPending, loginT = false, 0 -- saved hunt waiting for the ForeverDB data (see M.EnsureFDB)
+local FDB_QUIET = 20
 local ptsVersion = 0
 
 local function PointsSig(mapID)
@@ -177,10 +184,11 @@ function M.PointsVersion()
   return ptsVersion
 end
 
-function M.PointsForMap(mapID)
+function M.PointsForMap(mapID, fromMap)
   if not hunt or not mapID then
     return {}
   end
+  M.EnsureFDB(fromMap)
   local sig = PointsSig(mapID)
   local c = ptsCache[mapID]
   if c and c.hunt == hunt and c.sig == sig then
@@ -363,7 +371,7 @@ if CreateFromMixins and MapCanvasDataProviderMixin then
     if not mapID then
       return
     end
-    for _, pt in ipairs(M.PointsForMap(mapID)) do
+    for _, pt in ipairs(M.PointsForMap(mapID, true)) do
       map:AcquirePin(PIN, pt)
     end
   end)
@@ -382,6 +390,24 @@ function M.Start()
   M.Restore()
 end
 
+--- Loads the ForeverDB data once for a restored hunt, on first need and never in combat. The map (fromMap) asks at once;
+--- the minimap ticker only after a quiet period after login (the load is a 1-3 s stall).
+function M.EnsureFDB(fromMap)
+  if not fdbPending or not hunt then
+    return
+  end
+  if not fromMap and ((GetTime and GetTime()) or 0) - loginT < FDB_QUIET then
+    return
+  end
+  if InCombatLockdown and InCombatLockdown() then
+    return
+  end
+  fdbPending = false
+  if Seekwell.FDB and Seekwell.FDB.Touch then
+    pcall(Seekwell.FDB.Touch)
+  end
+end
+
 --- Restore the saved hunt of this character (a 0.4.0 dungeon hunt saved a list position: dropped safely).
 function M.Restore()
   local h = Char().hunt
@@ -391,10 +417,8 @@ function M.Restore()
   elseif type(h) == "table" and h.kind then
     -- never load the big ForeverDB data during login: it is loaded a little later (and out of combat)
     local ok = M.Set(h.kind, h.id, true, true)
-    if ok and Seekwell.FDB and Seekwell.FDB.Touch and C_Timer and C_Timer.After then
-      C_Timer.After(20, function()
-        pcall(Seekwell.FDB.Touch)
-      end)
+    if ok and Seekwell.FDB and Seekwell.FDB.Touch then
+      fdbPending, loginT = true, (GetTime and GetTime()) or 0 -- loaded on first need (M.EnsureFDB), not by a timer
     end
     return ok
   end
@@ -435,6 +459,10 @@ function M.Set(kind, id, quiet, noLoad)
   elseif kind == "dungeon" then
     -- a number is a row of the current Dungeon Journal list (browser, this session only); saved by NAME
     local e = Seekwell.DJ and Seekwell.DJ.Get(tonumber(id) or id)
+    if not e and type(id) == "string" and Seekwell.FDB and Seekwell.FDB.Entrance then
+      local okE, em, _, _, en = pcall(Seekwell.FDB.Entrance, id)
+      e = okE and em and { name = en or id } or nil
+    end
     if not e then
       return false
     end
@@ -447,8 +475,12 @@ function M.Set(kind, id, quiet, noLoad)
     return false
   end
   hunt = { kind = kind, id = id, label = label }
+  if not noLoad then
+    fdbPending = false
+  end
   Char().hunt = { kind = kind, id = id }
   local mobs = Resolve(hunt)
+  hunt.rsig, hunt.rlg, hunt.rt = Stamp() -- FreshMobs must not resolve the same hunt a second time
   M.Refresh()
   if quiet then
     return true

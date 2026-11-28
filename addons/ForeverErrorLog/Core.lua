@@ -12,10 +12,11 @@ local L = ForeverErrorLog.L or {}
 local Config = ForeverErrorLog.Config
 
 local installed
-local originalHandler
+local baseHandler -- first handler captured at install (Blizzard default); never replaced
+local originalHandler -- handler we forward to: baseHandler, or one another addon installed later
 local ourHandler
-local inHandler = false
-local lastRawMsg, lastRawAt, lastEntry
+local inHandler, inBase, needBase, forwarded = false, false, false, false
+local lastRawMsg, lastRawAt, lastRawEntry
 local lastPrintAt, suppressedPrints = -10, 0
 local PRINT_GAP = 2
 local ARCHIVE_TOP_N = 20
@@ -34,7 +35,7 @@ local function Print(...)
   for i = 1, select("#", ...) do
     parts[i] = tostring(select(i, ...))
   end
-  print((L.PREFIX or "[FElog]") .. " " .. table.concat(parts, " "))
+  print((L.PREFIX or "[ForeverErrorLog]") .. " " .. table.concat(parts, " "))
 end
 
 local function Trim(s, maxLen)
@@ -179,19 +180,18 @@ function ForeverErrorLog.ResetErrorRingOnChatLoaded(loadKind)
   local n = ArchiveErrorRing(db.errors, loadKind)
   wipe(db.errors)
   db.lastExport = nil
+  lastRawEntry = nil
   AppendSession(string.format("ERROR_RING_WIPE load=%s archived=%d live=0", loadKind, n))
   return true
 end
 
 local function PrintLoadedLine()
   local db = EnsureDB()
-  local n = #(db.errors or {})
   local ver = tostring(Config.VERSION or "?")
-  local popup = db.scriptErrors == true and "on" or "off"
-  if n > 0 then
-    Print(string.format(L.LOADED_COUNT or "loaded v%s — %d errors this session · popup %s", ver, n, popup))
+  if db.enabled == false then
+    Print(string.format(L.LOADED_OFF or "v%s · /felog · capture OFF (/felog on)", ver))
   else
-    Print(string.format(L.LOADED_EMPTY or "loaded v%s — 0 errors this session · popup %s", ver, popup))
+    Print(string.format(L.LOADED or "v%s · /felog", ver))
   end
 end
 
@@ -235,13 +235,15 @@ local function Record(msg, stack, addonOverride)
   end
   msg = Trim(msg, Config.MAX_MSG)
   stack = Trim(stack or "", STACK_MAX)
+  if addonOverride then
+    addonOverride = Trim(addonOverride, 100)
+  end
   local list = db.errors
   for i = 1, #list do
     local e = list[i]
     if e.msg == msg then
       e.count = (e.count or 1) + 1
       e.last = Now()
-      lastEntry = e
       if stack ~= "" then
         e.stack = stack
       end
@@ -249,7 +251,7 @@ local function Record(msg, stack, addonOverride)
       if e.count == 2 or e.count % 100 == 0 then
         AppendSession(string.format("ERROR ×%s [%s] %s", tostring(e.count), tostring(e.addon or "?"), msg))
       end
-      return true
+      return true, e
     end
   end
   local addon = addonOverride or AddonFromMessage(msg)
@@ -262,7 +264,6 @@ local function Record(msg, stack, addonOverride)
     count = 1,
   }
   list[#list + 1] = entry
-  lastEntry = entry
   while #list > Config.MAX_ERRORS do
     table.remove(list, 1)
   end
@@ -277,7 +278,7 @@ local function Record(msg, stack, addonOverride)
   else
     suppressedPrints = suppressedPrints + 1
   end
-  return true
+  return true, entry
 end
 
 local function FormatEntry(e, i)
@@ -293,6 +294,7 @@ local function ClearErrors()
   local n = ArchiveErrorRing(db.errors, "manual_clear")
   wipe(db.errors)
   db.lastExport = nil
+  lastRawEntry = nil
   return n
 end
 ForeverErrorLog.ClearErrors = ClearErrors
@@ -388,13 +390,93 @@ local function ApplyScriptErrorsPref()
   end
 end
 
+--- Taint events may carry secret/nil values: stringify defensively.
+local function SafeStr(v)
+  if v == nil then
+    return "?"
+  end
+  local ok, s = pcall(tostring, v)
+  if ok and type(s) == "string" then
+    return s
+  end
+  return "?"
+end
+
+--- Record a failure of our own code or of a forwarded handler (once per dispatch, never rethrown).
+local function NoteFailure(err)
+  pcall(Record, "ForeverErrorLog handler failed: " .. Trim(SafeStr(err), 300), "", "ForeverErrorLog")
+end
+
+--- Hand the error to the Blizzard base handler (popup). Guarded against loops; failures are swallowed.
+local function CallBase(msg)
+  if inBase then
+    return true
+  end
+  inBase = true
+  local ok, err = true, nil
+  if baseHandler and baseHandler ~= ourHandler then
+    ok, err = pcall(baseHandler, msg)
+  elseif ScriptErrorsFrame and ScriptErrorsFrame.DisplayMessage then
+    ok, err = pcall(ScriptErrorsFrame.DisplayMessage, ScriptErrorsFrame, msg)
+  end
+  inBase = false
+  return ok, err
+end
+
+--- Forward to the handler that was active before us. A handler installed by another addon always gets
+--- the error (it may forward back to us, which reaches the base handler through the re-entry path).
+local function Forward(msg, wantBase)
+  forwarded = true
+  local target = originalHandler
+  local ok, err = true, nil
+  if target and target ~= baseHandler and target ~= ourHandler then
+    ok, err = pcall(target, msg)
+  elseif wantBase then
+    ok, err = CallBase(msg)
+  end
+  if not ok then
+    NoteFailure(err)
+  end
+end
+
+local function Dispatch(msg)
+  local db = EnsureDB()
+  local t = GetTime and GetTime() or 0
+  local wantBase = db.scriptErrors == true
+  if lastRawEntry and type(msg) == "string" and msg == lastRawMsg and (t - lastRawAt) < 1 and db.enabled then
+    -- same error again within 1 s: count it without taking a stack
+    lastRawEntry.count = (lastRawEntry.count or 1) + 1
+    lastRawEntry.last = Now()
+    lastRawAt = t
+    needBase = wantBase
+    return Forward(msg, wantBase)
+  end
+  local stack = ""
+  if debugstack then
+    local ok, s = pcall(debugstack, 3)
+    if ok then
+      stack = s or ""
+    end
+  end
+  local ok, captured, entry = pcall(Record, msg, stack)
+  captured = ok and captured == true
+  if captured and type(msg) == "string" then
+    lastRawMsg, lastRawAt, lastRawEntry = msg, t, entry
+  end
+  -- The base (popup) handler is wanted when the popup is on, capture is off, or capture failed.
+  wantBase = wantBase or not captured
+  needBase = wantBase
+  return Forward(msg, wantBase)
+end
+
 local function InstallHandler()
   -- Idempotent within a load.
   if installed then
     return
   end
   installed = true
-  originalHandler = geterrorhandler and geterrorhandler() or nil
+  baseHandler = geterrorhandler and geterrorhandler() or nil
+  originalHandler = baseHandler
 
   if BugGrabber and BugGrabber.RegisterCallback then
     pcall(function()
@@ -417,53 +499,27 @@ local function InstallHandler()
 
   ourHandler = function(msg)
     if inHandler then
-      return -- forwarding chain came back to us: never loop
-    end
-    inHandler = true
-    local okH, resH = pcall(function()
-    local t = GetTime and GetTime() or 0
-    if lastEntry and type(msg) == "string" and msg == lastRawMsg and (t - lastRawAt) < 1 and EnsureDB().enabled then
-      -- same error again within 1 s: count it without taking a stack
-      lastEntry.count = (lastEntry.count or 1) + 1
-      lastEntry.last = Now()
-      lastRawAt = t
-      if EnsureDB().scriptErrors == true and originalHandler then
-        return originalHandler(msg)
+      -- A forwarded handler came back to us: this is the chain's way to the base handler. Never loop.
+      if needBase then
+        CallBase(msg)
       end
       return
     end
-    local stack = ""
-    if debugstack then
-      local ok, s = pcall(debugstack, 3)
-      if ok then
-        stack = s or ""
+    inHandler, forwarded = true, false
+    local ok, err = pcall(Dispatch, msg)
+    if not ok then
+      NoteFailure(err)
+      if not forwarded then
+        pcall(Forward, msg, true)
       end
     end
-    local ok, captured = pcall(Record, msg, stack)
-    captured = ok and captured == true
-    if captured and type(msg) == "string" then
-      lastRawMsg, lastRawAt = msg, t
-    end
-    -- Forward to the original handler when the popup is wanted, capture is off, or capture failed.
-    if EnsureDB().scriptErrors == true or not captured then
-      if originalHandler then
-        return originalHandler(msg)
-      end
-      if ScriptErrorsFrame and ScriptErrorsFrame.DisplayMessage then
-        pcall(ScriptErrorsFrame.DisplayMessage, ScriptErrorsFrame, msg)
-      end
-    end
-    end)
-    inHandler = false
-    if not okH then
-      error(resH, 0)
-    end
-    return resH
+    inHandler, needBase = false, false
   end
   seterrorhandler(ourHandler)
 end
 
 --- Another addon may call seterrorhandler after us: forward to its handler and put ours back on top.
+--- The first-captured base handler is kept so the popup path survives any wrapping.
 local function EnsureHandlerOnTop()
   if not ourHandler or type(geterrorhandler) ~= "function" or type(seterrorhandler) ~= "function" then
     return
@@ -473,18 +529,6 @@ local function EnsureHandlerOnTop()
     originalHandler = cur
     seterrorhandler(ourHandler)
   end
-end
-
---- Taint events may carry secret/nil values: stringify defensively.
-local function SafeStr(v)
-  if v == nil then
-    return "?"
-  end
-  local ok, s = pcall(tostring, v)
-  if ok and type(s) == "string" then
-    return s
-  end
-  return "?"
 end
 
 local lastTaintMsg, lastTaintAt, lastTaintEntry = nil, 0, nil
@@ -504,8 +548,9 @@ local function OnTaint(kind, who, what)
     lastTaintAt = t
     return
   end
-  if Record(msg, "", who) then
-    lastTaintMsg, lastTaintAt, lastTaintEntry = msg, t, lastEntry
+  local ok, entry = Record(msg, "", who)
+  if ok then
+    lastTaintMsg, lastTaintAt, lastTaintEntry = msg, t, entry
   end
 end
 
@@ -539,7 +584,8 @@ end)
 
 -- Public API for other Forever addons (optional)
 ForeverErrorLog.Record = function(msg, stack)
-  return Record(msg, stack)
+  local ok = Record(msg, stack)
+  return ok
 end
 
 --- Compact live-head update from a bridge addon line (dev telemetry only).
@@ -665,8 +711,10 @@ SlashCmdList.FOREVERERRORLOG = function(msg)
   cmd = (cmd or "help"):lower()
   local db = EnsureDB()
 
-  if (cmd == "window" or cmd == "minimap") and W then
-    if cmd == "window" then
+  if (cmd == "window" or cmd == "settings" or cmd == "minimap") and W then
+    if cmd == "settings" then
+      W.Open()
+    elseif cmd == "window" then
       W.Toggle()
     else
       W.ToggleMinimap()

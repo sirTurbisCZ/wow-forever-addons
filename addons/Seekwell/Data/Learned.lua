@@ -95,7 +95,34 @@ local function Prune()
   end
   Store().count = PRUNE_TO
   index = nil -- rebuilt on next need
+  Learned.generation = Learned.generation + 1
 end
+
+-- the full scan + sort must not run inside the loot window event: deferred by one frame, once
+local prunePending = false
+local function SchedulePrune()
+  if prunePending then
+    return
+  end
+  local T = rawget(_G, "C_Timer")
+  if not (T and T.After) then
+    Prune()
+    return
+  end
+  prunePending = true
+  T.After(0, function()
+    prunePending = false
+    local ok, err = pcall(function()
+      if Store().count > CAP then
+        Prune()
+      end
+    end)
+    if not ok and Seekwell.RecordError then
+      pcall(Seekwell.RecordError, "learned.prune", err)
+    end
+  end)
+end
+Learned._Prune = SchedulePrune
 
 --- One loot window's result for one NPC: kills (usually 1), items { [itemID] = drops }.
 function Learned.Record(npcID, name, kills, items, mapID, now)
@@ -127,7 +154,7 @@ function Learned.Record(npcID, name, kills, items, mapID, now)
   IndexAdd(npcID, e)
   Learned.generation = Learned.generation + 1
   if Store().count > CAP then
-    Prune()
+    SchedulePrune()
   end
 end
 

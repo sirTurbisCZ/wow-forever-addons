@@ -648,6 +648,30 @@ local function PulsePark()
   end
 end
 
+--- Combat open failed (no bag frame yet, for example after /reload in combat): OpenOurs has already blacked out the
+--- Blizzard bag, so give it back instead of leaving the player with no bag at all.
+local function FallbackToBlizzardBag()
+  ignoringBagShow = true
+  OpenClose.SuppressReplace(2.0)
+  RestoreFrameInteractive(ContainerFrameCombinedBags)
+  if not BagBarNativeEnabled() then
+    for i = 1, 13 do
+      RestoreFrameInteractive(_G["ContainerFrame" .. i])
+    end
+  end
+  local f = ContainerFrameCombinedBags
+  local shown = false
+  if f and f.IsShown then
+    local ok, v = pcall(f.IsShown, f)
+    shown = ok and v and true or false
+  end
+  if not shown then
+    CallOrigToggle("ToggleBackpack")
+  end
+  ignoringBagShow = false
+end
+OpenClose._FallbackToBlizzardBag = FallbackToBlizzardBag
+
 local function OpenOurs()
   if closeBusy then
     BagKeyTrace("open-skip", "closeBusy")
@@ -710,6 +734,7 @@ local function OpenOurs()
     local built = global and tostring(global._bbBuilt) or "nil"
     local alpha = global and tostring(global:GetAlpha()) or "nil"
     CombatTraceOnce("OpenOurs", string.format("combat show failed shown=%s visible=%s built=%s alpha=%s", tostring(shown), tostring(visible), built, alpha))
+    pcall(FallbackToBlizzardBag)
     return false
   end
 

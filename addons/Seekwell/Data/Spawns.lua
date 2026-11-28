@@ -117,16 +117,11 @@ function Sp.ForMob(npcID, mapID)
     end
   end
   local F = FDB()
-  local fmaps = F and F.Spawns(npcID)
-  if fmaps and #fmaps > 0 then
-    -- ForeverDB positions replace the old Classic bundle for this npc
+  if F and F.HasSpawns(npcID) then
+    -- ForeverDB positions replace the old Classic bundle for this npc (only the requested map is converted)
     local nLearned = #out
-    for _, e in ipairs(fmaps) do
-      if e.mapID == tonumber(mapID) then
-        for _, p in ipairs(e.points) do
-          AddNear(out, nLearned, p.x, p.y, "fdb")
-        end
-      end
+    for _, p in ipairs(F.SpawnsOn(npcID, mapID) or {}) do
+      AddNear(out, nLearned, p.x, p.y, "fdb")
     end
     return out
   end
@@ -151,6 +146,29 @@ function Sp.ForMob(npcID, mapID)
     end
   end
   return out
+end
+
+--- true when the npc has any known position (learned, ForeverDB, bundled). Cheap: no coordinate conversion.
+function Sp.HasAny(npcID)
+  npcID = tonumber(npcID)
+  if not npcID then
+    return false
+  end
+  for _, m in pairs(Store()) do
+    if type(m) == "table" and type(m[npcID]) == "string" and m[npcID] ~= "" then
+      return true
+    end
+  end
+  local F = FDB()
+  if F and F.HasSpawns(npcID) then
+    return true
+  end
+  local loc = Bundled()
+  if loc then
+    local ok, lst = pcall(loc.MapsForMob, npcID)
+    return ok and type(lst) == "table" and #lst > 0 or false
+  end
+  return false
 end
 
 function Sp.MapsForMob(npcID)

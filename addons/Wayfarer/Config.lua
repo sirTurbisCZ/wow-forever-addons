@@ -6,7 +6,7 @@ local Config = Wayfarer.Config
 
 local CURRENT_SCHEMA = 1
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
-Config.VERSION = "0.3.0"
+Config.VERSION = "0.3.1"
 
 local function ProfileDefaults()
   return {
@@ -25,6 +25,8 @@ local function ProfileDefaults()
       meter = true, -- Arcane Blast stack meter
       upcoming = true, -- the next stack is shown dimmed while its cast runs
       procs = true, -- proc icons (Clearcasting, Missile Barrage, ...)
+      container = true, -- proc icons drawn by a Blizzard AuraContainer (works in combat); false = own icons only
+      learnedIds = {}, -- proc aura spell ids seen out of combat (bounded), fed to the container
       dumpHint = true, -- Missiles / Barrage icons at max stacks
       actionGlow = false, -- own overlay over matching action bar buttons
       scale = 100, -- percent, 50-200
@@ -55,13 +57,17 @@ local function Copy(v)
   return out
 end
 
---- Fill missing keys (recursively) from the defaults; never overwrites existing values.
+--- Fill missing keys (recursively) from the defaults; replaces a saved value only where a table is expected.
 local function Fill(t, d)
   for k, v in pairs(d) do
     if t[k] == nil then
       t[k] = Copy(v)
-    elseif type(v) == "table" and type(t[k]) == "table" then
-      Fill(t[k], v)
+    elseif type(v) == "table" then
+      if type(t[k]) == "table" then
+        Fill(t[k], v)
+      else
+        t[k] = Copy(v) -- wrong type in the saved data (e.g. procHUD = true): start that block again
+      end
     end
   end
 end
@@ -90,7 +96,11 @@ function Config.GetProfile()
   -- Hot path (timer ticks, every nameplate update): skip the default-table merge once the database is ensured.
   local db = WayfarerDB
   if type(db) == "table" and db.schemaVersion == CURRENT_SCHEMA and type(db.profile) == "table" then
-    return db.profile
+    local p = db.profile
+    if type(p.minimap) == "table" and type(p.partyMarks) == "table" and type(p.procHUD) == "table"
+      and type(p.easyFish) == "table" then
+      return p
+    end
   end
   return Config.EnsureDB().profile
 end

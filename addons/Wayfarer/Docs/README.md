@@ -4,11 +4,13 @@ One addon for **World of Warcraft Forever** with one button at the minimap and o
 
 ## Install
 
-1. Download `Wayfarer-*.zip` from [Releases](https://github.com/sirTurbisCZ/wow-forever-addons/releases) and extract so you get `Interface/AddOns/Wayfarer/`.
-2. Enable it at character select and log in. A **new addon needs a full game restart**, `/reload` is not enough the first time.
-3. Expect `[Wayfarer] loaded v…` in chat and a small round button at the minimap.
+1. Download `Wayfarer-*.zip` from [Releases](https://github.com/sirTurbisCZ/wow-forever-addons/releases) and extract it so you get `World of Warcraft/_forever_/Interface/AddOns/Wayfarer`.
+2. Enable it at character select and log in. A **newly installed addon needs a full game restart**; `/reload` is not enough the first time.
+3. Expect `[Wayfarer] v… · /wf` in chat and a small round button at the minimap.
 
-## What it does (version 0.1)
+Problems or ideas: [Issues](https://github.com/sirTurbisCZ/wow-forever-addons/issues).
+
+## What it does
 
 ### Party and raid marks on nameplates
 
@@ -19,7 +21,7 @@ Party and raid members are easy to tell apart from everyone else, in a city or i
 
 The colour is the **class colour**, or **one custom colour** for party and one for raid (your choice in the settings). Blizzard's own health bar is never recoloured; the marks are extra frames next to it, so they work in combat too. Marks are created out of combat; a nameplate seen for the very first time in combat gets its mark afterwards.
 
-Friendly **player nameplates must be enabled** in the game options for players to show nameplates at all.
+Friendly **player nameplates must be enabled** in the game options (Options > Nameplates) for players to show nameplates at all; the settings window shows a hint while they are off. Marks are refreshed shortly (0.2 s) after a roster change, not once per event.
 
 ### One-key fishing
 
@@ -29,7 +31,7 @@ Pick a key in **Settings → Fishing** (click the button, press the key; **Clear
 2. your bobber is the soft-interact target: reel in (the game's Interact Key),
 3. otherwise: cast Fishing (not in combat, swimming, mounted or in a vehicle).
 
-Wayfarer never hooks the fish for you: press the key when you see or hear the splash. The key is a temporary override binding; your own key bindings are not changed, and the override is released when you turn the module off or clear the key. Binding changes wait until combat ends. By default the key is taken only while a fishing pole is equipped. While a cast runs, Wayfarer can raise the interact reach to the bobber and (optional **Louder splash**) play sound effects at full volume; both are put back when the cast ends. If another addon with its own one-key fishing is active, the settings and `/wf fish status` warn that the two may conflict; turn the other one off.
+Wayfarer never hooks the fish for you: press the key when you see or hear the splash. The key is a temporary override binding; your own key bindings are not changed, and the override is released when you turn the module off or clear the key. Binding changes wait until combat ends. By default the key is taken only while a fishing pole is equipped. While a cast runs, Wayfarer can raise the interact reach to the bobber and (optional **Louder splash**) play sound effects at full volume; both are put back when the cast ends. If another addon with its own one-key fishing is active, the settings and `/wf fish status` warn that the two may conflict; turn the other one off. EasyFish overlaps with SKTools Easy Fishing and with dedicated fishing addons: use only one of them on the same key.
 
 ### Procs and timers (mage, shaman, druid, priest, warlock)
 
@@ -46,7 +48,7 @@ A small HUD of its own (it never attaches to Blizzard frames):
   - The buff is found by spell id or by name (English and Czech client text). The ids are not verified on Forever yet; if an icon does not appear, run `/wf proc auras` while the buff is up and report the id and name.
 - Only your own class is tracked. For other classes (warrior, rogue, hunter, paladin) the module does nothing (`/wf proc status` says why).
 - Place it: **Unlock** (or `/wf proc unlock`), **Test mode** shows fake 0–4 stacks (mage) and lights up the proc icons one by one, out of combat, drag, then **Lock**. Scale 50–200 %.
-- **Not verified in the Forever client yet:** the Arcane Blast window (assumed 18 s, as in the old Retinue) and whether a new cast refreshes it (assumed no). Both are learned from the real aura the first time it is readable and saved as `procHUD.abWindow` / `procHUD.abRefresh`; `/wf proc status` shows `default` or `learned`.
+- **Not verified in the Forever client yet:** the Arcane Blast window (assumed 18 s, carried over from an earlier addon) and whether a new cast refreshes it (assumed no). Both are learned from the real aura the first time it is readable and saved as `procHUD.abWindow` / `procHUD.abRefresh`; `/wf proc status` shows `default` or `learned`.
 
 ### Minimap button and settings
 
@@ -57,7 +59,7 @@ A small HUD of its own (it never attaches to Blizzard frames):
 
 | Command | What it does |
 |---------|----------------|
-| `/wf` | Open or close the settings window |
+| `/wf`, `/wf settings` | Open or close the settings window |
 | `/wf marks on` / `off` | Party and raid marks |
 | `/wf minimap on` / `off` / `reset` | The minimap button |
 | `/wf fish on` / `off` | One-key fishing |
@@ -93,9 +95,6 @@ Stored in `WayfarerDB.profile`:
 | `easyFish.poleOnly` | true | Take the key only while a fishing pole is equipped |
 | `easyFish.reach` / `easyFish.loud` | true / false | Raise the interact reach / sound effects at full volume while a cast runs |
 
-## Coming next
-
-- Nothing planned.
 ## Notes
 
 - Optional: **ForeverErrorLog** collects Lua errors.
@@ -109,3 +108,9 @@ Stored in `WayfarerDB.profile`:
 | No marks on players in a city | Enable friendly player nameplates in the game options; be grouped |
 | Marks missing on a new nameplate in combat | They appear after combat |
 | Errors | `/felog list` if Forever Error Log is installed |
+
+## Procs in combat
+
+In combat the game hides your auras from addons, so Wayfarer cannot read a proc buff then. Proc icons therefore come from a Blizzard-managed aura container (an `AuraContainer` frame bound to your character): the game itself draws icon, duration swipe and stack count, and the addon never reads the aura. The container follows a list of aura ids: the ids of your class's procs, plus every proc aura id Wayfarer sees while it is readable out of combat (saved, at most 40, so the next fight already knows it). `/wf proc add <spellId>` adds one by hand, `/wf proc ids` lists them. The container is built out of combat only (login, entering the world, end of combat). If the client has no such container, or refuses it, the old Wayfarer icons are used instead (out of combat they always work); `/wf proc container off` forces that.
+
+Not yet verified in the game: that this client lets the container show your own auras in combat (it is known to work for party frames and nameplates, not yet for the player). Run `/wf proc diag` in combat with a proc up: `container=active ids=N unit=player` and `buttons made/shown` tell what happens; if proc icons are missing altogether, `/wf proc container off` brings the old icons back; if the container shows nothing in combat, the proc glow still marks Missile Barrage (glow on Arcane Missiles) and Shadow Trance (glow on Shadow Bolt). `/wf proc status` shows the container state and how many glow events arrived; `/wf proc auras` lists your auras with their ids.

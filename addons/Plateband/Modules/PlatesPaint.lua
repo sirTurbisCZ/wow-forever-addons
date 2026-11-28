@@ -905,6 +905,11 @@ do
   --- formats a secret count in Lua and the throw freezes the container), no SetScript (buttons may be forbidden).
   local function initButton(c, button, size, kind)
     c._pbButtons = c._pbButtons or {}
+    c._pbInited = c._pbInited or {}
+    if c._pbInited[button] then
+      return -- already set up (the container may call initializeFrame again for a reused button)
+    end
+    c._pbInited[button] = true
     c._pbButtons[#c._pbButtons + 1] = button
     local ok, err = pcall(function()
       pcall(button.SetSize, button, size, size)
@@ -1339,6 +1344,7 @@ do
       side = friend and "friend" or "enemy"
     end
     if side == "friend" and D.MergeFriendPlatesEnabled and not D.MergeFriendPlatesEnabled() then
+      h._pbUnitKey, h._pbSide = unit, side -- remembered so combat-time secret reaction checks keep the side
       hideHost(h) -- "Friendly plates" off in the settings window
       return false
     end
@@ -1387,8 +1393,10 @@ do
   --- setting when they are created).
   function D.AcApplyTooltips()
     if inCombat() then
+      AC.tipsPending = true -- re-applied by D.AcOnRegen when combat ends
       return false
     end
+    AC.tipsPending = nil
     local on = profile().gapTooltip ~= false
     for _, h in pairs(AC.hosts) do
       for _, side in ipairs({ "friend", "enemy" }) do
@@ -1401,6 +1409,36 @@ do
             end
           end
         end
+      end
+    end
+    return true
+  end
+
+  --- PLAYER_REGEN_ENABLED: apply what the settings window could not change in combat.
+  function D.AcOnRegen()
+    if AC.tipsPending then
+      D.AcApplyTooltips()
+    end
+  end
+
+  --- Nameplate UNIT_AURA: true = the container row already follows this unit, so the caller skips the repaint.
+  --- Only cheap work stays: the rate-limited learn() out of combat and, on friendly plates (native buff buttons
+  --- are muted one by one and new pooled ones appear with new auras), a mute re-apply at most once a second.
+  function D.AcAuraEvent(unit, plate)
+    local h = plate and AC.hosts[plate]
+    if not (h and h._pbActive and h._pbBuilt and h._pbUnitKey == unit and wanted()) then
+      return false
+    end
+    if h._pbSide == "friend" then
+      local c = h._pbC.friend
+      local tok = c and c._pbBound
+      if tok and not inCombat() then
+        learn(tok)
+      end
+      local now = GetTime and GetTime() or 0
+      if D.MuteNativeBuffList and (now - (h._pbMuteAt or 0)) >= 1 then
+        h._pbMuteAt = now
+        pcall(D.MuteNativeBuffList, plate)
       end
     end
     return true

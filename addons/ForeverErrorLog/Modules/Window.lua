@@ -1,5 +1,5 @@
 --[[
-  Forever Error Log — copyable error window + minimap button (0.3.0).
+  Forever Error Log — copyable error window + minimap button (0.3.1).
   Built lazily on first open. Plain frames, no libraries, no OnUpdate except while dragging the button.
 ]]
 
@@ -14,7 +14,11 @@ local PAGE_SIZE = 20
 local MAX_TEXT = 60000
 local MONOREPO = { "ForeverErrorLog", "BetterBackpack", "Plateband", "Wayfarer", "Seekwell", "Seekwell_Locations" }
 
-local frame, edit, scroll, pageLabel, titleLabel
+local ISSUES_URL = "https://github.com/sirTurbisCZ/wow-forever-addons/issues"
+local CLEAR_CONFIRM_SECS = 3
+
+local frame, edit, scroll, pageLabel, titleLabel, clearBtn
+local clearArmedUntil = 0
 local view, page = "session", 1
 local minimapBtn
 
@@ -41,7 +45,7 @@ local function IsLoaded(name)
 end
 
 local function Header()
-  local lines = { "Forever Error Log v" .. tostring(Config.VERSION or "?") .. " - error report" }
+  local lines = { "Report issues: " .. ISSUES_URL, "Forever Error Log v" .. tostring(Config.VERSION or "?") .. " - error report" }
   local ver, build, _, toc
   if GetBuildInfo then
     ver, build, _, toc = GetBuildInfo()
@@ -69,6 +73,31 @@ local function CurrentList()
   end
   return db.errors or {}, "this session"
 end
+
+--- Escape '|' for display, then cut to `max` bytes on a UTF-8 character boundary without splitting a '||' pair.
+local function FitText(text, max)
+  text = text:gsub("|", "||")
+  if #text <= max then
+    return text, false
+  end
+  local cut = max
+  -- never end before a continuation byte (0x80-0xBF): that would cut a multi-byte character
+  while cut > 0 do
+    local b = text:byte(cut + 1)
+    if b and b >= 0x80 and b < 0xC0 then
+      cut = cut - 1
+    else
+      break
+    end
+  end
+  local head = text:sub(1, cut)
+  local bars = #head:match("|*$")
+  if bars % 2 == 1 then
+    head = head:sub(1, -2)
+  end
+  return head, true
+end
+W.FitText = FitText
 
 local function PageCount(n)
   return math.max(1, math.ceil(n / PAGE_SIZE))
@@ -102,17 +131,25 @@ function W.BuildText()
       out[#out + 1] = ""
     end
   end
-  local text = table.concat(out, "\n")
-  if #text > MAX_TEXT then
-    text = text:sub(1, MAX_TEXT) .. "\n... (truncated)"
+  local text, cut = FitText(table.concat(out, "\n"), MAX_TEXT)
+  if cut then
+    text = text .. "\n... (page truncated, use Next)"
   end
   return text, page, pages
+end
+
+local function DisarmClear()
+  clearArmedUntil = 0
+  if clearBtn then
+    clearBtn:SetText("Clear")
+  end
 end
 
 function W.Refresh()
   if not frame then
     return
   end
+  DisarmClear()
   local text, p, pages = W.BuildText()
   edit.fullText = text
   edit:SetText(text)
@@ -140,6 +177,20 @@ local function Button(parent, text, width, onClick)
   return b
 end
 
+--- Place the window from the saved position (centered when none is saved). No-op before it is built.
+function W.ApplyPosition()
+  if not frame then
+    return
+  end
+  local w = DB().window
+  frame:ClearAllPoints()
+  if w.point then
+    frame:SetPoint(w.point, UIParent, w.relPoint or w.point, w.x or 0, w.y or 0)
+  else
+    frame:SetPoint("CENTER")
+  end
+end
+
 local function Build()
   frame = CreateFrame("Frame", "ForeverErrorLogWindow", UIParent, "BackdropTemplate")
   frame:SetSize(640, 440)
@@ -156,13 +207,7 @@ local function Build()
       insets = { left = 8, right = 8, top = 8, bottom = 8 },
     })
   end
-  local w = DB().window
-  frame:ClearAllPoints()
-  if w.point then
-    frame:SetPoint(w.point, UIParent, w.relPoint or w.point, w.x or 0, w.y or 0)
-  else
-    frame:SetPoint("CENTER")
-  end
+  W.ApplyPosition()
   frame:SetScript("OnDragStart", function(self)
     self:StartMoving()
   end)
@@ -187,7 +232,7 @@ local function Build()
   edit.fullText = ""
   -- Read-only feeling: selection and copy work, typing is undone.
   edit:SetScript("OnTextChanged", function(self, userInput)
-    if userInput then
+    if userInput and self:GetText() ~= (self.fullText or "") then
       self:SetText(self.fullText or "")
     end
   end)
@@ -225,10 +270,10 @@ local function Build()
     frame:Hide()
   end)
   bClose:SetPoint("BOTTOMRIGHT", -20, 16)
-  local bClear = Button(frame, "Clear", 70, function()
-    W.Clear()
+  clearBtn = Button(frame, "Clear", 70, function()
+    W.ClearClicked()
   end)
-  bClear:SetPoint("RIGHT", bClose, "LEFT", -4, 0)
+  clearBtn:SetPoint("RIGHT", bClose, "LEFT", -4, 0)
 
   if UISpecialFrames then
     table.insert(UISpecialFrames, "ForeverErrorLogWindow")
@@ -237,6 +282,28 @@ local function Build()
     W.Refresh()
   end)
   frame:Hide()
+end
+
+--- Button handler: this session clears at once (it is archived); previous needs a second click within 3 s.
+function W.ClearClicked()
+  if view ~= "previous" then
+    return W.Clear()
+  end
+  local t = GetTime and GetTime() or 0
+  if clearArmedUntil > 0 and t <= clearArmedUntil then
+    DisarmClear()
+    return W.Clear()
+  end
+  clearArmedUntil = t + CLEAR_CONFIRM_SECS
+  clearBtn:SetText("Really clear?")
+  if C_Timer and C_Timer.After then
+    local armed = clearArmedUntil
+    C_Timer.After(CLEAR_CONFIRM_SECS, function()
+      if clearArmedUntil == armed then
+        DisarmClear()
+      end
+    end)
+  end
 end
 
 --- Clear the viewed list: this session -> archived then wiped; previous -> archive dropped.
@@ -275,15 +342,18 @@ end
 -- ---------------------------------------------------------------- minimap button
 
 local function PlaceButton()
+  if not minimapBtn or not Minimap then
+    return
+  end
   local a = math.rad(tonumber(DB().minimap.angle) or 245)
   local radius = ((Minimap:GetWidth() or 140) / 2) + 4 -- the Forever minimap is larger than the classic 140 px
   minimapBtn:ClearAllPoints()
   minimapBtn:SetPoint("CENTER", Minimap, "CENTER", math.cos(a) * radius, math.sin(a) * radius)
 end
 
-local function ShowTooltip(self, hint)
+local function ShowTooltip(self)
   GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-  GameTooltip:AddLine("Forever Error Log")
+  GameTooltip:AddLine("ForeverErrorLog")
   local list = DB().errors or {}
   GameTooltip:AddLine(string.format("%d error(s) this session", #list), 1, 1, 1)
   for i = #list, math.max(1, #list - 4), -1 do
@@ -291,10 +361,9 @@ local function ShowTooltip(self, hint)
     local m = tostring(e.msg or "?"):gsub("%s+", " ")
     GameTooltip:AddLine(string.format("[%s] %s", tostring(e.addon or "?"), m:sub(1, 70)), 1, 0.4, 0.4)
   end
-  GameTooltip:AddLine("Left-click: open window. Drag: move.", 0.7, 0.7, 0.7)
-  if hint then
-    GameTooltip:AddLine("Clear is a button inside the window.", 0.7, 0.7, 0.7)
-  end
+  GameTooltip:AddLine("Left-click: error window", 0.7, 0.7, 0.7)
+  GameTooltip:AddLine("Right-click: settings hint /felog help", 0.7, 0.7, 0.7)
+  GameTooltip:AddLine("Drag: move", 0.7, 0.7, 0.7)
   GameTooltip:Show()
 end
 
@@ -320,7 +389,7 @@ local function BuildButton()
   b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
   b:SetScript("OnClick", function(self, btn)
     if btn == "RightButton" then
-      ShowTooltip(self, true)
+      print((FE.L and FE.L.PREFIX or "[ForeverErrorLog]") .. " /felog help")
     else
       W.Toggle()
     end
@@ -346,6 +415,10 @@ local function BuildButton()
     self:SetScript("OnUpdate", nil)
   end)
   PlaceButton()
+  -- The minimap size can change after login (Forever minimap resize): keep the button on the ring.
+  if Minimap.HookScript then
+    pcall(Minimap.HookScript, Minimap, "OnSizeChanged", PlaceButton)
+  end
 end
 
 function W.UpdateMinimap()
@@ -358,6 +431,7 @@ function W.UpdateMinimap()
   BuildButton()
   if minimapBtn then
     minimapBtn:Show()
+    PlaceButton()
   end
 end
 
@@ -365,12 +439,17 @@ function W.ToggleMinimap()
   local db = DB()
   db.minimapHide = not db.minimapHide
   W.UpdateMinimap()
-  print((FE.L and FE.L.PREFIX or "[FElog]") .. " minimap button " .. (db.minimapHide and "hidden" or "shown"))
+  print((FE.L and FE.L.PREFIX or "[ForeverErrorLog]") .. " minimap button " .. (db.minimapHide and "hidden" or "shown"))
 end
 
 local ev = CreateFrame("Frame")
 ev:RegisterEvent("PLAYER_LOGIN")
-ev:SetScript("OnEvent", function(self)
-  self:UnregisterEvent("PLAYER_LOGIN")
-  pcall(W.UpdateMinimap)
+ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+ev:SetScript("OnEvent", function(self, event)
+  if event == "PLAYER_LOGIN" then
+    self:UnregisterEvent("PLAYER_LOGIN")
+    pcall(W.UpdateMinimap)
+  else
+    pcall(PlaceButton)
+  end
 end)

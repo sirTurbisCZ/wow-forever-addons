@@ -10,7 +10,7 @@ BINDING_HEADER_SEEKWELL = "Seekwell"
 BINDING_NAME_SEEKWELL_TARGET = "Show my target's drops"
 
 L.PREFIX = "|cff6fc3e8[Seekwell]|r"
-L.LOADED = "loaded v%s · /sw · %s"
+L.LOADED = "v%s · /sw"
 L.TINNY_YES = "Tinny data: yes"
 L.TINNY_NO = "Tinny data not available (learned data only)"
 L.UNKNOWN_CMD = "unknown command — /sw help"
@@ -25,7 +25,7 @@ L.HELP_LINES = {
   "/sw reset learned — forget all learned loot data",
   "/sw dev on|off — debug output",
 }
-L.CONFIG_RESET = "settings reset to defaults (learned data and wishlist kept)"
+L.CONFIG_RESET = "settings reset"
 L.LEARNED_RESET = "learned data cleared"
 L.DEV_ON = "debug output on"
 L.DEV_OFF = "debug output off"
@@ -34,9 +34,10 @@ L.MINIMAP_HIDDEN = "minimap button hidden (/sw minimap on to bring it back)"
 L.MINIMAP_RESET = "minimap button reset"
 
 L.TIP_TITLE = "Seekwell"
-L.TIP_LEFT = "Left-click: search items and mobs"
-L.TIP_RIGHT = "Right-click: settings   Shift+click: my target's drops"
-L.TIP_DRAG = "Drag: move around the minimap"
+L.TIP_LEFT = "Left-click: browser"
+L.TIP_RIGHT = "Right-click: settings"
+L.TIP_SHIFT = "Shift+left-click: target drops"
+L.TIP_DRAG = "Drag: move"
 
 L.ORIGIN_FOREVER = "Forever"
 L.ORIGIN_CLASSIC = "Classic estimate"

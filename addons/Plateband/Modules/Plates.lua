@@ -6114,6 +6114,10 @@ OnEvent = function(_, event, arg1, arg2, arg3, arg4)
     if clrSent then
       clrSent()
     end
+    local acRegen = ns.PlatesPaintDeps and ns.PlatesPaintDeps.AcOnRegen
+    if acRegen then
+      pcall(acRegen)
+    end
     Defer(function()
       for u in pairs(combatDeferredClears) do
         combatDeferredClears[u] = nil
@@ -6171,6 +6175,17 @@ OnEvent = function(_, event, arg1, arg2, arg3, arg4)
       if Profile().auraWatchPlates == false then
         return
       end
+      -- The AuraContainer row follows the unit by itself: no repaint needed while it owns this plate.
+      local acEv = ns.PlatesPaintDeps and ns.PlatesPaintDeps.AcAuraEvent
+      if acEv then
+        local npAc = PlateFor(unit)
+        if npAc then
+          local okEv, handled = pcall(acEv, unit, npAc)
+          if okEv and handled then
+            return
+          end
+        end
+      end
       local now = GetTime and GetTime() or 0
       PB.auraAt = PB.auraAt or {}
       if (now - (PB.auraAt[unit] or 0)) < PB.PAINT_PARTY_SEC then
@@ -6182,6 +6197,10 @@ OnEvent = function(_, event, arg1, arg2, arg3, arg4)
             PB.auraTrail[unit] = nil
             PB.auraAt[unit] = GetTime and GetTime() or 0
             local np2 = PlateFor(unit)
+            local acEv2 = ns.PlatesPaintDeps and ns.PlatesPaintDeps.AcAuraEvent
+            if np2 and acEv2 and select(2, pcall(acEv2, unit, np2)) == true then
+              return
+            end
             if np2 and not IsForbiddenPlate(np2) then
               pcall(ScheduleOverlayUpdate, unit, np2)
             end
@@ -6328,6 +6347,7 @@ function Mod.Stop()
 end
 
 function Mod.Refresh()
+  lastFullRefreshAt = 0 -- a settings change must not be swallowed by the RefreshAll debounce
   RefreshAll()
 end
 

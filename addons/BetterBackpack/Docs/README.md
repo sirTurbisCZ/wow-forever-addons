@@ -4,8 +4,12 @@ Category-lane bags for **World of Warcraft Forever** (Interface 16001) with comb
 
 ## Install
 
-1. Download `BetterBackpack-*.zip` from [Releases](https://github.com/sirTurbisCZ/wow-forever-addons/releases) and extract so you get `Interface/AddOns/BetterBackpack/`.
-2. Enable it at character select, then `/reload`. Expect `[BetterBackpack] loaded v…` in chat.
+1. Download `BetterBackpack-*.zip` from [Releases](https://github.com/sirTurbisCZ/wow-forever-addons/releases).
+2. Extract so the folder is exactly `World of Warcraft/_forever_/Interface/AddOns/BetterBackpack/` (the `.toc` must be inside it).
+3. Enable **BetterBackpack** at character select if needed.
+4. A newly installed addon needs a **full game restart** (a `/reload` is enough for later updates). Expect `[BetterBackpack] v… · /bb` at login.
+
+Problems or ideas: [Issues](https://github.com/sirTurbisCZ/wow-forever-addons/issues).
 
 **B** (and the backpack key) opens BetterBackpack instead of Blizzard's combined bags. Clicking a single bag in the bag bar still opens Blizzard's own bag window (keyring and reagent bag included).
 
@@ -38,6 +42,8 @@ Weapons and armor show their item level as a small number in the top-left corner
 
 ## Settings (`/bb settings`)
 
+BetterBackpack has no minimap button. Open the settings with `/bb settings` or with the gear button on the bag.
+
 | Section | What |
 |---------|------|
 | Lanes | Turn built-in lanes on or off (incl. Recipes and Trash) |
@@ -54,6 +60,9 @@ Long lists scroll with the mouse wheel; the scroll bar appears only when needed.
 - **Esc** closes open bags first; the next Esc opens the game menu.
 - Bags opened by a vendor, mailbox, auction house or bank close with that window if they were closed before.
 - Sorting, tidy and Trash work out of combat only.
+- Known limitation: a bag you close during combat stays invisible but still takes clicks where it was drawn until combat ends (its slot buttons are protected and cannot be switched off in combat). Out of combat a closed bag takes no clicks.
+- If you log in or `/reload` in combat before the bag has been built, **B** opens Blizzard's own bag instead.
+- The bank bulk deposit (Ctrl+Shift+RMB on a lane header at the bank) moves gear, bags and anything with an on-use effect with the cursor instead of "use item", and stops at the first slot that did not change.
 
 ## Slash commands
 

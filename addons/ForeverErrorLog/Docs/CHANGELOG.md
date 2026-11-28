@@ -1,5 +1,15 @@
 # ForeverErrorLog changelog
 
+## Release 0.3.1 — audit fixes (#42), polish (#46)
+
+- **Counts (#42):** a taint entry no longer receives the repeat count of a plain error that follows it (error, taint, same error within 1 s used to increment the taint entry).
+- **Handler chain (#42):** the first-captured Blizzard handler stays reachable when another addon wraps FElog, so `/felog ui on` popups keep working. A handler installed by another addon is always forwarded to, also with the popup off. A failing forwarded handler is recorded once and no longer re-thrown (which re-entered the handler).
+- **Load line (#42):** `[ForeverErrorLog] vX.Y.Z · /felog`, or `· capture OFF (/felog on)` when capture is disabled. The chat prefix is now `[ForeverErrorLog]`.
+- **Minimap button (#42):** repositioned on `PLAYER_ENTERING_WORLD` and when the minimap is resized; tooltip lists the click actions; right-click prints the `/felog help` hint.
+- **Window (#42):** the text is cut on a character boundary, `|` is shown as `||`, and a too-long page ends with `... (page truncated, use Next)`. Clear on the Previous view needs a second click (`Really clear?`, 3 s). `/felog reset` re-places the minimap button and window. Key repeat no longer re-sets the whole text.
+- **SavedVariables (#42):** the stored addon name is capped at 100 characters; all other diagnostic tables were already bounded.
+- **Polish (#46):** TOC `X-Website`, `X-License`, `IconTexture`; `/felog settings` opens the window; the copied report starts with the issues link; README install and issues sections.
+
 ## Release 0.3.0 — error window, minimap button, taint capture (#32)
 
 - **Minimap button position (#37):** the radius follows the real minimap width (the Forever minimap is larger, the button used to float outside the ring) and the default angles differ per addon so the buttons do not overlap.
@@ -109,36 +119,4 @@
 
 - Version bump only; 2s **`EXPORT_PULSE`** disk + `t=` refresh lives in **`Plateband.SessionLog.PulseExportTruth`**.
 
-## Release 0.1.7 — watch reads agent-live-head.log
-
-- Forever blocks `*live-head*` filenames; chat truth now **`Plateband/Logs/agent-live-head.log`** (same io allowlist as `agent-live-export`).
-
-## Release 0.1.6 — chat-truth head on CHAT_LOADED
-
-- No early head write before Plateband loads; **`PublishChatTruthHead`** on reload/login + 2s pulse (both TOC versions).
-- **`ApplyLiveHeadSnapshot`**; pulse defers to Plateband publish when loaded.
-
-## Release 0.1.5 — Plateband disk bridge + chat version
-
-- **Forever io:** direct `ForeverErrorLog/Logs/*` writes stay `sv_only`; **`Plateband.SessionLog.MirrorFelogLogs`** writes `live-head` / export / stream from Plateband context (`feed=pb_bridge`).
-- **Chat:** `loaded v0.1.5` on login; **`reloaded v… · live feed`** on `/reload` (was version-less).
-- **Watch:** `felog_pick_live_head_file` — `ForeverErrorLog/Logs/live-head.log` or `Plateband/Logs/felog-live-head.log`.
-
-## Release 0.1.4 — live-head + sub-2s agent stream
-
-- **`Logs/live-head.log`** — sync on SESSION_START, CHAT_LOADED, `AgentFeed`, 2s pulse (mtime stays fresh in play).
-- **`Logs/agent-live-export.log`** + **`live-stream.log`** — append/mirror on every agent line (no WTF flush).
-- **`ForeverErrorLog.NotifyRuntime`** — Plateband `CHAT_LOADED` stamps plateband ver immediately.
-- **Watch:** `scripts/felog-live-gate.sh` (`age_sec` ≤5) + `felog-sv-lib.sh`; Plateband `pb_client_ver` reads FElog head first.
-
-## Release 0.1.3 — agentExport for sv_only watch
-
-- **`sessionLog.agentExport`** — rolling `AGENT[*]` lines in SV (host `felog_bridge_sv` without `session.log`).
-- **`ProbeSessionFileAppend`** fix in `AppendSessionFile` (was calling undefined `ProbeSessionFile`).
-- **`AgentFeedReady()`** for bridge probes.
-
-## Release 0.1.2 — Plateband agent bridge
-
-- **`ForeverErrorLog.AgentFeed(source, line)`** — append `AGENT[source] …` to live `session.log` (append-only io probe).
-- **`/felog session`** — live session tail (not the 80-error historical ring).
-- Login text clarifies **errors stored (historical)** vs **session LIVE**.
+Earlier 0.1.x versions: internal development builds.

@@ -1,5 +1,15 @@
 # Plateband changelog
 
+## Release 0.8.1 — audit fixes (#43), polish (#46)
+
+- **#43 CPU:** a nameplate `UNIT_AURA` no longer repaints a plate the AuraContainer row already follows (the container updates itself). Only the rate-limited learning of food/drink ids and, on friendly plates, a native-buff mute at most once a second remain.
+- **#43 Friendly plates off:** the plate's side is remembered before the row is hidden, so a secret reaction check in combat cannot bind the enemy container to a friendly plate.
+- **#43 Settings changes:** `Plates.Refresh` resets the full-refresh debounce, so a change within 0.75 s of another refresh is no longer swallowed. Hover tooltips changed in combat are applied when combat ends.
+- **#43 Enemy buffs row off** now also hides the dispellable enemy buffs of the older Lua-drawn row (it only affected the AuraContainer row).
+- **#43 Reload note corrected:** enemy buffs and icon count apply to plates created after `/reload` (nameplate frames are recycled and a built row is not rebuilt), so a `/reload` is needed. The baseline is captured at load, not when the window is first opened.
+- **#43 Small:** `GetProfile` keeps its fast path for any schema from the current one up; error logging no longer runs the full database check each time; container buttons are initialised only once (guard against duplicate Cooldown/Frame objects).
+- **#46 Polish:** `.toc` gets `X-Website`, `X-License`, `IconTexture`; login line `[Plateband] vX.Y.Z · /pb`; `/pb settings` opens the window; minimap tooltip "Left-click: settings window / Drag: move"; `/pb reset` prints "settings reset"; README: Install first, Issues link, button angle 230.
+
 ## Release 0.8.0 — settings window (#33)
 
 - **Minimap button position (#37):** the radius follows the real minimap width (the Forever minimap is larger, the button used to float outside the ring) and the default angles differ per addon so the buttons do not overlap.

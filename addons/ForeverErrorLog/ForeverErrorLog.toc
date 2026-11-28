@@ -2,7 +2,10 @@
 ## Title: Forever Error Log
 ## Notes: Captures Lua errors from all addons into SavedVariables. /felog
 ## Author: tuma
-## Version: 0.3.0
+## Version: 0.3.1
+## X-Website: https://github.com/sirTurbisCZ/wow-forever-addons
+## X-License: MIT
+## IconTexture: Interface\Icons\INV_Misc_Note_01
 ## SavedVariables: ForeverErrorLogDB
 ## OptionalDeps: !BugGrabber
 ## DefaultState: enabled
