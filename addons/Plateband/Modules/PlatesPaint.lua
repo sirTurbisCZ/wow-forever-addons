@@ -566,7 +566,7 @@ if not plate then
 
   -- Rows re-added by the retry paths above go through the same rules.
   do
-    local ruleTok = paintAuraTok or auraUnit
+    local ruleTok = paintAuraTok -- (was `or auraUnit`: an undefined name, always nil)
     if type(ruleTok) == "string" then
       local dropped = D.ApplyGapPolicy(missing, ruleTok, friendPlate and true or false) or 0
       if dropped > 0 then

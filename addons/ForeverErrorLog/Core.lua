@@ -1,7 +1,7 @@
 --[[
   Forever Error Log — lean capture of Lua errors into SavedVariables.
   /felog [window]|help|list|dump|session|archive|clear|reset|minimap  (+ on|off, ui|dev|taint on|off)
-  Dev telemetry (AgentFeed / live head / session export) runs only after /felog dev on.
+  Dev telemetry (diagnostic feed and session export) runs only after /felog dev on.
 ]]
 
 local addonName = ...
@@ -17,6 +17,7 @@ local originalHandler -- handler we forward to: baseHandler, or one another addo
 local ourHandler
 local inHandler, inBase, needBase, forwarded = false, false, false, false
 local lastRawMsg, lastRawAt, lastRawEntry
+local lastTaintMsg, lastTaintAt, lastTaintEntry = nil, 0, nil
 local lastPrintAt, suppressedPrints = -10, 0
 local PRINT_GAP = 2
 local ARCHIVE_TOP_N = 20
@@ -180,7 +181,7 @@ function ForeverErrorLog.ResetErrorRingOnChatLoaded(loadKind)
   local n = ArchiveErrorRing(db.errors, loadKind)
   wipe(db.errors)
   db.lastExport = nil
-  lastRawEntry = nil
+  lastRawEntry, lastTaintEntry = nil, nil
   AppendSession(string.format("ERROR_RING_WIPE load=%s archived=%d live=0", loadKind, n))
   return true
 end
@@ -216,13 +217,9 @@ local function AddonFromMessage(msg)
   if type(msg) ~= "string" then
     return "?"
   end
-  local add = msg:match("[/\\]AddOns[/\\]([^/\\]+)")
+  local add = msg:match("[/\\]AddOns[/\\]([^/\\]+)") or msg:match("AddOns\\([^\\]+)")
   if add then
-    return add
-  end
-  add = msg:match("AddOns\\([^\\]+)")
-  if add then
-    return add
+    return add:sub(1, 100) -- stored in the list and the archive: keep it short
   end
   return "?"
 end
@@ -294,10 +291,15 @@ local function ClearErrors()
   local n = ArchiveErrorRing(db.errors, "manual_clear")
   wipe(db.errors)
   db.lastExport = nil
-  lastRawEntry = nil
+  lastRawEntry, lastTaintEntry = nil, nil
   return n
 end
 ForeverErrorLog.ClearErrors = ClearErrors
+
+--- Forget the 'same error again within 1 s' state (after Config.Reset / clear: the entries it points to are gone).
+function ForeverErrorLog.ResetRepeatState()
+  lastRawEntry, lastTaintEntry = nil, nil
+end
 
 local function ListSummary()
   local db = EnsureDB()
@@ -531,7 +533,6 @@ local function EnsureHandlerOnTop()
   end
 end
 
-local lastTaintMsg, lastTaintAt, lastTaintEntry = nil, 0, nil
 
 --- ADDON_ACTION_BLOCKED / ADDON_ACTION_FORBIDDEN -> one error entry (bursts are counted, not repeated).
 local function OnTaint(kind, who, what)
@@ -588,7 +589,7 @@ ForeverErrorLog.Record = function(msg, stack)
   return ok
 end
 
---- Compact live-head update from a bridge addon line (dev telemetry only).
+--- Compact status update from a Plateband telemetry line (dev telemetry only).
 local function UpdateLiveHeadFromAgent(source, payload)
   if source ~= "Plateband" then
     return
@@ -729,7 +730,7 @@ SlashCmdList.FOREVERERRORLOG = function(msg)
     elseif a == "off" or a == "0" then
       db.captureTaint = false
     end
-    Print(string.format(L.TAINT_STATUS or "taint capture: %s — /felog taint on|off", tostring(db.captureTaint ~= false)))
+    Print(string.format(L.TAINT_STATUS or "taint capture: %s — /felog taint on/off", tostring(db.captureTaint ~= false)))
     return
   end
 
@@ -856,7 +857,7 @@ SlashCmdList.FOREVERERRORLOG = function(msg)
       db.devTelemetry = false
       Print(L.DEV_OFF or "dev telemetry off")
     else
-      Print(string.format(L.DEV_STATUS or "dev telemetry: %s — /felog dev on|off", tostring(db.devTelemetry == true)))
+      Print(string.format(L.DEV_STATUS or "dev telemetry: %s — /felog dev on/off", tostring(db.devTelemetry == true)))
     end
     return
   end

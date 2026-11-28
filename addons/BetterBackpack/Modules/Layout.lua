@@ -104,6 +104,7 @@ local SetBagMatchHighlight
 local ClearBagMatchGlows
 local InventoryOccupiedCount
 local VisibleGridSignature
+local BuildGridSignature
 local MeasureAutoSortSize
 
 local function SafeNum(v, fallback)
@@ -205,50 +206,88 @@ local function InstantClass(itemID)
   return SafeNum(f), SafeNum(g), SafeStr(b), SafeStr(c), SafeStr(d)
 end
 
+--[[
+  Item classification cache (#56). ClassifyNatural by item id: the class / recipe / type-string result does not depend on
+  the bag, so it is looked up once per item id (nat[id] = { first, q0junk, rest }). What does depend on the bag or on
+  the slot (keyring, reagent bag, quality 0 junk) is applied after the lookup. Nothing is cached while the item data is
+  missing (GetItemInfo returns nil): the id goes to `pending`, the next classification asks again, and
+  GET_ITEM_INFO_RECEIVED (Layout.ItemInfoArrived) clears it. Learned rules and custom lanes are not part of it
+  (ClassifyBagSlot applies them before); Layout.WipeClassCache() empties it when they change.
+]]
+local ClassCache = { nat = {}, pending = {}, done = {}, n = 0 }
+
+function Layout.WipeClassCache()
+  local c = ClassCache
+  for _, t in ipairs({ c.nat, c.pending, c.done }) do
+    for k in pairs(t) do
+      t[k] = nil
+    end
+  end
+  c.n = 0
+end
+
+--- GET_ITEM_INFO_RECEIVED: the client answered for an id whose classification waited for item data (nothing was cached
+--- for it): the next classification caches it, and an answer without data is not asked for again. True when it was pending.
+function Layout.ItemInfoArrived(itemID)
+  local C = ClassCache
+  if type(itemID) ~= "number" then
+    return false
+  end
+  if C.pending[itemID] then
+    C.pending[itemID] = nil
+    C.done[itemID] = true
+    return true
+  end
+  return false
+end
+
+-- Hoisted out of MapClassID (it allocated one closure per call).
+function ClassCache.eq(classID, enumVal, num)
+  if type(enumVal) == "number" and classID == enumVal then
+    return true
+  end
+  return classID == num
+end
+
 local function MapClassID(classID, subClassID, quality)
   if type(classID) ~= "number" then
     return nil
   end
   local EC = Enum and Enum.ItemClass
-  local function eq(enumVal, num)
-    if EC and type(enumVal) == "number" and classID == enumVal then
-      return true
-    end
-    return classID == num
-  end
-  if eq(EC and EC.Consumable, CLASS.Consumable) then
+  local eq = ClassCache.eq
+  if eq(classID, EC and EC.Consumable, CLASS.Consumable) then
     return "consumable"
   end
-  if eq(EC and EC.Recipe, CLASS.Recipe) or classID == CLASS.Recipe then
+  if eq(classID, EC and EC.Recipe, CLASS.Recipe) or classID == CLASS.Recipe then
     return "recipe"
   end
-  if eq(EC and EC.Reagent, CLASS.Reagent)
-      or eq(EC and EC.Tradegoods, CLASS.Tradegoods)
-      or eq(EC and EC.TradeGoods, CLASS.Tradegoods)
+  if eq(classID, EC and EC.Reagent, CLASS.Reagent)
+      or eq(classID, EC and EC.Tradegoods, CLASS.Tradegoods)
+      or eq(classID, EC and EC.TradeGoods, CLASS.Tradegoods)
       or classID == CLASS.ItemEnhancement
       or classID == CLASS.Glyph
   then
     return "reagent"
   end
-  if eq(EC and EC.Gem, CLASS.Gem) then
+  if eq(classID, EC and EC.Gem, CLASS.Gem) then
     return "gem"
   end
-  if eq(EC and EC.Key, CLASS.Key) or classID == CLASS.Key then
+  if eq(classID, EC and EC.Key, CLASS.Key) or classID == CLASS.Key then
     return "keys"
   end
-  if eq(EC and EC.Armor, CLASS.Armor) or eq(EC and EC.Weapon, CLASS.Weapon) then
+  if eq(classID, EC and EC.Armor, CLASS.Armor) or eq(classID, EC and EC.Weapon, CLASS.Weapon) then
     return "gear"
   end
   if classID == CLASS.Projectile then
     return "other"
   end
-  if eq(EC and EC.Questitem, CLASS.Quest) or eq(EC and EC.QuestItem, CLASS.Quest) then
+  if eq(classID, EC and EC.Questitem, CLASS.Quest) or eq(classID, EC and EC.QuestItem, CLASS.Quest) then
     return "quest"
   end
-  if eq(EC and EC.Container, CLASS.Container) then
+  if eq(classID, EC and EC.Container, CLASS.Container) then
     return "container"
   end
-  if eq(EC and EC.Miscellaneous, CLASS.Miscellaneous) and SafeNum(subClassID) == 0 and quality == 0 then
+  if eq(classID, EC and EC.Miscellaneous, CLASS.Miscellaneous) and SafeNum(subClassID) == 0 and quality == 0 then
     return "junk"
   end
   return nil
@@ -362,33 +401,85 @@ local function ItemLooksRecipe(itemID, itemType, itemSubType, classID, subClassI
   return false
 end
 
--- Category from item class alone (no learned / custom rules).
-local function ClassifyNatural(bag, slot, info, itemID)
-  local quality = SafeNum(info.quality)
+--- True when the client has the item data (GetItemInfo returns a name). Without it recipe detection by name / spell and
+--- the type strings may still change, so such an item is not cached.
+local function ItemDataKnown(itemID)
+  local fn = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+  if not fn then
+    return false
+  end
+  local ok, name = pcall(fn, itemID)
+  return ok and name ~= nil
+end
+
+--- The bag-independent part of ClassifyNatural for one item id: { first, q0junk, rest }.
+---   first  = recipe / class result that holds for every quality (returned as is)
+---   q0junk = class Miscellaneous sub 0: junk when the quality is 0 (checked before `rest`, as MapClassID did)
+---   rest   = type string / equip slot result
+local function NaturalEntry(itemID)
   local classID, subClassID, itemType, itemSubType, equipLoc = InstantClass(itemID)
+  local e = {}
   if ItemLooksRecipe(itemID, itemType, itemSubType, classID, subClassID) then
-    return "recipe"
+    e.first = "recipe"
+    return e
   end
-  local mapped = MapClassID(classID, subClassID, quality)
-  if mapped then
-    return mapped
+  e.first = MapClassID(classID, subClassID, 1) -- quality only matters for the junk branch, handled below
+  if e.first then
+    return e
   end
-  mapped = MapTypeString(itemType, itemSubType)
-  if mapped then
-    return mapped
-  end
-  if type(equipLoc) == "string" and equipLoc ~= "" then
+  e.q0junk = MapClassID(classID, subClassID, 0) == "junk"
+  e.rest = MapTypeString(itemType, itemSubType)
+  if not e.rest and type(equipLoc) == "string" and equipLoc ~= "" then
     local el = equipLoc:upper()
     if el == "INVTYPE_FINGER" or el == "INVTYPE_NECK" or el == "INVTYPE_TRINKET"
         or el == "INVTYPE_CLOAK" or el:find("WEAPON", 1, true)
     then
-      return "gear"
+      e.rest = "gear"
     end
   end
-  if Slots.IsKeyringBag and Slots.IsKeyringBag(bag) then
-    return "keys"
+  return e
+end
+
+-- Category from item class alone (no learned / custom rules).
+local function ClassifyNatural(bag, slot, info, itemID)
+  local quality = SafeNum(info.quality)
+  local C = ClassCache
+  local e = itemID and C.nat[itemID]
+  if not e then
+    e = NaturalEntry(itemID)
+    if itemID then
+      -- Ask the client at most once per id while waiting: the answer comes as GET_ITEM_INFO_RECEIVED (done).
+      local known
+      if C.done[itemID] then
+        known = true
+      elseif C.pending[itemID] then
+        known = false
+      else
+        known = ItemDataKnown(itemID)
+      end
+      if known then
+        if C.n >= 4000 then
+          Layout.WipeClassCache()
+        end
+        C.nat[itemID] = e
+        C.n = C.n + 1
+        C.pending[itemID] = nil
+      else
+        C.pending[itemID] = true
+      end
+    end
   end
-  if classID == CLASS.Key then
+  if e.first then
+    return e.first
+  end
+  if e.q0junk and quality == 0 then
+    return "junk"
+  end
+  if e.rest then
+    return e.rest
+  end
+  -- Bag-dependent parts, applied after the lookup.
+  if Slots.IsKeyringBag and Slots.IsKeyringBag(bag) then
     return "keys"
   end
   if quality == 0 and not Slots.IsReagentBag(bag) and not (Slots.IsKeyringBag and Slots.IsKeyringBag(bag)) then
@@ -404,8 +495,8 @@ function Layout.ClassifyBagSlot(bag, slot)
   if not C_Container or not C_Container.GetContainerItemInfo then
     return "other", nil
   end
-  local ok, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
-  if not ok or type(info) ~= "table" then
+  local info = Slots.Info(bag, slot)
+  if not info then
     return nil, nil
   end
   if not info.iconFileID and not info.itemID and not info.hyperlink then
@@ -440,8 +531,8 @@ function Layout.NaturalLane(bag, slot)
   if not C_Container or not C_Container.GetContainerItemInfo then
     return "other"
   end
-  local ok, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
-  if not ok or type(info) ~= "table" then
+  local info = Slots.Info(bag, slot)
+  if not info then
     return "other"
   end
   local cat = ClassifyNatural(bag, slot, info, ResolveItemID(bag, slot, info)) or "other"
@@ -655,9 +746,6 @@ function Layout.BagMayHold(bag, itemID, reagentBag)
 end
 
 function Layout.PlaceCursorInFreeSlot()
-  if InCombatLockdown and InCombatLockdown() then
-    return false
-  end
   if not CursorHoldingItem() then
     return false
   end
@@ -797,7 +885,7 @@ local function UpdateFreeDrop()
   if not b then
     return
   end
-  UpdateDropCatcher(CursorHoldingItem() and main and main:IsShown() and (main:GetAlpha() or 0) > 0.5 and not (InCombatLockdown and InCombatLockdown()))
+  UpdateDropCatcher(CursorHoldingItem() and main and main:IsShown() and (main:GetAlpha() or 0) > 0.5)
   if CursorHoldingItem() and main and main:IsShown() and (main:GetAlpha() or 0) > 0.5 then
     if b:GetParent() ~= main then
       b:SetParent(main) -- the bag frame can be rebuilt
@@ -1577,7 +1665,21 @@ local function EnsureSection(key)
       GameTooltip:SetText(Layout.GetCategoryLabel(key), 1, 1, 1)
       GameTooltip:AddLine(" ", 1, 1, 1, 0)
       GameTooltip:AddLine(bulkLine, 0.2, 1, 0.4, true)
+      local SV = Feat("SellValue")
+      local valueLine = SV and SV.LaneTooltipLine(key, Layout.ListLaneSlots(key))
+      if valueLine then
+        GameTooltip:AddLine(valueLine, 1, 0.82, 0, true)
+      end
       GameTooltip:Show()
+    elseif key == "junk" and GameTooltip and Feat("SellValue") then
+      local valueLine = Feat("SellValue").LaneTooltipLine(key, Layout.ListLaneSlots(key))
+      if valueLine then
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:ClearLines()
+        GameTooltip:SetText(Layout.GetCategoryLabel(key), 1, 1, 1)
+        GameTooltip:AddLine(valueLine, 1, 0.82, 0, true)
+        GameTooltip:Show()
+      end
     elseif key == TRASH and GameTooltip then
       GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
       GameTooltip:SetText("Trash — destroys items")
@@ -1719,7 +1821,7 @@ local function StableLane(key, list)
   return out
 end
 
-local function DoLayout()
+local function DoLayout(occ, sig)
   if not main or not content then
     return
   end
@@ -1733,6 +1835,7 @@ local function DoLayout()
     return
   end
   layoutBusy = true
+  Slots.BeginPass() -- one container read per slot for this layout (#56); emptied below, also after an error
   local ok, err = pcall(function()
     local maxCols = Columns()
     local used = {}
@@ -1741,7 +1844,7 @@ local function DoLayout()
     local order = Layout.GetCategoryOrder()
     local SM = Feat("StackMerge")
 
-    local function MergedLists(buckets)
+    local function MergedLists(buckets, collapsedOut)
       local out = {}
       for i = 1, #order do
         local key = order[i]
@@ -1749,6 +1852,9 @@ local function DoLayout()
           local list = buckets[key] or {}
           if SM and SM.Collapse then
             list = SM.Collapse(list)
+          end
+          if collapsedOut then
+            collapsedOut[key] = list -- what the grid signature counts (before the stable order / ghosts)
           end
           if #list > 1 and not IsFiltering() then
             list = StableLane(key, list)
@@ -1759,7 +1865,14 @@ local function DoLayout()
       return out
     end
 
-    local lists = MergedLists(CollectBuckets(false))
+    local collapsed = {}
+    local lists = MergedLists(CollectBuckets(false), collapsed)
+    -- Baseline for the next Layout.Refresh: Refresh hands over the count and signature it just computed; any other
+    -- caller gets them from the lists built here (no second scan of the bags at the end of the layout).
+    if type(occ) ~= "number" or type(sig) ~= "string" then
+      occ = InventoryOccupiedCount()
+      sig = BuildGridSignature(order, collapsed, occ)
+    end
     -- Size from the unfiltered bag: search / filter / "No matches" keep the same frame.
     -- Frame size = full bag, every lane expanded, no search/filter. Collapse and search
     -- only change what is drawn inside; the window never resizes for them.
@@ -1995,9 +2108,10 @@ local function DoLayout()
     if focusBagID ~= nil then
       SetBagMatchHighlight(focusBagID, true)
     end
-    BetterBackpack._bbLastOccupiedCount = InventoryOccupiedCount()
-    BetterBackpack._bbGridSig = VisibleGridSignature()
+    BetterBackpack._bbLastOccupiedCount = occ
+    BetterBackpack._bbGridSig = sig
   end)
+  Slots.EndPass()
   layoutBusy = false
   if Layout.SyncSlotMouse then
     pcall(Layout.SyncSlotMouse) -- new slot buttons follow the visible state (a layout can run in the parked shell)
@@ -3319,11 +3433,36 @@ function Layout.SyncSlotMouse()
   local visible = Layout.IsBagFrameVisible()
   pcall(Layout.SyncShellMouse, visible)
   if InCombatLockdown and InCombatLockdown() then
-    return
+    return -- protected slot buttons: the secure state driver armed them at combat start, the regen sync re-asserts
   end
   if Slots and Slots.SetAllMouse then
     Slots.SetAllMouse(visible)
   end
+end
+
+--- Cheap re-assert (out of combat): fixes slot buttons that do not match the visible state (#53).
+function Layout.EnsureArmed()
+  if InCombatLockdown and InCombatLockdown() then
+    return false
+  end
+  local visible = Layout.IsBagFrameVisible()
+  if Slots and Slots.ArmedMatches and Slots.ArmedMatches(visible) then
+    return false
+  end
+  pcall(Layout.SyncSlotMouse)
+  return true
+end
+
+--- Combat start (PLAYER_REGEN_DISABLED): if the client has not set the lockdown yet, arm every slot button now; the
+--- secure state driver does the same in combat.
+function Layout.ArmForCombat()
+  if InCombatLockdown and InCombatLockdown() then
+    return false
+  end
+  if Slots and Slots.SetAllMouse then
+    return Slots.SetAllMouse(true)
+  end
+  return false
 end
 
 function Layout.IsBagFrameVisible()
@@ -3686,11 +3825,8 @@ local function CombatPresentFrame(frame)
     end
   end)
   local inCombat = InCombatLockdown and InCombatLockdown()
-  if inCombat and Slots and Slots.SetAllMouse then
-    -- Refused for protected buttons in lockdown; Slots.MouseHandler (secure state driver) switches them on at combat
-    -- start, otherwise they work again after combat (PLAYER_REGEN_ENABLED syncs).
-    pcall(Slots.SetAllMouse, true)
-  end
+  -- The protected slot buttons cannot be touched here (Show / mouse are refused in lockdown): the secure state
+  -- driver (Slots.MH) showed them at combat start, PLAYER_REGEN_ENABLED re-asserts the whole bag (Layout.RegenResync).
   pcall(function()
     if inCombat then
       frame:SetAlpha(1)
@@ -3836,6 +3972,7 @@ function Layout.Show()
     main:Show()
     main:EnableMouse(true) -- an earlier park turned it off
   end)
+  pcall(Slots.SyncAllAttrs) -- every visible slot gets its secure use attributes (#53)
   pcall(Layout.SyncSlotMouse) -- the bag is visible now: slots take clicks again
   pcall(PlaceOnScreen)
   ApplyCombinedBagsChrome(main)
@@ -3957,11 +4094,38 @@ InventoryOccupiedCount = function()
   return n
 end
 
-VisibleGridSignature = function()
+--- Signature of what the grid shows: per enabled lane its collapsed cell count and the bag.slot of every cell, plus the
+--- occupied count (numbers, no string.format per cell). `collapsed[key]` exists for enabled lanes only.
+BuildGridSignature = function(order, collapsed, occ)
+  local parts, n = {}, 0
+  for i = 1, #order do
+    local key = order[i]
+    local list = collapsed[key]
+    if list then
+      n = n + 1
+      parts[n] = key .. ":" .. #list
+      for j = 1, #list do
+        local e = list[j]
+        if e and e.bag ~= nil and e.slot ~= nil then
+          n = n + 1
+          if type(e.bag) == "number" and type(e.slot) == "number" then
+            parts[n] = e.bag * 1000 + e.slot
+          else
+            parts[n] = tostring(e.bag) .. "." .. tostring(e.slot)
+          end
+        end
+      end
+    end
+  end
+  parts[n + 1] = "occ:" .. tostring(occ)
+  return table.concat(parts, "|")
+end
+
+VisibleGridSignature = function(occ)
   local order = Layout.GetCategoryOrder()
   local SM = Feat("StackMerge")
   local buckets = CollectBuckets(false)
-  local parts = {}
+  local collapsed = {}
   for i = 1, #order do
     local key = order[i]
     if CategoryEnabled(key) then
@@ -3969,16 +4133,10 @@ VisibleGridSignature = function()
       if SM and SM.Collapse then
         list = SM.Collapse(list)
       end
-      parts[#parts + 1] = string.format("%s:%d", key, #list)
-      for j = 1, #list do
-        local e = list[j]
-        if e and e.bag ~= nil and e.slot ~= nil then
-          parts[#parts + 1] = string.format("%d.%d", e.bag, e.slot)
-        end
-      end
+      collapsed[key] = list
     end
   end
-  return table.concat(parts, "|") .. "|occ:" .. tostring(InventoryOccupiedCount())
+  return BuildGridSignature(order, collapsed, occ or InventoryOccupiedCount())
 end
 
 local function NeedsMergedGridRepaint()
@@ -3987,7 +4145,7 @@ local function NeedsMergedGridRepaint()
 end
 
 --- Bag events: sync icons/counts only — no full grid reflow (merged stacks stay put).
-function Layout.RefreshLight()
+local function RefreshLightBody()
   if not Layout.IsShown() then
     return
   end
@@ -3999,7 +4157,7 @@ function Layout.RefreshLight()
   Slots.ForEach(function(btn)
     if btn and btn:GetAlpha() > 0.5 and btn._bbBag ~= nil then
       Slots.SyncCooldown(btn, btn._bbBag, btn._bbSlot)
-      Slots.SyncVisual(btn, btn._bbBag, btn._bbSlot)
+      Slots.SyncVisual(btn, btn._bbBag, btn._bbSlot, true) -- normalized once below
       if Slots.Normalize then
         Slots.Normalize(btn)
       end
@@ -4012,7 +4170,17 @@ function Layout.RefreshLight()
   end
 end
 
-function Layout.Refresh()
+function Layout.RefreshLight()
+  return Slots.Pass(RefreshLightBody)
+end
+
+--- Occupied count and grid signature of the bags right now (one scan of the bags, see Slots.BeginPass).
+local function GridState()
+  local occ = InventoryOccupiedCount()
+  return occ, VisibleGridSignature(occ)
+end
+
+local function RefreshBody()
   if InCombatLockdown and InCombatLockdown() then
     Layout.RefreshCooldowns()
     return
@@ -4023,22 +4191,76 @@ function Layout.Refresh()
   if not Layout.IsShown() then
     return
   end
+  Layout.EnsureArmed()
   if BetterBackpack._bbLayoutPending then
     BetterBackpack._bbLayoutPending = false
     DoLayout()
     return
   end
-  local occ = InventoryOccupiedCount()
+  -- The signature contains the occupied count, so one compare covers both. DoLayout gets both as its baseline.
+  local occ, sig = GridState()
   local prevOcc = BetterBackpack._bbLastOccupiedCount
-  local sig = VisibleGridSignature()
   local prevSig = BetterBackpack._bbGridSig
   BetterBackpack._bbLastOccupiedCount = occ
   BetterBackpack._bbGridSig = sig
-  if prevOcc == nil or prevOcc ~= occ or prevSig == nil or prevSig ~= sig or NeedsMergedGridRepaint() then
-    DoLayout()
+  if prevOcc == nil or prevSig == nil or prevSig ~= sig or NeedsMergedGridRepaint() then
+    DoLayout(occ, sig)
     return
   end
   Layout.RefreshLight()
+end
+
+function Layout.Refresh()
+  return Slots.Pass(RefreshBody)
+end
+
+--- Full layout now (a no-op in combat: DoLayout defers and sets the pending flag).
+function Layout.ForceLayout()
+  DoLayout()
+end
+
+--- The closed bag is kept shown at alpha 0 (warm shell) so the bag key works in combat, where nothing can be laid
+--- out. Keep its layout current while it is parked (bag events), otherwise an item looted since the last layout is
+--- missing - or not clickable - when the bag is opened in combat (#53). Never in combat.
+function Layout.RefreshWarm()
+  if InCombatLockdown and InCombatLockdown() then
+    return false
+  end
+  if not (main and content and main._bbBuilt and BetterBackpack._bbLayoutWarm) then
+    return false
+  end
+  if Layout.IsBagFrameVisible() or BetterBackpack._sortSuppressRefresh then
+    return false
+  end
+  return Slots.Pass(function()
+    local occ, sig = GridState()
+    if BetterBackpack._bbGridSig ~= nil and BetterBackpack._bbGridSig == sig and not Slots.HasProxies() then
+      return false
+    end
+    DoLayout(occ, sig)
+    return true
+  end)
+end
+
+--- After combat (PLAYER_REGEN_ENABLED): put the bag into the exact state its visibility says (#53). Visible bag:
+--- full layout (secure buttons replace any visual-only proxy, attributes and mouse are set, pending layout done).
+--- Parked bag: current warm layout, slots parked. Returns false while the client still reports combat.
+function Layout.RegenResync()
+  if InCombatLockdown and InCombatLockdown() then
+    return false
+  end
+  pcall(Slots.SyncAllAttrs)
+  if Layout.IsBagFrameVisible() then
+    BetterBackpack._bbLayoutPending = false
+    pcall(DoLayout)
+    pcall(function()
+      main:EnableMouse(true)
+    end)
+  else
+    pcall(Layout.RefreshWarm)
+  end
+  pcall(Layout.SyncSlotMouse)
+  return true
 end
 
 function Layout.RefreshCooldowns()

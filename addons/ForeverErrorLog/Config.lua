@@ -16,7 +16,7 @@ Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
 Config.MAX_SESSION_LINES = MAX_SESSION_LINES
 Config.MAX_AGENT_EXPORT_LINES = MAX_AGENT_EXPORT_LINES
-Config.VERSION = "0.3.1"
+Config.VERSION = "0.3.2"
 
 local function Defaults()
   return {
@@ -25,7 +25,7 @@ local function Defaults()
     -- Default OFF: Blizzard popup queues stale errors and users click "next" forever.
     -- Capture into ForeverErrorLogDB still runs.
     scriptErrors = false,
-    -- Default OFF: AgentFeed / live-head / session export for dev scripts (/felog dev on).
+    -- Default OFF: developer telemetry and session export (/felog dev on).
     devTelemetry = false,
     -- 0.3.0: record ADDON_ACTION_BLOCKED / ADDON_ACTION_FORBIDDEN as errors.
     captureTaint = true,
@@ -170,6 +170,9 @@ end
 --- Reset config to defaults and clear the error ring; refresh the minimap button and window position.
 function Config.Reset()
   ForeverErrorLogDB = Defaults()
+  if ForeverErrorLog and ForeverErrorLog.ResetRepeatState then
+    ForeverErrorLog.ResetRepeatState()
+  end
   local W = ForeverErrorLog.Window
   if W then
     if W.UpdateMinimap then

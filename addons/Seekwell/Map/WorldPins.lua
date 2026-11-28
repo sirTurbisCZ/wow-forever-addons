@@ -609,7 +609,7 @@ end
 function M.SlashHunt(rest)
   rest = (rest or ""):match("^%s*(.-)%s*$") or ""
   if rest == "" then
-    Print("hunt: " .. (M.Active() or "none") .. " · /sw hunt <item link|item id|mob name|npc id> | wish | off")
+    Print("hunt: " .. (M.Active() or "none") .. " · /sw hunt <item link/item id/mob name/npc id> | wish | off")
     return
   end
   if rest == "off" or rest == "clear" then
@@ -662,7 +662,7 @@ function M.SlashMap(rest)
   elseif rest == "" then
     s.enabled = not s.enabled
   else
-    Print("usage: /sw map [on|off|unhide]")
+    Print("usage: /sw map [on/off/unhide]")
     return
   end
   if rest ~= "unhide" then
@@ -685,7 +685,7 @@ function M.BuildSection(sec, H)
   local y = -10
   H.Heading(sec, "Map pins", y)
   y = y - 30
-  H.Note(sec, "Pins show where YOU looted a mob, plus original Classic spawn points when Seekwell_Locations is installed (/sw locations on|off). All approximate.", y)
+  H.Note(sec, "Pins show where YOU looted a mob, plus original Classic spawn points when Seekwell_Locations is installed (/sw locations on/off). All approximate.", y)
   y = y - 32
   H.Check(sec, "Show pins on the world map", y, function() return s().enabled end, function(v)
     s().enabled = v

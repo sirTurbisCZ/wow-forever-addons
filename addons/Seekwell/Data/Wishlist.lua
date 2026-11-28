@@ -447,7 +447,7 @@ local function Slash(rest)
   elseif cmd == "qty" then
     local name, n = arg:match("^(.-)%s+(%d+)$")
     if not name then
-      Say("usage: /sw wish qty <name|id> <amount>")
+      Say("usage: /sw wish qty <name/id> <amount>")
     else
       local found = Wish.Find(name, 8)
       local hit
@@ -489,7 +489,7 @@ local function Slash(rest)
       Say("  " .. (CachedName(w.id) or ("item " .. w.id)) .. "  " .. Wish.Have(w.id) .. "/" .. Wish.Qty(w.id) .. (Wish.IsOwned(w.id) and "  (done)" or ""))
     end
   else
-    Say("usage: /sw wish [add <name|link|id> [x20] | qty <name|id> <n> | del <name> | list]")
+    Say("usage: /sw wish [add <name/link/id> [x20] | qty <name/id> <n> | del <name> | list]")
   end
 end
 

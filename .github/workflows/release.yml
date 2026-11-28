@@ -19,6 +19,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require tagged commit on main
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Tagged commit $GITHUB_SHA is not an ancestor of origin/main. Merge the change to main first, then tag the merged commit." >&2
+            exit 1
+          fi
 
       - name: Resolve addon from tag
         id: meta
@@ -79,18 +89,31 @@ jobs:
           chmod +x scripts/package-addon.sh
           ./scripts/package-addon.sh "${{ steps.meta.outputs.addon }}"
 
+      - name: Build release notes
+        run: |
+          ADDON="${{ steps.meta.outputs.addon }}"
+          VER="${{ steps.meta.outputs.version }}"
+          CL="addons/${ADDON}/Docs/CHANGELOG.md"
+          NOTES=""
+          if [[ -f "$CL" ]]; then
+            NOTES="$(awk '/^## Release/ { if (found) exit; found=1 } found { print }' "$CL")"
+          fi
+          if [[ -z "$NOTES" ]]; then
+            NOTES="## ${ADDON} ${VER}
+
+          Changelog: \`addons/${ADDON}/Docs/CHANGELOG.md\`"
+          fi
+          {
+            printf '%s\n\n' "$NOTES"
+            printf 'Install: extract so `Interface/AddOns/%s/` exists, then `/reload`. The zip root is the `%s/` folder.\n' "$ADDON" "$ADDON"
+          } > release-notes.md
+          cat release-notes.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ steps.meta.outputs.addon }} ${{ steps.meta.outputs.version }}
-          body: |
-            ## ${{ steps.meta.outputs.addon }} ${{ steps.meta.outputs.version }}
-
-            Install: extract so `Interface/AddOns/${{ steps.meta.outputs.addon }}/` exists, then `/reload`.
-
-            Changelog: `addons/${{ steps.meta.outputs.addon }}/Docs/CHANGELOG.md`
-
-            Asset root is the `${{ steps.meta.outputs.addon }}/` folder.
+          body_path: release-notes.md
           files: dist/${{ steps.meta.outputs.asset }}
           fail_on_unmatched_files: true

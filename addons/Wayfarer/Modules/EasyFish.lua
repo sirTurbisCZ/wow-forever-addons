@@ -709,7 +709,7 @@ function Mod.Status()
 end
 
 local HELP = {
-  "/wf fish on|off - switch one-key fishing",
+  "/wf fish on/off - switch one-key fishing",
   "/wf fish key - show the fishing key; /wf fish key <KEY> - set it (e.g. F, ALT-F, BUTTON4)",
   "/wf fish clear - remove the key (the override is released)",
   "/wf fish status - state of the module",
@@ -745,7 +745,7 @@ function Mod.Slash(rest)
   elseif cmd == "status" then
     Print("fishing: " .. Mod.Status())
   else
-    Print("usage: /wf fish on|off|key [KEY]|clear|status")
+    Print("usage: /wf fish on/off/key [KEY]/clear/status")
   end
 end
 

@@ -371,7 +371,7 @@ local function Register()
   Seekwell.RegisterSlash("item", function(rest)
     local id = ParseItem(rest)
     if not id then
-      Seekwell.Print("usage: /sw item <item link|item id>")
+      Seekwell.Print("usage: /sw item <item link/item id>")
       return
     end
     for _, line in ipairs(Sources.ItemLines(id)) do
@@ -390,6 +390,6 @@ end
 Register()
 
 if Seekwell.L and type(Seekwell.L.HELP_LINES) == "table" then
-  table.insert(Seekwell.L.HELP_LINES, "/sw item <link|id> — all known sources of an item (drops, vendors, quests)")
+  table.insert(Seekwell.L.HELP_LINES, "/sw item <link/id> — all known sources of an item (drops, vendors, quests)")
   table.insert(Seekwell.L.HELP_LINES, "/sw zone — the Zone view: mobs, wished drops and vendors in your zone")
 end

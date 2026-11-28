@@ -247,10 +247,22 @@ local function BuildSources(itemID, limit)
       rows[#rows + 1] = row
     end
   end
+  local classicBy = {}
+  if s.classic then
+    for _, r in ipairs(sf) do
+      classicBy[r.npc] = r
+    end
+  end
   for _, r in ipairs(Seekwell.Learned.From(itemID)) do
     local ex = byNpc[r.npc]
+    local cr = classicBy[r.npc]
     if ex then
       ex.mine = { d = r.d, k = r.k }
+    elseif cr and (r.k or 0) < LEARNED_MIN then
+      -- too few own kills: keep the Classic estimate (as the mob page does), but remember the own numbers
+      local row = { npc = r.npc, p = cr.p, origin = "classic", skin = cr.skin, rank = 3, mine = { d = r.d, k = r.k } }
+      byNpc[r.npc] = row
+      rows[#rows + 1] = row
     else
       local row = { npc = r.npc, p = r.p, origin = "learned", n = r.k, rank = 1, mine = { d = r.d, k = r.k } }
       byNpc[r.npc] = row

@@ -2,14 +2,14 @@
 ## Title: Wayfarer
 ## Notes: Party and raid nameplate marks, one-key fishing, class procs and timers, a minimap button and one settings window.
 ## Author: tuma
-## Version: 0.3.1
+## Version: 0.3.2
 ## SavedVariables: WayfarerDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled
 ## Category: Utility
 ## X-Website: https://github.com/sirTurbisCZ/wow-forever-addons
 ## X-License: MIT
-## IconTexture: Interface\\Icons\\Ability_Hunter_BeastCall
+## IconTexture: Interface\Icons\Ability_Hunter_BeastCall
 
 Locale/enUS.lua
 Config.lua

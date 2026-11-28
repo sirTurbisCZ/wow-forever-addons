@@ -559,7 +559,7 @@ local function ResolveNpc(arg)
   return id
 end
 
-local USAGE = "usage: /sw alert on|off|test|status|nameplates on|off|sound on|off|remove on|off|mob add|del <npcID|target>|mob list"
+local USAGE = "usage: /sw alert on/off/test/status/nameplates on/off/sound on/off/remove on/off/mob add/del <npcID/target>/mob list"
 
 local function Toggle(key, val, label)
   if val ~= "on" and val ~= "off" then
@@ -666,7 +666,7 @@ local function Build(sec, H)
   y = y - 32
   H.Heading(sec, "Wanted mobs", y)
   y = y - 24
-  local empty = H.Note(sec, "None. Target a mob and click \"Add target\", or /sw alert mob <npcID|target>.", y)
+  local empty = H.Note(sec, "None. Target a mob and click \"Add target\", or /sw alert mob <npcID/target>.", y)
   local rows = {}
   for i = 1, MAX_LIST do
     local ry = y - (i - 1) * 24

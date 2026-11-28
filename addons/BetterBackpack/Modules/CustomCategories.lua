@@ -50,6 +50,9 @@ end
 
 local function Changed()
   local Layout = BetterBackpack.Modules.Layout
+  if Layout and Layout.WipeClassCache then
+    Layout.WipeClassCache() -- lane rules changed: classification starts fresh (#56)
+  end
   if Layout and Layout.Relayout then
     Layout.Relayout()
   end

@@ -842,7 +842,7 @@ function Share.Wire()
       elseif rest == "status" or rest == "" then
         Print("share: " .. Share.StatusText())
       else
-        Print("usage: /sw share on|off|status|clear")
+        Print("usage: /sw share on/off/status/clear")
       end
     end)
   end

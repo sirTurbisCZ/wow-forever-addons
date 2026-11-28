@@ -132,7 +132,7 @@ Content new in WoW Forever (items, mobs, dungeons that do not exist in Classic) 
 | Ring | cyan = a spot you learned yourself, thin dark = Classic spawn data, violet = dungeon entrance |
 | Number | several spots clustered into one (bigger pin) |
 
-About 20 px on the world map (scaled with the zoom), 16 px on the minimap, 15 px in the browser preview. Hover: bigger with a glow and the usual tooltip. Left click: waypoint; right click (world map): hide that mob.
+About 20 px on the world map (scaled with the zoom), 16 px on the minimap, 11 px in the browser preview. Hover: bigger with a glow and the usual tooltip. Left click: waypoint; right click (world map): hide that mob.
 
 ## What has a location, and what has not
 

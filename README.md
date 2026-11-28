@@ -17,9 +17,13 @@ Install from [Releases](https://github.com/sirTurbisCZ/wow-forever-addons/releas
 
 Each addon has its player documentation in `Docs/README.md` and its history in `Docs/CHANGELOG.md`.
 
+## Issues and contributing
+
+Found a bug or have an idea? Open an [issue](https://github.com/sirTurbisCZ/wow-forever-addons/issues); see [CONTRIBUTING.md](CONTRIBUTING.md) for what to include.
+
 ## Release tags
 
-`felog-v<version>`, `plateband-v<version>`, `betterbackpack-v<version>`, `wayfarer-v<version>`, `seekwell-v<version>`, `seekwell-locations-v<version>` — for example `plateband-v0.6.3`. The version must equal the `## Version` in the addon's `.toc`. A tag builds a zip whose root is the addon folder and publishes it as a GitHub Release (the workflow also syntax-checks every Lua file first).
+`felog-v<version>`, `plateband-v<version>`, `betterbackpack-v<version>`, `wayfarer-v<version>`, `seekwell-v<version>`, `seekwell-locations-v<version>` — for example `plateband-v0.8.1`. The version must equal the `## Version` in the addon's `.toc`. A tag builds a zip whose root is the addon folder and publishes it as a GitHub Release with the newest changelog section as its notes (the workflow also syntax-checks every Lua file first, and only accepts tags on commits that are on `main`).
 
 ## License
 

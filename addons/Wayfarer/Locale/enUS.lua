@@ -10,10 +10,10 @@ L.LOADED = "v%s · /wf"
 L.UNKNOWN_CMD = "unknown command — /wf help"
 L.HELP_LINES = {
   "/wf, /wf settings — open the settings window",
-  "/wf marks on|off — party / raid nameplate marks",
-  "/wf minimap on|off|reset — the minimap button",
-  "/wf proc — procs and timers: on|off|test|unlock|lock|reset",
-  "/wf fish — one-key fishing: on|off|key <KEY>|clear",
+  "/wf marks on/off — party / raid nameplate marks",
+  "/wf minimap on/off/reset — the minimap button",
+  "/wf proc — procs and timers: on/off/test/unlock/lock/reset",
+  "/wf fish — one-key fishing: on/off/key <KEY>/clear",
   "/wf status — what is enabled",
   "/wf reset — restore default settings",
 }

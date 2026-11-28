@@ -1,5 +1,10 @@
 # Wayfarer changelog
 
+## Release 0.3.2 — help text and small fixes (#54)
+
+- Help and usage lines use a slash instead of a pipe between words: the client reads `|r`, `|t`, `|n`, `|k` and similar as escape codes and swallowed part of the text (for example `on|off|reset`).
+- `/wf proc test` in combat prints only the refusal (it used to add a contradicting 'test mode off'); the TOC icon path uses single backslashes.
+
 ## Release 0.3.1 — audit fixes and polish
 
 - **Proc icons in combat (#47):** in combat the player's auras are secret on this client, so aura-based proc icons did not show while fighting. Procs that make a spell glow are now also read from the proc glow (SPELL_ACTIVATION_OVERLAY_GLOW_SHOW / HIDE and C_SpellActivationOverlay.IsSpellOverlayed), which is readable in combat: Missile Barrage (glow on Arcane Missiles) and Shadow Trance (glow on Shadow Bolt). `/wf proc status` shows the number of glow events. Procs without a glow (Clearcasting / Arcane Concentration, Flurry, ...) can only be shown when the client lets addons read auras.

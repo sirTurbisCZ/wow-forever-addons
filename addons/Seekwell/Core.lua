@@ -222,7 +222,7 @@ local function Slash(msg)
       M.SetShown(rest == "on")
       Print(rest == "on" and L.MINIMAP_SHOWN or L.MINIMAP_HIDDEN)
     else
-      Print("usage: /sw minimap on|off|reset")
+      Print("usage: /sw minimap on/off/reset")
     end
   elseif cmd == "reset" then
     if rest == "learned" then
@@ -243,7 +243,7 @@ local function Slash(msg)
       s.dev = rest == "on"
       Print(s.dev and L.DEV_ON or L.DEV_OFF)
     else
-      Print("usage: /sw dev on|off (now " .. (s.dev and "on" or "off") .. ")")
+      Print("usage: /sw dev on/off (now " .. (s.dev and "on" or "off") .. ")")
     end
   elseif Seekwell._slash and Seekwell._slash[cmd] then
     SafeCall("slash " .. cmd, Seekwell._slash[cmd], rest)
