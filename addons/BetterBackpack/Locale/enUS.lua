@@ -6,7 +6,7 @@ BetterBackpack.L = BetterBackpack.L or {}
 local L = BetterBackpack.L
 
 L.PREFIX = "|cffc9a227[BetterBackpack]|r"
-L.LOADED = "loaded v%s · silent trace on → BetterBackpack.lua · /bb help"
+L.LOADED = "v%s · /bb"
 L.UNKNOWN_CMD = "unknown command — /bb help"
 L.HELP_LINES = {
   "/bb — toggle bags",

@@ -145,6 +145,40 @@ local function CallNativeSort()
   return false
 end
 
+local MAX_STACK_PASSES = 6
+local PASS_DELAY = 0.2
+
+--- Stack passes chained on a timer until one merges nothing (a merge needs the server round trip before the next read
+--- is correct); at most MAX_STACK_PASSES. done() runs once at the end, also when a pass raises an error.
+function Tidy.RunStackPasses(done, isStale)
+  local pass = 0
+  local function step()
+    if isStale and isStale() then
+      return
+    end
+    pass = pass + 1
+    local ok, merges = pcall(StackBagsOnce)
+    if not ok then
+      if BetterBackpack.RecordError then
+        BetterBackpack.RecordError("tidy:stack", merges)
+      end
+      merges = 0
+    end
+    if merges > 0 and not (InCombatLockdown and InCombatLockdown()) then
+      if C_Timer and C_Timer.After then
+        if pass < MAX_STACK_PASSES then
+          C_Timer.After(PASS_DELAY, step)
+          return
+        end
+      elseif pass < 2 then
+        return step() -- no timers: the old two back-to-back passes
+      end
+    end
+    done()
+  end
+  step()
+end
+
 function Tidy.SortBags()
   if InCombatLockdown and InCombatLockdown() then
     Print(L.SORT_COMBAT or "sort: not in combat")
@@ -155,61 +189,86 @@ function Tidy.SortBags()
     return false
   end
 
-  if Layout and Layout.ResetLaneOrder then
-    Layout.ResetLaneOrder()
-  end
   sortBusy = true
   sortToken = sortToken + 1
   local token = sortToken
   BetterBackpack._sortSuppressRefresh = true
-  Print(L.SORT_START or "tidying…")
 
+  -- Flags are reset first, whatever the rest does: a failing refresh must not leave the tidy "busy" forever
+  -- (and the bag refresh suppressed).
   local function finish()
     if token ~= sortToken then
       return
     end
     BetterBackpack._sortSuppressRefresh = false
     sortBusy = false
-    ClearCur()
+    pcall(ClearCur)
     if Layout and Layout.Refresh then
-      Layout.Refresh()
+      local ok, err = pcall(Layout.Refresh)
+      if not ok and BetterBackpack.RecordError then
+        BetterBackpack.RecordError("tidy:refresh", err)
+      end
     end
     Print(L.SORT_DONE or "tidy done")
   end
 
-  local sorted = CallNativeSort()
-  -- Always follow with a stack pass (SortBags leaves partial stacks).
-  local function afterSort()
-    if token ~= sortToken then
-      return
-    end
-    if not (InCombatLockdown and InCombatLockdown()) then
-      StackBagsOnce()
-      StackBagsOnce()
-    end
-    if C_Timer and C_Timer.After then
-      C_Timer.After(0.15, finish)
-    else
-      finish()
+  -- Runs fn in pcall; on an error the flags are released through finish().
+  local function Guard(fn)
+    return function()
+      local ok, err = pcall(fn)
+      if not ok then
+        if BetterBackpack.RecordError then
+          BetterBackpack.RecordError("tidy", err)
+        end
+        finish()
+      end
     end
   end
-
-  if sorted then
+  local function Later(delay, fn)
     if C_Timer and C_Timer.After then
-      C_Timer.After(0.45, afterSort)
+      C_Timer.After(delay, Guard(fn))
     else
-      afterSort()
+      Guard(fn)()
     end
-    return true
+  end
+  local function stale()
+    return token ~= sortToken
   end
 
-  StackBagsOnce()
-  StackBagsOnce()
-  if C_Timer and C_Timer.After then
-    C_Timer.After(0.1, finish)
-  else
+  local started = pcall(function()
+    if Layout and Layout.ResetLaneOrder then
+      Layout.ResetLaneOrder()
+    end
+    Print(L.SORT_START or "tidying…")
+  end)
+  if not started then
     finish()
+    return false
   end
+
+  Guard(function()
+    local sorted = CallNativeSort()
+    -- Always follow with stack passes (SortBags leaves partial stacks).
+    local function afterSort()
+      if stale() then
+        return
+      end
+      if InCombatLockdown and InCombatLockdown() then
+        Later(0.15, finish)
+        return
+      end
+      Tidy.RunStackPasses(function()
+        Later(0.15, finish)
+      end, stale)
+    end
+    if sorted then
+      Later(0.45, afterSort)
+    else
+      Tidy.RunStackPasses(function()
+        Later(0.1, finish)
+      end, stale)
+    end
+  end)()
   return true
 end
 
@@ -218,13 +277,13 @@ function Tidy.StackBags()
     Print(L.SORT_COMBAT or "sort: not in combat")
     return false
   end
-  StackBagsOnce()
-  StackBagsOnce()
-  if Layout and Layout.ResetLaneOrder then
-    Layout.ResetLaneOrder()
-  end
-  if Layout and Layout.Refresh then
-    Layout.Refresh()
-  end
+  Tidy.RunStackPasses(function()
+    if Layout and Layout.ResetLaneOrder then
+      pcall(Layout.ResetLaneOrder)
+    end
+    if Layout and Layout.Refresh then
+      pcall(Layout.Refresh)
+    end
+  end)
   return true
 end

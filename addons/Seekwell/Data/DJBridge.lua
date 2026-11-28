@@ -151,6 +151,9 @@ local function Index()
   if idx and builtFor == ns.DB then
     return idx
   end
+  if InCombatLockdown and InCombatLockdown() then
+    return nil -- the synchronous build waits for the first out-of-combat call
+  end
   local ok, r = pcall(Build, ns)
   if ok then
     idx, builtFor = r, ns.DB

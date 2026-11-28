@@ -142,6 +142,10 @@ function D.EnemyBuffDispellable(data)
   if type(data) ~= "table" then
     return false
   end
+  local prof = D.Profile and D.Profile()
+  if type(prof) == "table" and prof.enemyBuffs == false then
+    return false -- "Enemy buffs row" off in the settings window
+  end
   if pub(data.isStealable) == true then
     return true
   end

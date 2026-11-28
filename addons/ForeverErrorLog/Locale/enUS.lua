@@ -5,9 +5,9 @@ ForeverErrorLog.L = ForeverErrorLog.L or {}
 
 local L = ForeverErrorLog.L
 
-L.PREFIX = "|cffd94a4a[FElog]|r"
-L.LOADED_COUNT = "loaded v%s — %d errors this session · popup %s · /felog list"
-L.LOADED_EMPTY = "loaded v%s — 0 errors this session · popup %s · /felog help"
+L.PREFIX = "|cffd94a4a[ForeverErrorLog]|r"
+L.LOADED = "v%s · /felog"
+L.LOADED_OFF = "v%s · /felog · capture OFF (/felog on)"
 L.SESSION_HEADER = "session lines=%d (this load)"
 L.SESSION_HINT = "prior rings: /felog archive · live list: /felog list · /felog session"
 L.NO_SESSION = "no session lines yet"
@@ -28,7 +28,7 @@ L.HELP_LINES = {
   "/felog on|off — enable/disable capture (off = errors go to the default handler)",
   "/felog ui on|off — Blizzard scriptErrors popup (saved)",
   "/felog dev on|off — dev telemetry (default off)",
-  "/felog — open the error window · /felog minimap — toggle the minimap button",
+  "/felog [settings] — open the error window · /felog minimap — toggle the minimap button",
   "/felog taint on|off — record blocked/forbidden addon actions (default on)",
 }
 L.LIST_HEADER = "%d error(s) — last 15:"

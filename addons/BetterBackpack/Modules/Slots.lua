@@ -406,6 +406,71 @@ local function EnsureHost()
   return host
 end
 
+--[[
+  Secure mouse handler (#39): EnableMouse on a protected button is refused in combat, so a bag that was parked
+  (mouse off) out of combat and is opened in combat would have dead slots. A SecureHandlerStateTemplate frame
+  (created out of combat) holds a frame ref to every secure slot button; its state driver "[combat] 1; 0" runs the
+  restricted snippet at combat start and switches the mouse on for all of them. Out of combat Lua syncs as before
+  (Layout.SyncSlotMouse). Side effect: a closed (parked, alpha 0) bag takes clicks until combat ends.
+]]
+Slots.MH = { n = 0 }
+Slots.MH.SNIPPET = [[
+  if newstate ~= "1" then return end
+  local n = self:GetAttribute("bbn") or 0
+  for i = 1, n do
+    local b = self:GetFrameRef("s" .. i)
+    if b then b:EnableMouse(true) end
+  end
+]]
+
+function Slots.MH.Ensure()
+  local mh = Slots.MH
+  if mh.frame then
+    return mh.frame
+  end
+  if InCombatLockdown and InCombatLockdown() then
+    return nil
+  end
+  if type(RegisterStateDriver) ~= "function" or type(SecureHandlerSetFrameRef) ~= "function" then
+    return nil
+  end
+  local ok, h = pcall(CreateFrame, "Frame", "BetterBackpackMouseHandler", UIParent, "SecureHandlerStateTemplate")
+  if not ok or not h then
+    return nil
+  end
+  local ok2 = pcall(function()
+    h:SetAttribute("bbn", 0)
+    h:SetAttribute("_onstate-bbcombat", mh.SNIPPET)
+    RegisterStateDriver(h, "bbcombat", "[combat] 1; 0")
+  end)
+  if not ok2 then
+    return nil
+  end
+  mh.frame = h
+  return h
+end
+
+function Slots.MH.Add(btn)
+  local mh = Slots.MH
+  if not btn or btn._bbMHRef or (InCombatLockdown and InCombatLockdown()) then
+    return false
+  end
+  local h = mh.Ensure()
+  if not h then
+    return false
+  end
+  local n = mh.n + 1
+  local ok = pcall(function()
+    SecureHandlerSetFrameRef(h, "s" .. n, btn)
+    h:SetAttribute("bbn", n)
+  end)
+  if ok then
+    mh.n = n
+    btn._bbMHRef = true
+  end
+  return ok and true or false
+end
+
 local function EnsureCooldown(btn)
   if not btn then
     return nil
@@ -537,11 +602,12 @@ function Corner.Hide(btn)
   end
 end
 
-function Corner.Enabled(key)
-  local ok, p = pcall(function()
-    return BetterBackpack.Config.GetProfile()
-  end)
-  return not (ok and type(p) == "table" and p[key] == false)
+function Corner.Enabled(key, p)
+  if p == nil then
+    local ok, v = pcall(BetterBackpack.Config.GetProfile)
+    p = ok and v or nil
+  end
+  return not (type(p) == "table" and p[key] == false)
 end
 
 --- Cached static data for a link. Returns nil in combat when nothing is cached yet.
@@ -570,30 +636,52 @@ function Corner.Entry(link)
   return e
 end
 
+--- true / false only when the tooltip was really available and readable; nil = try again later (never cache a guess).
 local function ScanBoE(bag, slot)
   local want = (type(ITEM_BIND_ON_EQUIP) == "string" and ITEM_BIND_ON_EQUIP) or "Binds when equipped"
   if not (C_TooltipInfo and C_TooltipInfo.GetBagItem) then
     return nil
   end
   local ok, data = pcall(C_TooltipInfo.GetBagItem, bag, slot)
-  if not ok or type(data) ~= "table" or type(data.lines) ~= "table" then
-    return nil
+  if not ok or type(data) ~= "table" or type(data.lines) ~= "table" or #data.lines < 2 then
+    return nil -- no data yet (a loaded item tooltip has a name line plus more)
   end
+  local sawSecret = false
   for i = 1, #data.lines do
     local row = data.lines[i]
     local t = type(row) == "table" and row.leftText or nil
-    if type(t) == "string" and not IsSecret(t) and t == want then
+    if IsSecret(t) then
+      sawSecret = true
+    elseif type(t) == "string" and t == want then
       return true
     end
   end
+  if sawSecret then
+    return nil
+  end
   return false
+end
+
+--- Item level sits top-left; on junk (grey) items that corner holds the vendor coin, so it moves to the bottom-left.
+function Corner.Anchor(fs, btn, junk)
+  local want = junk and "BOTTOMLEFT" or "TOPLEFT"
+  if fs._bbPoint == want then
+    return
+  end
+  fs._bbPoint = want
+  fs:ClearAllPoints()
+  fs:SetPoint(want, btn, want, 3, junk and 3 or -3)
 end
 
 --- Paint item level / BoE for the slot (info = GetContainerItemInfo result or nil).
 function Corner.Update(btn, info, bag, slot)
   local link = info and info.hyperlink
-  local wantLvl, wantBoe = Corner.Enabled("showItemLevel"), Corner.Enabled("showBoE")
-  if btn._bbGhost or type(link) ~= "string" or IsSecret(link) or not (wantLvl or wantBoe) then
+  local okp, prof = pcall(BetterBackpack.Config.GetProfile)
+  if not okp then
+    prof = nil
+  end
+  local wantLvl, wantBoe = Corner.Enabled("showItemLevel", prof), Corner.Enabled("showBoE", prof)
+  if type(link) ~= "string" or IsSecret(link) or not (wantLvl or wantBoe) then
     Corner.Hide(btn)
     return
   end
@@ -611,8 +699,10 @@ function Corner.Update(btn, info, bag, slot)
       e.level = lvl
     end
   end
+  local quality = SafeNum(info.quality, 0)
   if lvlFs then
     if wantLvl and e.level then
+      Corner.Anchor(lvlFs, btn, quality == 0)
       lvlFs:SetText(tostring(e.level))
       lvlFs:Show()
     else
@@ -620,16 +710,16 @@ function Corner.Update(btn, info, bag, slot)
       lvlFs:Hide()
     end
   end
-  local quality = SafeNum(info.quality, 0)
   local bound = info.isBound
-  if wantBoe and e.boe == nil and not combat and quality >= 2 and bound == false and not IsSecret(bound) then
+  local unbound = not IsSecret(bound) and bound == false
+  if wantBoe and e.boe == nil and not combat and quality >= 2 and unbound then
     local r = ScanBoE(bag, slot)
     if r ~= nil then
       e.boe = r
     end
   end
   if boeFs then
-    if wantBoe and e.boe and quality >= 2 and bound == false then
+    if wantBoe and e.boe and quality >= 2 and unbound then
       boeFs:SetText("BoE")
       boeFs:Show()
     else
@@ -1781,6 +1871,7 @@ function Slots.Acquire(bag, slot)
   WireScripts(btn)
   if isSecure then
     Slots.SyncAttrs(btn, bag, slot)
+    pcall(Slots.MH.Add, btn)
   end
   buttons[key] = btn
   return btn

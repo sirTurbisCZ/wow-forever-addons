@@ -13,7 +13,7 @@ Plateband.Settings = Mod
 
 local frame, button, dragging
 local widgets = {} -- refreshers
-local baseline -- values the containers were built with (first build of the window = this session's values)
+local baseline -- values the containers were built with (captured at ADDON_LOADED)
 local PANEL_W, PANEL_H = 360, 330
 
 local RELOAD_KEYS = { "enemyBuffs", "maxIcons" }
@@ -65,7 +65,7 @@ local function ReloadCheck()
   end
   if need and not Mod._told then
     Mod._told = true
-    Print(L().RELOAD_NEEDED or "/reload needed to apply this setting to plates already on screen")
+    Print(L().RELOAD_NEEDED or "/reload needed: this setting applies to plates created after /reload")
   elseif not need then
     Mod._told = nil
   end
@@ -131,12 +131,21 @@ local function Slider(parent, label, y, min, max, get, set)
   return s
 end
 
-local function Build()
+--- Values the containers of this session are built with: captured at ADDON_LOADED (Core.lua), before any
+--- plate row exists, so the "/reload needed" note is right even when the window is first opened later.
+function Mod.CaptureBaseline()
+  if baseline then
+    return
+  end
   local p = Profile()
   baseline = {}
   for i = 1, #RELOAD_KEYS do
     baseline[RELOAD_KEYS[i]] = p[RELOAD_KEYS[i]]
   end
+end
+
+local function Build()
+  Mod.CaptureBaseline()
 
   local ok, f = pcall(CreateFrame, "Frame", "PlatebandSettings", UIParent, "BasicFrameTemplateWithInset")
   if not ok or not f then
@@ -223,7 +232,7 @@ local function Build()
   note:SetWidth(PANEL_W - 36)
   note:SetJustifyH("LEFT")
   note:SetTextColor(1, 0.6, 0.2)
-  note:SetText(L().RELOAD_NOTE or "/reload needed: enemy buffs, debuff filter and icon count apply to plates already built after a reload (new plates use them at once).")
+  note:SetText(L().RELOAD_NOTE or "/reload needed: enemy buffs and icon count apply to plates created after /reload.")
   note:Hide()
   f.reloadNote = note
 
@@ -378,7 +387,8 @@ function Mod.CreateMinimap()
     end
     GameTooltip:SetOwner(self, "ANCHOR_LEFT")
     GameTooltip:SetText("Plateband", 1, 1, 1)
-    GameTooltip:AddLine("Left-click: settings. Drag: move.", 0.8, 0.8, 0.8)
+    GameTooltip:AddLine("Left-click: settings window", 0.8, 0.8, 0.8)
+    GameTooltip:AddLine("Drag: move", 0.8, 0.8, 0.8)
     GameTooltip:Show()
   end)
   button:SetScript("OnLeave", function()

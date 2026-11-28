@@ -68,7 +68,7 @@ end
 --- Place the dots; returns how many are shown.
 function MP.Draw()
   local Map = Seekwell.Map
-  local s = Seekwell.Config.Get().map
+  local s = Seekwell.Config.Block("map")
   if not (Map and Map.Current() and s.enabled and s.minimap and Minimap) then
     HideFrom(1)
     return 0
@@ -149,7 +149,7 @@ end
 function MP.Update()
   lastSig, lastN = nil, nil -- explicit update: always redraw
   local Map = Seekwell.Map
-  local s = Seekwell.Config.Get().map
+  local s = Seekwell.Config.Block("map")
   local want = Map and Map.Current() and s.enabled and s.minimap
   if want and not ticker and C_Timer and C_Timer.NewTicker then
     ticker = C_Timer.NewTicker(EVERY, Tick)

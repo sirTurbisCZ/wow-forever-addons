@@ -36,10 +36,11 @@ function Seekwell.RecordError(context, err)
   if reported[key] then
     return
   end
-  if reportedCount < 200 then
-    reported[key] = true
-    reportedCount = reportedCount + 1
+  if reportedCount >= 200 then
+    reported, reportedCount = {}, 0 -- cap: start over, so de-duplication never stops
   end
+  reported[key] = true
+  reportedCount = reportedCount + 1
   if ForeverErrorLog and ForeverErrorLog.Record then
     pcall(ForeverErrorLog.Record, "Seekwell:" .. key, "")
   end
@@ -92,7 +93,7 @@ local function Boot()
     SafeCall("start." .. st.name, st.fn)
   end
   local tinny = Seekwell.Tinny and Seekwell.Tinny.Available()
-  Print(string.format(L.LOADED or "loaded v%s · %s", tostring(Config.VERSION), tinny and (L.TINNY_YES or "Tinny data: yes") or (L.TINNY_NO or "no Tinny data")))
+  Print(string.format(L.LOADED or "v%s · /sw", tostring(Config.VERSION)) .. " · " .. (tinny and (L.TINNY_YES or "Tinny data: yes") or (L.TINNY_NO or "no Tinny data")))
 end
 
 local bootFrame = CreateFrame("Frame")

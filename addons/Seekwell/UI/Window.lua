@@ -766,6 +766,12 @@ local function BuildSettings(sec)
   end, function(on)
     Settings().tooltip.skipIfDropsShown = on
   end)
+  y = y - 28
+  Check(sec, "Show \"Seekwell: wishlist 3/20\" on tooltips of wishlist items", y, function()
+    return Settings().tooltip.wish ~= false
+  end, function(on)
+    Settings().tooltip.wish = on
+  end)
   y = y - 46
   Slider(sec, "Tooltip sources", y, 1, 5, function()
     return tonumber(Settings().tooltip.max) or 3

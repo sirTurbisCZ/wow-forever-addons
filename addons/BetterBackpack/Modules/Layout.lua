@@ -617,6 +617,43 @@ end
 -- button is shown; a click puts the item into the first free bag slot (the reagent bag is tried last).
 local freeDrop
 
+--- Can this bag take the item (id may be nil = unknown, then try)? Skips the reagent bag for items known not to be
+--- crafting reagents and special bags (bagType ~= 0) whose family does not match the item.
+function Layout.BagMayHold(bag, itemID, reagentBag)
+  if type(itemID) ~= "number" then
+    return true
+  end
+  if bag == reagentBag then
+    local ok, isReagent
+    if C_Item and C_Item.GetItemInfo then
+      ok, isReagent = pcall(function()
+        return (select(17, C_Item.GetItemInfo(itemID)))
+      end)
+    end
+    if ok and isReagent == false then
+      return false
+    end
+    return true
+  end
+  if not (C_Container and C_Container.GetContainerNumFreeSlots) then
+    return true
+  end
+  local okb, _, bagType = pcall(C_Container.GetContainerNumFreeSlots, bag)
+  bagType = okb and SafeNum(bagType, 0) or 0
+  if bagType == 0 then
+    return true
+  end
+  local fam
+  if C_Item and C_Item.GetItemFamily then
+    local okf, f = pcall(C_Item.GetItemFamily, itemID)
+    fam = okf and SafeNum(f, nil) or nil
+  end
+  if not fam or not (bit and bit.band) then
+    return true
+  end
+  return bit.band(fam, bagType) ~= 0
+end
+
 function Layout.PlaceCursorInFreeSlot()
   if InCombatLockdown and InCombatLockdown() then
     return false
@@ -645,25 +682,29 @@ function Layout.PlaceCursorInFreeSlot()
     local _, id = GetCursorInfo()
     heldID = SafeNum(id)
   end)
+  local reagentBag = Slots.ReagentBagIndex and Slots.ReagentBagIndex() or 5
   for i = 1, #order do
     local bag = order[i].bag
-    for slot = 1, order[i].slots do
-      if not Slots.SlotOccupied(bag, slot) then
-        pcall(C_Container.PickupContainerItem, bag, slot)
-        if not CursorHoldingItem() then
-          -- A stack the player split off stays its own icon (see StackMerge.MarkSeparate).
-          if Slots._bbSplitItem and heldID and Slots._bbSplitItem == heldID then
-            local SM = Feat("StackMerge")
-            if SM and SM.MarkSeparate then
-              SM.MarkSeparate(bag, slot, heldID)
+    if Layout.BagMayHold(bag, heldID, reagentBag) then
+      for slot = 1, order[i].slots do
+        if not Slots.SlotOccupied(bag, slot) then
+          pcall(C_Container.PickupContainerItem, bag, slot)
+          if not CursorHoldingItem() then
+            -- A stack the player split off stays its own icon (see StackMerge.MarkSeparate).
+            if Slots._bbSplitItem and heldID and Slots._bbSplitItem == heldID then
+              local SM = Feat("StackMerge")
+              if SM and SM.MarkSeparate then
+                SM.MarkSeparate(bag, slot, heldID)
+              end
+              Slots._bbSplitItem = nil
             end
-            Slots._bbSplitItem = nil
+            if Slots.ClearDragSource then
+              Slots.ClearDragSource()
+            end
+            Layout.SetDropHints(false)
+            return true
           end
-          if Slots.ClearDragSource then
-            Slots.ClearDragSource()
-          end
-          Layout.SetDropHints(false)
-          return true
+          break -- the first free slot refused the item: this bag will not take it, try the next bag
         end
       end
     end
@@ -818,8 +859,24 @@ function Layout.BucketCmp(a, b)
   return a.slot < b.slot
 end
 
+-- Item ids seen in the bags by the last CollectBuckets (GET_ITEM_INFO_RECEIVED only refreshes for these).
+Layout.BagItems = { ids = {}, ready = false }
+
+--- false only when the id is known not to be in the bags; true when unknown (nothing collected yet) or present.
+function Layout.BagHasItem(id)
+  local bi = Layout.BagItems
+  if not bi.ready or type(id) ~= "number" then
+    return true
+  end
+  return bi.ids[id] == true
+end
+
 local function CollectBuckets(unfiltered)
   local order = Layout.GetCategoryOrder()
+  local seenIds = Layout.BagItems.ids
+  for k in pairs(seenIds) do
+    seenIds[k] = nil
+  end
   local buckets = {}
   for i = 1, #order do
     buckets[order[i]] = {}
@@ -833,6 +890,10 @@ local function CollectBuckets(unfiltered)
       if Slots.SlotOccupied(bag, slot) then
         -- Disabled category → Other (items always visible somewhere).
         local cat, info = Layout.ClassifyBagSlot(bag, slot)
+        local itemId = info and info.itemID
+        if type(itemId) == "number" and not Slots.IsSecret(itemId) then
+          seenIds[itemId] = true
+        end
         if not cat or not CategoryEnabled(cat) then
           cat = "other"
         end
@@ -856,6 +917,7 @@ local function CollectBuckets(unfiltered)
       end
     end
   end
+  Layout.BagItems.ready = true
   for _, list in pairs(buckets) do
     table.sort(list, Layout.BucketCmp)
   end
@@ -1396,6 +1458,8 @@ local function WireSectionHeader(key, header)
   end)
   header:SetScript("OnMouseUp", function(self, button)
     if button == "LeftButton" and CursorHoldingItem() then
+      -- The OnClick that follows this mouse-up must not also toggle the collapse (the cursor is empty by then).
+      self._bbDropAt = GetTime and GetTime() or 0
       Layout.DropOnLane(key)
       return
     end
@@ -1421,6 +1485,11 @@ local function WireSectionHeader(key, header)
     end
   end)
   header:SetScript("OnClick", function(self, button)
+    local dropAt = self._bbDropAt
+    self._bbDropAt = nil
+    if dropAt and button == "LeftButton" and ((GetTime and GetTime() or 0) - dropAt) < 0.5 then
+      return
+    end
     if button == "RightButton" then
       if self._bbBulkHandled then
         self._bbBulkHandled = nil
@@ -3231,7 +3300,18 @@ end
 function Layout.SyncShellMouse(visible)
   local f = main or _G.BetterBackpackFrame
   if f then
+    if visible and f.EnableMouse then
+      pcall(f.EnableMouse, f, true) -- parking turned the bag frame itself off; ShellMouse only handles its children
+    end
     ShellMouse(f, visible and true or false, 0)
+  end
+end
+
+--- Keyboard focus must not stay in the search box of a parked / hidden bag.
+function Layout.ClearSearchFocus()
+  local S = BetterBackpack.Modules.Search
+  if S and S.ClearFocus then
+    pcall(S.ClearFocus)
   end
 end
 
@@ -3487,6 +3567,7 @@ function Layout.EnsureCombatShell()
     end)
     ParkOffscreen(f)
     pcall(Layout.SyncSlotMouse)
+    pcall(Layout.ClearSearchFocus)
     Layout.SyncBagUISpecialFrame()
     return true
   end
@@ -3512,6 +3593,7 @@ function Layout.EnsureCombatShell()
   end)
   ParkOffscreen(f)
   pcall(Layout.SyncSlotMouse)
+  pcall(Layout.ClearSearchFocus)
   Layout.SyncBagUISpecialFrame()
   return true
 end
@@ -3605,7 +3687,9 @@ local function CombatPresentFrame(frame)
   end)
   local inCombat = InCombatLockdown and InCombatLockdown()
   if inCombat and Slots and Slots.SetAllMouse then
-    pcall(Slots.SetAllMouse, true) -- may be refused in lockdown; then the slots work again after combat
+    -- Refused for protected buttons in lockdown; Slots.MouseHandler (secure state driver) switches them on at combat
+    -- start, otherwise they work again after combat (PLAYER_REGEN_ENABLED syncs).
+    pcall(Slots.SetAllMouse, true)
   end
   pcall(function()
     if inCombat then
@@ -3672,6 +3756,7 @@ function Layout.CombatHide()
   end)
   ParkOffscreen(frame)
   pcall(Layout.SyncSlotMouse)
+  pcall(Layout.ClearSearchFocus)
   Layout.SyncBagUISpecialFrame()
   return not Layout.IsBagFrameVisible()
 end
@@ -3749,6 +3834,7 @@ function Layout.Show()
   pcall(function()
     main:SetAlpha(1)
     main:Show()
+    main:EnableMouse(true) -- an earlier park turned it off
   end)
   pcall(Layout.SyncSlotMouse) -- the bag is visible now: slots take clicks again
   pcall(PlaceOnScreen)

@@ -16,7 +16,7 @@ Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
 Config.MAX_SESSION_LINES = MAX_SESSION_LINES
 Config.MAX_AGENT_EXPORT_LINES = MAX_AGENT_EXPORT_LINES
-Config.VERSION = "0.3.0"
+Config.VERSION = "0.3.1"
 
 local function Defaults()
   return {
@@ -167,8 +167,17 @@ function Config.EnsureDB()
   return db
 end
 
---- Reset config to defaults and clear the error ring.
+--- Reset config to defaults and clear the error ring; refresh the minimap button and window position.
 function Config.Reset()
   ForeverErrorLogDB = Defaults()
+  local W = ForeverErrorLog.Window
+  if W then
+    if W.UpdateMinimap then
+      pcall(W.UpdateMinimap)
+    end
+    if W.ApplyPosition then
+      pcall(W.ApplyPosition)
+    end
+  end
   return ForeverErrorLogDB
 end

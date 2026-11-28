@@ -222,7 +222,8 @@ local function CachedName(id)
   return nil
 end
 
-local idPool, idPoolGen
+local idPool, idPoolGen, idPoolFF, idPoolTG
+local poolNames, poolPending = {}, {} -- id -> { name, lower } resolved once; ids still waiting for the client cache
 local requested = {}
 local REQUEST_MAX = 50
 
@@ -268,11 +269,14 @@ function Wish.Find(text, limit)
       Add(e.id, CachedName(e.id) or e.name)
     end
   end
-  -- ids known from learned loot, the wishlist and the Forever data: names only from the client cache
+  -- ids known from learned loot and the Forever data: names only from the client cache, resolved once per id into
+  -- poolNames (id -> {name, lower}); a search scans that table and only retries the ids not resolved yet
   local L = Seekwell.Learned
   local g = L and L.generation or 0
-  if not idPool or idPoolGen ~= g then
-    idPool, idPoolGen = {}, g
+  local ff = rawget(_G, "TnnysMobLoot_Forever")
+  local tg = (Seekwell.Tinny and Seekwell.Tinny.generation or 0)
+  if not idPool or idPoolGen ~= g or idPoolFF ~= ff or idPoolTG ~= tg then
+    idPoolGen, idPoolFF, idPoolTG = g, ff, tg
     local set = {}
     local sdb = rawget(_G, "SeekwellDB")
     local learned = type(sdb) == "table" and sdb.learned or nil
@@ -285,37 +289,59 @@ function Wish.Find(text, limit)
         end
       end
     end
-    local ff = rawget(_G, "TnnysMobLoot_Forever")
     if type(ff) == "table" and type(ff.from) == "table" then
       for itemID in pairs(ff.from) do
         set[itemID] = true
       end
     end
+    local keep, pending = {}, {}
+    idPool = {}
     for itemID in pairs(set) do
       if type(itemID) == "number" then
         idPool[#idPool + 1] = itemID
+        local old = poolNames[itemID]
+        if old then
+          keep[itemID] = old -- an id's name never changes: kept across rebuilds
+        else
+          pending[#pending + 1] = itemID
+        end
       end
     end
+    poolNames, poolPending = keep, pending
   end
   local request = C_Item and C_Item.RequestLoadItemDataByID
   local asked = 0
-  local function Consider(itemID)
+  local still = {}
+  for _, itemID in ipairs(poolPending) do
     local name = CachedName(itemID)
     if name then
-      Add(itemID, name)
-    elseif request and asked < REQUEST_MAX and not requested[itemID] then
-      requested[itemID] = true
-      asked = asked + 1
-      pcall(request, itemID)
+      poolNames[itemID] = { name = name, lower = name:lower() }
+    else
+      still[#still + 1] = itemID
+      if request and asked < REQUEST_MAX and not requested[itemID] then
+        requested[itemID] = true
+        asked = asked + 1
+        pcall(request, itemID)
+      end
+    end
+  end
+  poolPending = still
+  for itemID, e in pairs(poolNames) do
+    if e.lower:find(q, 1, true) then
+      Add(itemID, e.name)
     end
   end
   for itemID in pairs(List()) do
-    if type(itemID) == "number" then
-      Consider(itemID)
+    if type(itemID) == "number" and not poolNames[itemID] then
+      local name = CachedName(itemID)
+      if name then
+        Add(itemID, name)
+      elseif request and asked < REQUEST_MAX and not requested[itemID] then
+        requested[itemID] = true
+        asked = asked + 1
+        pcall(request, itemID)
+      end
     end
-  end
-  for _, itemID in ipairs(idPool) do
-    Consider(itemID)
   end
   table.sort(out, function(a, b)
     local la, lb = a.name:lower(), b.name:lower()

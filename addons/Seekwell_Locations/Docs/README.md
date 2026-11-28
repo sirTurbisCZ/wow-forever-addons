@@ -13,4 +13,4 @@ lives even if you never looted it.
 - Delete the folder to remove it; Seekwell works without it.
 
 Data: pfQuest (shagu) / CMaNGOS classic-db, GPL-3.0. See `DATA-CREDITS.txt` and `LICENSE.txt`.
-Rebuild: `dev-tools/build_seekwell_locations.py` (outside the repo).
+Built from the pfQuest / CMaNGOS data; see `DATA-CREDITS.txt`.

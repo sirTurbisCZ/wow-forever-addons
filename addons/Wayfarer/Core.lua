@@ -1,6 +1,6 @@
 --[[
   Wayfarer — one addon, one minimap button, one settings window.
-  /wayfarer or /wf: help|marks|minimap|status|reset
+  /wayfarer or /wf: help|settings|marks|minimap|status|reset
 ]]
 
 local addonName = ...
@@ -55,7 +55,7 @@ local function Boot()
   if M.EasyFish and M.EasyFish.Start then
     SafeCall("easyfish", M.EasyFish.Start)
   end
-  Print(string.format(L.LOADED or "loaded v%s", tostring(Config.VERSION)))
+  Print(string.format(L.LOADED or "v%s · /wf", tostring(Config.VERSION)))
 end
 
 local bootFrame = CreateFrame("Frame")
@@ -79,7 +79,7 @@ SlashCmdList.WAYFARER = function(msg)
   local M = Wayfarer.Modules
   local p = Config.GetProfile()
 
-  if cmd == "" then
+  if cmd == "" or cmd == "settings" then
     if Wayfarer.Settings then
       Wayfarer.Settings.Toggle()
     end

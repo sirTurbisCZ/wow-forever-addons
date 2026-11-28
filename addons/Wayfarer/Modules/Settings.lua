@@ -386,7 +386,14 @@ local function Build()
   end)
   y = y - 44
   Note(m, "Friendly player nameplates must be enabled in the game options for marks to show on players in cities. Marks are created out of combat; a nameplate seen for the first time in combat gets its mark afterwards.", y)
+  y = y - 54
+  m.friendsNote = Note(m, "Party marks need friendly nameplates: enable them in Options > Nameplates", y)
+  m.friendsNote:SetTextColor(1, 0.55, 0.2)
   m.height = -y + 70
+  widgets[#widgets + 1] = function()
+    local on = GetCVar and GetCVar("nameplateShowFriends") == "0"
+    m.friendsNote:SetShown(on and true or false)
+  end
 
   -- Module sections: a module exports BuildSettings(sec, H) and returns the content height.
   -- H = { Heading, Note, Check, Swatch, Slider, Obj, Profile, width }; widgets register refreshers via H.Register(fn).

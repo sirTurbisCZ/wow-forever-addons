@@ -1,5 +1,22 @@
 # BetterBackpack changelog
 
+## Release 1.4.1 — mouse parking, bank deposit and redraw fixes (#39, #40, #41, #46)
+
+- **Fix (#39):** the parked bag left slot buttons mouse-disabled when it was opened in combat (the game refuses `EnableMouse` on protected frames in combat, and the failure was silent). `PLAYER_REGEN_ENABLED` now always syncs the slot and shell mouse with the real visible state, even when the bag stayed visible. In addition a secure state-driver frame (`[combat] 1; 0`, created out of combat, with frame refs to the secure slot buttons) switches their mouse on at combat start. Unverified in game; if the client refuses `EnableMouse` in the restricted snippet, only the after-combat sync applies.
+- **Fix (#39):** the bag frame itself stayed `EnableMouse(false)` after a park; it is switched on again when the bag opens (`Layout.Show`, `SyncShellMouse(true)`).
+- **Fix (#39):** the search box no longer keeps keyboard focus while the bag is parked or hidden (typing was swallowed).
+- **Fix (#39):** the "combat frozen" flag is reset from `InCombatLockdown()` at `PLAYER_ENTERING_WORLD` (it stayed set after a `/reload` or zone change in combat).
+- **Fix (#39):** login or `/reload` in combat with no bag frame yet no longer leaves you with no bag: when the combat open fails, Blizzard's bag is given back.
+- **Limitation (#39):** a bag closed in combat stays an invisible click sink until combat ends (protected buttons cannot be switched off in combat). Because the combat-start switch cannot know whether the bag is open, a parked bag also takes clicks during combat.
+- **Fix (#40):** the bank bulk deposit called `UseContainerItem` for everything, which equips weapons and uses consumables when the bank is not treated as the target. Items with an equip slot, an on-use spell or unknown info are now moved with the cursor into the first free slot of a bank bag (bank bag ids from `Enum.BagIndex`, guarded; verified that the source slot emptied) or skipped when no bank bag can be found. For the rest the pump verifies that the previous slot changed and stops at the first one that did not.
+- **Fix (#41):** `Config.GetProfile` no longer re-runs the migration and default checks on every call (once per session per saved table, then a fast path while the schema is current); the corner texts read the profile once per slot.
+- **Fix (#41):** `GET_ITEM_INFO_RECEIVED` queues a bag refresh only for item ids that are in the bags (set filled by the last layout pass).
+- **Fix (#41):** dropping an item on a lane header no longer also collapses / expands the lane.
+- **Fix (#41):** "drop in free slot" goes on to the next bag when a bag refuses the item, skips the reagent bag for non-reagents and special bags of another family, and no longer tries every free slot of a refusing bag.
+- **Fix (#41):** tidy (`/bb sort`, `/bb stack`): an error in the sort, a timer or the refresh can no longer leave the tidy busy / the bag refresh suppressed; stack passes are chained on a timer until one merges nothing (at most 6) instead of two back-to-back passes.
+- **Fix (#41):** corner texts: a secret `isBound` is no longer compared; "not BoE" is cached only when the tooltip really had data; the item level moves to the bottom-left on grey items (it overlapped the junk coin); dead `_bbGhost` check removed. The item level cache is only ever wiped out of combat.
+- **Polish (#46):** one-line TOC notes, `X-Website`, `X-License`, `IconTexture`; login line is now `[BetterBackpack] v1.4.1 · /bb`; README install block, issues link and the note that settings open with `/bb settings` or the gear button.
+
 ## Release 1.4.0 — item level and BoE on gear, the closed bag no longer takes clicks
 
 - **New (#35):** weapons and armor show their item level as a small number in the top-left corner of the slot, and unbound bind-on-equip gear of green quality or better shows a gold **BoE** in the top-right corner. Both can be turned off in Settings → Features. Results are cached per item link for the session; the tooltip is read at most once per item and never in combat (in combat only already known values are shown).

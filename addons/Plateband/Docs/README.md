@@ -2,6 +2,17 @@
 
 Aura row for **World of Warcraft Forever** nameplates: one clean row of the effects that matter, directly above the unit name.
 
+## Install
+
+1. Download `Plateband-*.zip` from [Releases](https://github.com/sirTurbisCZ/wow-forever-addons/releases).
+2. Extract so the folder is exactly `World of Warcraft/_forever_/Interface/AddOns/Plateband/` (the `.toc` must be inside it).
+3. Enable **Plateband** at character select if needed.
+4. A newly installed addon needs a **full game restart** (a `/reload` is not enough). Expect `[Plateband] v… · /pb` at login.
+
+Optional: install **Forever Error Log** so Lua errors land in `/felog`.
+
+Problems or ideas: [Issues](https://github.com/sirTurbisCZ/wow-forever-addons/issues).
+
 ## What you see
 
 One row of small icons **directly above the name**, left-aligned with the health bar (or right after Blizzard's own debuff icons when they are visible). Each icon has a thin coloured border:
@@ -33,27 +44,18 @@ Food and drink, and long or permanent buffs (hour-long buffs, auras), are never 
 
 Blizzard's own nameplate **buff** list, the **crowd-control** list beside the bar and (on friendly units) loose native helpful icons are made invisible, because the row already shows what matters. `/pb off` or `/pb merge off` brings them back. Plateband never moves or re-anchors the name or Blizzard's frames.
 
-## Install
-
-1. Download `Plateband-*.zip` from [Releases](https://github.com/sirTurbisCZ/wow-forever-addons/releases).
-2. Extract so the folder is exactly `World of Warcraft/_forever_/Interface/AddOns/Plateband/` (the `.toc` must be inside it).
-3. At character select, enable **Plateband** if needed.
-4. Log in and `/reload`. Expect `[Plateband] loaded v… · /pb help`.
-
-Optional: install **Forever Error Log** so Lua errors land in `/felog`.
-
 ## Commands
 
 | Command | What it does |
 |---------|----------------|
-| `/pb` | Open the settings window (same as the minimap button) |
+| `/pb`, `/pb settings` | Open the settings window (same as the minimap button) |
 | `/pb help` | Help and status |
 | `/pb minimap` | Show or hide the minimap button |
 | `/pb on` / `/pb off` | Enable or disable Plateband. **The setting is saved** — turn it back on after testing. |
 | `/pb merge on` / `/pb merge off` | Aura row on/off (off = Blizzard's nameplate auras only) |
 | `/pb size <n>` | Icon size hint (12–32); normally the size follows Blizzard's icons |
 | `/pb safe` | Turn the module off and restore Blizzard's lists |
-| `/pb reset` | Restore default settings |
+| `/pb reset` | Restore default settings (prints "settings reset") |
 | `/pb diagnose` | One-line status card of the target plate |
 | `/pb tree` | Which frames of the target plate draw aura icons (for bug reports) |
 | `/pb dump` | Status, recent errors, last diagnose card |
@@ -76,7 +78,7 @@ Type `/pb` or left-click the minimap button (drag it to move it; `/pb minimap` h
 | Hover tooltips | Tooltip when you point at an icon |
 | Most icons per row | 1-16 |
 
-Enemy buffs row and Most icons per row are fixed when a plate's row is built, so the window shows "/reload needed" after you change them; plates that appear afterwards use the new value at once.
+Enemy buffs row and Most icons per row are fixed when a plate's row is built, so the window shows "/reload needed" after you change them; these apply to plates created after a `/reload`, so a `/reload` is needed (nameplate frames are recycled, a row that is already built is not rebuilt). "Enemy buffs row" off also hides the dispellable enemy buffs of the older Lua-drawn row at once.
 
 ## Settings (saved variables)
 
@@ -90,7 +92,7 @@ Stored in `PlatebandDB.profile`:
 | `auraWatchPlates` | true | Repaint any plate when its auras change (not only the target). Turn off to save CPU; needs `/reload` |
 | `gapTooltip` | true | Tooltip on icon hover. Off = icons ignore the mouse (needs `/reload`) |
 | `enemyBuffs` | true | Dispellable / stealable enemy buffs (needs `/reload`) |
-| `minimap` | show, angle 215 | Minimap button state |
+| `minimap` | show, angle 230 | Minimap button state |
 | `iconSize` / `maxIcons` | 18 / 12 | Fallback icon size / most icons per row |
 | `useAuraContainer` | true | AuraContainer row (`/pb ac on/off`). Falls back to the older row when the client lacks the API |
 | `silentTrace`, `autoDiag` | false | Developer telemetry |

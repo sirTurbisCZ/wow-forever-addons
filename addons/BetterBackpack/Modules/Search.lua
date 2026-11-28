@@ -203,6 +203,13 @@ function Search.EnsureChrome(main)
   return box
 end
 
+--- Drop keyboard focus (the hidden / parked bag must not keep swallowing typing). Not protected: fine in combat.
+function Search.ClearFocus()
+  if box and box.HasFocus and box:HasFocus() then
+    pcall(box.ClearFocus, box)
+  end
+end
+
 function Search.HideChrome()
   if box then
     box:Hide()

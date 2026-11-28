@@ -4,18 +4,22 @@ An addon for **World of Warcraft Forever** that answers "what drops from this mo
 
 ## Install
 
-1. Extract the addon so that you get `Interface/AddOns/Seekwell/`.
-2. Enable it at character select and log in. A **new addon needs a full game restart** the first time; `/reload` is not enough.
-3. Look for `[Seekwell] loaded v0.5.5 · /sw · Tinny data: yes` in chat (one line) and a small spyglass button at the minimap.
+1. Put the addon folder into `World of Warcraft/_forever_/Interface/AddOns/Seekwell` (so that `Seekwell.toc` is inside it).
+2. Enable it at character select. **A newly installed addon needs a full game restart**; `/reload` is not enough.
+3. In chat you should see one line `[Seekwell] vX.Y.Z · /sw · Tinny data: yes` and a small spyglass button at the minimap.
 4. Optional but recommended: **Tnny's Mob Loot** (TnnysMobLoot). Seekwell reads its drop data while you play. Without it, Seekwell shows only what you have learned yourself.
+
+Downloads: [Releases](https://github.com/sirTurbisCZ/wow-forever-addons/releases). Bugs and ideas: [Issues](https://github.com/sirTurbisCZ/wow-forever-addons/issues).
 
 ## Set up the hotkey
 
 **Game Menu > Options > Key Bindings > AddOns > Seekwell > "Show my target's drops"**. Pick any key. The key opens and closes the target panel. The settings window (Target section) shows the key you chose.
 
-## Overview (version 0.5.5)
+## Overview
 
-- **Browser** (left-click the minimap button or `/sw`): search items, mobs and dungeons on the left, details and a zone map with pins on the right. Tabs Search, Wishlist and Zone. Right-click the button for settings, Shift+click for the target panel.
+Current version: see the `## Version` line in `Seekwell.toc`.
+
+- **Browser** (left-click the minimap button or `/sw`): search items, mobs and dungeons on the left, details and a zone map with pins on the right. Tabs Search, Wishlist and Zone. Right-click the button for settings, Shift+left-click for the target panel.
 - **Map pins** on the world map, minimap and the browser preview: silver dots for mob spots, a cyan rim for spots you learned yourself, violet pins for dungeon entrances.
 - **Wishlist** with quantities and automatic tick when you own enough, **alerts** for wanted mobs and drops, **zone view**, **learning** from your own loot, positions, vendors and quests.
 - **Forever content**: dungeons from ForeverDungeonJournal, optional forever-db data, Forever-only items marked with an F.
@@ -42,7 +46,7 @@ The panel follows your target while it is open. When you lose your target (for e
 
 ### Item tooltips
 
-Item tooltips get up to 3 lines (you can set 1 to 5) such as `Seekwell: Kobold Vermin 12.5 %`. Forever and learned sources come first, in blue. Classic estimates come after them, in grey. These lines are shown even when Tinny's own tooltip is on. You can turn them off in the settings.
+Item tooltips get up to 3 lines (you can set 1 to 5) such as `Seekwell: Kobold Vermin 12.5 %`. Forever and learned sources come first, in blue. Classic estimates come after them, in grey. These lines are shown even when Tinny's own tooltip is on. A wishlist item also gets one gold line, `Seekwell: wishlist 3/20` (you have 3, you want 20) or `Seekwell: wishlist, done`. You can turn both off in the settings (`tooltip.enabled`, `tooltip.wish`).
 
 ### Learning from your loot
 
@@ -54,7 +58,7 @@ Star items in the target panel. The **Wishlist** section of the window lists the
 
 ### Window and minimap button
 
-- **Left-click** the minimap button opens the browser. **Right-click** opens the settings. **Shift+left-click** opens the target panel. **Drag** moves the button around the minimap (the position is saved).
+- **Left-click** the minimap button opens the browser. **Right-click** opens the settings. **Shift+left-click** opens the target panel (target drops). **Drag** moves the button around the minimap (the position is saved).
 - Window sections: **Target** (open the panel, the key you chose), **Wishlist**, **Learned** (how much is stored, *Clear learned data* with a confirmation), **Settings**.
 
 ## Commands
@@ -67,7 +71,7 @@ Star items in the target panel. The **Wishlist** section of the window lists the
 | `/sw selftest` | Checks every piece in the running game: one PASS / WARN / FAIL / SKIP line each and a summary (changes nothing you would notice) |
 | `/sw probe` | Which client APIs exist, Tinny tables and counts, whether your target's GUID is secret |
 | `/sw minimap on` / `off` / `reset` | The minimap button |
-| `/sw reset` | Restore default settings (learned data and wishlist stay) |
+| `/sw reset` | Restore default settings (learned data and wishlist stay); prints "settings reset" |
 | `/sw reset learned` | Forget all learned loot data |
 | `/sw dev on` / `off` | Debug output (off by default) |
 | `/sw help` | Command list |
@@ -82,6 +86,7 @@ Stored in `SeekwellDB.settings`. The wishlist is in `SeekwellCharDB.wish`, one p
 |-----|---------|---------|
 | `minimap.show` / `minimap.angle` | true / 200 | Button visibility and position |
 | `tooltip.enabled` / `tooltip.max` | true / 3 | "Drops from" lines on item tooltips, and how many (1–5) |
+| `tooltip.wish` | true | The `Seekwell: wishlist 3/20` line on tooltips of wishlist items |
 | `classic` | true | Include Tinny's Classic estimates |
 | `hideQuest` | false | Hide quest items in drop lists |
 | `learn` | true | Learn from your loot windows |
@@ -89,16 +94,14 @@ Stored in `SeekwellDB.settings`. The wishlist is in `SeekwellCharDB.wish`, one p
 | `dev` | false | Debug output |
 | `panel` | centre right | Target panel position |
 
-## Release 0.2.0
+## Alerts
 
-- **Wishlist alerts ("hunt mode")**: a toast "Wanted: <Mob> drops <Item> (12.5 %)" when a mob that drops a wished item is your target or under the mouse (nameplates optional), once per mob per 60 s; "Got <Item>" when a wished item drops, optionally removing it from the wishlist. Add mobs you want on their own with `/sw alert mob add <npcID|target>`. Settings in the window's Alerts section (`settings.alerts`: `enabled` on, `wantedMob` on, `wantedDrop` on, `nameplates` off, `sound` off, `removeOnLoot` off, `throttleSec` 60). Commands: `/sw alert on|off|test|status|nameplates on|off|sound on|off|remove on|off|mob add|del <npcID|target>|mob list`.
-- **Vendors and quests**: Seekwell learns the vendors whose window you open (name, zone, your position on a 0.5 % grid, the item ids they sell; about 2000 vendors) and the quests you are offered or turn in (title, giver, item rewards; about 3000 quests). Switches in the Zone section (`settings.zone.vendors`, `settings.zone.quests`, both on; the main "learn" switch turns them off too). Secret values are skipped. `/sw reset learned` clears them.
-- **`/sw item <item link|id>`**: every known source of an item in chat: the best 5 drops with % and origin, learned vendors (zone and coordinates) and learned quest rewards.
-- **Zone view** (window section Zone, `/sw zone`): the mobs known in your current zone (from your loot, and from learned spawns when available) with level range, your kills and the wished items they drop (star; these mobs come first), a summary of the wished items obtainable here, and the vendors learned in this zone. It refreshes on zone change while the section is open.
-- **Map pins for a hunt** (`/sw hunt <item link|item id|mob name|npc id>`, `/sw hunt wish`, `/sw hunt off`; window section Map): world map pins through Blizzard's map data provider, one silver dot per 40-yard cluster with a count (the drop % is in the tooltip). Tooltip: mob, level range, drop % with origin, and where the position comes from: "position learned from your loot (approximate)", "Classic spawn data (approximate)" or "learned + Classic spawn data". Left-click sets a waypoint (Blizzard, TomTom when installed, else coordinates in chat); right-click hides that mob for this character (`/sw map unhide`). `/sw map [on|off]` toggles pins. Up to 12 dots on the minimap while a hunt is active. The hunt is kept per character.
-- **Mob positions are learned from your own loot**: each loot window stores where you stood (0.5 % grid, up to 64 spots per mob and zone, `SeekwellDB.learned.spawn`); secret or unknown positions are skipped. A mob with no known position gets no pin, just a chat note. Settings `settings.map`: `enabled` on, `minimap` on, `minPct` 0, `cellYards` 40, `bundled` on.
-- **Classic spawn points (optional addon Seekwell_Locations)**: a separate, load-on-demand data addon with original Classic spawn points (about 3 770 mobs, pfQuest / CMaNGOS classic-db, GPL-3.0). Seekwell loads it the first time it needs a position (never at login, never in combat) and adds its points to the pins of mobs you have not looted there (points within 1.5 % of a learned spot are skipped). Original Classic spawns only: mobs new or moved on Forever are missing. `/sw locations on|off|status` (setting `map.bundled`); `/sw status` shows a line for it. Delete the Seekwell_Locations folder to drop it; Seekwell works without it. `/sw reset learned` clears positions too.
-- **Sharing (opt-in, off by default)**: turn it on in the window's Sharing section or with `/sw share on`. After each loot window your learned totals for that mob (npc id, your kill count, item ids and how often they dropped; nothing about you) go to your party / raid and / or guild (`settings.shareChannels.party` / `.guild`, both on), at most one message every 3 s, never in combat or inside instances. Data from other Seekwell users who also enabled sharing is kept separately, shown as "shared (N players)" below every other source and only from 5 kills; `/sw share clear` or "Clear shared data" removes it. `/sw share status` shows sent / received / rejected counters (this session) and the shared npc count. Shared numbers come from other players and can be wrong: treat them as hints.
+Window section **Alerts** (`/sw alert ...`, settings `settings.alerts`; the old 0.2.0 notes are in the changelog).
+
+- **Wanted mob**: a toast "Wanted: <Mob> drops <Item>" when a mob that drops a wished item (or a mob you added with `/sw alert mob add <npcID|target>`) is your target or under the mouse, once per mob per 60 s.
+- **Wanted drop**: "Got <Item>" when a wished item reaches you. It counts only your own chat loot lines: items you loot, items handed to you (single items and stacks), things you craft or create, and rolls you win. The texts come from the game's own message strings, so other client languages (for example Czech) work the same way; lines about other players never count, and a chat line the game hides (secret value) is skipped.
+- **Wanted item up for roll**: "Wanted: <item> is up for roll" when a roll starts for a wishlist item you do not own yet. Seekwell never rolls for you. The event is registered only while alerts and "wanted drop" are on.
+- Commands: `/sw alert on|off|test|status|nameplates on|off|sound on|off|remove on|off|mob add|del <npcID|target>|mob list`.
 
 ## Where does an item drop?
 
@@ -114,7 +117,7 @@ Click a row and the right pane shows it: for an item every mob that drops it (%,
 
 Content new in WoW Forever (items, mobs, dungeons that do not exist in Classic) comes from three places, all optional and read at runtime: **Tinny's Forever data** (measured drop rates, Forever-only npcs), **ForeverDungeonJournal** (dungeons, bosses and their loot, dungeon quests and their reward items, entrance positions) and **your own play** (loot, vendors, quest rewards, dungeon entrances you walk into).
 
-- Search has a **Dungeons** tab (`/sw dungeon [name]`): pick a dungeon to see its bosses (click one for its loot), its quests with reward items, its entrance on the zone map and an **Open in DungeonJournal** button.
+- Search has a **Dungeons** tab (`/sw dungeon [name]`): pick a dungeon to see its bosses (click one for its loot), its quests with reward items, its entrance on the zone map and an **Open in DungeonJournal** button. Without ForeverDungeonJournal, dungeons from the ForeverDB data that the journal lacks still appear as **entrance-only** pages (F tag, pin on the map and a waypoint; "entrance only — install ForeverDungeonJournal for bosses"). The ForeverDB data is loaded when you open the Dungeons tab, never at login.
 - Items from a journal boss or dungeon quest show "Seekwell: Hall of Thanes — Boss" in the tooltip, a "Dungeon:" row in the item detail, a `dungeon:` / `quest:` line in `/sw item` and a "Dungeon Journal" line in the wishlist. The drop chance is unknown ("—").
 - Dungeon entrances are violet pins on the world map, minimap and map preview when you hunt an item from that dungeon or the dungeon itself; click for a waypoint. Dungeons the journal cannot place get the entrance you used last time (your last outdoor position before the loading screen).
 - Forever-only content has a gold **F** in the lists and "Forever" in the detail header. **[+] Filters > Forever content only** or `/sw forever on|off` shows only that; `/sw forever` lists the active bridges (also in Settings > Forever). Turn the journal bridge off with Settings > Forever (`settings.forever.dj`).
@@ -144,7 +147,7 @@ Positions come from two places: your own loot (and what group members share) and
 
 [forever-db](https://github.com/foreverfraddons/forever-db) is a merged WoW Forever database (about 15 800 npcs, 32 000 items with names, 11 000 drop tables, 3 900 vendors, 6 300 quests, spawn positions for 15 900 npcs including Forever-new zones, 232 dungeon entrances). When its data addon is installed, Seekwell uses it as the **primary source for Forever content**: drops of Forever-new mobs, Forever-only item and mob names in search, spawn pins in new zones, vendors and quest rewards.
 
-- **Install:** download the data files `ForeverDB.lua`, `ForeverDB_2.lua`, `ForeverDB_3.lua` and `ForeverDB_4.lua` from the `ForeverDB` folder of the forever-db repository and put them into `Interface/AddOns/ForeverDBData/`, together with a `ForeverDBData.toc` that has `## Interface: 16001`, `## Title: ForeverDB data`, `## LoadOnDemand: 1` and the four file names. The folder must be named **ForeverDBData** (or `ForeverDB_Data`): the game folder `ForeverDB` is usually a different addon (ForeverDB.net helper) and is used only if it is LoadOnDemand and really contains the data layout. The files are GPL-3.0 data; keep the repository's `LICENSE-DATA.txt` beside them.
+- **Install:** download the data files `ForeverDB.lua`, `ForeverDB_2.lua`, `ForeverDB_3.lua` and `ForeverDB_4.lua` from the `ForeverDB` folder of the forever-db repository and put them into `Interface/AddOns/ForeverDBData/`, together with a `ForeverDBData.toc` that has `## Interface: 16001`, `## Title: ForeverDB data`, `## LoadOnDemand: 1` and the four file names. The folder must be named **ForeverDBData** (or `ForeverDB_Data`): the game folder `ForeverDB` is usually a different addon (ForeverDB.net helper) and is used only if it is LoadOnDemand and really contains the data layout. The CurseForge package of forever-db is said to hold three folders (`ForeverDB`, `ForeverDB_Full`, `ForeverDB_Locales`). Seekwell does not load `ForeverDB_Full` or `ForeverDB_Locales`: they define other globals (`ForeverDBFull`, `ForeverDBLocale`), not `ForeverDB`. The files are GPL-3.0 data; keep the repository's `LICENSE-DATA.txt` beside them.
 - **Runtime only:** Seekwell reads the global `ForeverDB` after loading it on demand (first search, hunt, target panel or `/sw fdb`, never at login or in combat). Nothing is copied into Seekwell or its saved data. The files are about 12 MB, but the loaded Lua tables take roughly 60 to 100 MB of memory, so turn it off with `/sw fdb off` on a small machine. Indexes are built in small time slices.
 - **Optional:** without it everything works as before (Tinny, your loot, Seekwell_Locations). With it, Seekwell_Locations is no longer needed.
 - `/sw fdb status|on|off|reload`, setting `settings.forever.fdbData` (Settings > Forever, on by default, only used when the data addon is installed).

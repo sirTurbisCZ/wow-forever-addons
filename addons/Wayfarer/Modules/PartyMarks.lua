@@ -231,6 +231,23 @@ local function RefreshAll()
   end
 end
 
+local refreshPending = false
+--- GROUP_ROSTER_UPDATE comes in bursts: one refresh shortly after the last of them.
+local function ScheduleRefresh()
+  if not (C_Timer and C_Timer.After) then
+    RefreshAll()
+    return
+  end
+  if refreshPending then
+    return
+  end
+  refreshPending = true
+  C_Timer.After(0.2, function()
+    refreshPending = false
+    RefreshAll() -- safe in combat: marks are only shown or hidden, new frames wait for combat to end
+  end)
+end
+
 local function OnEvent(_, event, unit)
   if event == "NAME_PLATE_UNIT_ADDED" then
     local plate = C_NamePlate and C_NamePlate.GetNamePlateForUnit and C_NamePlate.GetNamePlateForUnit(unit)
@@ -244,8 +261,10 @@ local function OnEvent(_, event, unit)
     if plate and marks[plate] then
       marks[plate]:Hide()
     end
+  elseif event == "GROUP_ROSTER_UPDATE" then
+    ScheduleRefresh()
   else
-    -- roster / world / combat end: re-evaluate everything (creates what could not be made in combat)
+    -- world / combat end: re-evaluate everything (creates what could not be made in combat)
     RefreshAll()
   end
 end

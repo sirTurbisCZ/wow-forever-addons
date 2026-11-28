@@ -12,7 +12,7 @@ local Config = BetterBackpack.Config
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
 Config.MAX_ERRORS = MAX_ERRORS
 Config.MAX_MSG = MAX_MSG
-Config.VERSION = "1.4.0"
+Config.VERSION = "1.4.1"
 
 local function CharVendorDefaults()
   return {
@@ -131,6 +131,14 @@ function Config.EnsureDB()
 
   local db = BetterBackpackDB
   local from = tonumber(db.schemaVersion) or 0
+
+  -- Fast path (GetProfile runs per slot per redraw): this table was already migrated and defaulted this session and
+  -- the schema is current, so the profile / defaults / log checks below cannot change anything.
+  if Config._ensuredDB == db and from == CURRENT_SCHEMA and type(db.profile) == "table"
+      and type(db.errors) == "table" and type(db.sessionLog) == "table" and type(db.actionTrace) == "table"
+  then
+    return db
+  end
 
   if from < 1 then
     EnsureProfile(db)
@@ -403,6 +411,7 @@ function Config.EnsureDB()
   end
   EnsureSessionLog(db)
 
+  Config._ensuredDB = db
   return db
 end
 

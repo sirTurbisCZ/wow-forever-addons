@@ -325,38 +325,100 @@ function A.OnLootOpened()
   end
 end
 
-local selfPrefixes
-local function SelfPrefixes()
-  if selfPrefixes then
-    return selfPrefixes
+-- What counts as "got": the chat lines about YOU receiving the item (CHAT_MSG_LOOT): looted / pushed to you (single and
+-- stacks), crafted or created, and a won roll. The text is built from the client's own global format strings, so any
+-- locale works: the part before the first %s is the prefix ("You receive loot: "), and a format that starts with the
+-- item is matched as a whole pattern. Another player's loot lines ("%s receives loot") never match: their text starts
+-- with a name. If no global exists at all, the English prefixes are used.
+local SELF_GLOBALS = { "LOOT_ITEM_SELF", "LOOT_ITEM_SELF_MULTIPLE", "LOOT_ITEM_PUSHED_SELF", "LOOT_ITEM_PUSHED_SELF_MULTIPLE",
+  "LOOT_ITEM_CREATED_SELF", "LOOT_ITEM_CREATED_SELF_MULTIPLE", "LOOT_ROLL_YOU_WON", "LOOT_ROLL_YOU_WON_NO_SPAM_DE",
+  "LOOT_ROLL_YOU_WON_NO_SPAM_NEED", "LOOT_ROLL_YOU_WON_NO_SPAM_GREED" }
+
+local function Esc(t)
+  return (t:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%0"))
+end
+
+local function FormatToPattern(fmt)
+  local parts, pos = {}, 1
+  while true do
+    local a, b, kind = fmt:find("%%[%d%$]*([sd])", pos)
+    if not a then
+      parts[#parts + 1] = Esc(fmt:sub(pos))
+      break
+    end
+    parts[#parts + 1] = Esc(fmt:sub(pos, a - 1))
+    parts[#parts + 1] = kind == "s" and "(.+)" or "%d+"
+    pos = b + 1
+  end
+  return "^" .. table.concat(parts) .. "$"
+end
+
+local selfMatchers
+local function SelfMatchers()
+  if selfMatchers then
+    return selfMatchers
   end
   local out = {}
-  for _, g in ipairs({ "LOOT_ITEM_SELF", "LOOT_ITEM_SELF_MULTIPLE", "LOOT_ITEM_PUSHED_SELF", "LOOT_ITEM_PUSHED_SELF_MULTIPLE" }) do
+  for _, g in ipairs(SELF_GLOBALS) do
     local v = Sec().Str(_G[g])
-    local pre = v and v:match("^(.-)%%s")
-    if pre and pre ~= "" then
-      out[#out + 1] = pre
+    if v and v:find("%%[%d%$]*s") then
+      local pre = v:match("^(.-)%%[%d%$]*s")
+      if pre and pre ~= "" then
+        out[#out + 1] = { prefix = pre }
+      else
+        out[#out + 1] = { pattern = FormatToPattern(v) }
+      end
     end
   end
   if #out == 0 then
-    out[1] = "You receive loot: "
-    out[2] = "You receive item: "
+    out[1] = { prefix = "You receive loot: " }
+    out[2] = { prefix = "You receive item: " }
+    out[3] = { prefix = "You create: " }
+    out[4] = { prefix = "You won: " }
   end
-  selfPrefixes = out
+  selfMatchers = out
   return out
+end
+A.ResetMatchers = function()
+  selfMatchers = nil
 end
 
 function A.OnChatLoot(msg)
-  msg = Sec().Str(msg)
+  msg = Sec().Str(msg) -- a secret chat text is skipped here
   if not msg then
     return
   end
-  for _, pre in ipairs(SelfPrefixes()) do
-    if msg:find(pre, 1, true) == 1 then
+  for _, m in ipairs(SelfMatchers()) do
+    if (m.prefix and msg:find(m.prefix, 1, true) == 1) or (m.pattern and msg:match(m.pattern)) then
       GotItem(Sec().ItemIDFromLink(msg))
       return
     end
   end
+end
+
+-- wanted item up for roll (no auto-roll: only the toast) --------------------------------------
+function A.OnRoll(rollID)
+  local Sx = Sec()
+  rollID = Sx.Plain(rollID)
+  local fn = rawget(_G, "GetLootRollItemLink")
+  if not (rollID and fn) then
+    return
+  end
+  local link = Sx.Str(Sx.Get(fn, rollID))
+  local itemID = link and Sx.ItemIDFromLink(link)
+  if not itemID or not Seekwell.Wish.IsWanted(itemID) then
+    return
+  end
+  local now = Now()
+  local key = "roll" .. itemID
+  if recentGot[key] and now - recentGot[key] < 10 then
+    return
+  end
+  recentGot[key] = now
+  if Throttled(key) then
+    return
+  end
+  A.Show(STAR .. " Wanted: " .. link .. " is up for roll")
 end
 
 -- events -----------------------------------------------------------------------------------
@@ -370,6 +432,8 @@ ev:SetScript("OnEvent", Safe("alerts.event", function(_, event, arg1)
     A.CheckUnit(arg1)
   elseif event == "CHAT_MSG_LOOT" then
     A.OnChatLoot(arg1)
+  elseif event == "START_LOOT_ROLL" then
+    A.OnRoll(arg1)
   end
 end))
 A.frame = ev
@@ -395,6 +459,7 @@ function A.Apply()
   end
   if s.wantedDrop then
     Reg("CHAT_MSG_LOOT")
+    Reg("START_LOOT_ROLL") -- only while alerts and wanted-drop alerts are on
   end
 end
 

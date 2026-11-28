@@ -2,7 +2,10 @@
 ## Title: Plateband
 ## Notes: Nameplate aura row: party/own debuffs, short buffs, dispellable enemy buffs.
 ## Author: tuma
-## Version: 0.8.0
+## Version: 0.8.1
+## X-Website: https://github.com/sirTurbisCZ/wow-forever-addons
+## X-License: MIT
+## IconTexture: Interface\Icons\Spell_Nature_Regeneration
 ## SavedVariables: PlatebandDB
 ## OptionalDeps: ForeverErrorLog
 ## DefaultState: enabled

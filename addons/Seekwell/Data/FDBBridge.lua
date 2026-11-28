@@ -2,6 +2,8 @@
   Seekwell.FDB — read-only RUNTIME bridge to the forever-db DATA addon (github.com/foreverfraddons/forever-db, GPL-3.0,
   sources in its LICENSE-DATA.txt). Installed as the LoadOnDemand game folder "ForeverDBData" (also "ForeverDB_Data");
   it defines the global table ForeverDB. Nothing is copied into Seekwell or its SavedVariables.
+  The CurseForge package's other folders (ForeverDB_Full -> global ForeverDBFull, ForeverDB_Locales -> ForeverDBLocale) do not
+  define the ForeverDB global, so they are NOT candidates: loading one would fail the Valid() check and read nothing.
   The game folder "ForeverDB" is usually a DIFFERENT addon (ForeverDB.net helper): it is used only as a last resort,
   only when it is LoadOnDemand, and only when the global afterwards has the data layout (meta.build + npc).
 
@@ -42,7 +44,10 @@ local jobs = {} -- name -> { done, n, total }
 local fails = {} -- job name -> failed runs (a failed job may restart twice)
 local readyFns = {}
 local idx = {} -- npcItems, itemIds/itemLower, npcIds/npcLower, mapMobs, dng
-local spawnCache, spawnCount, spawnTick = {}, 0, 0
+local spawnCache, spawnMapCache, spawnCount = {}, {}, 0
+local function SpawnReset()
+  spawnCache, spawnMapCache, spawnCount = {}, {}, 0
+end
 local mapTypeCache = {}
 
 local function Err(context, err)
@@ -253,7 +258,7 @@ end
 local function ResetIndexes()
   epoch = epoch + 1
   jobs, idx, fails = {}, {}, {}
-  spawnCache, spawnCount = {}, 0
+  SpawnReset()
   mapTypeCache = {}
 end
 
@@ -372,12 +377,19 @@ local function WorldToMap(cont, a, b)
 end
 F.WorldToMap = WorldToMap
 
+-- map-mob index in two stages (spm, then spw); each stage is checked on its own and a failed one restarts (max twice,
+-- see Job), so a failure of the second stage is retried too.
 local function BuildMapMobs()
   local spm, spw = Sub("spm"), Sub("spw")
-  if jobs.mapMobs or not (spm or spw) then
+  if idx.mapMobs or not (spm or spw) then
     return
   end
-  local out, seen = {}, {}
+  local mm = idx.mmState
+  if not mm then
+    mm = { out = {}, seen = {} }
+    idx.mmState = mm
+  end
+  local out, seen = mm.out, mm.seen
   local function Put(mapID, npc)
     local k = mapID .. ":" .. npc
     if not seen[k] then
@@ -394,15 +406,21 @@ local function BuildMapMobs()
     return type(key) == "string" and key:sub(1, 1) == "c" and tonumber(key:sub(2)) or nil
   end
   local function Finish()
+    if idx.mapMobs then
+      return
+    end
     for _, l in pairs(out) do
       table.sort(l)
     end
     idx.mapMobs = out
+    idx.mmState = nil
     gen = gen + 1
     FireReady()
   end
   local function DoSpw()
-    if spw then
+    if not spw then
+      Finish()
+    elseif not jobs.mapMobsW then
       Job("mapMobsW", spw, function(key, groups)
         local npc = Npc(key)
         if npc and type(groups) == "table" then
@@ -416,11 +434,13 @@ local function BuildMapMobs()
           end
         end
       end, Finish)
-    else
-      Finish()
     end
   end
-  if spm then
+  if not spm then
+    DoSpw()
+  elseif Ready("mapMobs") then
+    DoSpw() -- first stage done earlier: only the second may still be missing (or failed)
+  elseif not jobs.mapMobs then
     Job("mapMobs", spm, function(key, maps)
       local npc = Npc(key)
       if npc and type(maps) == "table" then
@@ -431,9 +451,6 @@ local function BuildMapMobs()
         end
       end
     end, DoSpw)
-  else
-    jobs.mapMobs = { done = true, n = 0 }
-    DoSpw()
   end
 end
 
@@ -711,31 +728,20 @@ F.QuestRewards = Guard("questrewards", function(itemID)
   return out
 end)
 
-local function EvictSpawn()
-  local oldK, oldT
-  for k, e in pairs(spawnCache) do
-    if not oldT or e.t < oldT then
-      oldK, oldT = k, e.t
-    end
-  end
-  if oldK then
-    spawnCache[oldK] = nil
-    spawnCount = spawnCount - 1
-  end
-end
-
---- { {mapID, points = { {x, y} }} } (0..1), from spm (/1000) and spw (converted); cached per npc.
-F.Spawns = Guard("spawns", function(npcID)
+--- true when forever-db has spawn rows for the npc (key presence only, no coordinate conversion).
+F.HasSpawns = Guard("hasspawns", function(npcID)
   npcID = tonumber(npcID)
   if not (npcID and Data()) then
-    return {}
+    return false
   end
-  spawnTick = spawnTick + 1
-  local e = spawnCache[npcID]
-  if e then
-    e.t = spawnTick
-    return e.v
-  end
+  local key = NpcKey(npcID)
+  local spm, spw = Sub("spm"), Sub("spw")
+  local mv, wv = spm and spm[key], spw and spw[key]
+  return (type(mv) == "table" and next(mv) ~= nil) or (type(wv) == "table" and next(wv) ~= nil) or false
+end)
+
+-- spawn points of an npc: all maps (onlyMap nil) or one map; spm is /1000, spw is converted
+local function CollectSpawns(npcID, onlyMap)
   local byMap, list = {}, {}
   local function Map(m)
     local x = byMap[m]
@@ -751,7 +757,7 @@ F.Spawns = Guard("spawns", function(npcID)
   local mv = spm and spm[key]
   if type(mv) == "table" then
     for m, c in pairs(mv) do
-      if type(m) == "number" and type(c) == "table" then
+      if type(m) == "number" and type(c) == "table" and (not onlyMap or m == onlyMap) then
         local pts = Map(m).points
         for i = 1, #c - 1, 2 do
           local x, y = tonumber(c[i]), tonumber(c[i + 1])
@@ -778,9 +784,11 @@ F.Spawns = Guard("spawns", function(npcID)
           local m, x, y = WorldToMap(g[1], g[i], g[i + 1])
           if m then
             n = n + 1
-            local pts = Map(m).points
-            if #pts < PTS_CAP then
-              pts[#pts + 1] = { x = x, y = y }
+            if not onlyMap or m == onlyMap then
+              local pts = Map(m).points
+              if #pts < PTS_CAP then
+                pts[#pts + 1] = { x = x, y = y }
+              end
             end
           end
         end
@@ -797,23 +805,52 @@ F.Spawns = Guard("spawns", function(npcID)
     return #a.points > #b.points
   end)
   if spawnCount >= SPAWN_LRU then
-    EvictSpawn()
+    SpawnReset() -- O(1): start over when full (like Registry)
   end
-  spawnCache[npcID] = { v = out, t = spawnTick }
   spawnCount = spawnCount + 1
+  return out
+end
+
+--- { {mapID, points = { {x, y} }} } (0..1), from spm (/1000) and spw (converted); cached per npc. Converts every point of
+--- the npc: callers that need one map use F.SpawnsOn, callers that only need "has any" use F.HasSpawns.
+F.Spawns = Guard("spawns", function(npcID)
+  npcID = tonumber(npcID)
+  if not (npcID and Data()) then
+    return {}
+  end
+  local e = spawnCache[npcID]
+  if e then
+    return e
+  end
+  local out = CollectSpawns(npcID, nil)
+  spawnCache[npcID] = out
   return out
 end)
 
---- points { {x, y} } of an npc on one map, or nil.
-function F.SpawnsOn(npcID, mapID)
-  mapID = tonumber(mapID)
-  for _, e in ipairs(F.Spawns(npcID) or {}) do
-    if e.mapID == mapID then
-      return e.points
-    end
+--- points { {x, y} } of an npc on one map, or nil. Converts lazily (cached per npc + map).
+F.SpawnsOn = Guard("spawnson", function(npcID, mapID)
+  npcID, mapID = tonumber(npcID), tonumber(mapID)
+  if not (npcID and mapID and Data()) then
+    return nil
   end
-  return nil
-end
+  local full = spawnCache[npcID]
+  if full then
+    for _, e in ipairs(full) do
+      if e.mapID == mapID then
+        return e.points
+      end
+    end
+    return nil
+  end
+  local k = npcID .. ":" .. mapID
+  local c = spawnMapCache[k]
+  if c == nil then
+    local out = CollectSpawns(npcID, mapID)
+    c = out[1] and out[1].points or false
+    spawnMapCache[k] = c
+  end
+  return c or nil
+end)
 
 F.MapsForNpc = Guard("mapsfornpc", function(npcID)
   local out = {}

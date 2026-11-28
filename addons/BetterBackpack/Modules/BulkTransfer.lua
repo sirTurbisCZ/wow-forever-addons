@@ -370,18 +370,146 @@ local function TransferAuction(bag, slot)
   return true
 end
 
+--[[
+  Bank deposit (#40). UseContainerItem is the game's "use item" call: with the bank open the client deposits, but if
+  it ever does not treat the bank as the target it equips weapons / armor / bags and uses consumables. So:
+    * items that could be equipped or used (equip slot, on-use spell, unknown info) are NOT sent through
+      UseContainerItem; they are moved with the cursor into a free slot of a bank bag (Bank.CursorDeposit), or skipped
+      when no bank bag can be derived;
+    * everything else goes through UseContainerItem, and the pump verifies on the next step that the source slot
+      really changed (SlotChanged / locked in transit) and stops at the first slot that did not.
+]]
+BulkTransfer.Bank = {}
+local Bank = BulkTransfer.Bank
+
+--- true = could be equipped / used by UseContainerItem; unknown item info counts as risky.
+function Bank.IsRisky(id)
+  if type(id) ~= "number" then
+    return true
+  end
+  if not (C_Item and C_Item.GetItemInfoInstant) then
+    return true
+  end
+  local ok, _, _, _, loc = pcall(C_Item.GetItemInfoInstant, id)
+  if not ok then
+    return true
+  end
+  local Slots = SlotsMod()
+  if (Slots and Slots.IsSecret and Slots.IsSecret(loc)) then
+    return true
+  end
+  if type(loc) == "string" and loc ~= "" and loc ~= "INVTYPE_NON_EQUIP_IGNORE" then
+    return true
+  end
+  if loc == nil then
+    return true
+  end
+  if C_Item.GetItemSpell then
+    local oks, spellName, spellID = pcall(C_Item.GetItemSpell, id)
+    if oks and (spellName or spellID) then
+      return true
+    end
+  end
+  return false
+end
+
+--- Bank bag ids derivable from the client (nil entries guarded); only bags that report slots.
+function Bank.Bags()
+  local out, seen = {}, {}
+  local function add(bag)
+    if type(bag) == "number" and not seen[bag] and C_Container and C_Container.GetContainerNumSlots then
+      local ok, n = pcall(C_Container.GetContainerNumSlots, bag)
+      if ok and type(n) == "number" and n > 0 then
+        seen[bag] = true
+        out[#out + 1] = { bag = bag, slots = n }
+      end
+    end
+  end
+  local idx = Enum and Enum.BagIndex
+  add((idx and idx.Bank) or BANK_CONTAINER)
+  if idx then
+    for i = 1, 7 do
+      add(idx["BankBag_" .. i])
+    end
+  elseif type(NUM_BAG_SLOTS) == "number" and type(NUM_BANKBAGSLOTS) == "number" then
+    for i = 1, NUM_BANKBAGSLOTS do
+      add(NUM_BAG_SLOTS + i)
+    end
+  end
+  return out
+end
+
+--- Cursor deposit: pick the item up, drop it on the first free slot of a bank bag that may hold it, verify that the
+--- source slot emptied. Anything unexpected puts the item back (ClearCursor). Returns true only when verified.
+function Bank.CursorDeposit(bag, slot)
+  local b, s = ContainerAPI(bag, slot)
+  local id = ItemID(b, s)
+  local bags = Bank.Bags()
+  if #bags == 0 or not (C_Container and C_Container.PickupContainerItem) then
+    return false
+  end
+  local Slots = SlotsMod()
+  local Layout = LayoutMod()
+  for i = 1, #bags do
+    local bb = bags[i].bag
+    if not (Layout and Layout.BagMayHold) or Layout.BagMayHold(bb, id, nil) then
+      for sl = 1, bags[i].slots do
+        if Slots and Slots.SlotOccupied and not Slots.SlotOccupied(bb, sl) then
+          if ClearCursor then
+            pcall(ClearCursor)
+          end
+          if not PickupSlot(b, s) or not CursorHasSomething() then
+            if ClearCursor then
+              pcall(ClearCursor)
+            end
+            return false
+          end
+          pcall(C_Container.PickupContainerItem, bb, sl)
+          local done = not CursorHasSomething()
+          if ClearCursor then
+            pcall(ClearCursor)
+          end
+          if done and (not Slots.SlotOccupied(b, s) or SlotLocked(b, s)) then
+            return true
+          end
+          return false -- refused here: do not try to place it in more places (no error spam)
+        end
+      end
+    end
+  end
+  return false
+end
+
+--- Returns ok, pending. ok = the call was made / the move done; pending = {bag, slot, id, count} for the pump to
+--- verify on its next step (nil when already verified or skipped).
 local function TransferBank(bag, slot)
   local b, s = ContainerAPI(bag, slot)
   if SlotLocked(b, s) then
     return false
   end
+  local id = ItemID(b, s)
+  if Bank.IsRisky(id) then
+    return Bank.CursorDeposit(b, s), nil
+  end
+  local countBefore = StackCount(b, s)
+  local called = false
   if C_Container and C_Container.UseContainerItem then
-    return select(1, pcall(C_Container.UseContainerItem, b, s))
+    called = select(1, pcall(C_Container.UseContainerItem, b, s))
+  elseif UseContainerItem then
+    called = select(1, pcall(UseContainerItem, b, s))
   end
-  if UseContainerItem then
-    return select(1, pcall(UseContainerItem, b, s))
+  if not called then
+    return false
   end
-  return false
+  return true, { bag = b, slot = s, id = id, count = countBefore }
+end
+
+--- Did the slot of a pending deposit change (emptied, other item, smaller stack, or in transit = locked)?
+function Bank.Verified(p)
+  if not p then
+    return true
+  end
+  return SlotChanged(p.bag, p.slot, p.id, p.count) or SlotLocked(p.bag, p.slot)
 end
 
 local function TransferOne(bag, slot, ctx)
@@ -486,12 +614,26 @@ local function PumpStep(limit)
   end
   local ctx = pumpQueue.ctx
   limit = limit or 1
+  if ctx == "bank" then
+    limit = 1 -- one deposit per tick so the previous one can be verified before the next
+  end
   local moved = 0
   while pumpQueue and #pumpQueue.slots > 0 and moved < limit do
     -- bank / auction closed during the pump: stop, otherwise the rest would use or equip the items instead
     if (ctx == "bank" or ctx == "auction") and DetectContext() ~= ctx then
       pumpQueue.slots = {}
       break
+    end
+    -- bank: the previous UseContainerItem must have changed its slot, else stop (it would not deposit the rest either)
+    if ctx == "bank" and pumpQueue.pending then
+      local p = pumpQueue.pending
+      pumpQueue.pending = nil
+      if not Bank.Verified(p) then
+        BulkPrint(string.format("BULK bank stop: slot %s/%s did not change, %d left", tostring(p.bag), tostring(p.slot), #pumpQueue.slots))
+        pumpQueue.slots = {}
+        pumpQueue.stopped = true
+        break
+      end
     end
     local e = table.remove(pumpQueue.slots, 1)
     local b, s = e and e.bag, e and e.slot
@@ -500,9 +642,13 @@ local function PumpStep(limit)
     end
     local Slots = SlotsMod()
     if b ~= nil and s ~= nil and Slots and Slots.SlotOccupied and Slots.SlotOccupied(b, s) then
-      if TransferOne(b, s, ctx) then
+      local ok, pending = TransferOne(b, s, ctx)
+      if ok then
         moved = moved + 1
         pumpQueue.sold = (pumpQueue.sold or 0) + 1
+        pumpQueue.pending = pending
+      elseif ctx == "bank" then
+        pumpQueue.skipped = (pumpQueue.skipped or 0) + 1
       end
     end
   end

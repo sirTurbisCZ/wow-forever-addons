@@ -405,7 +405,7 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
         WarmCombatShell("login")
       end
     end
-    Print(string.format(L.LOADED or "loaded v%s · /bb", tostring(Config.VERSION)))
+    Print(string.format(L.LOADED or "v%s · /bb", tostring(Config.VERSION)))
     return
   end
 
@@ -417,12 +417,22 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
     if CC and CC.OnCharacterActive then
       SafeCall("charLanes", CC.OnCharacterActive)
     end
+    -- /reload or a zone change in combat: PLAYER_REGEN_DISABLED was never seen (or its ENABLED twin will not come).
+    BetterBackpack._combatFrozen = (InCombatLockdown and InCombatLockdown()) and true or false
     return
   end
 
-  if event == "BAG_UPDATE" or event == "BAG_UPDATE_DELAYED" or event == "ITEM_LOCK_CHANGED"
-      or event == "GET_ITEM_INFO_RECEIVED"
-  then
+  if event == "GET_ITEM_INFO_RECEIVED" then
+    -- Fires for every item the client loads anywhere (tooltips, chat, vendors); only bag items matter here.
+    local itemId = ...
+    if Layout and Layout.BagHasItem and not Layout.BagHasItem(itemId) then
+      return
+    end
+    QueueBagRefresh()
+    return
+  end
+
+  if event == "BAG_UPDATE" or event == "BAG_UPDATE_DELAYED" or event == "ITEM_LOCK_CHANGED" then
     QueueBagRefresh()
     return
   end
@@ -524,6 +534,11 @@ bootFrame:SetScript("OnEvent", function(_, event, ...)
     WarmCombatShell("regen")
     if Layout and Layout.IsShown and Layout.IsShown() and Layout.Refresh then
       SafeCall("regen:layout", Layout.Refresh)
+    end
+    -- Always: a bag opened in combat could not re-enable the protected slot buttons, and a bag that stayed visible
+    -- never went through a park. Syncs the slot / shell mouse with the real visible state.
+    if Layout and Layout.SyncSlotMouse then
+      SafeCall("regen:mouse", Layout.SyncSlotMouse)
     end
     return
   end

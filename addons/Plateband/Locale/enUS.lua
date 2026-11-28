@@ -6,10 +6,10 @@ Plateband.L = Plateband.L or {}
 local L = Plateband.L
 
 L.PREFIX = "|cff7ec8e3[Plateband]|r"
-L.LOADED = "loaded v%s · /pb help"
+L.LOADED = "v%s · /pb"
 L.UNKNOWN_CMD = "unknown command — /pb help"
 L.HELP_LINES = {
-  "/pb — open the settings window (also the minimap button)",
+  "/pb, /pb settings — open the settings window (also the minimap button)",
   "/pb help — this help",
   "/pb minimap — show/hide the minimap button",
   "/pb on|off — enable/disable the above-plate aura band",
@@ -29,7 +29,7 @@ L.STATUS_LINE = "enabled=%s · safe=%s · watch=%s · schema=%s · ver=%s · log
 L.ENABLED = "band on"
 L.DISABLED = "band off"
 L.SAFE_ON = "safe mode — band cleared; /pb on to resume"
-L.CONFIG_RESET = "config reset to defaults"
+L.CONFIG_RESET = "settings reset"
 L.SIZE_SET = "icon size hint: %d"
 L.SIZE_BAD = "usage: /pb size <12-32>"
 L.NO_ERRORS = "no errors in ring"
@@ -45,6 +45,6 @@ L.DEV_OFF = "dev telemetry off"
 L.DEV_USAGE = "usage: /pb dev on|off  (currently %s)"
 L.AC_ON = "AuraContainer row ON (experimental) — containers are built out of combat; /pb tree shows them"
 L.AC_OFF = "AuraContainer row off — legacy row"
-L.RELOAD_NEEDED = "/reload needed to apply this setting to plates already on screen (new plates use it at once)"
-L.RELOAD_NOTE = "/reload needed: plates already built keep the old enemy buffs / debuff filter / icon count (new plates use the new setting at once)."
+L.RELOAD_NEEDED = "/reload needed: this setting applies to plates created after /reload"
+L.RELOAD_NOTE = "/reload needed: enemy buffs and icon count apply to plates created after /reload."
 L.AC_USAGE = "usage: /pb ac on|off|status"

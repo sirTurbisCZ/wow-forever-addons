@@ -6,12 +6,12 @@ local Config = Seekwell.Config
 
 local CURRENT_SCHEMA = 1
 Config.CURRENT_SCHEMA = CURRENT_SCHEMA
-Config.VERSION = "0.5.6"
+Config.VERSION = "0.6.0"
 
 local function SettingsDefaults()
   return {
     minimap = { show = true, angle = 200 },
-    tooltip = { enabled = true, max = 3, skipIfDropsShown = true }, -- "Seekwell: Mob 12.5 %" lines on item tooltips (1-5)
+    tooltip = { enabled = true, max = 3, skipIfDropsShown = true, wish = true }, -- "Seekwell: Mob 12.5 %" lines on item tooltips (1-5); wish: "Seekwell: wishlist 3/20" line for wishlist items
     classic = true, -- include Tinny's Classic estimates
     wishIgnoreOwned = true, -- owned wishlist items are ticked and left out of alerts, hunts and the zone summary
     hideQuest = false, -- hide quest items in the drop lists
@@ -42,12 +42,13 @@ local function Copy(v)
   return out
 end
 
---- Fill missing keys (recursively) from the defaults; never overwrites existing values.
+--- Fill missing keys (recursively) from the defaults; never overwrites existing values. A value of the wrong type
+--- (settings.map = "x") is replaced by the default when the default is a table.
 local function Fill(t, d)
   for k, v in pairs(d) do
-    if t[k] == nil then
+    if t[k] == nil or (type(v) == "table" and type(t[k]) ~= "table") then
       t[k] = Copy(v)
-    elseif type(v) == "table" and type(t[k]) == "table" then
+    elseif type(v) == "table" then
       Fill(t[k], v)
     end
   end
@@ -136,6 +137,18 @@ end
 
 function Config.Get()
   return Config.EnsureDB().settings
+end
+
+--- A settings block that is indexed on hot paths (map, alerts, ...): a cheap type check, repaired from the defaults.
+function Config.Block(name)
+  local st = Config.EnsureDB().settings
+  local t = st[name]
+  if type(t) ~= "table" then
+    local d = SettingsDefaults()[name]
+    t = type(d) == "table" and d or {}
+    st[name] = t
+  end
+  return t
 end
 
 function Config.Learned()
